@@ -39,6 +39,7 @@ import ClientLogbook from "@/pages/ClientLogbook";
 import Defaulters from "@/pages/Defaulters";
 import StockLedger from "@/pages/StockLedger";
 import SessionDayPlans from "@/pages/SessionDayPlans";
+import SessionHistory from "@/pages/SessionHistory";
 import HisIntegrations from "@/pages/HisIntegrations";
 import MicroplanBuilder from "@/pages/MicroplanBuilder";
 import SettlementIntelligence from "@/pages/SettlementIntelligence";
@@ -91,6 +92,7 @@ function AuthenticatedRouter() {
       <Route path="/sessions">
         <SessionPlanning planTypeFilter="routine" />
       </Route>
+      <Route path="/sessions/history" component={SessionHistory} />
       <Route path="/sessions/:id/day-plans" component={SessionDayPlans} />
       <Route path="/clients/defaulters" component={Defaulters} />
       <Route path="/clients" component={ClientLogbook} />

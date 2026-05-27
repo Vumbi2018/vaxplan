@@ -57,6 +57,9 @@ import {
   ShieldCheck,
   Info,
   ArrowRight,
+  CheckCircle2,
+  AlertTriangle,
+  History as HistoryIcon,
 } from "lucide-react";
 import {
   insertSessionPlanSchema,
@@ -91,6 +94,12 @@ export default function SessionPlanning({
   const { toast } = useToast();
   const { user } = useAuth();
   const [dialogOpen, setDialogOpen] = useState(false);
+  // Task #47 — Mark Done dialog state. Captures per-vaccine doses administered.
+  const [markDoneSession, setMarkDoneSession] = useState<SessionPlan | null>(null);
+  const [vaccinatedCounts, setVaccinatedCounts] = useState<Record<string, string>>({});
+  // Task #47 — Proximity panel state shown inside the edit dialog.
+  const [proximityWarning, setProximityWarning] = useState<{ nearby: any[]; reason?: string } | null>(null);
+  const [proximityChecking, setProximityChecking] = useState(false);
   const isDetailMode = lockedMicroplanId != null;
   const parentMicroplanTypeForRoute: "facility_routine" | "sia_campaign" =
     planTypeFilter === "campaign" ? "sia_campaign" : "facility_routine";
@@ -672,10 +681,81 @@ export default function SessionPlanning({
               <ArrowRight className="h-3.5 w-3.5" />
             </Link>
           </Button>
+          {item.status !== "completed" && item.status !== "cancelled" && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="gap-1 text-emerald-600 hover:bg-emerald-500/10 h-8 px-2 rounded-lg text-xs"
+              data-testid={`btn-mark-done-${item.id}`}
+              onClick={() => {
+                setMarkDoneSession(item);
+                setVaccinatedCounts({});
+              }}
+            >
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              Mark done
+            </Button>
+          )}
         </div>
       ),
     },
   ];
+
+  // Task #47 — Mark Done: posts vaccinated counts, sets status=completed.
+  // Falls back to outbox when offline so field workers can close out sessions
+  // even with no signal and have it sync later.
+  const markDoneMutation = useMutation({
+    mutationFn: async ({ id, counts }: { id: number; counts: Record<string, number> }) => {
+      if (!navigator.onLine) {
+        await enqueueOutbox({
+          method: "POST",
+          url: `/api/sessions/${id}/mark-done`,
+          entityType: "sessionPlan",
+          body: { vaccinatedCounts: counts },
+        } as any);
+        return { queued: true };
+      }
+      return apiRequest("POST", `/api/sessions/${id}/mark-done`, { vaccinatedCounts: counts });
+    },
+    onSuccess: (res: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sessions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sessions/map"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sessions/history"] });
+      toast({
+        title: res?.queued ? "Queued offline" : "Session marked done",
+        description: res?.queued ? "Will sync when back online." : "Moved to history.",
+      });
+      setMarkDoneSession(null);
+      setVaccinatedCounts({});
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to mark done", description: err?.message ?? "Try again.", variant: "destructive" });
+    },
+  });
+
+  // Task #47 — Check nearby sessions (2km / ±14d) and population context for
+  // a candidate session. Shown as an inline panel inside the edit dialog.
+  const runProximityCheck = async (plan: SessionPlan) => {
+    if (!navigator.onLine) {
+      setProximityWarning({ nearby: [], reason: "Offline — check skipped." });
+      return;
+    }
+    setProximityChecking(true);
+    try {
+      const res = await apiRequest("POST", "/api/sessions/validate-proximity", {
+        facilityId: (plan as any).facilityId,
+        villageIds: (plan as any).villageIds ?? [],
+        scheduledDate: (plan as any).scheduledDate ?? null,
+        excludeSessionId: plan.id,
+      });
+      const json: any = await (res as any).json?.() ?? res;
+      setProximityWarning({ nearby: json?.nearby ?? [], reason: json?.reason });
+    } catch (e: any) {
+      setProximityWarning({ nearby: [], reason: e?.message ?? "Check failed." });
+    } finally {
+      setProximityChecking(false);
+    }
+  };
 
   const onSubmit = (data: InsertSessionPlan) => {
     // In detail mode the parent microplan is locked to the route id; force it
@@ -738,14 +818,22 @@ export default function SessionPlanning({
             <h1 className="text-2xl font-bold" data-testid="text-page-title">{pageTitle}</h1>
             <p className="text-muted-foreground text-sm">{pageSubtitle}</p>
           </div>
-          {isCreator && (
-            <Link href="/develop-microplan">
-              <Button variant="outline" data-testid="button-open-microplan-builder">
-                <Plus className="h-4 w-4 mr-1" />
-                New microplan (Builder)
+          <div className="flex items-center gap-2">
+            <Link href="/sessions/history">
+              <Button variant="outline" size="sm" data-testid="button-session-history">
+                <HistoryIcon className="h-4 w-4 mr-1" />
+                Session history
               </Button>
             </Link>
-          )}
+            {isCreator && (
+              <Link href="/develop-microplan">
+                <Button variant="outline" data-testid="button-open-microplan-builder">
+                  <Plus className="h-4 w-4 mr-1" />
+                  New microplan (Builder)
+                </Button>
+              </Link>
+            )}
+          </div>
         </div>
 
         {microplansOfRouteType.length === 0 ? (
@@ -1569,6 +1657,53 @@ export default function SessionPlanning({
             )}
           </div>
 
+          {/* Task #47 — Proximity / population sanity panel. Calls the server
+              to find sessions within 2km & ±14 days and surfaces any pop check. */}
+          {editingPlan && (
+            <div className="pt-3 border-t mt-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                  <ShieldCheck className="h-3.5 w-3.5" /> Proximity & population check
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  data-testid="button-check-proximity"
+                  disabled={proximityChecking}
+                  onClick={() => runProximityCheck(editingPlan)}
+                >
+                  {proximityChecking ? "Checking…" : "Check now"}
+                </Button>
+              </div>
+              {proximityWarning && (
+                proximityWarning.nearby.length > 0 || proximityWarning.reason ? (
+                  <Alert variant="destructive" className="py-2">
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertTitle className="text-sm">Possible overlap</AlertTitle>
+                    <AlertDescription className="text-xs">
+                      {proximityWarning.reason && <div>{proximityWarning.reason}</div>}
+                      {proximityWarning.nearby.length > 0 && (
+                        <ul className="list-disc pl-4 mt-1">
+                          {proximityWarning.nearby.slice(0, 5).map((n: any, i: number) => (
+                            <li key={i}>
+                              <span className="font-semibold">{n.name}</span> — {n.distanceKm?.toFixed?.(2) ?? n.distanceKm}km
+                              {n.daysApart != null ? `, ${n.daysApart}d apart` : ""}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </AlertDescription>
+                  </Alert>
+                ) : (
+                  <div className="text-xs text-emerald-600 flex items-center gap-1.5">
+                    <CheckCircle2 className="h-3.5 w-3.5" /> No nearby session conflicts found.
+                  </div>
+                )
+              )}
+            </div>
+          )}
+
           <DialogFooter className="pt-4 border-t gap-2">
             <Button
               type="button"
@@ -1576,6 +1711,7 @@ export default function SessionPlanning({
               onClick={() => {
                 setIsEditOpen(false);
                 setEditingPlan(null);
+                setProximityWarning(null);
               }}
               className="rounded-xl"
             >
@@ -1588,6 +1724,68 @@ export default function SessionPlanning({
               className="bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {updateMutation.isPending ? "Saving..." : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Task #47 — Mark Done dialog. Captures vaccinated counts per antigen
+          (free-form keys so it works across tenants/programs). */}
+      <Dialog open={!!markDoneSession} onOpenChange={(open) => { if (!open) { setMarkDoneSession(null); setVaccinatedCounts({}); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-emerald-600" /> Mark session done
+            </DialogTitle>
+            <DialogDescription>
+              Record how many people were vaccinated. The session moves to history
+              and stays on the live map for 30 more days.
+            </DialogDescription>
+          </DialogHeader>
+          {markDoneSession && (
+            <div className="space-y-3">
+              <div className="text-sm">
+                <div className="font-semibold">{markDoneSession.name}</div>
+                <div className="text-xs text-muted-foreground capitalize">
+                  {markDoneSession.sessionType} · target {markDoneSession.targetPopulation?.toLocaleString() ?? "—"}
+                </div>
+              </div>
+              <div className="space-y-2">
+                {["BCG", "OPV", "Penta", "MR", "HPV", "Other"].map((vac) => (
+                  <div key={vac} className="flex items-center justify-between gap-3">
+                    <Label className="text-xs font-medium w-24" htmlFor={`vc-${vac}`}>{vac}</Label>
+                    <Input
+                      id={`vc-${vac}`}
+                      data-testid={`input-vaccinated-${vac.toLowerCase()}`}
+                      type="number"
+                      min={0}
+                      placeholder="0"
+                      value={vaccinatedCounts[vac] ?? ""}
+                      onChange={(e) => setVaccinatedCounts((s) => ({ ...s, [vac]: e.target.value }))}
+                      className="h-8"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => { setMarkDoneSession(null); setVaccinatedCounts({}); }}>Cancel</Button>
+            <Button
+              data-testid="button-confirm-mark-done"
+              disabled={markDoneMutation.isPending || !markDoneSession}
+              onClick={() => {
+                if (!markDoneSession) return;
+                const counts: Record<string, number> = {};
+                for (const [k, v] of Object.entries(vaccinatedCounts)) {
+                  const n = Number(v);
+                  if (Number.isFinite(n) && n > 0) counts[k] = n;
+                }
+                markDoneMutation.mutate({ id: markDoneSession.id, counts });
+              }}
+              className="bg-emerald-600 hover:bg-emerald-500 text-white"
+            >
+              {markDoneMutation.isPending ? "Saving…" : "Confirm"}
             </Button>
           </DialogFooter>
         </DialogContent>

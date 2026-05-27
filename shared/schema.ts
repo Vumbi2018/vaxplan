@@ -488,11 +488,18 @@ export const sessionPlans = pgTable("session_plans", {
   teamType: varchar("team_type", { length: 100 }),
   geojson: jsonb("geojson"), // Georeferenced custom geofence plotted by the health worker
   isAchieved: boolean("is_achieved").default(false).notNull(), // real-time map checklist progress tracking
+  // Completion tracking — set when the facility marks the session done. Drives the
+  // 1-month auto-archive from the live map and powers the Session History view.
+  completedAt: timestamp("completed_at"),
+  // Per-antigen vaccinated counts captured at mark-done time. Shape:
+  //   { totals: number, perAntigen: Record<string, number>, actualDate?: string, note?: string }
+  vaccinatedCounts: jsonb("vaccinated_counts"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
   index("idx_session_plans_tenant").on(table.tenantId),
   index("idx_session_plans_microplan").on(table.microplanId),
+  index("idx_session_plans_completed_at").on(table.completedAt),
 ]);
 
 // Session Villages (junction table)

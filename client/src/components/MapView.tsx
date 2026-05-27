@@ -407,6 +407,11 @@ function MapLegend({
     { key: "planned", label: "Planned Community", color: "bg-emerald-500", count: planningStats.planned },
     { key: "missingStandard", label: "Missing Standard", color: "bg-amber-500", count: planningStats.missingStandard },
     { key: "missingHtr", label: "Missing HTR", color: "bg-rose-500", count: planningStats.missingHtr },
+    // Session plan pins on the live map (Task #47). Status-driven styling.
+    { key: "sessionPlanned", label: "Session • Planned", color: "bg-blue-600", count: (planningStats as any).sessionPlanned ?? 0 },
+    { key: "sessionInProgress", label: "Session • In Progress", color: "bg-amber-500", count: (planningStats as any).sessionInProgress ?? 0 },
+    { key: "sessionCompleted", label: "Session • Completed", color: "bg-emerald-600", count: (planningStats as any).sessionCompleted ?? 0 },
+    { key: "unserved", label: "Unserved Place", color: "bg-red-600", count: (planningStats as any).unserved ?? 0 },
   ];
 
   return (
@@ -1783,6 +1788,29 @@ export function MapView({
     },
   });
 
+  // Sessions plotted on the map: planned/in-progress + completed within 30d.
+  // Source of truth for the "Session plans" map layer + legend counters.
+  const { data: sessionMapPins = [] } = useQuery<any[]>({
+    queryKey: ["/api/sessions/map"],
+    queryFn: async () => {
+      if (!navigator.onLine) return [];
+      const res = await fetch("/api/sessions/map");
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
+  // Unserved populated places (no session ever + no recorded vaccinations).
+  const { data: unservedPlaces = [] } = useQuery<any[]>({
+    queryKey: ["/api/unserved-places"],
+    queryFn: async () => {
+      if (!navigator.onLine) return [];
+      const res = await fetch("/api/unserved-places");
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
   // Fetch session villages junction table
   const { data: sessionVillages = [] } = useQuery<any[]>({
     queryKey: ["/api/sessions/villages"],
@@ -2695,9 +2723,20 @@ export function MapView({
     
     const total = planned + missingStandard + missingHtr;
     const coverage = total > 0 ? Math.round((planned / total) * 100) : 0;
-    
-    return { planned, missingStandard, missingHtr, total, coverage };
-  }, [filteredVillages, plannedVillageIds]);
+
+    // Task #47: session-plan + unserved counters surfaced in the legend.
+    let sessionPlanned = 0;
+    let sessionInProgress = 0;
+    let sessionCompleted = 0;
+    for (const s of sessionMapPins as any[]) {
+      if (s.status === "completed") sessionCompleted++;
+      else if (s.status === "in_progress" || s.status === "in-progress") sessionInProgress++;
+      else sessionPlanned++;
+    }
+    const unserved = (unservedPlaces as any[]).length;
+
+    return { planned, missingStandard, missingHtr, total, coverage, sessionPlanned, sessionInProgress, sessionCompleted, unserved };
+  }, [filteredVillages, plannedVillageIds, sessionMapPins, unservedPlaces]);
 
   // Updated Code: Visible villages with always-on bounds pruning for performance + category filtering.
   // Bounds pruning is now unconditional (when mapBounds is available) so that:
@@ -4847,6 +4886,64 @@ export function MapView({
                 </Popup>
               </Marker>
             ))}
+
+        {/* Task #47: Session-plan pins — color-coded by status, popup with date,
+            microplan link, target/vaccinated, and a "Mark done" hint. */}
+        {sessionMapPins
+          .filter((s: any) => s.lat != null && s.lng != null)
+          .filter((s: any) => {
+            if (s.status === "completed") return !hiddenCategories.has("sessionCompleted");
+            if (s.status === "in_progress" || s.status === "in-progress") return !hiddenCategories.has("sessionInProgress");
+            return !hiddenCategories.has("sessionPlanned");
+          })
+          .map((s: any) => {
+            const color = s.status === "completed" ? "#059669" : (s.status === "in_progress" || s.status === "in-progress") ? "#f59e0b" : "#2563eb";
+            return (
+              <CircleMarker
+                key={`session-pin-${s.id}`}
+                center={[Number(s.lat), Number(s.lng)]}
+                radius={9}
+                pathOptions={{ color, fillColor: color, fillOpacity: 0.55, weight: 2 }}
+              >
+                <Popup className="premium-map-popup">
+                  <div className="w-56 text-xs font-sans">
+                    <div className="font-bold text-sm mb-1.5">{s.name}</div>
+                    <div className="space-y-0.5 text-foreground/80">
+                      <div><span className="text-muted-foreground">Status:</span> <span className="font-semibold capitalize">{String(s.status || "planned").replace("_", " ")}</span></div>
+                      {s.scheduledDate && <div><span className="text-muted-foreground">Scheduled:</span> {new Date(s.scheduledDate).toLocaleDateString()}</div>}
+                      {s.completedAt && <div><span className="text-muted-foreground">Completed:</span> {new Date(s.completedAt).toLocaleDateString()}</div>}
+                      <div><span className="text-muted-foreground">Target pop:</span> {s.targetPopulation ?? "—"}</div>
+                      {s.vaccinatedTotal != null && <div><span className="text-muted-foreground">Vaccinated:</span> <span className="font-bold">{s.vaccinatedTotal}</span></div>}
+                      <div className="capitalize"><span className="text-muted-foreground">Type:</span> {s.sessionType} / {s.planType}</div>
+                    </div>
+                    <div className="mt-2 pt-1.5 border-t border-border/40 flex gap-1.5">
+                      <a className="text-primary underline text-[11px]" href={s.planType === "campaign" ? "/microplans/campaigns" : "/microplans/routine"} data-testid="link-open-session-planner">Open in planner</a>
+                    </div>
+                  </div>
+                </Popup>
+              </CircleMarker>
+            );
+          })}
+
+        {/* Task #47: Unserved populated places — red hatched ring marker. */}
+        {!hiddenCategories.has("unserved") && unservedPlaces
+          .filter((p: any) => p.latitude != null && p.longitude != null)
+          .map((p: any) => (
+            <CircleMarker
+              key={`unserved-${p.id}`}
+              center={[Number(p.latitude), Number(p.longitude)]}
+              radius={7}
+              pathOptions={{ color: "#dc2626", fillColor: "#fecaca", fillOpacity: 0.5, weight: 2, dashArray: "3 3" }}
+            >
+              <Popup>
+                <div className="w-48 text-xs">
+                  <div className="font-bold text-sm">{p.name}</div>
+                  <div className="text-red-600 font-semibold mt-1">No session ever planned</div>
+                  <div className="text-muted-foreground mt-0.5">{p.isHardToReach ? "Hard-to-reach community" : "Standard community"}</div>
+                </div>
+              </Popup>
+            </CircleMarker>
+          ))}
 
         {/* Dynamic measurement overlay polyline & circle markers */}
         {isMeasuring && measurementPoints.length > 0 && (
