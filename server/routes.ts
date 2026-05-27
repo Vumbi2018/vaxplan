@@ -4966,8 +4966,11 @@ export async function registerRoutes(
   // GET /api/stock/ledger — Fetch stock ledger card history for a facility
   app.get("/api/stock/ledger", isAuthenticated, requireTenant, async (req: any, res) => {
     try {
-      const facilityId = parseInt(req.query.facilityId as string);
-      if (isNaN(facilityId)) return res.status(400).json({ message: "Invalid facility ID parameter" });
+      const facilityIdRaw = req.query.facilityId as string | undefined;
+      const facilityId = facilityIdRaw ? parseInt(facilityIdRaw) : undefined;
+      if (facilityIdRaw && (facilityId === undefined || isNaN(facilityId))) {
+        return res.status(400).json({ message: "Invalid facility ID parameter" });
+      }
       const list = await storage.getStockTransactions(req.tenantId, facilityId);
       res.json(list);
     } catch (err: any) {
@@ -5041,8 +5044,11 @@ export async function registerRoutes(
   // GET /api/monthly-reports — Fetch all monthly reports compiled by a facility
   app.get("/api/monthly-reports", isAuthenticated, requireTenant, async (req: any, res) => {
     try {
-      const facilityId = parseInt(req.query.facilityId as string);
-      if (isNaN(facilityId)) return res.status(400).json({ message: "Invalid facility ID parameter" });
+      const facilityIdRaw = req.query.facilityId as string | undefined;
+      const facilityId = facilityIdRaw ? parseInt(facilityIdRaw) : undefined;
+      if (facilityIdRaw && (facilityId === undefined || isNaN(facilityId))) {
+        return res.status(400).json({ message: "Invalid facility ID parameter" });
+      }
       const list = await storage.getMonthlyReports(req.tenantId, facilityId);
       res.json(list);
     } catch (err: any) {

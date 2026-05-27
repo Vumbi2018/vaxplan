@@ -34,6 +34,8 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DataTable } from "@/components/DataTable";
+import { GeoCascadeFilter } from "@/components/GeoCascadeFilter";
+import { buildGeoMaps, withGeoColumns } from "@/lib/geoHierarchy";
 import { ApprovalBadge } from "@/components/ApprovalBadge";
 import { MicroplanStepper } from "@/components/MicroplanStepper";
 import { useToast } from "@/hooks/use-toast";
@@ -108,6 +110,10 @@ export default function SessionPlanning() {
 
   const [provinceId, setProvinceId] = useState<number | null>(null);
   const [districtId, setDistrictId] = useState<number | null>(null);
+  // Geo cascade filter (separate from create-dialog selection)
+  const [geoFilterProvinceId, setGeoFilterProvinceId] = useState<number | null>(null);
+  const [geoFilterDistrictId, setGeoFilterDistrictId] = useState<number | null>(null);
+  const [geoFilterFacilityId, setGeoFilterFacilityId] = useState<number | null>(null);
 
   const isCreator = canCreateSessionPlan(user);
   const isReviewer = canApproveSessionPlan(user);
@@ -449,7 +455,38 @@ export default function SessionPlanning() {
     return m;
   }, [facilities]);
 
+  const geoMaps = useMemo(
+    () => buildGeoMaps({ provinces, districts, villages: [], facilities }),
+    [provinces, districts, facilities],
+  );
+
+  const filteredSessions = useMemo(() => {
+    const enriched = withGeoColumns((sessions ?? []) as any[], geoMaps);
+    return enriched.filter((item) => {
+      if (geoFilterProvinceId !== null && item._geoProvinceId !== geoFilterProvinceId) return false;
+      if (geoFilterDistrictId !== null && item._geoDistrictId !== geoFilterDistrictId) return false;
+      if (geoFilterFacilityId !== null && Number((item as any).facilityId) !== geoFilterFacilityId) return false;
+      return true;
+    });
+  }, [sessions, geoMaps, geoFilterProvinceId, geoFilterDistrictId, geoFilterFacilityId]);
+
   const columns = [
+    {
+      key: "_geoProvinceName",
+      header: adminLabels.level1 || "Province",
+      sortable: true,
+      render: (item: any) => (
+        <span className="text-sm">{item._geoProvinceName || "—"}</span>
+      ),
+    },
+    {
+      key: "_geoDistrictName",
+      header: adminLabels.level2 || "District",
+      sortable: true,
+      render: (item: any) => (
+        <span className="text-sm">{item._geoDistrictName || "—"}</span>
+      ),
+    },
     {
       key: "name",
       header: "Microplan",
@@ -995,9 +1032,25 @@ export default function SessionPlanning() {
             {isCreator ? "My microplans" : "All microplans"}
           </CardTitle>
         </CardHeader>
-        <CardContent className="p-6 pt-0">
+        <CardContent className="p-6 pt-0 space-y-4">
+          <GeoCascadeFilter
+            provinceId={geoFilterProvinceId}
+            districtId={geoFilterDistrictId}
+            facilityId={geoFilterFacilityId}
+            onProvinceChange={setGeoFilterProvinceId}
+            onDistrictChange={setGeoFilterDistrictId}
+            onFacilityChange={setGeoFilterFacilityId}
+            showFacility
+            provinces={provinces}
+            districts={districts}
+            facilities={facilities}
+            provinceLabel={adminLabels.level1 || "Province"}
+            districtLabel={adminLabels.level2 || "District"}
+            facilityLabel={adminLabels.level3 || "Facility"}
+            testIdPrefix="session"
+          />
           <DataTable
-            data={sessions || []}
+            data={filteredSessions}
             columns={columns}
             searchable
             searchKeys={["name"]}

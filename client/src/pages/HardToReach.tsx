@@ -7,6 +7,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
 import { DataTable } from "@/components/DataTable";
+import { GeoCascadeFilter } from "@/components/GeoCascadeFilter";
+import { buildGeoMaps, withGeoColumns } from "@/lib/geoHierarchy";
 import { MapView } from "@/components/MapView";
 import { Slider } from "@/components/ui/slider";
 import {
@@ -24,7 +26,7 @@ import {
   Pencil,
   Plus,
 } from "lucide-react";
-import type { Village, HtrScore } from "@shared/schema";
+import type { Village, HtrScore, Province, District, Facility } from "@shared/schema";
 import { MicroplanStepper } from "@/components/MicroplanStepper";
 import { AddCommunityDialog } from "@/components/AddCommunityDialog";
 import {
@@ -57,6 +59,9 @@ interface HtrVillageData extends Village {
 export default function HardToReach() {
   const [selectedPriority, setSelectedPriority] = useState<string | null>(null);
   const [isAddCommunityOpen, setIsAddCommunityOpen] = useState(false);
+  const [geoProvinceId, setGeoProvinceId] = useState<number | null>(null);
+  const [geoDistrictId, setGeoDistrictId] = useState<number | null>(null);
+  const [geoFacilityId, setGeoFacilityId] = useState<number | null>(null);
 
   // Stateful weights for the interactive WHO HTR scoring matrix
   const [distanceWeight, setDistanceWeight] = useState(20);
@@ -72,6 +77,38 @@ export default function HardToReach() {
   const { data: htrScores, isLoading: loadingScores } = useQuery<HtrScore[]>({
     queryKey: ["/api/htr-scores"],
   });
+
+  const { data: provinces } = useQuery<Province[]>({
+    queryKey: ["/api/provinces"],
+    queryFn: async () => {
+      const res = await fetch("/api/provinces", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch provinces");
+      return res.json();
+    },
+  });
+
+  const { data: districts } = useQuery<District[]>({
+    queryKey: ["/api/districts"],
+    queryFn: async () => {
+      const res = await fetch("/api/districts", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch districts");
+      return res.json();
+    },
+  });
+
+  const { data: facilities } = useQuery<Facility[]>({
+    queryKey: ["/api/facilities"],
+    queryFn: async () => {
+      const res = await fetch("/api/facilities", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch facilities");
+      return res.json();
+    },
+  });
+
+  const geoMaps = useMemo(
+    () => buildGeoMaps({ provinces, districts, villages, facilities }),
+    [provinces, districts, villages, facilities],
+  );
 
   const { toast } = useToast();
   const [showHtrOnly, setShowHtrOnly] = useState(true);
@@ -212,11 +249,37 @@ export default function HardToReach() {
   const mediumPriority = htrVillages.filter((v) => v.interventionPriority === "medium");
   const lowPriority = htrVillages.filter((v) => v.interventionPriority === "low");
 
-  const filteredVillages = selectedPriority
+  const priorityFilteredVillages = selectedPriority
     ? htrVillages.filter((v) => v.interventionPriority === selectedPriority)
     : htrVillages;
 
+  const filteredVillages = useMemo(() => {
+    const enriched = withGeoColumns(priorityFilteredVillages as any[], geoMaps);
+    return enriched.filter((v) => {
+      if (geoProvinceId !== null && v._geoProvinceId !== geoProvinceId) return false;
+      if (geoDistrictId !== null && v._geoDistrictId !== geoDistrictId) return false;
+      if (geoFacilityId !== null && Number((v as any).assignedFacilityId) !== geoFacilityId) return false;
+      return true;
+    }) as unknown as HtrVillageData[];
+  }, [priorityFilteredVillages, geoMaps, geoProvinceId, geoDistrictId, geoFacilityId]);
+
   const columns = [
+    {
+      key: "_geoProvinceName",
+      header: "Province",
+      sortable: true,
+      render: (item: any) => (
+        <span className="text-sm">{item._geoProvinceName || "—"}</span>
+      ),
+    },
+    {
+      key: "_geoDistrictName",
+      header: "District",
+      sortable: true,
+      render: (item: any) => (
+        <span className="text-sm">{item._geoDistrictName || "—"}</span>
+      ),
+    },
     {
       key: "name",
       header: "Village",
@@ -518,7 +581,20 @@ export default function HardToReach() {
                     )}
                   </div>
                 </CardHeader>
-                <CardContent className="p-6">
+                <CardContent className="p-6 space-y-4">
+                  <GeoCascadeFilter
+                    provinceId={geoProvinceId}
+                    districtId={geoDistrictId}
+                    facilityId={geoFacilityId}
+                    onProvinceChange={setGeoProvinceId}
+                    onDistrictChange={setGeoDistrictId}
+                    onFacilityChange={setGeoFacilityId}
+                    showFacility
+                    provinces={provinces}
+                    districts={districts}
+                    facilities={facilities}
+                    testIdPrefix="htr"
+                  />
                   <DataTable
                     data={filteredVillages}
                     columns={columns}

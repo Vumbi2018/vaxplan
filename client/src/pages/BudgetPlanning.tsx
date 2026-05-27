@@ -31,6 +31,8 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DataTable } from "@/components/DataTable";
+import { GeoCascadeFilter } from "@/components/GeoCascadeFilter";
+import { buildGeoMaps, withGeoColumns } from "@/lib/geoHierarchy";
 import { ApprovalBadge } from "@/components/ApprovalBadge";
 import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
@@ -62,6 +64,8 @@ import {
   type InsertBudgetItem,
   type Facility,
   type SessionPlan,
+  type Province,
+  type District,
 } from "@shared/schema";
 import { MicroplanStepper } from "@/components/MicroplanStepper";
 import { z } from "zod";
@@ -90,6 +94,9 @@ export default function BudgetPlanning() {
   const [selectedQuarter, setSelectedQuarter] = useState(
     Math.ceil((new Date().getMonth() + 1) / 3)
   );
+  const [geoProvinceId, setGeoProvinceId] = useState<number | null>(null);
+  const [geoDistrictId, setGeoDistrictId] = useState<number | null>(null);
+  const [geoFacilityId, setGeoFacilityId] = useState<number | null>(null);
 
   /*
   // Original queries and mutation (commented out to preserve working code while adding offline capabilities):
@@ -160,6 +167,29 @@ export default function BudgetPlanning() {
       return res.json();
     }
   });
+
+  const { data: provinces } = useQuery<Province[]>({
+    queryKey: ["/api/provinces"],
+    queryFn: async () => {
+      const res = await fetch("/api/provinces", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch provinces");
+      return res.json();
+    },
+  });
+
+  const { data: districts } = useQuery<District[]>({
+    queryKey: ["/api/districts"],
+    queryFn: async () => {
+      const res = await fetch("/api/districts", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch districts");
+      return res.json();
+    },
+  });
+
+  const geoMaps = useMemo(
+    () => buildGeoMaps({ provinces, districts, villages: [], facilities }),
+    [provinces, districts, facilities],
+  );
 
   const form = useForm<InsertBudgetItem>({
     resolver: zodResolver(budgetFormSchema),
@@ -276,9 +306,19 @@ export default function BudgetPlanning() {
     },
   });
 
-  const quarterItems = budgetItems?.filter(
+  const quarterItemsRaw = budgetItems?.filter(
     (b) => b.quarter === selectedQuarter && b.year === new Date().getFullYear()
   ) || [];
+
+  const quarterItems = useMemo(() => {
+    const enriched = withGeoColumns(quarterItemsRaw as any[], geoMaps);
+    return enriched.filter((item) => {
+      if (geoProvinceId !== null && item._geoProvinceId !== geoProvinceId) return false;
+      if (geoDistrictId !== null && item._geoDistrictId !== geoDistrictId) return false;
+      if (geoFacilityId !== null && Number((item as any).facilityId) !== geoFacilityId) return false;
+      return true;
+    });
+  }, [quarterItemsRaw, geoMaps, geoProvinceId, geoDistrictId, geoFacilityId]);
 
   const totalBudget = quarterItems.reduce(
     (sum, item) => sum + parseFloat(item.totalCost || "0"),
@@ -301,6 +341,22 @@ export default function BudgetPlanning() {
   })).filter((c) => c.total > 0);
 
   const columns = [
+    {
+      key: "_geoProvinceName",
+      header: "Province",
+      sortable: true,
+      render: (item: any) => (
+        <span className="text-sm">{item._geoProvinceName || "—"}</span>
+      ),
+    },
+    {
+      key: "_geoDistrictName",
+      header: "District",
+      sortable: true,
+      render: (item: any) => (
+        <span className="text-sm">{item._geoDistrictName || "—"}</span>
+      ),
+    },
     {
       key: "description",
       header: "Description",
@@ -741,7 +797,20 @@ export default function BudgetPlanning() {
           <CardHeader className="pb-2">
             <CardTitle className="text-lg">Budget Items</CardTitle>
           </CardHeader>
-          <CardContent className="p-6">
+          <CardContent className="p-6 space-y-4">
+            <GeoCascadeFilter
+              provinceId={geoProvinceId}
+              districtId={geoDistrictId}
+              facilityId={geoFacilityId}
+              onProvinceChange={setGeoProvinceId}
+              onDistrictChange={setGeoDistrictId}
+              onFacilityChange={setGeoFacilityId}
+              showFacility
+              provinces={provinces}
+              districts={districts}
+              facilities={facilities}
+              testIdPrefix="budget"
+            />
             <DataTable
               data={quarterItems}
               columns={columns}

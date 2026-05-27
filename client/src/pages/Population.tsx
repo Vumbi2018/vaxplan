@@ -13,6 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { DataTable } from "@/components/DataTable";
+import { getRecordHierarchy as getRecordHierarchySh, buildGeoMaps as buildGeoMapsSh, withGeoColumns } from "@/lib/geoHierarchy";
 import {
   Users,
   Plus,
@@ -93,6 +94,7 @@ export default function Population() {
   const { toast } = useToast();
   
   const [activeTab, setActiveTab] = useState<PopulationSource | "comparison">("nso");
+  // Note: existing selectedProvince/selectedDistrict filters above are unified with the shared GeoCascadeFilter contract (Province → District) plus a Year filter unique to Population.
   const [selectedRegion, setSelectedRegion] = useState<string>("all");
   const [selectedProvince, setSelectedProvince] = useState<string>("all");
   const [selectedDistrict, setSelectedDistrict] = useState<string>("all");
@@ -308,39 +310,24 @@ export default function Population() {
 
   // REFACTORED CODE:
   // Helper to trace geographic hierarchy for any population record.
-  // This version prioritizes direct record.districtId and record.provinceId from the DB record,
-  // preventing empty lookup maps (during loading phases) from incorrectly overriding existing
-  // fields to null and causing records to vanish. It only falls back to transitive map lookups
-  // if these direct fields are missing.
+  // Delegates Province/District resolution to the shared `getRecordHierarchySh` helper
+  // (consistent rules across every page) and only layers on the Region lookup that is
+  // specific to this page.
   const getRecordHierarchy = useCallback((record: PopulationData) => {
-    // 1. Prioritize direct fields
-    let districtId: number | null = record.districtId ? Number(record.districtId) : null;
-    let provinceId: number | null = record.provinceId ? Number(record.provinceId) : null;
+    const base = getRecordHierarchySh(record as unknown as Record<string, unknown>, {
+      provinceMap,
+      districtMap,
+      villageMap,
+      facilityMap,
+    });
 
-    // 2. Fall back to transitive lookups ONLY if direct fields are missing
-    if (!districtId) {
-      if (record.villageId) {
-        const v = villageMap.get(Number(record.villageId));
-        if (v) districtId = Number(v.districtId);
-      } else if (record.facilityId) {
-        const f = facilityMap.get(Number(record.facilityId));
-        if (f) districtId = Number(f.districtId);
-      }
-    }
-
-    if (districtId && !provinceId) {
-      const d = districtMap.get(districtId);
-      if (d) provinceId = Number(d.provinceId);
-    }
-
-    // 3. Trace regionId from provinceId
     let regionId: number | null = null;
-    if (provinceId) {
-      const p = provinceMap.get(provinceId);
-      if (p) regionId = Number(p.regionId);
+    if (base.provinceId) {
+      const p = provinceMap.get(Number(base.provinceId));
+      if (p) regionId = Number((p as any).regionId);
     }
 
-    return { regionId, provinceId, districtId };
+    return { regionId, provinceId: base.provinceId, districtId: base.districtId };
   }, [provinceMap, districtMap, villageMap, facilityMap]);
 
   const filteredPopulationData = useMemo(() => {
@@ -522,7 +509,35 @@ export default function Population() {
     }
   };
 
+  const getProvinceNameForRecord = (item: PopulationData) => {
+    const h = getRecordHierarchy(item);
+    if (!h.provinceId) return "—";
+    return provinceMap.get(Number(h.provinceId))?.name ?? "—";
+  };
+
+  const getDistrictNameForRecord = (item: PopulationData) => {
+    const h = getRecordHierarchy(item);
+    if (!h.districtId) return "—";
+    return districtMap.get(Number(h.districtId))?.name ?? "—";
+  };
+
   const columns = [
+    {
+      key: "_geoProvinceName",
+      header: adminLabels.level1 || "Province",
+      sortable: true,
+      render: (item: PopulationData) => (
+        <span className="text-sm">{getProvinceNameForRecord(item)}</span>
+      ),
+    },
+    {
+      key: "_geoDistrictName",
+      header: adminLabels.level2 || "District",
+      sortable: true,
+      render: (item: PopulationData) => (
+        <span className="text-sm">{getDistrictNameForRecord(item)}</span>
+      ),
+    },
     {
       key: "location",
       header: "Location",
@@ -672,6 +687,8 @@ export default function Population() {
 
       const tabLabel = TAB_CONFIG.find(t => t.value === activeTab)?.label || activeTab;
       const exportData = filteredPopulationData.map((item) => ({
+        [adminLabels.level1 || "Province"]: getProvinceNameForRecord(item),
+        [adminLabels.level2 || "District"]: getDistrictNameForRecord(item),
         Location: getLocationName(item),
         "Location Type": getLocationType(item),
         Year: item.year,
@@ -904,7 +921,7 @@ export default function Population() {
               </CardHeader>
               <CardContent>
                 <DataTable
-                  data={filteredPopulationData}
+                  data={withGeoColumns(filteredPopulationData as any[], { provinceMap, districtMap, villageMap, facilityMap }) as any}
                   columns={columns}
                   searchable
                   searchKeys={["year"]}

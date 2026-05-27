@@ -1,6 +1,8 @@
 import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { DataTable } from "@/components/DataTable";
+import { GeoCascadeFilter } from "@/components/GeoCascadeFilter";
+import { buildGeoMaps, withGeoColumns } from "@/lib/geoHierarchy";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -1072,6 +1074,10 @@ export default function ClientLogbook() {
   const [adminProvinceId, setAdminProvinceId] = useState<number | null>(null);
   const [adminDistrictId, setAdminDistrictId] = useState<number | null>(null);
   const [adminFacilityId, setAdminFacilityId] = useState<number | null>(null);
+  // Geo cascade filter for the clients registry table
+  const [geoFilterProvinceId, setGeoFilterProvinceId] = useState<number | null>(null);
+  const [geoFilterDistrictId, setGeoFilterDistrictId] = useState<number | null>(null);
+  const [geoFilterFacilityId, setGeoFilterFacilityId] = useState<number | null>(null);
 
   const activeFacilityId = user?.role === "national_admin"
     ? (adminFacilityId || 0)
@@ -1458,8 +1464,40 @@ export default function ClientLogbook() {
     vaccinateMutation.mutate({ clientId: vaccinateClient.id, data: payload });
   };
 
+  // Geo enrichment + filtering for the clients registry
+  const geoMaps = useMemo(
+    () => buildGeoMaps({ provinces, districts, villages, facilities }),
+    [provinces, districts, villages, facilities],
+  );
+
+  const filteredClients = useMemo(() => {
+    const enriched = withGeoColumns((clients ?? []) as any[], geoMaps);
+    return enriched.filter((item) => {
+      if (geoFilterProvinceId !== null && item._geoProvinceId !== geoFilterProvinceId) return false;
+      if (geoFilterDistrictId !== null && item._geoDistrictId !== geoFilterDistrictId) return false;
+      if (geoFilterFacilityId !== null && Number((item as any).facilityId) !== geoFilterFacilityId) return false;
+      return true;
+    });
+  }, [clients, geoMaps, geoFilterProvinceId, geoFilterDistrictId, geoFilterFacilityId]);
+
   // Table Columns
   const clientColumns = [
+    {
+      key: "_geoProvinceName",
+      header: "Province",
+      sortable: true,
+      render: (item: any) => (
+        <span className="text-sm">{item._geoProvinceName || "—"}</span>
+      ),
+    },
+    {
+      key: "_geoDistrictName",
+      header: "District",
+      sortable: true,
+      render: (item: any) => (
+        <span className="text-sm">{item._geoDistrictName || "—"}</span>
+      ),
+    },
     {
       key: "name",
       header: "Client Name",
@@ -1775,9 +1813,22 @@ export default function ClientLogbook() {
                 Search, view, and vaccinate tracked infants and pregnant women in facility catchment
               </CardDescription>
             </CardHeader>
-            <CardContent className="p-6">
+            <CardContent className="p-6 space-y-4">
+              <GeoCascadeFilter
+                provinceId={geoFilterProvinceId}
+                districtId={geoFilterDistrictId}
+                facilityId={geoFilterFacilityId}
+                onProvinceChange={setGeoFilterProvinceId}
+                onDistrictChange={setGeoFilterDistrictId}
+                onFacilityChange={setGeoFilterFacilityId}
+                showFacility
+                provinces={provinces}
+                districts={districts}
+                facilities={facilities}
+                testIdPrefix="clients"
+              />
               <DataTable
-                data={clients || []}
+                data={filteredClients}
                 columns={clientColumns}
                 searchable
                 searchKeys={["name", "parentName", "contactPhone"]}

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { offlineDb } from "../lib/offlineDb";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -30,6 +30,8 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DataTable } from "@/components/DataTable";
+import { GeoCascadeFilter } from "@/components/GeoCascadeFilter";
+import { buildGeoMaps, withGeoColumns } from "@/lib/geoHierarchy";
 import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -49,6 +51,8 @@ import {
   type MobilizationActivity,
   type InsertMobilizationActivity,
   type Facility,
+  type Province,
+  type District,
 } from "@shared/schema";
 import { z } from "zod";
 import { format } from "date-fns";
@@ -79,6 +83,9 @@ const targetAudiences = [
 export default function SocialMobilization() {
   const { toast } = useToast();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [geoProvinceId, setGeoProvinceId] = useState<number | null>(null);
+  const [geoDistrictId, setGeoDistrictId] = useState<number | null>(null);
+  const [geoFacilityId, setGeoFacilityId] = useState<number | null>(null);
 
   /*
   // Original queries and mutation (commented out to preserve working code while adding offline capabilities):
@@ -137,6 +144,39 @@ export default function SocialMobilization() {
       return res.json();
     }
   });
+
+  const { data: provinces } = useQuery<Province[]>({
+    queryKey: ["/api/provinces"],
+    queryFn: async () => {
+      const res = await fetch("/api/provinces", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch provinces");
+      return res.json();
+    },
+  });
+
+  const { data: districts } = useQuery<District[]>({
+    queryKey: ["/api/districts"],
+    queryFn: async () => {
+      const res = await fetch("/api/districts", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch districts");
+      return res.json();
+    },
+  });
+
+  const geoMaps = useMemo(
+    () => buildGeoMaps({ provinces, districts, villages: [], facilities }),
+    [provinces, districts, facilities],
+  );
+
+  const enrichedActivities = useMemo(() => {
+    const enriched = withGeoColumns((activities ?? []) as any[], geoMaps);
+    return enriched.filter((item) => {
+      if (geoProvinceId !== null && item._geoProvinceId !== geoProvinceId) return false;
+      if (geoDistrictId !== null && item._geoDistrictId !== geoDistrictId) return false;
+      if (geoFacilityId !== null && Number((item as any).facilityId) !== geoFacilityId) return false;
+      return true;
+    });
+  }, [activities, geoMaps, geoProvinceId, geoDistrictId, geoFacilityId]);
 
   const form = useForm<InsertMobilizationActivity>({
     resolver: zodResolver(activityFormSchema),
@@ -203,6 +243,22 @@ export default function SocialMobilization() {
   ) || 0;
 
   const columns = [
+    {
+      key: "_geoProvinceName",
+      header: "Province",
+      sortable: true,
+      render: (item: any) => (
+        <span className="text-sm">{item._geoProvinceName || "—"}</span>
+      ),
+    },
+    {
+      key: "_geoDistrictName",
+      header: "District",
+      sortable: true,
+      render: (item: any) => (
+        <span className="text-sm">{item._geoDistrictName || "—"}</span>
+      ),
+    },
     {
       key: "activityType",
       header: "Activity",
@@ -548,9 +604,22 @@ export default function SocialMobilization() {
         <CardHeader className="pb-2">
           <CardTitle className="text-lg">All Activities</CardTitle>
         </CardHeader>
-        <CardContent className="p-6">
+        <CardContent className="p-6 space-y-4">
+          <GeoCascadeFilter
+            provinceId={geoProvinceId}
+            districtId={geoDistrictId}
+            facilityId={geoFacilityId}
+            onProvinceChange={setGeoProvinceId}
+            onDistrictChange={setGeoDistrictId}
+            onFacilityChange={setGeoFacilityId}
+            showFacility
+            provinces={provinces}
+            districts={districts}
+            facilities={facilities}
+            testIdPrefix="mobilization"
+          />
           <DataTable
-            data={activities || []}
+            data={enrichedActivities}
             columns={columns}
             searchable
             searchKeys={["activityType", "description", "targetAudience"]}

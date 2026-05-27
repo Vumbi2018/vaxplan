@@ -248,12 +248,12 @@ export interface IStorage {
   deleteSessionDayPlan(tenantId: string, id: number): Promise<boolean>;
 
   // --- 5. Stock Transactions ---
-  getStockTransactions(tenantId: string, facilityId: number): Promise<StockTransaction[]>;
+  getStockTransactions(tenantId: string, facilityId?: number): Promise<StockTransaction[]>;
   createStockTransaction(tenantId: string, data: InsertStockTransaction): Promise<StockTransaction>;
   deleteStockTransaction(tenantId: string, id: number): Promise<boolean>;
 
   // --- 6. Monthly Reports ---
-  getMonthlyReports(tenantId: string, facilityId: number): Promise<MonthlyReport[]>;
+  getMonthlyReports(tenantId: string, facilityId?: number): Promise<MonthlyReport[]>;
   getMonthlyReport(tenantId: string, id: number): Promise<MonthlyReport | undefined>;
   createMonthlyReport(tenantId: string, data: InsertMonthlyReport): Promise<MonthlyReport>;
   updateMonthlyReport(tenantId: string, id: number, data: Partial<InsertMonthlyReport>): Promise<MonthlyReport | undefined>;
@@ -1397,11 +1397,14 @@ export class DatabaseStorage implements IStorage {
   }
 
   // --- 5. Stock Transactions ---
-  async getStockTransactions(tenantId: string, facilityId: number): Promise<StockTransaction[]> {
+  async getStockTransactions(tenantId: string, facilityId?: number): Promise<StockTransaction[]> {
+    const conds = facilityId !== undefined
+      ? and(eq(stockTransactions.tenantId, tenantId), eq(stockTransactions.facilityId, facilityId))
+      : eq(stockTransactions.tenantId, tenantId);
     return await db
       .select()
       .from(stockTransactions)
-      .where(and(eq(stockTransactions.tenantId, tenantId), eq(stockTransactions.facilityId, facilityId)))
+      .where(conds)
       .orderBy(desc(stockTransactions.transactionDate));
   }
 
@@ -1426,11 +1429,14 @@ export class DatabaseStorage implements IStorage {
   }
 
   // --- 6. Monthly Reports ---
-  async getMonthlyReports(tenantId: string, facilityId: number): Promise<MonthlyReport[]> {
+  async getMonthlyReports(tenantId: string, facilityId?: number): Promise<MonthlyReport[]> {
+    const conds = facilityId !== undefined
+      ? and(eq(monthlyReports.tenantId, tenantId), eq(monthlyReports.facilityId, facilityId))
+      : eq(monthlyReports.tenantId, tenantId);
     return await db
       .select()
       .from(monthlyReports)
-      .where(and(eq(monthlyReports.tenantId, tenantId), eq(monthlyReports.facilityId, facilityId)))
+      .where(conds)
       .orderBy(desc(monthlyReports.year), desc(monthlyReports.month));
   }
 

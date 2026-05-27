@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -24,8 +24,19 @@ import {
   AlertTriangle,
   User,
 } from "lucide-react";
-import type { ApprovalRequest, Tenant } from "@shared/schema";
+import type {
+  ApprovalRequest,
+  Tenant,
+  Province,
+  District,
+  Facility,
+  Village,
+  SessionPlan,
+  PopulationData,
+} from "@shared/schema";
 import { format } from "date-fns";
+import { GeoCascadeFilter } from "@/components/GeoCascadeFilter";
+import { buildGeoMaps, getRecordHierarchy } from "@/lib/geoHierarchy";
 
 export default function Approvals() {
   const { toast } = useToast();
@@ -40,6 +51,64 @@ export default function Approvals() {
   const { data: tenant } = useQuery<Tenant>({
     queryKey: ["/api/me/tenant"],
   });
+
+  const { data: provinces = [] } = useQuery<Province[]>({ queryKey: ["/api/provinces"] });
+  const { data: districts = [] } = useQuery<District[]>({ queryKey: ["/api/districts"] });
+  const { data: facilities = [] } = useQuery<Facility[]>({ queryKey: ["/api/facilities"] });
+  const { data: villages = [] } = useQuery<Village[]>({ queryKey: ["/api/villages"] });
+  const { data: sessionPlans = [] } = useQuery<SessionPlan[]>({ queryKey: ["/api/sessions"] });
+  const { data: populationData = [] } = useQuery<PopulationData[]>({ queryKey: ["/api/population"] });
+
+  const [geoProvinceId, setGeoProvinceId] = useState<number | null>(null);
+  const [geoDistrictId, setGeoDistrictId] = useState<number | null>(null);
+  const [geoFacilityId, setGeoFacilityId] = useState<number | null>(null);
+
+  const geoMaps = useMemo(
+    () => buildGeoMaps({ provinces, districts, villages, facilities }),
+    [provinces, districts, villages, facilities],
+  );
+
+  const entityLookup = useMemo(() => {
+    const sessionsById = new Map<number, SessionPlan>();
+    sessionPlans.forEach((s) => sessionsById.set(s.id, s));
+    const populationById = new Map<number, PopulationData>();
+    populationData.forEach((p) => populationById.set(p.id, p));
+    return { sessionsById, populationById };
+  }, [sessionPlans, populationData]);
+
+  const resolveGeo = (item: ApprovalRequest) => {
+    let source: Record<string, unknown> | null = null;
+    if (item.entityType === "session") {
+      const sp = entityLookup.sessionsById.get(item.entityId);
+      if (sp) source = sp as unknown as Record<string, unknown>;
+    } else if (item.entityType === "population") {
+      const pop = entityLookup.populationById.get(item.entityId);
+      if (pop) source = pop as unknown as Record<string, unknown>;
+    } else if (item.entityType === "facility") {
+      source = { facilityId: item.entityId };
+    }
+    if (!source) return { provinceId: null, districtId: null, facilityId: null };
+    const h = getRecordHierarchy(source, geoMaps);
+    const fId = typeof source.facilityId === "number"
+      ? source.facilityId
+      : (source.facilityId !== undefined ? Number(source.facilityId) : null);
+    return {
+      provinceId: h.provinceId,
+      districtId: h.districtId,
+      facilityId: fId && !Number.isNaN(fId) ? fId : null,
+    };
+  };
+
+  const applyGeoFilter = (list: ApprovalRequest[]): ApprovalRequest[] => {
+    if (geoProvinceId === null && geoDistrictId === null && geoFacilityId === null) return list;
+    return list.filter((r) => {
+      const g = resolveGeo(r);
+      if (geoProvinceId !== null && g.provinceId !== geoProvinceId) return false;
+      if (geoDistrictId !== null && g.districtId !== geoDistrictId) return false;
+      if (geoFacilityId !== null && g.facilityId !== geoFacilityId) return false;
+      return true;
+    });
+  };
 
   const actionMutation = useMutation({
     mutationFn: async ({
@@ -75,9 +144,34 @@ export default function Approvals() {
     },
   });
 
-  const pendingRequests = requests?.filter((r) => r.status === "pending") || [];
-  const approvedRequests = requests?.filter((r) => r.status === "approved") || [];
-  const rejectedRequests = requests?.filter((r) => r.status === "rejected") || [];
+  const enrichWithGeo = (list: ApprovalRequest[]) =>
+    list.map((r) => {
+      const g = resolveGeo(r);
+      return {
+        ...r,
+        _geoProvinceId: g.provinceId,
+        _geoDistrictId: g.districtId,
+        _geoProvinceName:
+          g.provinceId !== null ? geoMaps.provinceMap.get(g.provinceId)?.name ?? "" : "",
+        _geoDistrictName:
+          g.districtId !== null ? geoMaps.districtMap.get(g.districtId)?.name ?? "" : "",
+      } as ApprovalRequest & {
+        _geoProvinceId: number | null;
+        _geoDistrictId: number | null;
+        _geoProvinceName: string;
+        _geoDistrictName: string;
+      };
+    });
+
+  const pendingRequests = enrichWithGeo(
+    applyGeoFilter(requests?.filter((r) => r.status === "pending") || []),
+  );
+  const approvedRequests = enrichWithGeo(
+    applyGeoFilter(requests?.filter((r) => r.status === "approved") || []),
+  );
+  const rejectedRequests = enrichWithGeo(
+    applyGeoFilter(requests?.filter((r) => r.status === "rejected") || []),
+  );
 
   const getEntityIcon = (entityType: string) => {
     switch (entityType) {
@@ -122,6 +216,26 @@ export default function Approvals() {
           {item.currentLevel}
         </Badge>
       ),
+    },
+    {
+      key: "_geoProvinceName",
+      header: "Province",
+      sortable: true,
+      render: (item: ApprovalRequest) => {
+        const g = resolveGeo(item);
+        const name = g.provinceId !== null ? geoMaps.provinceMap.get(g.provinceId)?.name : null;
+        return <span className="text-sm">{name ?? "—"}</span>;
+      },
+    },
+    {
+      key: "_geoDistrictName",
+      header: "District",
+      sortable: true,
+      render: (item: ApprovalRequest) => {
+        const g = resolveGeo(item);
+        const name = g.districtId !== null ? geoMaps.districtMap.get(g.districtId)?.name : null;
+        return <span className="text-sm">{name ?? "—"}</span>;
+      },
     },
     {
       key: "submittedAt",
@@ -266,6 +380,20 @@ export default function Approvals() {
           </CardContent>
         </Card>
       </div>
+
+      <GeoCascadeFilter
+        provinceId={geoProvinceId}
+        districtId={geoDistrictId}
+        facilityId={geoFacilityId}
+        onProvinceChange={setGeoProvinceId}
+        onDistrictChange={setGeoDistrictId}
+        onFacilityChange={setGeoFacilityId}
+        showFacility
+        provinces={provinces}
+        districts={districts}
+        facilities={facilities}
+        testIdPrefix="approvals"
+      />
 
       <Tabs defaultValue="pending">
         <TabsList>

@@ -1,4 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
+import type { Province, District, Village } from "@shared/schema";
+import { GeoCascadeFilter } from "@/components/GeoCascadeFilter";
+import { buildGeoMaps } from "@/lib/geoHierarchy";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -85,6 +88,8 @@ export default function StockLedger() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState("ledger");
   const [selectedFacilityId, setSelectedFacilityId] = useState<number | null>(null);
+  const [geoProvinceId, setGeoProvinceId] = useState<number | null>(null);
+  const [geoDistrictId, setGeoDistrictId] = useState<number | null>(null);
   
   // Dialog Open States
   const [txnDialogOpen, setTxnDialogOpen] = useState(false);
@@ -92,6 +97,9 @@ export default function StockLedger() {
 
   // Wizard Steps for Monthly Report
   const [wizardStep, setWizardStep] = useState(1);
+
+  const { data: provinces = [] } = useQuery<Province[]>({ queryKey: ["/api/provinces"] });
+  const { data: districts = [] } = useQuery<District[]>({ queryKey: ["/api/districts"] });
 
   // Load facilities for drop-down or pre-fill
   const { data: facilities } = useQuery<Facility[]>({
@@ -128,45 +136,89 @@ export default function StockLedger() {
     }
   }, [user, facilities]);
 
-  // Load Stock Ledger Transactions
-  const { data: transactions, isLoading: loadingTxns } = useQuery<StockTransaction[]>({
-    queryKey: [`/api/stock/ledger`, { facilityId: selectedFacilityId }],
+  const geoMaps = useMemo(
+    () => buildGeoMaps({ provinces, districts, villages: [] as Village[], facilities: facilities ?? [] }),
+    [provinces, districts, facilities],
+  );
+
+  const facilityGeo = useMemo(() => {
+    if (!selectedFacilityId) return { provinceName: null as string | null, districtName: null as string | null, facilityName: null as string | null };
+    const fac = geoMaps.facilityMap.get(selectedFacilityId);
+    if (!fac) return { provinceName: null, districtName: null, facilityName: null };
+    const dist = fac.districtId ? geoMaps.districtMap.get(fac.districtId) : null;
+    const prov = dist?.provinceId ? geoMaps.provinceMap.get(dist.provinceId) : null;
+    return {
+      provinceName: prov?.name ?? null,
+      districtName: dist?.name ?? null,
+      facilityName: fac.name ?? null,
+    };
+  }, [selectedFacilityId, geoMaps]);
+
+  // Load Stock Ledger Transactions (all in tenant; client filters by cascade)
+  const { data: allTransactions, isLoading: loadingTxns } = useQuery<StockTransaction[]>({
+    queryKey: [`/api/stock/ledger`, { facilityId: null }],
     queryFn: async () => {
-      if (!selectedFacilityId) return [];
       if (!navigator.onLine) {
-        const localTxns = await offlineDb.stockTransactions
-          .where("facilityId")
-          .equals(selectedFacilityId)
-          .toArray();
+        const localTxns = await offlineDb.stockTransactions.toArray();
         return (localTxns as unknown as StockTransaction[]).sort(
           (a, b) => new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime()
         );
       }
-      const res = await fetch(`/api/stock/ledger?facilityId=${selectedFacilityId}`);
+      const res = await fetch(`/api/stock/ledger`);
       if (!res.ok) throw new Error("Failed to load stock ledger");
       return res.json();
     },
-    enabled: !!selectedFacilityId,
   });
 
-  // Load Monthly Reports
-  const { data: reports, isLoading: loadingReports } = useQuery<MonthlyReport[]>({
-    queryKey: [`/api/monthly-reports`, { facilityId: selectedFacilityId }],
+  // Load Monthly Reports (all in tenant; client filters by cascade)
+  const { data: allReports, isLoading: loadingReports } = useQuery<MonthlyReport[]>({
+    queryKey: [`/api/monthly-reports`, { facilityId: null }],
     queryFn: async () => {
-      if (!selectedFacilityId) return [];
       if (!navigator.onLine) {
-        const localReports = await offlineDb.monthlyReports
-          .where("facilityId")
-          .equals(selectedFacilityId)
-          .toArray();
+        const localReports = await offlineDb.monthlyReports.toArray();
         return localReports as unknown as MonthlyReport[];
       }
-      const res = await fetch(`/api/monthly-reports?facilityId=${selectedFacilityId}`);
+      const res = await fetch(`/api/monthly-reports`);
       if (!res.ok) throw new Error("Failed to load monthly reports");
       return res.json();
     },
-    enabled: !!selectedFacilityId,
   });
+
+  const resolveRowGeo = (facilityId: number | null | undefined) => {
+    if (!facilityId) return { provinceName: null as string | null, districtName: null as string | null, provinceId: null as number | null, districtId: null as number | null };
+    const fac = geoMaps.facilityMap.get(Number(facilityId));
+    if (!fac) return { provinceName: null, districtName: null, provinceId: null, districtId: null };
+    const dist = fac.districtId ? geoMaps.districtMap.get(fac.districtId) : null;
+    const prov = dist?.provinceId ? geoMaps.provinceMap.get(dist.provinceId) : null;
+    return {
+      provinceName: prov?.name ?? null,
+      districtName: dist?.name ?? null,
+      provinceId: prov?.id ?? null,
+      districtId: dist?.id ?? null,
+    };
+  };
+
+  const transactions = useMemo(() => {
+    const list = allTransactions ?? [];
+    return list.filter((tx) => {
+      const g = resolveRowGeo(tx.facilityId);
+      if (geoProvinceId !== null && g.provinceId !== geoProvinceId) return false;
+      if (geoDistrictId !== null && g.districtId !== geoDistrictId) return false;
+      if (selectedFacilityId !== null && Number(tx.facilityId) !== selectedFacilityId) return false;
+      return true;
+    });
+  }, [allTransactions, geoMaps, geoProvinceId, geoDistrictId, selectedFacilityId]);
+
+  const reports = useMemo(() => {
+    const list = allReports ?? [];
+    return list.filter((rep) => {
+      const g = resolveRowGeo(rep.facilityId);
+      if (geoProvinceId !== null && g.provinceId !== geoProvinceId) return false;
+      if (geoDistrictId !== null && g.districtId !== geoDistrictId) return false;
+      if (selectedFacilityId !== null && Number(rep.facilityId) !== selectedFacilityId) return false;
+      return true;
+    });
+  }, [allReports, geoMaps, geoProvinceId, geoDistrictId, selectedFacilityId]);
 
   // Load clients and vaccinations for monthly report aggregation
   const { data: clients } = useQuery<Client[]>({
@@ -528,6 +580,21 @@ export default function StockLedger() {
         </div>
       </div>
 
+      {/* Geo cascade filter (Province → District → Facility — each level independently narrows table rows) */}
+      <GeoCascadeFilter
+        provinceId={geoProvinceId}
+        districtId={geoDistrictId}
+        facilityId={selectedFacilityId}
+        onProvinceChange={(id) => { setGeoProvinceId(id); setGeoDistrictId(null); setSelectedFacilityId(null); }}
+        onDistrictChange={(id) => { setGeoDistrictId(id); setSelectedFacilityId(null); }}
+        onFacilityChange={setSelectedFacilityId}
+        showFacility
+        provinces={provinces}
+        districts={districts}
+        facilities={facilities ?? []}
+        testIdPrefix="stockledger"
+      />
+
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
         <TabsList className="grid w-full grid-cols-2 max-w-[400px]">
@@ -601,6 +668,8 @@ export default function StockLedger() {
                   <thead className="text-xs uppercase text-muted-foreground bg-muted/40 font-semibold border-b border-border/40">
                     <tr>
                       <th className="px-4 py-3">Date</th>
+                      <th className="px-4 py-3">Province</th>
+                      <th className="px-4 py-3">District</th>
                       <th className="px-4 py-3">Antigen / Vaccine</th>
                       <th className="px-4 py-3">Type</th>
                       <th className="px-4 py-3 text-center">Qty (Doses)</th>
@@ -627,9 +696,12 @@ export default function StockLedger() {
                         4: "4-Discarded",
                       };
 
+                      const rowGeo = resolveRowGeo(tx.facilityId);
                       return (
                         <tr key={tx.id} className="hover:bg-muted/10 transition-colors">
                           <td className="px-4 py-3">{format(new Date(tx.transactionDate), "yyyy-MM-dd HH:mm")}</td>
+                          <td className="px-4 py-3 text-muted-foreground">{rowGeo.provinceName ?? "—"}</td>
+                          <td className="px-4 py-3 text-muted-foreground">{rowGeo.districtName ?? "—"}</td>
                           <td className="px-4 py-3 font-semibold text-primary">{tx.vaccineName}</td>
                           <td className="px-4 py-3">
                             <Badge variant="outline" className={`capitalize ${typeColors[tx.transactionType] || ""}`}>
@@ -689,6 +761,8 @@ export default function StockLedger() {
                   <thead className="text-xs uppercase text-muted-foreground bg-muted/40 font-semibold border-b border-border/40">
                     <tr>
                       <th className="px-4 py-3">Reporting Period</th>
+                      <th className="px-4 py-3">Province</th>
+                      <th className="px-4 py-3">District</th>
                       <th className="px-4 py-3">Immunizations Count</th>
                       <th className="px-4 py-3">Stock Wastage Summaries</th>
                       <th className="px-4 py-3">Surveillance Status</th>
@@ -707,11 +781,14 @@ export default function StockLedger() {
                       const stock = (rep.stockSummary || {}) as Record<string, any>;
                       const surv = (rep.surveillance || {}) as Record<string, number>;
 
+                      const rowGeo = resolveRowGeo(rep.facilityId);
                       return (
                         <tr key={rep.id} className="hover:bg-muted/10 transition-colors">
                           <td className="px-4 py-3 font-semibold">
                             {months[rep.month - 1]} {rep.year}
                           </td>
+                          <td className="px-4 py-3 text-muted-foreground">{rowGeo.provinceName ?? "—"}</td>
+                          <td className="px-4 py-3 text-muted-foreground">{rowGeo.districtName ?? "—"}</td>
                           <td className="px-4 py-3">
                             <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs max-w-[200px]">
                               {Object.entries(imms).slice(0, 4).map(([k, v]) => (

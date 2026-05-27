@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
+import { GeoCascadeFilter } from "@/components/GeoCascadeFilter";
+import { buildGeoMaps, getRecordHierarchy } from "@/lib/geoHierarchy";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { 
   Users, 
@@ -69,6 +71,9 @@ export default function UserManagement() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState("");
+  const [geoFilterProvinceId, setGeoFilterProvinceId] = useState<number | null>(null);
+  const [geoFilterDistrictId, setGeoFilterDistrictId] = useState<number | null>(null);
+  const [geoFilterFacilityId, setGeoFilterFacilityId] = useState<number | null>(null);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [isEditing, setIsEditing] = useState(false);
 
@@ -400,9 +405,20 @@ export default function UserManagement() {
 
   const activeRolesList = dbRoles ? dbRoles.map((r: any) => ({ value: r.code, label: r.name })) : ALL_ROLES;
 
+  const geoMaps = useMemo(
+    () => buildGeoMaps({ provinces, districts, villages: [], facilities }),
+    [provinces, districts, facilities],
+  );
+
   const filteredUsers = (usersList || []).filter(u => {
     const text = `${u.firstName || ""} ${u.lastName || ""} ${u.email || ""}`.toLowerCase();
-    return text.includes(searchTerm.toLowerCase());
+    if (!text.includes(searchTerm.toLowerCase())) return false;
+
+    const h = getRecordHierarchy(u as unknown as Record<string, unknown>, geoMaps);
+    if (geoFilterProvinceId !== null && h.provinceId !== geoFilterProvinceId) return false;
+    if (geoFilterDistrictId !== null && h.districtId !== geoFilterDistrictId) return false;
+    if (geoFilterFacilityId !== null && Number((u as any).facilityId) !== geoFilterFacilityId) return false;
+    return true;
   });
 
   return (
@@ -466,6 +482,21 @@ export default function UserManagement() {
               />
             </div>
 
+            {/* Geo cascade filter (Province → District → Facility) */}
+            <GeoCascadeFilter
+              provinceId={geoFilterProvinceId}
+              districtId={geoFilterDistrictId}
+              facilityId={geoFilterFacilityId}
+              onProvinceChange={setGeoFilterProvinceId}
+              onDistrictChange={setGeoFilterDistrictId}
+              onFacilityChange={setGeoFilterFacilityId}
+              showFacility
+              provinces={provinces}
+              districts={districts}
+              facilities={facilities}
+              testIdPrefix="users"
+            />
+
             {/* User table/cards */}
             {loadingUsers ? (
               <div className="flex flex-col items-center justify-center p-12 bg-card rounded-3xl border border-border min-h-[300px]">
@@ -484,6 +515,16 @@ export default function UserManagement() {
                   const uRoles: string[] = Array.isArray(user.roles) ? (user.roles as string[]) : [];
                   const activeRoles = uRoles.length > 0 ? uRoles : [user.role];
                   const scope = (user.dataAccessScope as any) || { provinces: [], districts: [], facilities: [] };
+                  const userGeo = getRecordHierarchy(user as unknown as Record<string, unknown>, geoMaps);
+                  const provinceName = userGeo.provinceId !== null
+                    ? geoMaps.provinceMap.get(userGeo.provinceId)?.name ?? null
+                    : null;
+                  const districtName = userGeo.districtId !== null
+                    ? geoMaps.districtMap.get(userGeo.districtId)?.name ?? null
+                    : null;
+                  const facilityName = (user as any).facilityId
+                    ? geoMaps.facilityMap.get(Number((user as any).facilityId))?.name ?? null
+                    : null;
                   
                   const hasRestrictedScope = 
                     (scope.provinces && scope.provinces.length > 0) || 
@@ -522,6 +563,28 @@ export default function UserManagement() {
                                 {role.replace("_", " ")}
                               </Badge>
                             ))}
+                          </div>
+                        </div>
+
+                        {/* Province / District / Facility (resolved location) */}
+                        <div className="mb-4 pt-4 border-t border-border" data-testid={`user-geo-${user.id}`}>
+                          <span className="text-xs text-muted-foreground/80 block mb-1.5 uppercase tracking-wider font-semibold">Location</span>
+                          <div className="grid grid-cols-1 gap-1 text-xs text-foreground/80">
+                            <div className="flex items-center gap-1.5">
+                              <Compass className="h-3 w-3 text-emerald-500 dark:text-emerald-400" />
+                              <span className="text-muted-foreground">Province:</span>
+                              <span className="font-medium">{provinceName ?? "—"}</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <Map className="h-3 w-3 text-sky-500 dark:text-sky-400" />
+                              <span className="text-muted-foreground">District:</span>
+                              <span className="font-medium">{districtName ?? "—"}</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <Building className="h-3 w-3 text-amber-500 dark:text-amber-400" />
+                              <span className="text-muted-foreground">Facility:</span>
+                              <span className="font-medium">{facilityName ?? "—"}</span>
+                            </div>
                           </div>
                         </div>
 

@@ -29,6 +29,7 @@ const OFFLINE_VILLAGE_ICON = typeof window !== "undefined" ? L.icon({
   iconAnchor: [12, 35],
   popupAnchor: [0, -35]
 }) : null as any;
+import { GeoCascadeFilter } from "@/components/GeoCascadeFilter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -380,6 +381,31 @@ export default function SessionDayPlans() {
     if (!sessionPlan || !facilities) return null;
     return facilities.find((f) => f.id === sessionPlan.facilityId);
   }, [sessionPlan, facilities]);
+
+  const [geoProvinceId, setGeoProvinceId] = useState<number | null>(null);
+  const [geoDistrictId, setGeoDistrictId] = useState<number | null>(null);
+  const [geoFacilityId, setGeoFacilityId] = useState<number | null>(null);
+
+  const sessionFacilityGeo = useMemo(() => {
+    const fac = activeFacility;
+    if (!fac) return { provinceId: null as number | null, districtId: null as number | null, facilityId: null as number | null };
+    const dist = districts?.find((d) => d.id === fac.districtId);
+    const prov = dist ? provinces?.find((p) => p.id === dist.provinceId) : null;
+    return {
+      provinceId: prov?.id ?? null,
+      districtId: dist?.id ?? null,
+      facilityId: fac.id ?? null,
+    };
+  }, [activeFacility, districts, provinces]);
+
+  const filteredDayPlans = useMemo(() => {
+    if (!dayPlans) return [];
+    if (geoProvinceId === null && geoDistrictId === null && geoFacilityId === null) return dayPlans;
+    if (geoProvinceId !== null && sessionFacilityGeo.provinceId !== geoProvinceId) return [];
+    if (geoDistrictId !== null && sessionFacilityGeo.districtId !== geoDistrictId) return [];
+    if (geoFacilityId !== null && sessionFacilityGeo.facilityId !== geoFacilityId) return [];
+    return dayPlans;
+  }, [dayPlans, geoProvinceId, geoDistrictId, geoFacilityId, sessionFacilityGeo]);
 
   const mapCenter = useMemo(() => {
     if (activeFacility && activeFacility.latitude && activeFacility.longitude) {
@@ -745,6 +771,21 @@ export default function SessionDayPlans() {
         </div>
       </div>
 
+      {/* Geo cascade filter (Province → District → Facility) */}
+      <GeoCascadeFilter
+        provinceId={geoProvinceId}
+        districtId={geoDistrictId}
+        facilityId={geoFacilityId}
+        onProvinceChange={setGeoProvinceId}
+        onDistrictChange={setGeoDistrictId}
+        onFacilityChange={setGeoFacilityId}
+        showFacility
+        provinces={provinces ?? []}
+        districts={districts ?? []}
+        facilities={facilities ?? []}
+        testIdPrefix="sessiondayplans"
+      />
+
       {/* Triangulation Dashboard Grid */}
       {dayPlans && dayPlans.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 animate-in fade-in duration-300">
@@ -861,6 +902,9 @@ export default function SessionDayPlans() {
                 <tr>
                   <th className="px-4 py-3 border-r border-border/40">Day</th>
                   <th className="px-4 py-3 border-r border-border/40">Date</th>
+                  <th className="px-4 py-3 border-r border-border/40">Province</th>
+                  <th className="px-4 py-3 border-r border-border/40">District</th>
+                  <th className="px-4 py-3 border-r border-border/40">Facility</th>
                   <th className="px-4 py-3 border-r border-border/40 min-w-[200px]">Communities Visited</th>
                   <th className="px-4 py-3 border-r border-border/40 text-center">Target Pop</th>
                   {vaccineConfigs?.filter(c => c.isActive).map((config) => (
@@ -892,7 +936,7 @@ export default function SessionDayPlans() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/30">
-                {dayPlans.map((plan) => {
+                {filteredDayPlans.map((plan) => {
                   const vReq = (plan.vaccinesRequired || {}) as Record<string, number>;
                   const TransportIcon = transportIcons[plan.transportType || "road"] || Car;
 
@@ -901,6 +945,24 @@ export default function SessionDayPlans() {
                       <td className="px-4 py-3 font-semibold border-r border-border/30">Day {plan.dayNumber}</td>
                       <td className="px-4 py-3 border-r border-border/30">
                         {format(new Date(plan.sessionDate), "MMM dd, yyyy")}
+                      </td>
+                      <td className="px-4 py-3 border-r border-border/30 text-muted-foreground text-xs">
+                        {(() => {
+                          const fac = activeFacility;
+                          const dist = fac ? districts?.find((d) => d.id === fac.districtId) : null;
+                          const prov = dist ? provinces?.find((p) => p.id === dist.provinceId) : null;
+                          return prov?.name ?? "—";
+                        })()}
+                      </td>
+                      <td className="px-4 py-3 border-r border-border/30 text-muted-foreground text-xs">
+                        {(() => {
+                          const fac = activeFacility;
+                          const dist = fac ? districts?.find((d) => d.id === fac.districtId) : null;
+                          return dist?.name ?? "—";
+                        })()}
+                      </td>
+                      <td className="px-4 py-3 border-r border-border/30 text-muted-foreground text-xs">
+                        {activeFacility?.name ?? "—"}
                       </td>
                       <td className="px-4 py-3 border-r border-border/30">
                         <div className="flex flex-wrap gap-1">
@@ -992,6 +1054,9 @@ export default function SessionDayPlans() {
               <tfoot className="bg-muted/30 border-t-2 border-border/50 font-semibold text-foreground text-xs">
                 <tr>
                   <td className="px-4 py-3 border-r border-border/30">Total</td>
+                  <td className="px-4 py-3 border-r border-border/30">-</td>
+                  <td className="px-4 py-3 border-r border-border/30">-</td>
+                  <td className="px-4 py-3 border-r border-border/30">-</td>
                   <td className="px-4 py-3 border-r border-border/30">-</td>
                   <td className="px-4 py-3 border-r border-border/30">-</td>
                   <td className="px-4 py-3 text-center border-r border-border/30 text-amber-600 dark:text-amber-400">
