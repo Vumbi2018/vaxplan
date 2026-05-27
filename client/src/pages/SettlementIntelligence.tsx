@@ -110,7 +110,7 @@ export default function SettlementIntelligence() {
   });
 
   // Center maps dynamically based on tenant center or facility average
-  useMemo(() => {
+  useEffect(() => {
     if (activeTenant?.settings?.mapCenter) {
       setActiveCenter(activeTenant.settings.mapCenter);
       if (activeTenant.settings.mapZoom) {
