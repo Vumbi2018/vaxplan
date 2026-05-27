@@ -86,10 +86,12 @@ const transportIcons: Record<string, typeof Car> = {
 
 export default function SessionPlanning({
   planTypeFilter = "routine",
-}: { planTypeFilter?: PlanTypeFilter } = {}) {
+  lockedMicroplanId,
+}: { planTypeFilter?: PlanTypeFilter; lockedMicroplanId?: number } = {}) {
   const { toast } = useToast();
   const { user } = useAuth();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const isDetailMode = lockedMicroplanId != null;
   const parentMicroplanTypeForRoute: "facility_routine" | "sia_campaign" =
     planTypeFilter === "campaign" ? "sia_campaign" : "facility_routine";
   const pageTitle = planTypeFilter === "campaign" ? "SIA Campaigns" : "Routine Microplan";
@@ -259,9 +261,17 @@ export default function SessionPlanning({
       status: "planned",
       approvalStatus: "draft",
       facilityId: user?.facilityId ?? undefined,
-      microplanId: undefined as any,
+      microplanId: (lockedMicroplanId ?? undefined) as any,
     },
   });
+
+  // In detail mode, keep the form's microplanId pinned to the locked id.
+  useEffect(() => {
+    if (lockedMicroplanId != null) {
+      form.setValue("microplanId" as any, lockedMicroplanId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lockedMicroplanId]);
 
   // When a parent microplan is picked, copy its facility/quarter/year into the
   // session form so the user does not have to re-enter them (and they always match).
@@ -537,6 +547,7 @@ export default function SessionPlanning({
             ? "routine"
             : (item as any).planType || "routine";
       if (sessionPlanType !== planTypeFilter) return false;
+      if (lockedMicroplanId != null && Number(item.microplanId) !== Number(lockedMicroplanId)) return false;
       if (geoFilterProvinceId !== null && item._geoProvinceId !== geoFilterProvinceId) return false;
       if (geoFilterDistrictId !== null && item._geoDistrictId !== geoFilterDistrictId) return false;
       if (geoFilterFacilityId !== null && Number((item as any).facilityId) !== geoFilterFacilityId) return false;
@@ -709,38 +720,112 @@ export default function SessionPlanning({
     );
   }
 
+  // LIST MODE: when not scoped to a specific microplan, this workspace shows
+  // the microplans of the route's planType (Routine or SIA). Sessions are
+  // created and viewed *inside* a microplan-detail page, never from here.
+  if (!isDetailMode) {
+    const lockedParentBase = planTypeFilter === "campaign" ? "/microplans/campaigns" : "/microplans/routine";
+    return (
+      <div className="p-6 space-y-6">
+        <MicroplanStepper currentStep={3} />
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            <h1 className="text-2xl font-bold" data-testid="text-page-title">{pageTitle}</h1>
+            <p className="text-muted-foreground text-sm">{pageSubtitle}</p>
+          </div>
+          {isCreator && (
+            <Link href="/develop-microplan">
+              <Button variant="outline" data-testid="button-open-microplan-builder">
+                <Plus className="h-4 w-4 mr-1" />
+                New microplan (Builder)
+              </Button>
+            </Link>
+          )}
+        </div>
+
+        {microplansOfRouteType.length === 0 ? (
+          <Alert className="max-w-2xl">
+            <Info className="h-4 w-4" />
+            <AlertTitle>No {planTypeFilter === "campaign" ? "campaign" : "routine"} microplan yet</AlertTitle>
+            <AlertDescription>
+              {isCreator
+                ? <>Create one in the{" "}<Link href="/develop-microplan" className="underline font-medium">Microplan Builder</Link>{" "}to start adding sessions.</>
+                : <>There are no microplans of this type to review yet.</>}
+            </AlertDescription>
+          </Alert>
+        ) : (
+          <Card>
+            <CardHeader>
+              <CardTitle>{planTypeFilter === "campaign" ? "Campaign microplans" : "Routine microplans"}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ul className="divide-y" data-testid="list-microplans">
+                {microplansOfRouteType.map((m) => {
+                  const childCount = (sessions ?? []).filter((s) => (s as any).microplanId === m.id).length;
+                  return (
+                    <li
+                      key={m.id}
+                      className="flex items-center justify-between py-3 gap-4"
+                      data-testid={`row-microplan-${m.id}`}
+                    >
+                      <div className="min-w-0">
+                        <div className="font-medium truncate">{m.name}</div>
+                        <div className="text-xs text-muted-foreground">
+                          Q{m.quarter} {m.year} · {childCount} session{childCount === 1 ? "" : "s"}
+                          {m.status === "locked" ? " · locked" : ""}
+                        </div>
+                      </div>
+                      <Link href={`${lockedParentBase}/${m.id}`}>
+                        <Button variant="outline" size="sm" data-testid={`button-open-microplan-${m.id}`}>
+                          Open <ArrowRight className="h-4 w-4 ml-1" />
+                        </Button>
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    );
+  }
+
+  // DETAIL MODE: scoped to a single microplan. Sessions are listed and created here.
+  const lockedParent = microplansOfRouteType.find((m) => m.id === lockedMicroplanId)
+    ?? (allMicroplans ?? []).find((m) => m.id === lockedMicroplanId);
+  const parentIsLocked = lockedParent?.status === "locked";
+  const backHref = planTypeFilter === "campaign" ? "/microplans/campaigns" : "/microplans/routine";
+
   return (
     <div className="p-6 space-y-6">
       <MicroplanStepper currentStep={3} />
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold" data-testid="text-page-title">{pageTitle}</h1>
-          <p className="text-muted-foreground text-sm">{pageSubtitle}</p>
-          {isCreator && microplansOfRouteType.length === 0 && (
-            <Alert className="mt-3 max-w-xl">
-              <Info className="h-4 w-4" />
-              <AlertTitle>No {planTypeFilter === "campaign" ? "campaign" : "routine"} microplan yet</AlertTitle>
-              <AlertDescription>
-                Sessions must belong to a parent microplan. Create one in the{" "}
-                <Link href="/develop-microplan" className="underline font-medium">
-                  Microplan Builder
-                </Link>{" "}
-                first, then come back here to add sessions.
-              </AlertDescription>
-            </Alert>
-          )}
+          <Link href={backHref} className="text-xs text-muted-foreground hover:underline">
+            ← Back to {pageTitle}
+          </Link>
+          <h1 className="text-2xl font-bold" data-testid="text-page-title">
+            {lockedParent?.name ?? `Microplan #${lockedMicroplanId}`}
+          </h1>
+          <p className="text-muted-foreground text-sm">
+            Sessions inside this {planTypeFilter === "campaign" ? "campaign" : "routine"} microplan.
+            {parentIsLocked && " This microplan is locked — sessions cannot be added or modified."}
+          </p>
         </div>
 
         {isCreator && (
-          <Link href="/develop-microplan">
-            <Button variant="outline" data-testid="button-open-microplan-builder">
-              <Plus className="h-4 w-4 mr-1" />
-              Add sessions in the Builder
-            </Button>
-          </Link>
-        )}
-        {isCreator && false && (
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+            <DialogTrigger asChild>
+              <Button
+                data-testid="button-add-session"
+                disabled={parentIsLocked}
+                title={parentIsLocked ? "Parent microplan is locked" : undefined}
+              >
+                <Plus className="h-4 w-4 mr-1" />
+                New session
+              </Button>
+            </DialogTrigger>
             <DialogTrigger asChild>
               <Button
                 data-testid="button-add-session"

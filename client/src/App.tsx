@@ -73,8 +73,18 @@ function AuthenticatedRouter() {
       <Route path="/microplans/routine">
         <SessionPlanning planTypeFilter="routine" />
       </Route>
+      <Route path="/microplans/routine/:id">
+        {(params) => (
+          <SessionPlanning planTypeFilter="routine" lockedMicroplanId={Number(params.id)} />
+        )}
+      </Route>
       <Route path="/microplans/campaigns">
         <SessionPlanning planTypeFilter="campaign" />
+      </Route>
+      <Route path="/microplans/campaigns/:id">
+        {(params) => (
+          <SessionPlanning planTypeFilter="campaign" lockedMicroplanId={Number(params.id)} />
+        )}
       </Route>
       {/* Back-compat: /sessions now redirects to the routine microplan workspace. */}
       <Route path="/sessions">
