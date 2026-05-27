@@ -21,7 +21,14 @@ import {
   Activity,
   Syringe,
 } from "lucide-react";
-import { Link } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import type { Facility, Village, SessionPlan, BudgetItem, ApprovalRequest, PopulationData } from "@shared/schema";
 
 interface StatsData {
@@ -53,9 +60,57 @@ interface CoverageData {
   };
 }
 
+const CURRENT_DATE = new Date();
+const CURRENT_YEAR = CURRENT_DATE.getUTCFullYear();
+const CURRENT_QUARTER = Math.floor(CURRENT_DATE.getUTCMonth() / 3) + 1;
+const COVERAGE_STORAGE_KEY = "vaxplan_dashboard_coverage_filters";
+
+const isFacilityScopedRole = (role?: string) =>
+  role === "facility_clerk" || role === "facility_in_charge";
+
 export default function Dashboard() {
   const { user } = useAuth();
+  const [, setLocation] = useLocation();
+  const searchString = useSearch();
   const [liveTime, setLiveTime] = useState(new Date());
+
+  const facilityLocked = isFacilityScopedRole(user?.role) && !!user?.facilityId;
+
+  const [coverageFilters, setCoverageFilters] = useState(() => {
+    const params = new URLSearchParams(
+      typeof window !== "undefined" ? window.location.search : "",
+    );
+    let stored: { quarter?: number; year?: number; facilityId?: number | null } = {};
+    if (typeof window !== "undefined") {
+      try {
+        const raw = localStorage.getItem(COVERAGE_STORAGE_KEY);
+        if (raw) stored = JSON.parse(raw);
+      } catch {}
+    }
+    const parseInt10 = (v: string | null) =>
+      v && /^\d+$/.test(v) ? parseInt(v, 10) : undefined;
+
+    const quarter =
+      parseInt10(params.get("quarter")) ?? stored.quarter ?? CURRENT_QUARTER;
+    const year = parseInt10(params.get("year")) ?? stored.year ?? CURRENT_YEAR;
+
+    let facilityId: number | null;
+    if (facilityLocked) {
+      facilityId = Number(user!.facilityId);
+    } else {
+      const fp = params.get("facilityId");
+      if (fp === "all") facilityId = null;
+      else if (fp && /^\d+$/.test(fp)) facilityId = parseInt(fp, 10);
+      else if (stored.facilityId === null) facilityId = null;
+      else if (typeof stored.facilityId === "number") facilityId = stored.facilityId;
+      else facilityId = null;
+    }
+    return {
+      quarter: quarter >= 1 && quarter <= 4 ? quarter : CURRENT_QUARTER,
+      year,
+      facilityId,
+    };
+  });
 
   const displayName = useMemo(() => {
     if (user?.firstName || user?.lastName) {
@@ -133,9 +188,95 @@ export default function Dashboard() {
     queryKey: ["/api/provinces"],
   });
 
+  const coverageQueryString = useMemo(() => {
+    const qs = new URLSearchParams();
+    qs.set("quarter", String(coverageFilters.quarter));
+    qs.set("year", String(coverageFilters.year));
+    if (coverageFilters.facilityId !== null) {
+      qs.set("facilityId", String(coverageFilters.facilityId));
+    }
+    return qs.toString();
+  }, [coverageFilters]);
+
   const { data: coverage, isLoading: loadingCoverage } = useQuery<CoverageData>({
-    queryKey: ["/api/coverage"],
+    queryKey: [`/api/coverage?${coverageQueryString}`],
   });
+
+  // Persist coverage filter selection across reloads (URL + localStorage).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      localStorage.setItem(
+        COVERAGE_STORAGE_KEY,
+        JSON.stringify(coverageFilters),
+      );
+    } catch {}
+
+    const params = new URLSearchParams(window.location.search);
+    params.set("quarter", String(coverageFilters.quarter));
+    params.set("year", String(coverageFilters.year));
+    if (facilityLocked) {
+      params.delete("facilityId");
+    } else if (coverageFilters.facilityId === null) {
+      params.set("facilityId", "all");
+    } else {
+      params.set("facilityId", String(coverageFilters.facilityId));
+    }
+    const next = `${window.location.pathname}?${params.toString()}`;
+    if (next !== `${window.location.pathname}${window.location.search}`) {
+      setLocation(next, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [coverageFilters, facilityLocked]);
+
+  // Sync state in if the user opens a fresh URL with different params.
+  useEffect(() => {
+    const params = new URLSearchParams(searchString || "");
+    const qRaw = params.get("quarter");
+    const yRaw = params.get("year");
+    const fRaw = params.get("facilityId");
+    setCoverageFilters((prev) => {
+      const next = { ...prev };
+      if (qRaw && /^[1-4]$/.test(qRaw)) next.quarter = parseInt(qRaw, 10);
+      if (yRaw && /^\d{4}$/.test(yRaw)) next.year = parseInt(yRaw, 10);
+      if (!facilityLocked) {
+        if (fRaw === "all") next.facilityId = null;
+        else if (fRaw && /^\d+$/.test(fRaw)) next.facilityId = parseInt(fRaw, 10);
+      } else if (user?.facilityId) {
+        next.facilityId = Number(user.facilityId);
+      }
+      if (
+        next.quarter === prev.quarter &&
+        next.year === prev.year &&
+        next.facilityId === prev.facilityId
+      ) {
+        return prev;
+      }
+      return next;
+    });
+  }, [searchString, facilityLocked, user?.facilityId]);
+
+  const facilityOptions = useMemo<Facility[]>(() => {
+    if (!facilities) return [];
+    return [...facilities].sort((a: Facility, b: Facility) =>
+      (a.name || "").localeCompare(b.name || ""),
+    );
+  }, [facilities]);
+
+  const selectedFacilityName = useMemo(() => {
+    if (coverageFilters.facilityId === null) return "All facilities";
+    const f = facilityOptions.find(
+      (f: Facility) => Number(f.id) === coverageFilters.facilityId,
+    );
+    return f?.name || `Facility #${coverageFilters.facilityId}`;
+  }, [coverageFilters.facilityId, facilityOptions]);
+
+  const yearOptions = useMemo<number[]>(() => {
+    const years: number[] = [];
+    for (let y = CURRENT_YEAR - 3; y <= CURRENT_YEAR + 1; y++) years.push(y);
+    if (!years.includes(coverageFilters.year)) years.push(coverageFilters.year);
+    return years.sort((a, b) => b - a);
+  }, [coverageFilters.year]);
 
   const htrVillages = stats?.htrVillages || 0;
   const pendingSessions = sessions?.filter((s) => s.status === "planned")?.length || 0;
@@ -488,16 +629,83 @@ export default function Dashboard() {
 
       <Card>
         <CardHeader className="pb-2">
-          <div className="flex items-center justify-between gap-2">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <CardTitle className="text-lg flex items-center gap-2">
               <Syringe className="h-5 w-5 text-primary" />
               Vaccine Coverage
             </CardTitle>
-            {coverage && (
-              <Badge variant="secondary">
-                Q{coverage.quarter} {coverage.year} · {coverage.totals.coveragePct}% overall
-              </Badge>
-            )}
+            <div className="flex flex-wrap items-center gap-2">
+              <Select
+                value={String(coverageFilters.quarter)}
+                onValueChange={(v) =>
+                  setCoverageFilters((p) => ({ ...p, quarter: parseInt(v, 10) }))
+                }
+              >
+                <SelectTrigger className="h-8 w-[110px]" data-testid="select-coverage-quarter">
+                  <SelectValue placeholder="Quarter" />
+                </SelectTrigger>
+                <SelectContent>
+                  {[1, 2, 3, 4].map((q) => (
+                    <SelectItem key={q} value={String(q)}>
+                      Q{q}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select
+                value={String(coverageFilters.year)}
+                onValueChange={(v) =>
+                  setCoverageFilters((p) => ({ ...p, year: parseInt(v, 10) }))
+                }
+              >
+                <SelectTrigger className="h-8 w-[110px]" data-testid="select-coverage-year">
+                  <SelectValue placeholder="Year" />
+                </SelectTrigger>
+                <SelectContent>
+                  {yearOptions.map((y) => (
+                    <SelectItem key={y} value={String(y)}>
+                      {y}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {facilityLocked ? (
+                <Badge variant="outline" data-testid="badge-coverage-facility-locked">
+                  {selectedFacilityName}
+                </Badge>
+              ) : (
+                <Select
+                  value={
+                    coverageFilters.facilityId === null
+                      ? "all"
+                      : String(coverageFilters.facilityId)
+                  }
+                  onValueChange={(v) =>
+                    setCoverageFilters((p) => ({
+                      ...p,
+                      facilityId: v === "all" ? null : parseInt(v, 10),
+                    }))
+                  }
+                >
+                  <SelectTrigger className="h-8 w-[200px]" data-testid="select-coverage-facility">
+                    <SelectValue placeholder="Facility" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All facilities</SelectItem>
+                    {facilityOptions.map((f) => (
+                      <SelectItem key={f.id} value={String(f.id)}>
+                        {f.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              {coverage && (
+                <Badge variant="secondary">
+                  {coverage.totals.coveragePct}% overall
+                </Badge>
+              )}
+            </div>
           </div>
         </CardHeader>
         <CardContent className="pt-3">
