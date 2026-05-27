@@ -2,7 +2,10 @@ import pg from 'pg';
 import { db, pool } from '../server/db';
 import { settlementsMaster, populationGrids, candidateUnmappedSettlements, tenants } from '../shared/schema';
 import { runMissingSettlementDetection } from '../server/pipeline/settlementEngine';
+import { ingestWorldPopRaster } from './ingestWorldPopRaster';
 import { eq, and } from 'drizzle-orm';
+import { existsSync } from 'fs';
+import { join } from 'path';
 
 async function seed() {
   console.log('Starting Settlement Intelligence seeding...');
@@ -97,83 +100,29 @@ async function seed() {
     }
     console.log('Mock official settlements seeded successfully.');
 
-    // 4. Seed High-Resolution Population Grids (WorldPop format)
-    // We seed:
-    // - Grid cell 1: inside Macha (within 500m of Macha Mission -> should NOT be flagged as unmapped)
-    // - Grid cell 2: outside Macha (10km away, high population -> SHOULD be flagged as unmapped!)
-    // - Grid cell 3: outside Choma (15km away, high population -> SHOULD be flagged as unmapped!)
-    // - Grid cell 4: close to Singani Village (within 1km -> should NOT be flagged as unmapped)
-    console.log('Seeding mock WorldPop population density grids...');
-    
-    const mockGrids = [
-      {
-        id: 1,
-        lat: -16.4190, // Near Macha Mission
-        lng: 26.9575,
-        pop: 340,
-        cellIndex: 'cell_macha_mission_001',
-      },
-      {
-        id: 2,
-        lat: -16.3245, // 10km north of Macha - completely unmapped area!
-        lng: 26.9234,
-        pop: 185,
-        cellIndex: 'cell_unmapped_cluster_002',
-      },
-      {
-        id: 3,
-        lat: -16.5122, // 15km south of Macha - completely unmapped area!
-        lng: 27.0543,
-        pop: 290,
-        cellIndex: 'cell_unmapped_cluster_003',
-      },
-      {
-        id: 4,
-        lat: -16.4452, // Near Singani Village
-        lng: 26.9945,
-        pop: 95,
-        cellIndex: 'cell_singani_village_004',
-      }
-    ];
-
-    for (const grid of mockGrids) {
-      // Calculate a small bounding box Polygon for the 100m grid cell
-      const size = 0.0009; // approx 100m in degrees
-      const polyCoordinates = [
-        [
-          [grid.lng - size/2, grid.lat - size/2],
-          [grid.lng + size/2, grid.lat - size/2],
-          [grid.lng + size/2, grid.lat + size/2],
-          [grid.lng - size/2, grid.lat + size/2],
-          [grid.lng - size/2, grid.lat - size/2] // close polygon
-        ]
-      ];
-
-      await db.insert(populationGrids).values({
-        tenantId: ZMB_TENANT_ID,
-        populationTotal: grid.pop,
-        under5Population: Math.round(grid.pop * 0.18),
-        geojson: {
-          type: "Feature",
-          geometry: {
-            type: "Polygon",
-            coordinates: polyCoordinates
-          },
-          properties: {
-            population: grid.pop,
-            cell_index: grid.cellIndex
-          }
-        },
-        rasterCell: grid.cellIndex,
-        densityClassification: grid.pop > 300 ? 'High' : 'Medium'
-      });
+    // 4. Stream the real ZMB WorldPop raster into population_grids.
+    const rasterPath = join(process.cwd(), 'Resources', 'zmb_pop_2026_CN_100m_R2025A_v1.tif');
+    if (!existsSync(rasterPath)) {
+      console.error(`ZMB WorldPop raster missing at ${rasterPath}.`);
+      process.exit(1);
     }
-    console.log('Mock WorldPop population density grids seeded successfully.');
+    const ingest = await ingestWorldPopRaster({
+      tenantId: ZMB_TENANT_ID,
+      rasterPath,
+      cellPrefix: 'zmb',
+      minPopulation: 25,
+      under5Fraction: 0.18,
+      onProgress: ({ tilesDone, tilesTotal, rowsInserted }) =>
+        console.log(`[worldpop:zmb] tile ${tilesDone}/${tilesTotal}, rows=${rowsInserted}`),
+    });
+    console.log(
+      `Ingested ${ingest.rowsInserted} 100m cells from WorldPop ZMB (above-threshold=${ingest.cellsAboveThreshold}).`,
+    );
 
     // 5. Run the Missing Settlement Detection Engine on the seeded data!
     console.log('\n--- TRIGGERING SPATIAL DETECTION ENGINE ---');
     const result = await runMissingSettlementDetection(ZMB_TENANT_ID, {
-      populationThreshold: 50,
+      populationThreshold: 300,
       buildingThreshold: 5,
       radiusKm: 1.5
     });

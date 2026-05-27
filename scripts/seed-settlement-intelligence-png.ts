@@ -25,6 +25,7 @@ import {
   tenants,
 } from '../shared/schema';
 import { runMissingSettlementDetection } from '../server/pipeline/settlementEngine';
+import { ingestWorldPopRaster } from './ingestWorldPopRaster';
 import { eq, and } from 'drizzle-orm';
 import { existsSync, statSync } from 'fs';
 import { join } from 'path';
@@ -138,50 +139,29 @@ async function seed() {
     }
     console.log(`Seeded ${mockSettlements.length} master settlements.`);
 
-    // 4. Population grid cells. Two near-coverage cells per anchor + two
-    //    intentionally-distant clusters that should be flagged as unmapped.
-    console.log('Seeding mock WorldPop-style population grids...');
-    const mockGrids = [
-      // Near Port Moresby (should NOT be flagged)
-      { lat: -9.4131, lng: 147.1572, pop: 410, cellIndex: 'png_cell_pom_001' },
-      // Near Goroka (should NOT be flagged)
-      { lat: -6.0840, lng: 145.3840, pop: 280, cellIndex: 'png_cell_gka_002' },
-      // Near Mount Hagen (should NOT be flagged)
-      { lat: -5.8602, lng: 144.2299, pop: 360, cellIndex: 'png_cell_mhg_003' },
-      // ~12km north of Mount Hagen — unmapped cluster
-      { lat: -5.7510, lng: 144.2120, pop: 220, cellIndex: 'png_cell_unmapped_004' },
-      // ~15km east of Goroka — unmapped cluster
-      { lat: -6.1020, lng: 145.5410, pop: 175, cellIndex: 'png_cell_unmapped_005' },
-    ];
-
-    for (const grid of mockGrids) {
-      const size = 0.0009; // ~100m
-      const polyCoordinates = [[
-        [grid.lng - size / 2, grid.lat - size / 2],
-        [grid.lng + size / 2, grid.lat - size / 2],
-        [grid.lng + size / 2, grid.lat + size / 2],
-        [grid.lng - size / 2, grid.lat + size / 2],
-        [grid.lng - size / 2, grid.lat - size / 2],
-      ]];
-      await db.insert(populationGrids).values({
-        tenantId: PNG_TENANT_ID,
-        populationTotal: grid.pop,
-        under5Population: Math.round(grid.pop * 0.16),
-        geojson: {
-          type: 'Feature',
-          geometry: { type: 'Polygon', coordinates: polyCoordinates },
-          properties: { population: grid.pop, cell_index: grid.cellIndex },
-        },
-        rasterCell: grid.cellIndex,
-        densityClassification: grid.pop > 300 ? 'High' : 'Medium',
-      });
+    // 4. Stream the WorldPop 100m raster into population_grids.
+    if (!existsSync(rasterPath)) {
+      console.error(`Raster missing at ${rasterPath}; cannot ingest population grid.`);
+      process.exit(1);
     }
-    console.log(`Seeded ${mockGrids.length} population grid cells.`);
+    const ingest = await ingestWorldPopRaster({
+      tenantId: PNG_TENANT_ID,
+      rasterPath,
+      cellPrefix: 'png',
+      minPopulation: 25,
+      onProgress: ({ tilesDone, tilesTotal, rowsInserted }) =>
+        console.log(`[worldpop:png] tile ${tilesDone}/${tilesTotal}, rows=${rowsInserted}`),
+    });
+    console.log(
+      `Ingested ${ingest.rowsInserted} 100m cells from WorldPop (above threshold of ${ingest.cellsAboveThreshold}).`,
+    );
 
-    // 5. Trigger the detection engine.
+    // 5. Trigger the detection engine. Use a high pop threshold so the engine's
+    //    per-candidate spatial queries stay tractable while still surfacing
+    //    nationally-meaningful unmapped clusters.
     console.log('\n--- TRIGGERING SPATIAL DETECTION ENGINE (PNG) ---');
     const result = await runMissingSettlementDetection(PNG_TENANT_ID, {
-      populationThreshold: 50,
+      populationThreshold: 300,
       buildingThreshold: 5,
       radiusKm: 1.5,
     });
