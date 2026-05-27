@@ -73,7 +73,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Plus, Building2, Users, Thermometer, Filter, X, Pencil, Trash2 } from "lucide-react";
 */
 // Updated Code: Imported Download and Upload icons for the newly introduced import/export buttons
-import { Plus, Building2, Users, Thermometer, Filter, X, Pencil, Trash2, Download, Upload } from "lucide-react";
+import { Plus, Building2, Users, Thermometer, X, Pencil, Trash2, Download, Upload } from "lucide-react";
+import { GeoCascadeFilter } from "@/components/GeoCascadeFilter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/useAuth";
 import { canEditFacility, canDeleteData, canCreateData } from "@/lib/permissions";
@@ -1967,98 +1968,29 @@ export default function Facilities() {
           </div>
 
           <Card>
-            <CardHeader className="pb-4">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Filter className="h-4 w-4" />
-                Filter by Location
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-wrap gap-4 items-end">
-                {!skipRegionLevel && (
-                  <div className="min-w-[180px]">
-                    <label className="text-sm font-medium mb-1.5 block">Region</label>
-                    <Select
-                      value={selectedRegionId?.toString() || "all"}
-                      onValueChange={(val) => {
-                        setSelectedRegionId(val === "all" ? null : parseInt(val));
-                        setSelectedProvinceId(null);
-                        setSelectedDistrictId(null);
-                      }}
-                    >
-                      <SelectTrigger data-testid="select-filter-region">
-                        <SelectValue placeholder="All Regions" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Regions</SelectItem>
-                        {regions?.map((region) => (
-                          <SelectItem key={region.id} value={region.id.toString()}>
-                            {region.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-
-                <div className="min-w-[180px]">
-                  <label className="text-sm font-medium mb-1.5 block">{adminLabels.level1}</label>
-                  <Select
-                    value={selectedProvinceId?.toString() || "all"}
-                    onValueChange={(val) => {
-                      setSelectedProvinceId(val === "all" ? null : parseInt(val));
-                      setSelectedDistrictId(null);
-                    }}
-                    disabled={!skipRegionLevel && !selectedRegionId && !provinces?.length}
-                  >
-                    <SelectTrigger data-testid="select-filter-province">
-                      <SelectValue placeholder={`All ${adminLabels.level1}s`} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All {adminLabels.level1}s</SelectItem>
-                      {provinces
-                        ?.filter(p => skipRegionLevel || !selectedRegionId || Number(p.regionId) === Number(selectedRegionId))
-                        .map((province) => (
-                          <SelectItem key={province.id} value={province.id.toString()}>
-                            {province.name}
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="min-w-[180px]">
-                  <label className="text-sm font-medium mb-1.5 block">{adminLabels.level2}</label>
-                  <Select
-                    value={selectedDistrictId?.toString() || "all"}
-                    onValueChange={(val) => {
-                      setSelectedDistrictId(val === "all" ? null : parseInt(val));
-                    }}
-                    disabled={!selectedProvinceId && !allDistricts?.length}
-                  >
-                    <SelectTrigger data-testid="select-filter-district">
-                      <SelectValue placeholder={`All ${adminLabels.level2}s`} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All {adminLabels.level2}s</SelectItem>
-                      {allDistricts
-                        ?.filter(d => !selectedProvinceId || Number(d.provinceId) === Number(selectedProvinceId))
-                        .map((district) => (
-                          <SelectItem key={district.id} value={district.id.toString()}>
-                            {district.name}
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {hasFilters && (
-                  <Button variant="ghost" size="sm" onClick={clearFilters} data-testid="button-clear-filters">
-                    <X className="h-4 w-4 mr-1" />
-                    Clear
-                  </Button>
-                )}
-              </div>
+            <CardContent className="pt-6">
+              <GeoCascadeFilter
+                showRegion={!skipRegionLevel}
+                regionId={selectedRegionId}
+                provinceId={selectedProvinceId}
+                districtId={selectedDistrictId}
+                onRegionChange={(id) => {
+                  setSelectedRegionId(id);
+                  setSelectedProvinceId(null);
+                  setSelectedDistrictId(null);
+                }}
+                onProvinceChange={(id) => {
+                  setSelectedProvinceId(id);
+                  setSelectedDistrictId(null);
+                }}
+                onDistrictChange={setSelectedDistrictId}
+                regions={regions}
+                provinces={provinces}
+                districts={allDistricts}
+                provinceLabel={adminLabels.level1}
+                districtLabel={adminLabels.level2}
+                testIdPrefix="facilities-filter"
+              />
             </CardContent>
           </Card>
 

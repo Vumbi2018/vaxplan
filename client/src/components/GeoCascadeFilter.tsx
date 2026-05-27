@@ -9,22 +9,27 @@ import {
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { X, MapPin } from "lucide-react";
-import type { Province, District, Facility } from "@shared/schema";
+import type { Province, District, Facility, Region } from "@shared/schema";
 
 export interface GeoCascadeFilterProps {
   provinceId: number | null;
   districtId: number | null;
   facilityId?: number | null;
+  regionId?: number | null;
   onProvinceChange: (id: number | null) => void;
   onDistrictChange: (id: number | null) => void;
   onFacilityChange?: (id: number | null) => void;
+  onRegionChange?: (id: number | null) => void;
   showFacility?: boolean;
+  showRegion?: boolean;
   provinces?: Province[] | null;
   districts?: District[] | null;
   facilities?: Facility[] | null;
+  regions?: Region[] | null;
   provinceLabel?: string;
   districtLabel?: string;
   facilityLabel?: string;
+  regionLabel?: string;
   className?: string;
   testIdPrefix?: string;
 }
@@ -48,22 +53,33 @@ export function GeoCascadeFilter({
   provinceId,
   districtId,
   facilityId,
+  regionId,
   onProvinceChange,
   onDistrictChange,
   onFacilityChange,
+  onRegionChange,
   showFacility = false,
+  showRegion = false,
   provinces: providedProvinces,
   districts: providedDistricts,
   facilities: providedFacilities,
+  regions: providedRegions,
   provinceLabel = "Province",
   districtLabel = "District",
   facilityLabel = "Facility",
+  regionLabel = "Region",
   className,
   testIdPrefix = "geo",
 }: GeoCascadeFilterProps) {
   // Tenant context — used as a cache scope so switching countries refetches.
   const { data: tenantInfo } = useQuery<any>({
     queryKey: ["/api/me/tenant"],
+  });
+
+  const { data: fetchedRegions } = useQuery<Region[]>({
+    queryKey: ["/api/regions", tenantInfo?.id],
+    queryFn: () => fetchJson<Region[]>("/api/regions"),
+    enabled: showRegion && providedRegions === undefined && !!tenantInfo?.id,
   });
 
   const { data: fetchedProvinces } = useQuery<Province[]>({
@@ -90,11 +106,19 @@ export function GeoCascadeFilter({
   const provinces = providedProvinces ?? fetchedProvinces ?? [];
   const districts = providedDistricts ?? fetchedDistricts ?? [];
   const facilities = providedFacilities ?? fetchedFacilities ?? [];
+  const regions = providedRegions ?? fetchedRegions ?? [];
 
-  const sortedProvinces = useMemo(
-    () => [...provinces].sort((a, b) => a.name.localeCompare(b.name)),
-    [provinces],
+  const sortedRegions = useMemo(
+    () => [...regions].sort((a, b) => a.name.localeCompare(b.name)),
+    [regions],
   );
+
+  const sortedProvinces = useMemo(() => {
+    const list = showRegion && regionId
+      ? provinces.filter((p) => Number((p as any).regionId) === Number(regionId))
+      : provinces;
+    return [...list].sort((a, b) => a.name.localeCompare(b.name));
+  }, [provinces, regionId, showRegion]);
 
   const filteredDistricts = useMemo(() => {
     const list = provinceId
@@ -121,9 +145,22 @@ export function GeoCascadeFilter({
   }, [facilities, districts, provinceId, districtId, showFacility]);
 
   const hasSelection =
-    provinceId !== null || districtId !== null || (showFacility && facilityId);
+    (showRegion && regionId) ||
+    provinceId !== null ||
+    districtId !== null ||
+    (showFacility && facilityId);
 
   const clearAll = () => {
+    if (showRegion && onRegionChange) onRegionChange(null);
+    onProvinceChange(null);
+    onDistrictChange(null);
+    if (showFacility && onFacilityChange) onFacilityChange(null);
+  };
+
+  const handleRegion = (val: string) => {
+    if (!onRegionChange) return;
+    const id = val === "all" ? null : Number(val);
+    onRegionChange(id);
     onProvinceChange(null);
     onDistrictChange(null);
     if (showFacility && onFacilityChange) onFacilityChange(null);
@@ -156,6 +193,30 @@ export function GeoCascadeFilter({
         <MapPin className="h-3.5 w-3.5" />
         Filter by location
       </div>
+
+      {showRegion && (
+        <div className="min-w-[180px] flex-1 max-w-[240px]">
+          <label className="text-xs font-medium text-muted-foreground mb-1 block">
+            {regionLabel}
+          </label>
+          <Select
+            value={regionId?.toString() ?? "all"}
+            onValueChange={handleRegion}
+          >
+            <SelectTrigger data-testid={`${testIdPrefix}-select-region`}>
+              <SelectValue placeholder={`All ${regionLabel}s`} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All {regionLabel}s</SelectItem>
+              {sortedRegions.map((r) => (
+                <SelectItem key={r.id} value={r.id.toString()}>
+                  {r.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
 
       <div className="min-w-[180px] flex-1 max-w-[240px]">
         <label className="text-xs font-medium text-muted-foreground mb-1 block">
