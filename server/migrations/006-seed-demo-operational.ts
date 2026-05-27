@@ -26,10 +26,14 @@ import {
   facilities,
   districts,
   provinces,
+  villages,
   vaccineRequirements,
+  vaccineConfigurations,
   sessionPlans,
   populationData,
   monthlyReports,
+  clients,
+  clientVaccinations,
 } from "../../shared/schema";
 
 type TenantCode = "ZMB" | "SSD";
@@ -526,6 +530,379 @@ async function seedSessionPlans(
   return inserted;
 }
 
+/**
+ * Default vaccine_configurations for the demo tenants. Names MUST match the
+ * `VACCINES` table above so client_vaccinations rows roll up to the same
+ * vaccine_requirements row used by /api/coverage.
+ */
+const VACCINE_CONFIG_DEFAULTS: Array<{
+  name: string;
+  targetGroup: "under1" | "births" | "pregnant" | "schoolEntry";
+  doses: number;
+  recommendedAge: string;
+  recommendedAgeWeeks: number;
+  wastageFactor: string;
+  vialsPerDose: number;
+}> = [
+  { name: "BCG",   targetGroup: "births",      doses: 1, recommendedAge: "At birth",            recommendedAgeWeeks: 0,  wastageFactor: "50.00", vialsPerDose: 20 },
+  { name: "OPV",   targetGroup: "under1",      doses: 4, recommendedAge: "Birth, 6, 10, 14 wk", recommendedAgeWeeks: 6,  wastageFactor: "25.00", vialsPerDose: 20 },
+  { name: "Penta", targetGroup: "under1",      doses: 3, recommendedAge: "6, 10, 14 weeks",     recommendedAgeWeeks: 6,  wastageFactor: "10.00", vialsPerDose: 1  },
+  { name: "MR",    targetGroup: "schoolEntry", doses: 2, recommendedAge: "9 & 18 months",       recommendedAgeWeeks: 39, wastageFactor: "15.00", vialsPerDose: 10 },
+  { name: "TT",    targetGroup: "pregnant",    doses: 2, recommendedAge: "2nd & 3rd trimester", recommendedAgeWeeks: 0,  wastageFactor: "10.00", vialsPerDose: 20 },
+];
+
+async function ensureVaccineConfigs(tenantId: string): Promise<Map<string, number>> {
+  const existing = await db
+    .select({ id: vaccineConfigurations.id, name: vaccineConfigurations.name })
+    .from(vaccineConfigurations)
+    .where(eq(vaccineConfigurations.tenantId, tenantId));
+  const byName = new Map<string, number>();
+  for (const r of existing) byName.set(r.name, r.id);
+
+  for (const cfg of VACCINE_CONFIG_DEFAULTS) {
+    if (byName.has(cfg.name)) continue;
+    const [row] = await db
+      .insert(vaccineConfigurations)
+      .values({
+        tenantId,
+        name: cfg.name,
+        targetGroup: cfg.targetGroup,
+        doses: cfg.doses,
+        recommendedAge: cfg.recommendedAge,
+        recommendedAgeWeeks: cfg.recommendedAgeWeeks,
+        wastageFactor: cfg.wastageFactor,
+        vialsPerDose: cfg.vialsPerDose,
+        isActive: true,
+      })
+      .returning({ id: vaccineConfigurations.id });
+    byName.set(cfg.name, row.id);
+  }
+  return byName;
+}
+
+/**
+ * Pick one village per facility — prefer a village already assigned to the
+ * facility, otherwise fall back to any village in the same district. If no
+ * village exists for the district, create a "Demo Catchment Village" so
+ * clients can be anchored to a real row (clients.village_id is NOT NULL).
+ */
+async function pickVillagePerFacility(
+  tenantId: string,
+  picks: FacilityPick[],
+): Promise<Map<number, number>> {
+  const out = new Map<number, number>();
+  if (picks.length === 0) return out;
+
+  const rows = await db
+    .select({
+      id: villages.id,
+      name: villages.name,
+      districtId: villages.districtId,
+      assignedFacilityId: villages.assignedFacilityId,
+    })
+    .from(villages)
+    .where(eq(villages.tenantId, tenantId));
+
+  for (const p of picks) {
+    const assigned = rows.find((v) => v.assignedFacilityId === p.facilityId);
+    if (assigned) {
+      out.set(p.facilityId, assigned.id);
+      continue;
+    }
+    const sameDistrict = rows.find((v) => v.districtId === p.districtId);
+    if (sameDistrict) {
+      out.set(p.facilityId, sameDistrict.id);
+      continue;
+    }
+    const demoName = `Demo Catchment Village (${p.facilityName})`;
+    const reused = rows.find(
+      (v) => v.name === demoName && v.districtId === p.districtId,
+    );
+    if (reused) {
+      out.set(p.facilityId, reused.id);
+      continue;
+    }
+    const [created] = await db
+      .insert(villages)
+      .values({
+        tenantId,
+        name: demoName,
+        code: `DEMO-${p.facilityId}`,
+        districtId: p.districtId,
+        assignedFacilityId: p.facilityId,
+      })
+      .returning({ id: villages.id });
+    out.set(p.facilityId, created.id);
+    rows.push({
+      id: created.id,
+      name: demoName,
+      districtId: p.districtId,
+      assignedFacilityId: p.facilityId,
+    });
+  }
+  return out;
+}
+
+interface DemoClientSeed {
+  slug: string;
+  name: string;
+  clientType: "child" | "pregnant_woman";
+  gender: "male" | "female";
+  ageMonths: number; // months for child; gestational age slot for pregnant
+  parentName?: string;
+  /** Vaccinations administered this quarter as offsets in days from quarterEnd. */
+  vaccinations: Array<{ vaccineName: string; daysBeforeQuarterEnd: number }>;
+}
+
+/**
+ * Demo client roster per facility. Vaccination counts (totals across all
+ * facilities) — small enough to keep monthly_reports adjustments non-negative:
+ *   BCG: 2 • OPV: 3 • Penta: 3 • MR: 2 • TT: 2
+ */
+const CHILD_FIRST_NAMES = ["Amina", "Joseph", "Grace", "Kofi", "Lulu", "Moses", "Nia"];
+const CHILD_LAST_NAMES = ["Banda", "Mwale", "Phiri", "Tembo", "Zulu", "Daka", "Nyirenda"];
+const MOTHER_NAMES = ["Mary Banda", "Ruth Mwale", "Esther Phiri", "Joyce Tembo", "Linda Zulu", "Hope Daka"];
+
+function buildClientRoster(facilityIndex: number, quarterStart: Date): DemoClientSeed[] {
+  // Deterministic per facility so re-runs are idempotent.
+  const pick = <T>(arr: T[], offset: number) => arr[(facilityIndex * 7 + offset) % arr.length];
+  const childName = (i: number) =>
+    `Demo ${pick(CHILD_FIRST_NAMES, i)} ${pick(CHILD_LAST_NAMES, i + 3)}`;
+  const motherName = (i: number) => `Demo ${pick(MOTHER_NAMES, i)}`;
+
+  // Reference points within the quarter for vaccination dates.
+  // (quarterStart is day 0; we use daysBeforeQuarterEnd ~= 1-80.)
+  return [
+    {
+      slug: "child-1",
+      name: childName(0),
+      clientType: "child",
+      gender: "female",
+      ageMonths: 3,
+      parentName: motherName(0),
+      vaccinations: [
+        { vaccineName: "BCG", daysBeforeQuarterEnd: 70 },
+        { vaccineName: "OPV", daysBeforeQuarterEnd: 40 },
+        { vaccineName: "Penta", daysBeforeQuarterEnd: 40 },
+      ],
+    },
+    {
+      slug: "child-2",
+      name: childName(1),
+      clientType: "child",
+      gender: "male",
+      ageMonths: 7,
+      parentName: motherName(1),
+      vaccinations: [
+        { vaccineName: "OPV", daysBeforeQuarterEnd: 35 },
+        { vaccineName: "Penta", daysBeforeQuarterEnd: 35 },
+      ],
+    },
+    {
+      slug: "child-3",
+      name: childName(2),
+      clientType: "child",
+      gender: "female",
+      ageMonths: 10,
+      parentName: motherName(2),
+      vaccinations: [
+        { vaccineName: "MR", daysBeforeQuarterEnd: 20 },
+      ],
+    },
+    {
+      slug: "child-4",
+      name: childName(3),
+      clientType: "child",
+      gender: "male",
+      ageMonths: 1,
+      parentName: motherName(3),
+      vaccinations: [
+        { vaccineName: "BCG", daysBeforeQuarterEnd: 25 },
+        { vaccineName: "OPV", daysBeforeQuarterEnd: 25 },
+      ],
+    },
+    {
+      slug: "child-5",
+      name: childName(4),
+      clientType: "child",
+      gender: "female",
+      ageMonths: 14,
+      parentName: motherName(4),
+      vaccinations: [
+        { vaccineName: "MR", daysBeforeQuarterEnd: 50 },
+        { vaccineName: "Penta", daysBeforeQuarterEnd: 60 },
+      ],
+    },
+    {
+      slug: "pregnant-1",
+      name: motherName(5),
+      clientType: "pregnant_woman",
+      gender: "female",
+      ageMonths: 12 * 26, // ~26 years old, gestational tracked elsewhere
+      vaccinations: [
+        { vaccineName: "TT", daysBeforeQuarterEnd: 30 },
+      ],
+    },
+    {
+      slug: "pregnant-2",
+      name: motherName(2),
+      clientType: "pregnant_woman",
+      gender: "female",
+      ageMonths: 12 * 22,
+      vaccinations: [
+        { vaccineName: "TT", daysBeforeQuarterEnd: 10 },
+      ],
+    },
+  ];
+  void quarterStart;
+}
+
+async function seedDemoClients(
+  tenantId: string,
+  picks: FacilityPick[],
+  villageByFacility: Map<number, number>,
+  vaccineConfigByName: Map<string, number>,
+): Promise<{ clientsInserted: number; vaccinationsInserted: number }> {
+  if (picks.length === 0) return { clientsInserted: 0, vaccinationsInserted: 0 };
+
+  const startMonth = (QUARTER - 1) * 3; // 0-indexed
+  const quarterStart = new Date(Date.UTC(YEAR, startMonth, 1));
+  const quarterEnd = new Date(Date.UTC(YEAR, startMonth + 3, 0)); // last day of quarter
+
+  let clientsInserted = 0;
+  let vaccinationsInserted = 0;
+
+  for (let pi = 0; pi < picks.length; pi++) {
+    const p = picks[pi];
+    const villageId = villageByFacility.get(p.facilityId);
+    if (villageId === undefined) {
+      console.warn(`  [facility ${p.facilityId}] no village available — skipping demo clients.`);
+      continue;
+    }
+
+    const roster = buildClientRoster(pi, quarterStart);
+
+    // Per-vaccine totals we will insert as client_vaccinations.
+    const addedByVaccine: Record<string, number> = {};
+    for (const c of roster) {
+      for (const v of c.vaccinations) {
+        addedByVaccine[v.vaccineName] = (addedByVaccine[v.vaccineName] ?? 0) + 1;
+      }
+    }
+
+    // Idempotency: if any demo client already exists for this facility, skip
+    // both client and vaccination inserts (and skip monthly_reports adjustment)
+    // so re-running the seed does nothing.
+    const existing = await db
+      .select({ id: clients.id, name: clients.name })
+      .from(clients)
+      .where(and(eq(clients.tenantId, tenantId), eq(clients.facilityId, p.facilityId)));
+    const existingNames = new Set(existing.map((r) => r.name));
+    const anyDemoExists = existing.some((r) => r.name.startsWith("Demo "));
+    if (anyDemoExists) continue;
+
+    // Insert clients (skip names already present in case of partial reuse).
+    const clientIdBySlug = new Map<string, string>();
+    for (const c of roster) {
+      if (existingNames.has(c.name)) continue;
+      const dob = new Date(quarterEnd);
+      dob.setUTCMonth(dob.getUTCMonth() - c.ageMonths);
+      const [row] = await db
+        .insert(clients)
+        .values({
+          tenantId,
+          facilityId: p.facilityId,
+          villageId,
+          name: c.name,
+          clientType: c.clientType,
+          dateOfBirth: dob,
+          gender: c.gender,
+          parentName: c.parentName ?? null,
+          catchmentStatus: "catchment",
+          contraindications: [],
+          isRefusal: false,
+          isCrossBorder: false,
+        })
+        .returning({ id: clients.id });
+      clientIdBySlug.set(c.slug, row.id);
+      clientsInserted++;
+    }
+
+    // Insert client_vaccinations.
+    for (const c of roster) {
+      const clientId = clientIdBySlug.get(c.slug);
+      if (!clientId) continue;
+      for (const v of c.vaccinations) {
+        const configId = vaccineConfigByName.get(v.vaccineName);
+        if (!configId) continue;
+        const administered = new Date(quarterEnd);
+        administered.setUTCDate(administered.getUTCDate() - v.daysBeforeQuarterEnd);
+        await db.insert(clientVaccinations).values({
+          tenantId,
+          clientId,
+          vaccineConfigId: configId,
+          vaccineName: v.vaccineName,
+          administeredDate: administered,
+          batchNumber: `DEMO-${v.vaccineName}-${YEAR}Q${QUARTER}`,
+          vvmStatus: 1,
+        });
+        vaccinationsInserted++;
+      }
+    }
+
+    // Subtract added vaccination counts from monthly_reports so the per-vaccine
+    // totals shown by /api/coverage stay roughly constant. Spread the
+    // subtraction across the quarter's three months, clamping each bucket at 0.
+    const months = [startMonth + 1, startMonth + 2, startMonth + 3];
+    const reports = await db
+      .select({
+        id: monthlyReports.id,
+        month: monthlyReports.month,
+        immunizations: monthlyReports.immunizations,
+      })
+      .from(monthlyReports)
+      .where(
+        and(
+          eq(monthlyReports.tenantId, tenantId),
+          eq(monthlyReports.facilityId, p.facilityId),
+          eq(monthlyReports.year, YEAR),
+        ),
+      );
+    const reportByMonth = new Map<number, { id: number; imm: Record<string, number> }>();
+    for (const r of reports) {
+      if (!months.includes(r.month)) continue;
+      reportByMonth.set(r.month, {
+        id: r.id,
+        imm: { ...((r.immunizations as Record<string, number>) ?? {}) },
+      });
+    }
+
+    for (const [vaccineName, toRemove] of Object.entries(addedByVaccine)) {
+      let remaining = toRemove;
+      for (const m of months) {
+        if (remaining <= 0) break;
+        const rep = reportByMonth.get(m);
+        if (!rep) continue;
+        const current = Number(rep.imm[vaccineName] ?? 0);
+        if (current <= 0) continue;
+        const take = Math.min(current, remaining);
+        rep.imm[vaccineName] = current - take;
+        remaining -= take;
+      }
+    }
+
+    const updates: Array<{ id: number; imm: Record<string, number> }> = Array.from(reportByMonth.values());
+    for (const { id, imm } of updates) {
+      await db
+        .update(monthlyReports)
+        .set({ immunizations: imm })
+        .where(eq(monthlyReports.id, id));
+    }
+  }
+
+  return { clientsInserted, vaccinationsInserted };
+}
+
 async function run() {
   for (const code of ["ZMB", "SSD"] as TenantCode[]) {
     const rows = await db.select().from(tenants).where(eq(tenants.code, code)).limit(1);
@@ -556,8 +933,16 @@ async function run() {
     const vr = await seedVaccineRequirements(tenant.id, picks, demographics, catchmentByFacility);
     const sp = await seedSessionPlans(tenant.id, picks, demographics, catchmentByFacility);
     const mr = await seedMonthlyReports(tenant.id, picks, demographics, catchmentByFacility);
+    const vaccineConfigByName = await ensureVaccineConfigs(tenant.id);
+    const villageByFacility = await pickVillagePerFacility(tenant.id, picks);
+    const { clientsInserted, vaccinationsInserted } = await seedDemoClients(
+      tenant.id,
+      picks,
+      villageByFacility,
+      vaccineConfigByName,
+    );
     console.log(
-      `[${code}] picked ${picks.length} facilities • +${u} users • +${pop} population rows • +${vr} vaccine requirements • +${sp} session plans • +${mr} monthly reports`,
+      `[${code}] picked ${picks.length} facilities • +${u} users • +${pop} population rows • +${vr} vaccine requirements • +${sp} session plans • +${mr} monthly reports • +${clientsInserted} demo clients • +${vaccinationsInserted} client vaccinations`,
     );
   }
 
@@ -568,7 +953,9 @@ async function run() {
       (SELECT COUNT(*) FROM population_data     p WHERE p.tenant_id = t.id) AS population_rows,
       (SELECT COUNT(*) FROM vaccine_requirements v WHERE v.tenant_id = t.id) AS vaccine_requirements,
       (SELECT COUNT(*) FROM session_plans       s WHERE s.tenant_id = t.id) AS session_plans,
-      (SELECT COUNT(*) FROM monthly_reports     m WHERE m.tenant_id = t.id) AS monthly_reports
+      (SELECT COUNT(*) FROM monthly_reports     m WHERE m.tenant_id = t.id) AS monthly_reports,
+      (SELECT COUNT(*) FROM clients              c WHERE c.tenant_id = t.id) AS clients,
+      (SELECT COUNT(*) FROM client_vaccinations  cv WHERE cv.tenant_id = t.id) AS client_vaccinations
     FROM tenants t
     WHERE t.code IN ('ZMB','SSD')
     ORDER BY t.code;
