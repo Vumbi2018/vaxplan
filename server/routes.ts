@@ -3545,6 +3545,41 @@ export async function registerRoutes(
     }
   });
 
+  // Helper: resolve and validate the parent microplan for a session write.
+  // Returns either { ok: true, parent, sessionPlanType } or { ok: false, status, message }.
+  // - parent must exist in same tenant
+  // - parent must not be locked (status='locked' or status='approved' is read-only)
+  // - if expected planType is provided, it must match the parent's
+  async function validateParentMicroplan(
+    tenantId: string,
+    microplanId: number | null | undefined,
+    expectedPlanType?: "routine" | "campaign",
+  ): Promise<
+    | { ok: true; parent: any; sessionPlanType: "routine" | "campaign" }
+    | { ok: false; status: number; message: string }
+  > {
+    if (!microplanId || !Number.isFinite(Number(microplanId))) {
+      return { ok: false, status: 400, message: "microplanId is required: a session must belong to a parent microplan." };
+    }
+    const parent = await storage.getMicroplan(tenantId, Number(microplanId));
+    if (!parent) {
+      return { ok: false, status: 400, message: `Parent microplan ${microplanId} not found in this tenant.` };
+    }
+    if (parent.status === "locked") {
+      return { ok: false, status: 409, message: `Parent microplan "${parent.name}" is locked; its sessions cannot be modified.` };
+    }
+    const parentSessionPlanType: "routine" | "campaign" =
+      parent.planType === "sia_campaign" ? "campaign" : "routine";
+    if (expectedPlanType && expectedPlanType !== parentSessionPlanType) {
+      return {
+        ok: false,
+        status: 400,
+        message: `Session planType "${expectedPlanType}" does not match parent microplan planType "${parentSessionPlanType}".`,
+      };
+    }
+    return { ok: true, parent, sessionPlanType: parentSessionPlanType };
+  }
+
   app.post("/api/sessions", ...auth, async (req: any, res) => {
     try {
       const user = req.user as any;
@@ -3554,6 +3589,22 @@ export async function registerRoutes(
       }
 
       const data = insertSessionPlanSchema.parse(req.body);
+
+      // Enforce: only facility staff (and national_admin for testing/seed) can author session plans.
+      const authorRoles = new Set(["facility_clerk", "facility_in_charge", "national_admin"]);
+      if (!authorRoles.has(dbUser.role)) {
+        return res.status(403).json({
+          message: "Forbidden: only facility staff may author session plans. District/provincial/national roles are reviewers only.",
+        });
+      }
+
+      // Validate parent microplan: required, same tenant, not locked. We do not yet have a
+      // client-asserted planType (it's omitted from the input schema), so we accept whatever
+      // the parent is and copy it down.
+      const parentCheck = await validateParentMicroplan(req.tenantId, (data as any).microplanId);
+      if (!parentCheck.ok) {
+        return res.status(parentCheck.status).json({ message: parentCheck.message });
+      }
 
       // Verify row-level geographic permissions for creating plans
       const geoContext = await getFacilityHierarchy(data.facilityId, req.tenantId);
@@ -3575,27 +3626,65 @@ export async function registerRoutes(
         }
       }
 
-      const session = await storage.createSessionPlan(req.tenantId, data);
+      // Inherit planType + campaign fields from the parent microplan. Client cannot
+      // override these — they were stripped by insertSessionPlanSchema.
+      const inherited: any = {
+        ...data,
+        planType: parentCheck.sessionPlanType,
+        campaignAntigen: parentCheck.sessionPlanType === "campaign" ? parentCheck.parent.campaignAntigen ?? null : null,
+        campaignTargetAge: parentCheck.sessionPlanType === "campaign" ? parentCheck.parent.campaignTargetAge ?? null : null,
+        campaignScope: parentCheck.sessionPlanType === "campaign" ? parentCheck.parent.campaignScope ?? null : null,
+      };
+
+      const session = await storage.createSessionPlan(req.tenantId, inherited);
       await logAudit(req, "create", "session_plan", session.id, null, session);
       res.status(201).json(session);
     } catch (error) {
       console.error("Error creating session:", error);
-      res.status(400).json({ message: "Invalid session data" });
+      res.status(400).json({ message: error instanceof Error ? error.message : "Invalid session data" });
     }
   });
 
   app.patch("/api/sessions/:id", ...auth, async (req: any, res) => {
     try {
+      const user = req.user as any;
+      const dbUser = await storage.getUser(user.id);
+      if (!dbUser) return res.status(401).json({ message: "Unauthorized" });
+      const authorRoles = new Set(["facility_clerk", "facility_in_charge", "national_admin"]);
+      if (!authorRoles.has(dbUser.role)) {
+        return res.status(403).json({
+          message: "Forbidden: only facility staff may modify session plans. District/provincial/national roles are reviewers only.",
+        });
+      }
+
       const entityId = parseInt(req.params.id);
       const oldSession = await storage.getSessionPlan(req.tenantId, entityId);
       if (!oldSession) return res.status(404).json({ message: "Session not found" });
 
+      // Disallow reparenting and disallow changing the inherited planType / campaign fields.
+      const body = { ...req.body };
+      if (body.microplanId !== undefined && Number(body.microplanId) !== Number(oldSession.microplanId)) {
+        return res.status(400).json({ message: "Cannot reparent a session to a different microplan; delete and recreate it instead." });
+      }
+      delete body.microplanId;
+      delete body.planType;
+      delete body.campaignAntigen;
+      delete body.campaignTargetAge;
+      delete body.campaignScope;
+      delete body.tenantId;
+
+      // Reject the write if the parent microplan is locked.
+      const parentCheck = await validateParentMicroplan(req.tenantId, oldSession.microplanId);
+      if (!parentCheck.ok) {
+        return res.status(parentCheck.status).json({ message: parentCheck.message });
+      }
+
       // Enforce lead time and double booking validation if scheduledDate is being updated
-      if (req.body.scheduledDate) {
+      if (body.scheduledDate) {
         const dateVal = await validatePlanningLeadTimeAndNoConflict(
           req.tenantId,
           oldSession.facilityId,
-          req.body.scheduledDate,
+          body.scheduledDate,
           entityId
         );
         if (!dateVal.isValid) {
@@ -3603,27 +3692,45 @@ export async function registerRoutes(
         }
       }
 
-      const session = await storage.updateSessionPlan(req.tenantId, entityId, req.body);
+      const session = await storage.updateSessionPlan(req.tenantId, entityId, body);
       if (!session) return res.status(404).json({ message: "Session not found" });
       await logAudit(req, "update", "session_plan", entityId, oldSession, session);
       res.json(session);
     } catch (error) {
       console.error("Error updating session:", error);
-      res.status(400).json({ message: "Failed to update session" });
+      res.status(400).json({ message: error instanceof Error ? error.message : "Failed to update session" });
     }
   });
 
   app.delete("/api/sessions/:id", ...auth, async (req: any, res) => {
     try {
+      const user = req.user as any;
+      const dbUser = await storage.getUser(user.id);
+      if (!dbUser) return res.status(401).json({ message: "Unauthorized" });
+      const authorRoles = new Set(["facility_clerk", "facility_in_charge", "national_admin"]);
+      if (!authorRoles.has(dbUser.role)) {
+        return res.status(403).json({
+          message: "Forbidden: only facility staff may delete session plans. District/provincial/national roles are reviewers only.",
+        });
+      }
+
       const entityId = parseInt(req.params.id);
       const oldSession = await storage.getSessionPlan(req.tenantId, entityId);
+      if (!oldSession) return res.status(404).json({ message: "Session not found" });
+
+      // Reject the delete if the parent microplan is locked.
+      const parentCheck = await validateParentMicroplan(req.tenantId, oldSession.microplanId);
+      if (!parentCheck.ok) {
+        return res.status(parentCheck.status).json({ message: parentCheck.message });
+      }
+
       const ok = await storage.deleteSessionPlan(req.tenantId, entityId);
       if (!ok) return res.status(404).json({ message: "Session not found" });
       await logAudit(req, "delete", "session_plan", entityId, oldSession, null);
       res.status(204).send();
     } catch (error) {
       console.error("Error deleting session:", error);
-      res.status(500).json({ message: "Failed to delete session" });
+      res.status(500).json({ message: error instanceof Error ? error.message : "Failed to delete session" });
     }
   });
 

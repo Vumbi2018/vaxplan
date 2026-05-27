@@ -392,6 +392,15 @@ export const microplanTypeEnum = pgEnum("microplan_type", [
   "sia_campaign",
 ]);
 
+// Session-plan-side planType enum. Mirrors the parent microplan's planType in
+// short form ('routine' ↔ 'facility_routine', 'campaign' ↔ 'sia_campaign').
+// Sessions must always inherit this from their parent microplan; the server
+// copies it at write time and rejects mismatched values.
+export const sessionPlanTypeEnum = pgEnum("session_plan_type", [
+  "routine",
+  "campaign",
+]);
+
 export const microplans = pgTable("microplans", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   tenantId: varchar("tenant_id").references(() => tenants.id, { onDelete: "cascade" }),
@@ -446,7 +455,10 @@ export const sessionPlans = pgTable("session_plans", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   tenantId: varchar("tenant_id").references(() => tenants.id),
   facilityId: integer("facility_id").notNull().references(() => facilities.id),
-  microplanId: integer("microplan_id").references(() => microplans.id, { onDelete: "cascade" }),
+  // Every session MUST belong to a parent microplan. Enforced by server validation
+  // (POST/PATCH /api/sessions verify parent exists, same tenant, matching planType,
+  // and parent is not locked).
+  microplanId: integer("microplan_id").notNull().references(() => microplans.id, { onDelete: "cascade" }),
   name: varchar("name", { length: 255 }).notNull(),
   sessionType: sessionTypeEnum("session_type").notNull(),
   quarter: integer("quarter").notNull(),
@@ -461,7 +473,11 @@ export const sessionPlans = pgTable("session_plans", {
   humanResources: text("human_resources"),
   keyStakeholders: text("key_stakeholders"),
   vaccineAdjustments: jsonb("vaccine_adjustments").default({}),
-  planType: varchar("plan_type", { length: 50 }).default("routine"),
+  // Strict enum, copied from parent microplan at write-time. Never set directly by clients.
+  planType: sessionPlanTypeEnum("plan_type").notNull().default("routine"),
+  // @deprecated — these mirror the parent microplan's campaign fields. Server copies
+  // them on create from the parent and rejects client-supplied values. Kept on the row
+  // for read-time convenience and to avoid breaking offline clients.
   campaignAntigen: varchar("campaign_antigen", { length: 100 }),
   campaignTargetAge: varchar("campaign_target_age", { length: 100 }),
   campaignScope: varchar("campaign_scope", { length: 100 }),
@@ -470,7 +486,10 @@ export const sessionPlans = pgTable("session_plans", {
   isAchieved: boolean("is_achieved").default(false).notNull(), // real-time map checklist progress tracking
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-}, (table) => [index("idx_session_plans_tenant").on(table.tenantId)]);
+}, (table) => [
+  index("idx_session_plans_tenant").on(table.tenantId),
+  index("idx_session_plans_microplan").on(table.microplanId),
+]);
 
 // Session Villages (junction table)
 export const sessionVillages = pgTable("session_villages", {
@@ -892,9 +911,17 @@ export const insertMicroplanSchema = createInsertSchema(microplans).omit({
 export type Microplan = typeof microplans.$inferSelect;
 export type InsertMicroplan = z.infer<typeof insertMicroplanSchema>;
 
+// Campaign fields and planType are *inherited* from the parent microplan. The
+// server copies them at write-time from the microplan referenced by microplanId,
+// so they must NOT be accepted from clients (the API would silently let routine
+// sessions claim campaign metadata otherwise).
 export const insertSessionPlanSchema = createInsertSchema(sessionPlans).omit({
   createdAt: true,
   updatedAt: true,
+  planType: true,
+  campaignAntigen: true,
+  campaignTargetAge: true,
+  campaignScope: true,
 });
 // export type SessionPlan = typeof sessionPlans.$inferSelect;
 

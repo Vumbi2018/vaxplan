@@ -65,13 +65,17 @@ import {
   type Province,
   type District,
   type InsertSessionPlan,
+  type Microplan,
 } from "@shared/schema";
 import { z } from "zod";
 
 const sessionFormSchema = insertSessionPlanSchema.extend({
   name: z.string().min(2, "Name is required"),
   facilityId: z.number({ required_error: "Pick a facility before saving" }),
+  microplanId: z.number({ required_error: "Pick a parent microplan before saving" }),
 });
+
+type PlanTypeFilter = "routine" | "campaign";
 
 const transportIcons: Record<string, typeof Car> = {
   walking: Footprints,
@@ -80,10 +84,19 @@ const transportIcons: Record<string, typeof Car> = {
   air: Plane,
 };
 
-export default function SessionPlanning() {
+export default function SessionPlanning({
+  planTypeFilter = "routine",
+}: { planTypeFilter?: PlanTypeFilter } = {}) {
   const { toast } = useToast();
   const { user } = useAuth();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const parentMicroplanTypeForRoute: "facility_routine" | "sia_campaign" =
+    planTypeFilter === "campaign" ? "sia_campaign" : "facility_routine";
+  const pageTitle = planTypeFilter === "campaign" ? "SIA Campaigns" : "Routine Microplan";
+  const pageSubtitle =
+    planTypeFilter === "campaign"
+      ? "Plan supplementary immunization campaigns (measles, polio, MR catch-up) and the sessions inside each campaign microplan."
+      : "Plan routine immunization sessions inside each facility's quarterly microplan.";
   const { data: tenantInfo } = useQuery<any>({
     queryKey: ["/api/me/tenant"],
   });
@@ -185,6 +198,25 @@ export default function SessionPlanning() {
     },
   });
 
+  // Master microplans of the route's planType. Required for the cascade:
+  // a session must belong to a parent microplan of matching planType.
+  const { data: allMicroplans } = useQuery<Microplan[]>({
+    queryKey: ["/api/microplans"],
+    queryFn: async () => {
+      const res = await fetch("/api/microplans");
+      if (!res.ok) throw new Error("Failed to load microplans");
+      return res.json();
+    },
+  });
+
+  const microplansOfRouteType = useMemo(
+    () =>
+      (allMicroplans ?? []).filter(
+        (m) => m.planType === parentMicroplanTypeForRoute,
+      ),
+    [allMicroplans, parentMicroplanTypeForRoute],
+  );
+
   const filteredDistricts = useMemo(
     () => (provinceId ? (districts ?? []).filter((d) => Number(d.provinceId) === Number(provinceId)) : []),
     [districts, provinceId],
@@ -227,8 +259,32 @@ export default function SessionPlanning() {
       status: "planned",
       approvalStatus: "draft",
       facilityId: user?.facilityId ?? undefined,
+      microplanId: undefined as any,
     },
   });
+
+  // When a parent microplan is picked, copy its facility/quarter/year into the
+  // session form so the user does not have to re-enter them (and they always match).
+  const watchedMicroplanId = form.watch("microplanId" as any);
+  useEffect(() => {
+    if (!watchedMicroplanId) return;
+    const mp = microplansOfRouteType.find((m) => m.id === Number(watchedMicroplanId));
+    if (!mp) return;
+    if (mp.facilityId) {
+      form.setValue("facilityId", mp.facilityId);
+      const fac = (facilities ?? []).find((f) => f.id === mp.facilityId);
+      if (fac) {
+        const d = (districts ?? []).find((x) => x.id === fac.districtId);
+        if (d) {
+          setProvinceId(d.provinceId);
+          setDistrictId(fac.districtId);
+        }
+      }
+    }
+    if (mp.quarter) form.setValue("quarter", mp.quarter);
+    if (mp.year) form.setValue("year", mp.year);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [watchedMicroplanId, microplansOfRouteType, facilities, districts]);
 
   // Keep facilityId in the form synced with the cascade
   useEffect(() => {
@@ -276,6 +332,8 @@ export default function SessionPlanning() {
           id: newId,
           tenantId: user?.tenantId ?? "SSD",
           facilityId: data.facilityId,
+          microplanId: (data as any).microplanId,
+          planType: planTypeFilter,
           name: data.name,
           sessionType: data.sessionType,
           quarter: data.quarter,
@@ -319,12 +377,13 @@ export default function SessionPlanning() {
         status: "planned",
         approvalStatus: "draft",
         facilityId: user?.facilityId ?? undefined,
+        microplanId: undefined as any,
       });
       toast({
-        title: navigator.onLine ? "Microplan submitted" : "Microplan queued offline",
+        title: navigator.onLine ? "Session saved" : "Session queued offline",
         description: navigator.onLine
-          ? "Your microplan has been saved as a draft. Submit it for approval when you're ready."
-          : "Saved locally. Your microplan will sync automatically once internet is restored.",
+          ? `Your ${planTypeFilter === "campaign" ? "campaign" : "routine"} session has been saved as a draft. Submit it for approval when you're ready.`
+          : "Saved locally. Your session will sync automatically once internet is restored.",
       });
     },
     onError: (error: Error) => {
@@ -461,14 +520,29 @@ export default function SessionPlanning() {
   );
 
   const filteredSessions = useMemo(() => {
+    // Build a fast lookup of microplanId → microplan.planType so we can filter
+    // sessions to those whose parent matches the route's planType. We trust the
+    // session.planType column too (it is server-copied from the parent), but
+    // joining the parent keeps the UI consistent if legacy rows ever drift.
+    const microplanTypeById = new Map<number, string>();
+    (allMicroplans ?? []).forEach((m) => microplanTypeById.set(m.id, m.planType));
+
     const enriched = withGeoColumns((sessions ?? []) as any[], geoMaps);
     return enriched.filter((item) => {
+      const parentType = item.microplanId ? microplanTypeById.get(Number(item.microplanId)) : undefined;
+      const sessionPlanType: string =
+        parentType === "sia_campaign"
+          ? "campaign"
+          : parentType === "facility_routine"
+            ? "routine"
+            : (item as any).planType || "routine";
+      if (sessionPlanType !== planTypeFilter) return false;
       if (geoFilterProvinceId !== null && item._geoProvinceId !== geoFilterProvinceId) return false;
       if (geoFilterDistrictId !== null && item._geoDistrictId !== geoFilterDistrictId) return false;
       if (geoFilterFacilityId !== null && Number((item as any).facilityId) !== geoFilterFacilityId) return false;
       return true;
     });
-  }, [sessions, geoMaps, geoFilterProvinceId, geoFilterDistrictId, geoFilterFacilityId]);
+  }, [sessions, allMicroplans, geoMaps, geoFilterProvinceId, geoFilterDistrictId, geoFilterFacilityId, planTypeFilter]);
 
   const columns = [
     {
@@ -593,18 +667,17 @@ export default function SessionPlanning() {
   ];
 
   const onSubmit = (data: InsertSessionPlan) => {
-    // Avoid plan duplicates (facilityId, quarter, year, sessionType)
+    // Avoid duplicates scoped to (parent microplan, sessionType): same session
+    // type cannot appear twice inside one microplan.
     const exists = (sessions ?? []).some(
       (s) =>
-        s.facilityId === data.facilityId &&
-        s.quarter === data.quarter &&
-        s.year === data.year &&
+        Number((s as any).microplanId) === Number((data as any).microplanId) &&
         s.sessionType === data.sessionType
     );
     if (exists) {
       toast({
-        title: "Duplicate Plan Blocked",
-        description: "A microplanning session plan already exists for this facility, quarter, year, and session type.",
+        title: "Duplicate session blocked",
+        description: "A session of this type already exists inside the selected microplan.",
         variant: "destructive",
       });
       return;
@@ -612,11 +685,12 @@ export default function SessionPlanning() {
     createMutation.mutate(data);
   };
 
-  const plannedSessions = sessions?.filter((s) => s.status === "planned") || [];
-  const scheduledSessions = sessions?.filter((s) => s.status === "scheduled") || [];
-  const conductedSessions = sessions?.filter((s) => s.status === "conducted") || [];
-  const pendingApproval =
-    sessions?.filter((s) => s.approvalStatus && s.approvalStatus !== "draft" && s.approvalStatus !== "approved") || [];
+  const plannedSessions = filteredSessions.filter((s) => s.status === "planned");
+  const scheduledSessions = filteredSessions.filter((s) => s.status === "scheduled");
+  const conductedSessions = filteredSessions.filter((s) => s.status === "conducted");
+  const pendingApproval = filteredSessions.filter(
+    (s) => s.approvalStatus && s.approvalStatus !== "draft" && s.approvalStatus !== "approved",
+  );
 
   if (loadingSessions) {
     return (
@@ -640,36 +714,91 @@ export default function SessionPlanning() {
       <MicroplanStepper currentStep={3} />
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold">Microplans</h1>
-          <p className="text-muted-foreground text-sm">
-            {isCreator
-              ? "Build your facility's vaccination microplan and submit it for approval."
-              : isReviewer
-                ? "Review microplans submitted by facility staff and act on them in Approvals."
-                : "Browse vaccination microplans across the country."}
-          </p>
+          <h1 className="text-2xl font-bold" data-testid="text-page-title">{pageTitle}</h1>
+          <p className="text-muted-foreground text-sm">{pageSubtitle}</p>
+          {isCreator && microplansOfRouteType.length === 0 && (
+            <Alert className="mt-3 max-w-xl">
+              <Info className="h-4 w-4" />
+              <AlertTitle>No {planTypeFilter === "campaign" ? "campaign" : "routine"} microplan yet</AlertTitle>
+              <AlertDescription>
+                Sessions must belong to a parent microplan. Create one in the{" "}
+                <Link href="/develop-microplan" className="underline font-medium">
+                  Microplan Builder
+                </Link>{" "}
+                first, then come back here to add sessions.
+              </AlertDescription>
+            </Alert>
+          )}
         </div>
 
         {isCreator && (
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
-              <Button data-testid="button-add-session">
+              <Button
+                data-testid="button-add-session"
+                disabled={microplansOfRouteType.length === 0}
+                title={microplansOfRouteType.length === 0 ? "Create a parent microplan first" : undefined}
+              >
                 <Plus className="h-4 w-4 mr-1" />
-                New microplan
+                New session
               </Button>
             </DialogTrigger>
             <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle>Create a microplan</DialogTitle>
+                <DialogTitle>
+                  Add a session to a {planTypeFilter === "campaign" ? "campaign" : "routine"} microplan
+                </DialogTitle>
+                <DialogDescription>
+                  Pick the parent microplan first — facility, quarter, and year are inherited from it
+                  and cannot be changed on the session.
+                </DialogDescription>
               </DialogHeader>
               <Form {...form}>
                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                   <FormField
                     control={form.control}
+                    name={"microplanId" as any}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Parent microplan *</FormLabel>
+                        <Select
+                          value={field.value ? String(field.value) : ""}
+                          onValueChange={(v) => field.onChange(parseInt(v))}
+                        >
+                          <FormControl>
+                            <SelectTrigger data-testid="select-parent-microplan">
+                              <SelectValue
+                                placeholder={
+                                  microplansOfRouteType.length
+                                    ? `Pick a ${planTypeFilter === "campaign" ? "campaign" : "routine"} microplan`
+                                    : "No microplans available — create one in the Builder"
+                                }
+                              />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {microplansOfRouteType.map((m) => (
+                              <SelectItem
+                                key={m.id}
+                                value={String(m.id)}
+                                data-testid={`option-microplan-${m.id}`}
+                              >
+                                {m.name} · Q{m.quarter} {m.year}
+                                {m.status === "locked" ? " · locked" : ""}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
                     name="name"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Microplan name *</FormLabel>
+                        <FormLabel>Session name *</FormLabel>
                         <FormControl>
                           <Input
                             placeholder="e.g. Q1 outreach — Riverside village"

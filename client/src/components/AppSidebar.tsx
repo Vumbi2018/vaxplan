@@ -53,8 +53,9 @@ const mainNavItems = [
 ];
 
 const planningNavItems = [
-  { title: "Develop Microplan", path: "/develop-microplan", icon: Sparkles },
-  { title: "Session Planning", path: "/sessions", icon: Calendar },
+  { title: "Routine Microplan", path: "/microplans/routine", icon: Calendar },
+  { title: "SIA Campaigns", path: "/microplans/campaigns", icon: Sparkles },
+  { title: "Microplan Builder", path: "/develop-microplan", icon: ClipboardList },
   { title: "Stock Ledger", path: "/stock", icon: Package },
   { title: "Hard-to-Reach", path: "/htr", icon: AlertTriangle },
   { title: "Budget Planning", path: "/budget", icon: Wallet },

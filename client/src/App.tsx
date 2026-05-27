@@ -70,7 +70,16 @@ function AuthenticatedRouter() {
       <Route path="/facilities" component={Facilities} />
       <Route path="/develop-microplan" component={MicroplanBuilder} />
       <Route path="/population" component={Population} />
-      <Route path="/sessions" component={SessionPlanning} />
+      <Route path="/microplans/routine">
+        <SessionPlanning planTypeFilter="routine" />
+      </Route>
+      <Route path="/microplans/campaigns">
+        <SessionPlanning planTypeFilter="campaign" />
+      </Route>
+      {/* Back-compat: /sessions now redirects to the routine microplan workspace. */}
+      <Route path="/sessions">
+        <SessionPlanning planTypeFilter="routine" />
+      </Route>
       <Route path="/sessions/:id/day-plans" component={SessionDayPlans} />
       <Route path="/clients" component={ClientLogbook} />
       <Route path="/stock">
