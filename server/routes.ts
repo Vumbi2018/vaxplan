@@ -2990,13 +2990,18 @@ export async function registerRoutes(
       }
 
       const filePath = join(resourcesDir, geotiffFile);
-      // 7-day browser cache for large GeoTIFF binary rasters.
-      // These population grids are updated infrequently — serving from disk cache is safe
-      // and completely eliminates the 14–63 MB network download on every layer toggle.
-      res.setHeader("Cache-Control", "public, max-age=604800, stale-while-revalidate=86400");
-      res.setHeader("Content-Type", "application/octet-stream");
-      res.setHeader("Content-Disposition", `attachment; filename="${geotiffFile}"`);
-      
+      // 7-day per-user browser cache for large GeoTIFF binary rasters.
+      // Marked `private` because this endpoint is session-authenticated; intermediate
+      // proxies must not share it across users. `immutable` lets the browser skip
+      // revalidation entirely — when we ship a new raster vintage the filename changes
+      // (and we also vary the URL by tenant), so the cache key naturally rotates.
+      const { statSync } = await import("fs");
+      const fileStat = statSync(filePath);
+      res.setHeader("Cache-Control", "private, max-age=604800, immutable");
+      res.setHeader("Content-Type", "image/tiff");
+      res.setHeader("Content-Length", String(fileStat.size));
+      res.setHeader("Content-Disposition", `inline; filename="${geotiffFile}"`);
+
       const stream = createReadStream(filePath);
       stream.pipe(res);
     } catch (error: any) {

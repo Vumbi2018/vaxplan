@@ -1528,12 +1528,18 @@ function GeoTIFFOverlay({ url, opacity = 0.65, onRasterLoaded, cacheScope, autoF
     }
 
     loadRaster().catch((err) => {
-      console.error("GeoTIFF Layer error:", err);
+      console.error("[GeoTIFF] Layer load failed:", { url, cacheScope, tenantId, error: err?.message || err });
       if (!navigator.onLine) {
         toast({
           title: "Offline Population Layer",
           description: "Gridded population density is currently unavailable offline. Load the map once while online to cache this layer.",
           variant: "default",
+        });
+      } else {
+        toast({
+          title: "Population Layer Unavailable",
+          description: `Could not load gridded population: ${err?.message || "unknown error"}.`,
+          variant: "destructive",
         });
       }
     });
@@ -3623,12 +3629,20 @@ export function MapView({
             })}
 
         {/* GeoTIFF population gridded density overlay.
-            Gated on tenantInfo?.id so the overlay never loads with an
-            undefined cache scope (which would fall back to the home tenant
-            and briefly serve a foreign-country raster on first render). */}
+            We wait for tenantInfo to resolve before rendering so the cache
+            scope reflects the active *view* tenant — otherwise a raster
+            cached under the user's home tenant could briefly render in the
+            wrong country. Once tenantInfo is available, the URL itself
+            includes the tenant code as a cache buster so a stale cached
+            raster from another country can never satisfy this request. */}
         {layers.populationGeoTIFF && tenantInfo?.id && (
-          <GeoTIFFOverlay 
-            url={selectedRasterFile ? `/api/resources/geotiff?file=${selectedRasterFile}` : "/api/resources/geotiff"} 
+          <GeoTIFFOverlay
+            key={`geotiff-${tenantInfo.id}-${selectedRasterFile || "default"}`}
+            url={
+              selectedRasterFile
+                ? `/api/resources/geotiff?file=${encodeURIComponent(selectedRasterFile)}&tenant=${encodeURIComponent(tenantInfo.code || tenantInfo.id)}`
+                : `/api/resources/geotiff?tenant=${encodeURIComponent(tenantInfo.code || tenantInfo.id)}`
+            }
             onRasterLoaded={(gr) => {
               georasterRef.current = gr;
             }}
