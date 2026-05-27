@@ -640,6 +640,24 @@ async function ensureVaccineConfigs(tenantId: string): Promise<Map<string, numbe
 const MAX_VILLAGES_PER_FACILITY = 5;
 const MIN_VILLAGES_PER_FACILITY = 4;
 
+/**
+ * Compute a clustered lat/lng offset from a facility location.
+ * Uses a golden-angle spiral so successive villages spread out evenly
+ * within ~1.5–5 km of the facility.
+ */
+function offsetCoord(
+  baseLat: number,
+  baseLng: number,
+  index: number,
+): { lat: number; lng: number; distanceKm: number } {
+  const angle = (index * 137.508) * (Math.PI / 180);
+  const distanceKm = 1.5 + (index % 4) * 1.2; // 1.5, 2.7, 3.9, 5.1, repeating
+  const dLat = (distanceKm / 111) * Math.cos(angle);
+  const cosLat = Math.cos((baseLat * Math.PI) / 180);
+  const dLng = (distanceKm / (111 * Math.max(0.2, cosLat))) * Math.sin(angle);
+  return { lat: baseLat + dLat, lng: baseLng + dLng, distanceKm };
+}
+
 async function pickVillagesPerFacility(
   tenantId: string,
   picks: FacilityPick[],
@@ -653,9 +671,30 @@ async function pickVillagesPerFacility(
       name: villages.name,
       districtId: villages.districtId,
       assignedFacilityId: villages.assignedFacilityId,
+      latitude: villages.latitude,
+      longitude: villages.longitude,
     })
     .from(villages)
     .where(eq(villages.tenantId, tenantId));
+
+  // Fetch facility coords so demo villages can be anchored nearby on the map.
+  const facilityIds = picks.map((p) => p.facilityId);
+  const facilityRows = await db
+    .select({
+      id: facilities.id,
+      latitude: facilities.latitude,
+      longitude: facilities.longitude,
+    })
+    .from(facilities)
+    .where(and(eq(facilities.tenantId, tenantId), inArray(facilities.id, facilityIds)));
+  const facilityCoords = new Map<number, { lat: number; lng: number } | null>();
+  for (const f of facilityRows) {
+    if (f.latitude != null && f.longitude != null) {
+      facilityCoords.set(f.id, { lat: Number(f.latitude), lng: Number(f.longitude) });
+    } else {
+      facilityCoords.set(f.id, null);
+    }
+  }
 
   for (const p of picks) {
     const pool: number[] = [];
@@ -668,20 +707,43 @@ async function pickVillagesPerFacility(
         if (v.districtId === p.districtId && !pool.includes(v.id)) pool.push(v.id);
       }
     }
+
+    const base = facilityCoords.get(p.facilityId) ?? null;
+
     // Top up to MIN_VILLAGES_PER_FACILITY so Missed Communities scoring has
     // a meaningful ranked list. Create demo catchment villages as needed,
-    // reusing any prior demo rows from previous seed runs.
+    // reusing any prior demo rows from previous seed runs. Demo villages are
+    // anchored near the facility (clustered within ~5 km) so they appear as
+    // map pins on the Missed Communities view.
     let topUpIndex = 1;
     while (pool.length < MIN_VILLAGES_PER_FACILITY) {
       const demoName =
         topUpIndex === 1
           ? `Demo Catchment Village (${p.facilityName})`
           : `Demo Catchment Village ${topUpIndex} (${p.facilityName})`;
+      const coord = base ? offsetCoord(base.lat, base.lng, topUpIndex) : null;
+      // The last village in each facility's cluster is flagged hard-to-reach
+      // so the missed-community score gets an HTR boost and the demo
+      // surfaces a realistic mix on the map.
+      const isHardToReach = topUpIndex === MIN_VILLAGES_PER_FACILITY;
       const reused = rows.find(
         (v) => v.name === demoName && v.districtId === p.districtId,
       );
       if (reused) {
         if (!pool.includes(reused.id)) pool.push(reused.id);
+        // Backfill lat/lng on demo villages from earlier seed runs that
+        // were created before coordinates were tracked.
+        if (coord && (reused.latitude == null || reused.longitude == null)) {
+          await db
+            .update(villages)
+            .set({
+              latitude: String(coord.lat.toFixed(7)),
+              longitude: String(coord.lng.toFixed(7)),
+              distanceToFacility: String(coord.distanceKm.toFixed(2)),
+              isHardToReach,
+            })
+            .where(eq(villages.id, reused.id));
+        }
       } else {
         const [created] = await db
           .insert(villages)
@@ -691,6 +753,10 @@ async function pickVillagesPerFacility(
             code: `DEMO-${p.facilityId}-${topUpIndex}`,
             districtId: p.districtId,
             assignedFacilityId: p.facilityId,
+            latitude: coord ? String(coord.lat.toFixed(7)) : null,
+            longitude: coord ? String(coord.lng.toFixed(7)) : null,
+            distanceToFacility: coord ? String(coord.distanceKm.toFixed(2)) : null,
+            isHardToReach,
           })
           .returning({ id: villages.id });
         pool.push(created.id);
@@ -699,6 +765,8 @@ async function pickVillagesPerFacility(
           name: demoName,
           districtId: p.districtId,
           assignedFacilityId: p.facilityId,
+          latitude: coord ? String(coord.lat.toFixed(7)) : null,
+          longitude: coord ? String(coord.lng.toFixed(7)) : null,
         });
       }
       topUpIndex += 1;
@@ -1163,6 +1231,26 @@ async function seedImportedCoverage(
     if ((r.under1 ?? 0) > prev) popByVillage.set(r.villageId, r.under1 ?? 0);
   }
 
+  // Per-facility coverage tier so the Missed Communities ranked list is
+  // visibly differentiated: the first picked facility is clearly under-served
+  // (~30%), the next is mid (~62%), and the last is well-covered (~92%).
+  // This produces a clear story on the map: the under-served facility's
+  // villages dominate the top of the ranking, while the well-covered
+  // facility's villages drop off (and often score 0, so they're filtered out
+  // by the scorer entirely).
+  const FACILITY_COVERAGE_TIERS = [0.30, 0.62, 0.92];
+  // Per-antigen adjustment so antigens with longer schedules (PENTA3, MR2)
+  // look worse than first doses — matching the typical dropout pattern.
+  const ANTIGEN_COVERAGE_ADJUST: Record<string, number> = {
+    BCG: 0.05,
+    OPV1: 0.02,
+    PENTA1: 0.0,
+    PENTA3: -0.12,
+    MEASLES1: -0.05,
+    MEASLES2: -0.18,
+    OPV3: -0.10,
+  };
+
   let inserted = 0;
   for (let pi = 0; pi < picks.length; pi++) {
     const p = picks[pi];
@@ -1170,15 +1258,17 @@ async function seedImportedCoverage(
     const registeredUnder1 = facVillages.reduce((s, vid) => s + (popByVillage.get(vid) ?? 0), 0);
     if (registeredUnder1 === 0) continue;
 
-    for (const period of periods) {
+    const tier = FACILITY_COVERAGE_TIERS[pi % FACILITY_COVERAGE_TIERS.length];
+
+    for (let periodIdx = 0; periodIdx < periods.length; periodIdx++) {
+      const period = periods[periodIdx];
       const rows: Array<typeof importedCoverage.$inferInsert> = [];
       for (let ai = 0; ai < COVERAGE_ANTIGENS.length; ai++) {
         const antigen = COVERAGE_ANTIGENS[ai];
-        // Deliberately under-cover: 30%-70% depending on facility/antigen so
-        // the missed-community ranking has meaningful unserved estimates and
-        // facilities differ from each other.
-        const seed = (p.facilityId * 13 + ai * 7 + pi * 5) % 41;
-        const coverage = 0.3 + (seed / 41) * 0.4; // 0.30 – 0.70
+        // Gentle period drift so trends look real across the last 3 months.
+        const periodDrift = (periodIdx - 1) * 0.03;
+        const adjust = ANTIGEN_COVERAGE_ADJUST[antigen] ?? 0;
+        const coverage = Math.max(0.05, Math.min(0.98, tier + adjust + periodDrift));
         const doses = Math.max(1, Math.round(registeredUnder1 * coverage));
         rows.push({
           tenantId,
