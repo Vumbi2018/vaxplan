@@ -698,14 +698,15 @@ async function pickVillagesPerFacility(
 
   for (const p of picks) {
     const pool: number[] = [];
+    // Only count villages already assigned to THIS facility. We deliberately
+    // do not fall back to same-district villages assigned to other facilities:
+    // those villages would never show up on the facility-detail / edit maps
+    // (which filter by assignedFacilityId), so the demo would silently look
+    // empty on those views. Instead, top up with demo catchment villages
+    // below so every picked facility ends up with at least
+    // MIN_VILLAGES_PER_FACILITY assigned villages with lat/lng.
     for (const v of rows) {
       if (v.assignedFacilityId === p.facilityId) pool.push(v.id);
-    }
-    if (pool.length < MAX_VILLAGES_PER_FACILITY) {
-      for (const v of rows) {
-        if (pool.length >= MAX_VILLAGES_PER_FACILITY) break;
-        if (v.districtId === p.districtId && !pool.includes(v.id)) pool.push(v.id);
-      }
     }
 
     const base = facilityCoords.get(p.facilityId) ?? null;
