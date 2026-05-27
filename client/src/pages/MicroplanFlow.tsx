@@ -8,6 +8,7 @@ const DashboardPage = lazy(() => import("@/pages/Dashboard"));
 const PopulationPage = lazy(() => import("@/pages/Population"));
 const HardToReachPage = lazy(() => import("@/pages/HardToReach"));
 const SessionPlanningPage = lazy(() => import("@/pages/SessionPlanning"));
+const SupervisionPage = lazy(() => import("@/pages/Supervision"));
 
 // Which step renders which module inline (Plan phase only, per user brief).
 const INLINE_MODULES: Record<number, React.ComponentType<any>> = {
@@ -15,6 +16,7 @@ const INLINE_MODULES: Record<number, React.ComponentType<any>> = {
   2: PopulationPage,
   3: HardToReachPage,
   4: SessionPlanningPage,
+  10: SupervisionPage,
 };
 import {
   PHASES,

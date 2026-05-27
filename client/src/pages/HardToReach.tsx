@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
 import { DataTable } from "@/components/DataTable";
 import { GeoCascadeFilter } from "@/components/GeoCascadeFilter";
+import { recommendStrategy, toneClasses } from "@/lib/strategyRecommendation";
 import { buildGeoMaps, withGeoColumns } from "@/lib/geoHierarchy";
 import { MapView } from "@/components/MapView";
 import { Slider } from "@/components/ui/slider";
@@ -377,6 +378,34 @@ export default function HardToReach() {
           <div className="flex items-center gap-2">
             <Progress value={score} className="w-16 h-2" />
             <span className="text-sm font-medium">{score}</span>
+          </div>
+        );
+      },
+    },
+    {
+      key: "_recommendedStrategy",
+      header: "Recommended Strategy",
+      render: (item: HtrVillageData) => {
+        const access = String(item.seasonalAccessibility || "").toLowerCase();
+        const seasonal =
+          access.includes("poor") || access.includes("limited") ? "limited" :
+          access.includes("seasonal") || access.includes("dry") ? "dry_only" :
+          "all_year";
+        const terrainMap: Record<number, string> = { 1: "easy", 2: "moderate", 3: "difficult", 4: "very_difficult", 5: "very_difficult" };
+        const insecMap: Record<number, string> = { 1: "none", 2: "low", 3: "moderate", 4: "high", 5: "high" };
+        const rec = recommendStrategy({
+          distanceKm: Number(item.distanceToFacility) || 0,
+          travelTimeMinutes: Number(item.travelTimeMinutes) || null,
+          terrainDifficulty: terrainMap[item.terrainDifficulty as number] || "easy",
+          isHardToReach: !!item.isHardToReach,
+          insecurityLevel: insecMap[item.insecurityLevel as number] || "none",
+          seasonalAccessibility: seasonal,
+        });
+        const tc = toneClasses(rec.tone);
+        return (
+          <div className={`inline-flex flex-col gap-0.5 px-2 py-1 rounded-lg border ${tc.bg} ${tc.border}`} title={rec.reason}>
+            <span className={`text-xs font-semibold ${tc.text}`}>{rec.strategyLabel}</span>
+            <span className="text-[10px] text-muted-foreground">{rec.frequencyLabel}</span>
           </div>
         );
       },

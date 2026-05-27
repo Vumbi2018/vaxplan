@@ -268,7 +268,7 @@ export function buildMicroplanSteps(activeSessionId?: number | null): MicroplanS
     },
     {
       number: 10, title: "Supportive Supervision Plan", short: "Supervision",
-      basePath: "/standards-alignment", icon: ClipboardCheck, phase: "deliver",
+      basePath: "/supervision", icon: ClipboardCheck, phase: "deliver",
       hint: "Schedule a supervisory visit per facility per quarter.",
       redComponent: "RED 2 — Supportive supervision",
       whatToDo: [
@@ -279,7 +279,7 @@ export function buildMicroplanSteps(activeSessionId?: number | null): MicroplanS
       outputs: [
         "Supervisory visit calendar with checklist references.",
       ],
-      moduleLabel: "Open Standards Alignment",
+      moduleLabel: "Open Supervision",
     },
     {
       number: 11, title: "Approval Cascade", short: "Approval",

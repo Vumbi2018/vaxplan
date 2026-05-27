@@ -28,6 +28,7 @@ import {
   HeartPulse,
   Globe,
   ClipboardList,
+  ClipboardCheck,
   Package,
   Share2,
   Sparkles,
@@ -80,6 +81,7 @@ const adminNavItems = [
 ];
 
 const systemNavItems = [
+  { title: "Supervision", path: "/supervision", icon: ClipboardCheck },
   { title: "Standards Alignment", path: "/standards-alignment", icon: ShieldCheck },
   { title: "Settings", path: "/settings", icon: Settings },
   { title: "Help", path: "/help", icon: HelpCircle },

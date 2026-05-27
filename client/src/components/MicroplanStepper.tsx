@@ -137,7 +137,7 @@ function buildSteps(activeSessionId?: number): StepDef[] {
     { number: 7,  title: "Demand & Mobilization",         short: "Demand",      basePath: "/mobilization",         icon: Megaphone,       hint: "Tell the community when & where" },
     { number: 8,  title: "Logistics & Transport",         short: "Logistics",   basePath: dayPlansPath,            icon: Truck,           hint: "Plan vehicles, fuel & security" },
     { number: 9,  title: "Budget & Funding Source",       short: "Budget",      basePath: "/budget",               icon: Wallet,          hint: "Cost every line, tag the funder" },
-    { number: 10, title: "Supportive Supervision",        short: "Supervision", basePath: "/standards-alignment",  icon: ClipboardCheck,  hint: "Schedule a visit per facility per quarter" },
+    { number: 10, title: "Supportive Supervision",        short: "Supervision", basePath: "/supervision",  icon: ClipboardCheck,  hint: "Schedule a visit per facility per quarter" },
     { number: 11, title: "Approval Cascade",              short: "Approval",    basePath: "/approvals",            icon: ShieldCheck,     hint: "Submit → district → national" },
     { number: 12, title: "Execution & Review",            short: "Execution",   basePath: "/clients",              icon: Activity,        hint: "Record doses & review defaulters" },
   ];

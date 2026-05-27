@@ -15,6 +15,7 @@ import {
   budgetItems,
   vaccineRequirements,
   mobilizationActivities,
+  supervisionVisits,
   approvalRequests,
   auditLogs,
   htrScores,
@@ -56,6 +57,8 @@ import {
   type InsertVaccineRequirement,
   type MobilizationActivity,
   type InsertMobilizationActivity,
+  type SupervisionVisit,
+  type InsertSupervisionVisit,
   type ApprovalRequest,
   type InsertApprovalRequest,
   type AuditLog,
@@ -197,6 +200,14 @@ export interface IStorage {
   getMobilizationActivities(tenantId: string, facilityId?: number): Promise<MobilizationActivity[]>;
   createMobilizationActivity(tenantId: string, data: InsertMobilizationActivity): Promise<MobilizationActivity>;
   updateMobilizationActivity(tenantId: string, id: number, data: Partial<InsertMobilizationActivity>): Promise<MobilizationActivity | undefined>;
+
+  getSupervisionVisits(tenantId: string, filters?: { facilityId?: number; microplanId?: number; status?: string }): Promise<SupervisionVisit[]>;
+  getSupervisionVisit(tenantId: string, id: number): Promise<SupervisionVisit | undefined>;
+  createSupervisionVisit(tenantId: string, data: InsertSupervisionVisit): Promise<SupervisionVisit>;
+  updateSupervisionVisit(tenantId: string, id: number, data: Partial<InsertSupervisionVisit>): Promise<SupervisionVisit | undefined>;
+  deleteSupervisionVisit(tenantId: string, id: number): Promise<boolean>;
+
+  listAuditLogs(tenantId: string, filters?: { userId?: string; entityType?: string; entityId?: string; limit?: number }): Promise<AuditLog[]>;
 
   getApprovalRequests(tenantId: string, status?: string): Promise<ApprovalRequest[]>;
   getApprovalRequest(tenantId: string, id: number): Promise<ApprovalRequest | undefined>;
@@ -1016,6 +1027,60 @@ export class DatabaseStorage implements IStorage {
       .where(and(eq(mobilizationActivities.id, id), eq(mobilizationActivities.tenantId, tenantId)))
       .returning();
     return a;
+  }
+
+  // --- Supervision visits ---
+  async getSupervisionVisits(tenantId: string, filters?: { facilityId?: number; microplanId?: number; status?: string }): Promise<SupervisionVisit[]> {
+    const conds: any[] = [];
+    if (filters?.facilityId) conds.push(eq(supervisionVisits.facilityId, filters.facilityId));
+    if (filters?.microplanId) conds.push(eq(supervisionVisits.microplanId, filters.microplanId));
+    if (filters?.status) conds.push(eq(supervisionVisits.status, filters.status));
+    return await db
+      .select()
+      .from(supervisionVisits)
+      .where(withTenant(supervisionVisits, tenantId, conds.length ? and(...conds) : undefined))
+      .orderBy(desc(supervisionVisits.scheduledDate));
+  }
+  async getSupervisionVisit(tenantId: string, id: number): Promise<SupervisionVisit | undefined> {
+    const [v] = await db
+      .select()
+      .from(supervisionVisits)
+      .where(and(eq(supervisionVisits.id, id), eq(supervisionVisits.tenantId, tenantId)));
+    return v;
+  }
+  async createSupervisionVisit(tenantId: string, data: InsertSupervisionVisit): Promise<SupervisionVisit> {
+    const [v] = await db.insert(supervisionVisits).values({ ...data, tenantId } as typeof supervisionVisits.$inferInsert).returning();
+    return v;
+  }
+  async updateSupervisionVisit(tenantId: string, id: number, data: Partial<InsertSupervisionVisit>): Promise<SupervisionVisit | undefined> {
+    const { tenantId: _i, ...safe } = data as any;
+    const [v] = await db
+      .update(supervisionVisits)
+      .set({ ...safe, updatedAt: new Date() })
+      .where(and(eq(supervisionVisits.id, id), eq(supervisionVisits.tenantId, tenantId)))
+      .returning();
+    return v;
+  }
+  async deleteSupervisionVisit(tenantId: string, id: number): Promise<boolean> {
+    const r = await db
+      .delete(supervisionVisits)
+      .where(and(eq(supervisionVisits.id, id), eq(supervisionVisits.tenantId, tenantId)))
+      .returning({ id: supervisionVisits.id });
+    return r.length > 0;
+  }
+
+  // --- Audit logs ---
+  async listAuditLogs(tenantId: string, filters?: { userId?: string; entityType?: string; entityId?: string; limit?: number }): Promise<AuditLog[]> {
+    const conds: any[] = [];
+    if (filters?.userId) conds.push(eq(auditLogs.userId, filters.userId));
+    if (filters?.entityType) conds.push(eq(auditLogs.entityType, filters.entityType));
+    if (filters?.entityId) conds.push(eq(auditLogs.entityId, filters.entityId));
+    return await db
+      .select()
+      .from(auditLogs)
+      .where(withTenant(auditLogs, tenantId, conds.length ? and(...conds) : undefined))
+      .orderBy(desc(auditLogs.createdAt))
+      .limit(filters?.limit ?? 200);
   }
 
   // --- Approval requests ---

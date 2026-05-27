@@ -17,7 +17,10 @@ import {
   Map,
   Compass,
   Plus,
-  Trash2
+  Trash2,
+  Download,
+  Activity,
+  Clock,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { 
@@ -35,6 +38,127 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { User, Province, District, Facility } from "@shared/schema";
 import { ROLE_PERMISSIONS, Permission } from "../../../server/auth/authorization";
+
+function csvEscape(v: any): string {
+  if (v === null || v === undefined) return "";
+  const s = String(v);
+  if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+  return s;
+}
+
+function exportUsersCsv(users: any[], provinces: any[], districts: any[], facilities: any[]) {
+  const pById: Record<number, string> = {};
+  (provinces || []).forEach((p: any) => { pById[p.id] = p.name; });
+  const dById: Record<number, string> = {};
+  (districts || []).forEach((d: any) => { dById[d.id] = d.name; });
+  const fById: Record<number, string> = {};
+  (facilities || []).forEach((f: any) => { fById[f.id] = f.name; });
+  const header = ["Email", "First Name", "Last Name", "Role", "Active", "Province", "District", "Facility", "Last Login", "Created"];
+  const rows = users.map((u) => [
+    u.email, u.firstName, u.lastName,
+    u.role || (Array.isArray(u.roles) ? u.roles.join("|") : ""),
+    u.isActive ? "yes" : "no",
+    pById[u.provinceId] || "",
+    dById[u.districtId] || "",
+    fById[u.facilityId] || "",
+    u.lastLoginAt ? new Date(u.lastLoginAt).toISOString() : "",
+    u.createdAt ? new Date(u.createdAt).toISOString() : "",
+  ]);
+  const csv = [header, ...rows].map((r) => r.map(csvEscape).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `vaxplan-users-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function ActivityLogPanel({ users }: { users: any[] }) {
+  const [userFilter, setUserFilter] = useState<string>("all");
+  const [entityFilter, setEntityFilter] = useState<string>("all");
+
+  const { data: logs = [], isLoading } = useQuery<any[]>({
+    queryKey: ["/api/audit-logs", { userId: userFilter, entityType: entityFilter }],
+    queryFn: async () => {
+      const params = new URLSearchParams({ limit: "200" });
+      if (userFilter !== "all") params.set("userId", userFilter);
+      if (entityFilter !== "all") params.set("entityType", entityFilter);
+      const r = await fetch(`/api/audit-logs?${params.toString()}`, { credentials: "include" });
+      if (!r.ok) throw new Error("Failed to load audit logs");
+      return r.json();
+    },
+  });
+
+  const userById = useMemo(() => {
+    const m: Record<string, any> = {};
+    users.forEach((u) => { if (u?.id) m[u.id] = u; });
+    return m;
+  }, [users]);
+
+  const entityTypes = useMemo<string[]>(() => {
+    const seen: Record<string, true> = {};
+    logs.forEach((l: any) => { if (l.entityType) seen[l.entityType] = true; });
+    return Object.keys(seen).sort();
+  }, [logs]);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-col md:flex-row gap-3 md:items-center">
+        <div className="flex-1">
+          <h3 className="text-lg font-bold text-foreground">User & system activity</h3>
+          <p className="text-muted-foreground text-xs">Read-only audit trail of every create / update / delete on records across this tenant.</p>
+        </div>
+        <select
+          className="bg-background border border-border rounded-xl px-3 py-2 text-sm"
+          value={userFilter}
+          onChange={(e) => setUserFilter(e.target.value)}
+          data-testid="filter-user"
+        >
+          <option value="all">All users</option>
+          {users.map((u) => <option key={u.id} value={u.id}>{u.firstName || ""} {u.lastName || ""} ({u.email})</option>)}
+        </select>
+        <select
+          className="bg-background border border-border rounded-xl px-3 py-2 text-sm"
+          value={entityFilter}
+          onChange={(e) => setEntityFilter(e.target.value)}
+          data-testid="filter-entity"
+        >
+          <option value="all">All entities</option>
+          {entityTypes.map((t) => <option key={t} value={t}>{t}</option>)}
+        </select>
+      </div>
+
+      {isLoading ? (
+        <div className="text-center p-12 text-muted-foreground text-sm">Loading audit logs…</div>
+      ) : logs.length === 0 ? (
+        <div className="text-center p-12 bg-card rounded-3xl border border-border">
+          <Clock className="h-10 w-10 text-muted-foreground/50 mx-auto mb-3" />
+          <p className="text-sm text-muted-foreground">No activity recorded yet for the selected filters.</p>
+        </div>
+      ) : (
+        <div className="bg-card rounded-3xl border border-border divide-y">
+          {logs.map((l: any) => {
+            const actor = l.userId ? userById[l.userId] : null;
+            const actorLabel = actor ? `${actor.firstName || ""} ${actor.lastName || ""} (${actor.email})`.trim() : (l.userId || "system");
+            return (
+              <div key={l.id} className="px-4 py-3 flex flex-col md:flex-row md:items-center gap-2" data-testid={`audit-${l.id}`}>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Badge variant="outline" className="capitalize text-xs">{l.action}</Badge>
+                    <span className="text-sm font-medium">{l.entityType}{l.entityId ? ` #${l.entityId}` : ""}</span>
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-0.5">by {actorLabel}</div>
+                </div>
+                <div className="text-xs text-muted-foreground">{l.createdAt ? new Date(l.createdAt).toLocaleString() : ""}</div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 const ALL_ROLES = [
   { value: "facility_clerk", label: "Facility Clerk" },
@@ -467,19 +591,38 @@ export default function UserManagement() {
             <Shield className="h-4 w-4" />
             Custom Roles Manager
           </TabsTrigger>
+          <TabsTrigger value="activity" className="rounded-xl text-muted-foreground data-[state=active]:bg-indigo-600 data-[state=active]:text-white data-[state=active]:shadow font-semibold flex items-center gap-1.5 px-4 py-2 text-xs" data-testid="tab-activity">
+            <Activity className="h-4 w-4" />
+            Activity Log
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="users" className="space-y-6 mt-4">
           <div className="grid grid-cols-1 gap-6">
-            {/* Search filter bar */}
-            <div className="relative w-full max-w-md">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input 
-                placeholder="Search users by name or email..." 
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 bg-background border-border text-foreground placeholder:text-muted-foreground focus:border-indigo-500 rounded-xl"
-              />
+            {/* Search filter bar + export */}
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="relative w-full max-w-md">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input 
+                  placeholder="Search users by name or email..." 
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10 bg-background border-border text-foreground placeholder:text-muted-foreground focus:border-indigo-500 rounded-xl"
+                />
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => exportUsersCsv(filteredUsers, provinces as any[], districts as any[], facilities as any[])}
+                className="rounded-xl gap-1.5"
+                data-testid="btn-export-csv"
+              >
+                <Download className="h-4 w-4" /> Export CSV
+              </Button>
+              <Badge variant="secondary" className="ml-auto text-xs">
+                {filteredUsers.length} of {(usersList || []).length} users
+              </Badge>
             </div>
 
             {/* Geo cascade filter (Province → District → Facility) */}
@@ -747,6 +890,10 @@ export default function UserManagement() {
               })}
             </div>
           )}
+        </TabsContent>
+
+        <TabsContent value="activity" className="space-y-4 mt-4">
+          <ActivityLogPanel users={usersList || []} />
         </TabsContent>
       </Tabs>
 

@@ -1365,6 +1365,45 @@ export const csvImports = pgTable(
   }),
 );
 
+// Supportive Supervision (WHO RED Step 10).
+// A supervisory visit is scheduled per facility, optionally tied to a microplan
+// and/or a specific session day. The checklist is captured as a JSON array of
+// {key, label, response: "yes"|"no"|"na", note?: string} items so a tenant can
+// evolve checklists without a schema change.
+export const supervisionVisits = pgTable(
+  "supervision_visits",
+  {
+    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+    tenantId: varchar("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    facilityId: integer("facility_id")
+      .notNull()
+      .references(() => facilities.id, { onDelete: "cascade" }),
+    microplanId: integer("microplan_id").references(() => microplans.id, { onDelete: "set null" }),
+    sessionPlanId: integer("session_plan_id").references(() => sessionPlans.id, { onDelete: "set null" }),
+    scheduledDate: timestamp("scheduled_date").notNull(),
+    conductedDate: timestamp("conducted_date"),
+    supervisorUserId: varchar("supervisor_user_id").references(() => users.id, { onDelete: "set null" }),
+    supervisorName: varchar("supervisor_name", { length: 255 }),
+    visitType: varchar("visit_type", { length: 40 }).notNull().default("routine"), // routine | followup | adhoc | campaign
+    status: varchar("status", { length: 20 }).notNull().default("scheduled"), // scheduled | conducted | cancelled | missed
+    checklist: jsonb("checklist").default([]).notNull(),
+    score: integer("score"), // 0-100 derived from checklist
+    findings: text("findings"),
+    followUpActions: text("follow_up_actions"),
+    nextVisitDate: timestamp("next_visit_date"),
+    createdByUserId: varchar("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    tenantIdx: index("idx_supervision_tenant").on(table.tenantId),
+    facilityIdx: index("idx_supervision_facility").on(table.tenantId, table.facilityId),
+    scheduledIdx: index("idx_supervision_scheduled").on(table.tenantId, table.scheduledDate),
+  }),
+);
+
 // ============================================================================
 // RELATIONS
 // ============================================================================
@@ -1625,6 +1664,14 @@ export type MobilizationActivity = typeof mobilizationActivities.$inferSelect;
 export type InsertApprovalRequest = z.infer<typeof insertApprovalRequestSchema>;
 export type ApprovalRequest = typeof approvalRequests.$inferSelect;
 export type AuditLog = typeof auditLogs.$inferSelect;
+export const insertSupervisionVisitSchema = createInsertSchema(supervisionVisits).omit({
+  id: true,
+  tenantId: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertSupervisionVisit = z.infer<typeof insertSupervisionVisitSchema>;
+export type SupervisionVisit = typeof supervisionVisits.$inferSelect;
 export type PopulationRefreshJob = typeof populationRefreshJobs.$inferSelect;
 export type InsertPopulationRefreshJob = typeof populationRefreshJobs.$inferInsert;
 export type HtrScore = typeof htrScores.$inferSelect;

@@ -25,6 +25,7 @@ import BudgetPlanning from "@/pages/BudgetPlanning";
 import VaccineCalculator from "@/pages/VaccineCalculator";
 import SocialMobilization from "@/pages/SocialMobilization";
 import Approvals from "@/pages/Approvals";
+import Supervision from "@/pages/Supervision";
 import Settings from "@/pages/Settings";
 import Help from "@/pages/Help";
 import Signup from "@/pages/Signup";
@@ -117,6 +118,7 @@ function AuthenticatedRouter() {
         {modules.mobilization !== false ? <SocialMobilization /> : <NotFound />}
       </Route>
       <Route path="/approvals" component={Approvals} />
+      <Route path="/supervision" component={Supervision} />
       <Route path="/admin/signups" component={SignupRequests} />
       <Route path="/admin/users" component={UserManagement} />
       <Route path="/admin/countries" component={CountryOnboarding} />

@@ -15,6 +15,7 @@ import {
   insertBudgetItemSchema,
   insertVaccineRequirementSchema,
   insertMobilizationActivitySchema,
+  insertSupervisionVisitSchema,
   insertApprovalRequestSchema,
   insertProvinceSchema,
   insertDistrictSchema,
@@ -4513,6 +4514,116 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error updating mobilization activity:", error);
       res.status(400).json({ message: "Failed to update mobilization activity" });
+    }
+  });
+
+  // ─── Supportive Supervision ───────────────────────────
+  app.get("/api/supervision-visits", ...auth, async (req: any, res) => {
+    try {
+      const facilityId = req.query.facilityId ? parseInt(req.query.facilityId as string) : undefined;
+      const microplanId = req.query.microplanId ? parseInt(req.query.microplanId as string) : undefined;
+      const status = req.query.status as string | undefined;
+      res.json(await storage.getSupervisionVisits(req.tenantId, { facilityId, microplanId, status }));
+    } catch (error) {
+      console.error("Error fetching supervision visits:", error);
+      res.status(500).json({ message: "Failed to fetch supervision visits" });
+    }
+  });
+
+  app.get("/api/supervision-visits/:id", ...auth, async (req: any, res) => {
+    try {
+      const v = await storage.getSupervisionVisit(req.tenantId, parseInt(req.params.id));
+      if (!v) return res.status(404).json({ message: "Supervision visit not found" });
+      res.json(v);
+    } catch (error) {
+      console.error("Error fetching supervision visit:", error);
+      res.status(500).json({ message: "Failed to fetch supervision visit" });
+    }
+  });
+
+  app.post("/api/supervision-visits", ...auth, async (req: any, res) => {
+    try {
+      const body = { ...req.body };
+      if (body.scheduledDate && typeof body.scheduledDate === "string") body.scheduledDate = new Date(body.scheduledDate);
+      if (body.conductedDate && typeof body.conductedDate === "string") body.conductedDate = new Date(body.conductedDate);
+      if (body.nextVisitDate && typeof body.nextVisitDate === "string") body.nextVisitDate = new Date(body.nextVisitDate);
+      const data = insertSupervisionVisitSchema.parse({ ...body, createdByUserId: req.user?.claims?.sub }) as any;
+      if (data.facilityId) {
+        const f = await storage.getFacility(req.tenantId, data.facilityId);
+        if (!f) return res.status(400).json({ message: "Facility does not belong to this tenant" });
+      }
+      if (data.microplanId) {
+        const m = await storage.getMicroplan(req.tenantId, data.microplanId);
+        if (!m) return res.status(400).json({ message: "Microplan does not belong to this tenant" });
+      }
+      if (data.sessionPlanId) {
+        const sp = await storage.getSessionPlan(req.tenantId, data.sessionPlanId);
+        if (!sp) return res.status(400).json({ message: "Session plan does not belong to this tenant" });
+      }
+      const v = await storage.createSupervisionVisit(req.tenantId, data);
+      await logAudit(req, "create", "supervision_visit", v.id, null, v);
+      res.status(201).json(v);
+    } catch (error: any) {
+      console.error("Error creating supervision visit:", error);
+      res.status(400).json({ message: error?.message || "Invalid supervision visit data" });
+    }
+  });
+
+  app.patch("/api/supervision-visits/:id", ...auth, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const body = { ...req.body };
+      if (body.scheduledDate && typeof body.scheduledDate === "string") body.scheduledDate = new Date(body.scheduledDate);
+      if (body.conductedDate && typeof body.conductedDate === "string") body.conductedDate = new Date(body.conductedDate);
+      if (body.nextVisitDate && typeof body.nextVisitDate === "string") body.nextVisitDate = new Date(body.nextVisitDate);
+      const old = await storage.getSupervisionVisit(req.tenantId, id);
+      if (body.facilityId) {
+        const f = await storage.getFacility(req.tenantId, body.facilityId);
+        if (!f) return res.status(400).json({ message: "Facility does not belong to this tenant" });
+      }
+      if (body.microplanId) {
+        const m = await storage.getMicroplan(req.tenantId, body.microplanId);
+        if (!m) return res.status(400).json({ message: "Microplan does not belong to this tenant" });
+      }
+      if (body.sessionPlanId) {
+        const sp = await storage.getSessionPlan(req.tenantId, body.sessionPlanId);
+        if (!sp) return res.status(400).json({ message: "Session plan does not belong to this tenant" });
+      }
+      const v = await storage.updateSupervisionVisit(req.tenantId, id, body);
+      if (!v) return res.status(404).json({ message: "Supervision visit not found" });
+      await logAudit(req, "update", "supervision_visit", id, old, v);
+      res.json(v);
+    } catch (error: any) {
+      console.error("Error updating supervision visit:", error);
+      res.status(400).json({ message: error?.message || "Failed to update supervision visit" });
+    }
+  });
+
+  app.delete("/api/supervision-visits/:id", ...auth, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const old = await storage.getSupervisionVisit(req.tenantId, id);
+      const ok = await storage.deleteSupervisionVisit(req.tenantId, id);
+      if (!ok) return res.status(404).json({ message: "Supervision visit not found" });
+      await logAudit(req, "delete", "supervision_visit", id, old, null);
+      res.json({ ok: true });
+    } catch (error) {
+      console.error("Error deleting supervision visit:", error);
+      res.status(500).json({ message: "Failed to delete supervision visit" });
+    }
+  });
+
+  // ─── Audit Logs (read-only, admin-scoped) ─────────────
+  app.get("/api/audit-logs", isAuthenticated, requireTenant, loadRole, requireAdmin, async (req: any, res) => {
+    try {
+      const userId = req.query.userId as string | undefined;
+      const entityType = req.query.entityType as string | undefined;
+      const entityId = req.query.entityId as string | undefined;
+      const limit = req.query.limit ? Math.min(parseInt(req.query.limit as string), 500) : 200;
+      res.json(await storage.listAuditLogs(req.tenantId, { userId, entityType, entityId, limit }));
+    } catch (error) {
+      console.error("Error listing audit logs:", error);
+      res.status(500).json({ message: "Failed to list audit logs" });
     }
   });
 
