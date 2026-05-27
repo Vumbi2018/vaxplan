@@ -130,23 +130,23 @@ export default function MicroplanBuilder({ prePlanType }: MicroplanBuilderProps 
     }
   }, []);
 
-  // WHO RED + Gavi RED-Q 12-step microplanning workflow.
-  // Steps 1–8 reuse the existing wizard panels (renamed to fit the framework);
-  // steps 9–12 are new lightweight panels added at the end of the wizard so the
-  // builder fully covers the RED-Q canonical elements (Workforce, Supervision,
-  // Catchment snapshot, Execution & monitoring).
+  // WHO RED + Gavi RED-Q 12-step microplanning workflow — canonical sequence.
+  // See attached_assets/Pasted--Immunization-Microplanning-Workflow-WHO-RED-Gavi-RED-Q*.txt.
+  // The wizard renders one panel per canonical step. Internally the panels
+  // are still keyed by `activeStep === N`; the renumber map applied when the
+  // canonical order was adopted is documented in the commit history.
   const stepTitles: Record<number, string> = {
-    1: "Situation Analysis & Targets",
-    2: "Hard-to-Reach & Equity",
-    3: "Service Delivery & Session Calendar",
-    4: "Logistics & Transport Itinerary",
-    5: "Vaccine, Supplies & Cold-Chain",
-    6: "Demand & Social Mobilization",
-    7: "Budget with Funding Source",
-    8: "Review & Approval Cascade",
-    9: "Workforce & Teaming Roster",
+    1: "Situation Analysis & Coverage Review",
+    2: "Catchment & Population Mapping",
+    3: "Hard-to-Reach & Equity Profiling",
+    4: "Service Delivery & Session Calendar",
+    5: "Workforce & Teaming Roster",
+    6: "Vaccine, Supplies & Cold-Chain",
+    7: "Demand & Social Mobilization",
+    8: "Logistics & Transport Itinerary",
+    9: "Budget with Funding Source",
     10: "Supportive Supervision Plan",
-    11: "Catchment & Population Snapshot",
+    11: "Review & Approval Cascade",
     12: "Execution, Monitoring & Quarterly Review",
   };
   const TOTAL_STEPS = 12;
@@ -494,7 +494,7 @@ export default function MicroplanBuilder({ prePlanType }: MicroplanBuilderProps 
         title: "Session Drafted Successfully",
         description: `"${res.name}" has been registered in the microplan workflow.`,
       });
-      setActiveStep(4); // Advance to day schedules
+      setActiveStep(5); // Advance to Workforce (canonical step 5)
     },
     onError: (err: any) => {
       toast({
@@ -710,7 +710,7 @@ export default function MicroplanBuilder({ prePlanType }: MicroplanBuilderProps 
   };
 
   useEffect(() => {
-    if (activeStep === 7 && activeSessionId && budgetItems) {
+    if (activeStep === 9 && activeSessionId && budgetItems) {
       const existing = budgetItems.filter(b => b.sessionId === activeSessionId);
       if (existing.length === 0 && draftRows.length === 0) {
         setDraftRows([
@@ -1028,14 +1028,17 @@ export default function MicroplanBuilder({ prePlanType }: MicroplanBuilderProps 
       case 1:
         if (!selectedFacilityId) return { ok: false, reason: "Pick a facility before continuing." };
         return { ok: true };
-      case 3:
+      case 4:
+        // Canonical Step 4 = Service Delivery & Session Calendar (where the session is drafted).
         if (!activeSessionId) return { ok: false, reason: "Draft the session first so it has an ID to attach plans to." };
         if (!sessionName.trim()) return { ok: false, reason: "Give the session a name." };
         return { ok: true };
-      case 4:
+      case 8:
+        // Canonical Step 8 = Logistics & Transport Itinerary (per session-day).
         if (!activeSessionId) return { ok: false, reason: "Create a session before adding itinerary days." };
         return { ok: true };
-      case 7:
+      case 9:
+        // Canonical Step 9 = Budget with Funding Source.
         if (!activeSessionId) return { ok: false, reason: "Create a session before adding budget lines." };
         return { ok: true };
       default:
@@ -1070,18 +1073,18 @@ export default function MicroplanBuilder({ prePlanType }: MicroplanBuilderProps 
   }, [resumeMicroplanId, microplans, sessions]);
 
   const steps = [
-    { num: 1, title: "Situation Analysis & Targets", desc: "Coverage review & NSO denominators", icon: Users },
-    { num: 2, title: "Hard-to-Reach & Equity", desc: "Remote & under-served risk factors", icon: AlertTriangle },
-    { num: 3, title: "Service Delivery & Session Calendar", desc: "Static / Outreach / Mobile scope", icon: Calendar },
-    { num: 4, title: "Logistics & Transport Itinerary", desc: "Day schedule matrix & routing", icon: ClipboardList },
-    { num: 5, title: "Vaccine, Supplies & Cold-Chain", desc: "Antigen & cold chain forecasts", icon: Syringe },
-    { num: 6, title: "Demand & Social Mobilization", desc: "Community messaging & activities", icon: Megaphone },
-    { num: 7, title: "Budget with Funding Source", desc: "Direct session expenses & funder split", icon: Wallet },
-    { num: 8, title: "Review & Approval Cascade", desc: "Verification & submit for approval", icon: CheckCircle },
-    { num: 9, title: "Workforce & Teaming Roster", desc: "Staff roster & team composition", icon: Users },
-    { num: 10, title: "Supportive Supervision Plan", desc: "Supervisor visits & checklist", icon: ClipboardList },
-    { num: 11, title: "Catchment & Population Snapshot", desc: "Catchment map & population summary", icon: Map },
-    { num: 12, title: "Execution, Monitoring & Quarterly Review", desc: "Day-plan execution & coverage tracking", icon: CheckCircle },
+    { num: 1, title: "Situation Analysis & Coverage Review", desc: "Last-year coverage, dropout & zero-dose snapshot", icon: Users },
+    { num: 2, title: "Catchment & Population Mapping", desc: "Confirm catchment & target population per community", icon: Map },
+    { num: 3, title: "Hard-to-Reach & Equity Profiling", desc: "Score HTR & flag missed-community villages", icon: AlertTriangle },
+    { num: 4, title: "Service Delivery & Session Calendar", desc: "Static / Outreach / Mobile per community", icon: Calendar },
+    { num: 5, title: "Workforce & Teaming Roster", desc: "Staff roster & per-session team composition", icon: Users },
+    { num: 6, title: "Vaccine, Supplies & Cold-Chain", desc: "Antigen forecast, wastage & cold-chain sizing", icon: Syringe },
+    { num: 7, title: "Demand & Social Mobilization", desc: "Per-session announcement & community focal points", icon: Megaphone },
+    { num: 8, title: "Logistics & Transport Itinerary", desc: "Per session-day transport, fuel & routing", icon: ClipboardList },
+    { num: 9, title: "Budget with Funding Source", desc: "Cost lines tagged by funder (Govt/Gavi/WHO/UNICEF)", icon: Wallet },
+    { num: 10, title: "Supportive Supervision Plan", desc: "Quarterly supervisor visits & checklist", icon: ClipboardList },
+    { num: 11, title: "Review & Approval Cascade", desc: "Verification & submit for facility → district → national", icon: CheckCircle },
+    { num: 12, title: "Execution, Monitoring & Quarterly Review", desc: "Doses given, defaulters & quarterly re-rank", icon: CheckCircle },
   ];
 
   if (!isBuilding) {
@@ -1210,7 +1213,7 @@ export default function MicroplanBuilder({ prePlanType }: MicroplanBuilderProps 
                           onClick={() => {
                             setActiveSessionId(plan.id);
                             setIsBuilding(true);
-                            setActiveStep(8);
+                            setActiveStep(11);
                           }}
                           variant="outline"
                           className="h-9 px-3 rounded-xl text-xs font-bold"
@@ -1335,7 +1338,7 @@ export default function MicroplanBuilder({ prePlanType }: MicroplanBuilderProps 
         )}
 
         {/* STEP 2: HARD TO REACH RISK PROFILING */}
-        {activeStep === 2 && (
+        {activeStep === 3 && (
           <Card className="rounded-3xl border border-border/60 shadow-xl overflow-hidden">
             <CardHeader className="bg-muted/10 border-b border-border/40 pb-4">
               <CardTitle className="text-base font-extrabold flex items-center gap-2">
@@ -1503,7 +1506,7 @@ export default function MicroplanBuilder({ prePlanType }: MicroplanBuilderProps 
                 </div>
               )}
 
-              <Button onClick={() => setActiveStep(3)} className="w-full bg-secondary hover:bg-muted text-secondary-foreground rounded-xl text-xs font-bold h-10 shadow-xs mt-3 flex items-center justify-center gap-1">
+              <Button onClick={() => setActiveStep(4)} className="w-full bg-secondary hover:bg-muted text-secondary-foreground rounded-xl text-xs font-bold h-10 shadow-xs mt-3 flex items-center justify-center gap-1">
                 <span>Continue to Session Drafting</span>
                 <ChevronRight className="h-4 w-4" />
               </Button>
@@ -1512,7 +1515,7 @@ export default function MicroplanBuilder({ prePlanType }: MicroplanBuilderProps 
         )}
 
         {/* STEP 3: DRAFT SESSIONS */}
-        {activeStep === 3 && (
+        {activeStep === 4 && (
           <Card className="rounded-3xl border border-border/60 shadow-xl overflow-hidden">
             <CardHeader className="bg-muted/10 border-b border-border/40 pb-4">
               <CardTitle className="text-base font-extrabold flex items-center gap-2">
@@ -1674,7 +1677,7 @@ export default function MicroplanBuilder({ prePlanType }: MicroplanBuilderProps 
         )}
 
         {/* STEP 4: ITINERARY DAYS */}
-        {activeStep === 4 && (
+        {activeStep === 8 && (
           <Card className="rounded-3xl border border-border/60 shadow-xl overflow-hidden">
             <CardHeader className="bg-muted/10 border-b border-border/40 pb-4">
               <CardTitle className="text-base font-extrabold flex items-center gap-2">
@@ -1903,7 +1906,7 @@ export default function MicroplanBuilder({ prePlanType }: MicroplanBuilderProps 
                 </Button>
                 {dayPlans && dayPlans.length > 0 && (
                   <Button
-                    onClick={() => setActiveStep(5)}
+                    onClick={() => setActiveStep(9)}
                     className="bg-secondary hover:bg-muted text-secondary-foreground rounded-xl text-xs font-bold h-10 px-4"
                   >
                     Next Step
@@ -1950,7 +1953,7 @@ export default function MicroplanBuilder({ prePlanType }: MicroplanBuilderProps 
         )}
 
         {/* STEP 5: VACCINE CALCULATORS */}
-        {activeStep === 5 && (
+        {activeStep === 6 && (
           <Card className="rounded-3xl border border-border/60 shadow-xl overflow-hidden">
             <CardHeader className="bg-muted/10 border-b border-border/40 pb-4">
               <CardTitle className="text-base font-extrabold flex items-center gap-2">
@@ -2318,7 +2321,7 @@ export default function MicroplanBuilder({ prePlanType }: MicroplanBuilderProps 
                 >
                   {adjustForecastMutation.isPending ? "Saving..." : "Save Logistics Overrides"}
                 </Button>
-                <Button onClick={() => setActiveStep(6)} className="bg-secondary hover:bg-muted text-secondary-foreground rounded-xl text-xs font-bold h-10 px-4">
+                <Button onClick={() => setActiveStep(7)} className="bg-secondary hover:bg-muted text-secondary-foreground rounded-xl text-xs font-bold h-10 px-4">
                   Next Step
                 </Button>
               </div>
@@ -2327,7 +2330,7 @@ export default function MicroplanBuilder({ prePlanType }: MicroplanBuilderProps 
         )}
 
         {/* STEP 6: SOCIAL MOBILIZATION */}
-        {activeStep === 6 && (
+        {activeStep === 7 && (
           <Card className="rounded-3xl border border-border/60 shadow-xl overflow-hidden">
             <CardHeader className="bg-muted/10 border-b border-border/40 pb-4">
               <CardTitle className="text-base font-extrabold flex items-center gap-2">
@@ -2388,7 +2391,7 @@ export default function MicroplanBuilder({ prePlanType }: MicroplanBuilderProps 
                   Save Mobilization Task
                 </Button>
                 <Button
-                  onClick={() => setActiveStep(7)}
+                  onClick={() => setActiveStep(8)}
                   className="bg-secondary hover:bg-muted text-secondary-foreground rounded-xl text-xs font-bold h-10 px-4"
                 >
                   Skip / Next
@@ -2414,7 +2417,7 @@ export default function MicroplanBuilder({ prePlanType }: MicroplanBuilderProps 
         )}
         
         {/* STEP 7: OPERATIONAL BUDGET COSTING */}
-        {activeStep === 7 && (
+        {activeStep === 9 && (
           <Card className="rounded-3xl border border-border/60 shadow-xl overflow-hidden max-w-full">
             <CardHeader className="bg-muted/10 border-b border-border/40 pb-4">
               <CardTitle className="text-base font-extrabold flex items-center gap-2">
@@ -2795,7 +2798,7 @@ export default function MicroplanBuilder({ prePlanType }: MicroplanBuilderProps 
 
               <div className="pt-2 border-t mt-4">
                 <Button
-                  onClick={() => setActiveStep(8)}
+                  onClick={() => setActiveStep(10)}
                   className="w-full bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold h-10 shadow-md shadow-indigo-600/10"
                 >
                   Save & Proceed to Review
@@ -2806,7 +2809,7 @@ export default function MicroplanBuilder({ prePlanType }: MicroplanBuilderProps 
         )}
 
         {/* STEP 8: REVIEW & CERTIFY */}
-        {activeStep === 8 && (
+        {activeStep === 11 && (
           <Card className="rounded-3xl border border-border/60 shadow-xl overflow-hidden bg-gradient-to-br from-indigo-500/5 to-sky-500/5">
             <CardHeader className="bg-muted/10 border-b border-border/40 pb-4">
               <CardTitle className="text-base font-extrabold flex items-center gap-2">
@@ -2929,11 +2932,11 @@ export default function MicroplanBuilder({ prePlanType }: MicroplanBuilderProps 
                   </ul>
                   <div className="pt-1.5 flex gap-2">
                     {(!dayPlans || dayPlans.length === 0) && (
-                      <Button onClick={() => setActiveStep(4)} size="sm" variant="outline" className="text-[10px] h-7 border-amber-500/30 text-amber-700 hover:bg-amber-500/10 dark:text-amber-400 bg-background/55">
+                      <Button onClick={() => setActiveStep(8)} size="sm" variant="outline" className="text-[10px] h-7 border-amber-500/30 text-amber-700 hover:bg-amber-500/10 dark:text-amber-400 bg-background/55">
                         Go to Day Schedules (Step 4)
                       </Button>
                     )}
-                    <Button onClick={() => setActiveStep(7)} size="sm" variant="outline" className="text-[10px] h-7 border-amber-500/30 text-amber-700 hover:bg-amber-500/10 dark:text-amber-400 bg-background/55">
+                    <Button onClick={() => setActiveStep(9)} size="sm" variant="outline" className="text-[10px] h-7 border-amber-500/30 text-amber-700 hover:bg-amber-500/10 dark:text-amber-400 bg-background/55">
                       Go to Budget Costing (Step 7)
                     </Button>
                   </div>
@@ -3026,7 +3029,7 @@ export default function MicroplanBuilder({ prePlanType }: MicroplanBuilderProps 
         )}
 
         {/* STEP 9: WORKFORCE & TEAMING ROSTER */}
-        {activeStep === 9 && (
+        {activeStep === 5 && (
           <Card className="rounded-3xl border border-border/60 shadow-xl overflow-hidden bg-gradient-to-br from-sky-500/5 to-indigo-500/5">
             <CardHeader className="bg-muted/10 border-b border-border/40 pb-4">
               <CardTitle className="text-base font-extrabold flex items-center gap-2">
@@ -3042,7 +3045,7 @@ export default function MicroplanBuilder({ prePlanType }: MicroplanBuilderProps 
             <CardContent className="p-4 space-y-4 pt-5 text-xs">
               {!activeMicroplan && (
                 <div className="p-3 rounded-2xl border border-amber-500/30 bg-amber-500/5 text-amber-700 dark:text-amber-400 font-semibold">
-                  Create a microplan in Step 3 first; the workforce roster attaches to that microplan.
+                  Create a microplan in Step 4 first; the workforce roster attaches to that microplan.
                 </div>
               )}
               {activeMicroplan && (
@@ -3056,7 +3059,7 @@ export default function MicroplanBuilder({ prePlanType }: MicroplanBuilderProps 
                       : [];
                     return roster.length === 0 ? (
                       <div className="col-span-2 p-3 rounded-2xl border border-dashed border-border/60 text-muted-foreground italic">
-                        No staffing rows yet — add them under Step 7 (Budget &amp; Staffing). They will appear here.
+                        No staffing rows yet — add them under Step 9 (Budget with Funding Source). They will appear here.
                       </div>
                     ) : (
                       roster.map((row, i) => (
@@ -3071,7 +3074,7 @@ export default function MicroplanBuilder({ prePlanType }: MicroplanBuilderProps 
                   })()}
                 </div>
               )}
-              <Button variant="outline" size="sm" onClick={() => setActiveStep(7)} className="rounded-xl text-xs">
+              <Button variant="outline" size="sm" onClick={() => setActiveStep(9)} className="rounded-xl text-xs">
                 Edit roster in Step 7
               </Button>
             </CardContent>
@@ -3158,7 +3161,7 @@ export default function MicroplanBuilder({ prePlanType }: MicroplanBuilderProps 
         )}
 
         {/* STEP 11: CATCHMENT & POPULATION SNAPSHOT */}
-        {activeStep === 11 && (
+        {activeStep === 2 && (
           <Card className="rounded-3xl border border-border/60 shadow-xl overflow-hidden bg-gradient-to-br from-emerald-500/5 to-teal-500/5">
             <CardHeader className="bg-muted/10 border-b border-border/40 pb-4">
               <CardTitle className="text-base font-extrabold flex items-center gap-2">
@@ -3280,7 +3283,7 @@ export default function MicroplanBuilder({ prePlanType }: MicroplanBuilderProps 
           variant="outline"
           size="sm"
           onClick={() => {
-            if (activeStep === 3 && !activeSessionId) {
+            if (activeStep === 4 && !activeSessionId) {
               toast({ title: "Draft Session First", description: "You must draft the session to generate an ID before proceeding.", variant: "destructive" });
               return;
             }
@@ -3337,9 +3340,9 @@ export default function MicroplanBuilder({ prePlanType }: MicroplanBuilderProps 
         onClose={() => setIsAddCommunityOpen(false)}
         defaultFacilityId={selectedFacilityId}
         onSuccess={(newVillage) => {
-          if (activeStep === 2) {
+          if (activeStep === 3) {
             setSelectedVillageId(newVillage.id);
-          } else if (activeStep === 4) {
+          } else if (activeStep === 8) {
             setVisitedVillages((prev) => [...prev, newVillage.id]);
           }
         }}
