@@ -4,25 +4,24 @@ import { settlementsMaster, populationGrids, candidateUnmappedSettlements, tenan
 import { runMissingSettlementDetection } from '../server/pipeline/settlementEngine';
 import { eq, and } from 'drizzle-orm';
 
-const ZMB_TENANT_ID = '4bb7abba-11cd-4c99-96c2-eedc8a4dfd06';
-
 async function seed() {
   console.log('Starting Settlement Intelligence seeding...');
   const client = await pool.connect();
   
   try {
-    // 1. Verify tenant ZMB exists
+    // 1. Resolve ZMB tenant by code (UUIDs are environment-specific)
     const tenantRes = await db
       .select()
       .from(tenants)
-      .where(eq(tenants.id, ZMB_TENANT_ID))
+      .where(eq(tenants.code, 'ZMB'))
       .limit(1);
 
     if (tenantRes.length === 0) {
-      console.error(`Tenant ZMB with ID ${ZMB_TENANT_ID} not found in DB! Please check the ID.`);
+      console.error(`Tenant with code 'ZMB' not found in DB! Run 003-seed-zambia.ts first.`);
       process.exit(1);
     }
-    console.log(`Verified tenant: ${tenantRes[0].name}`);
+    const ZMB_TENANT_ID = tenantRes[0].id;
+    console.log(`Verified tenant: ${tenantRes[0].name} (${ZMB_TENANT_ID})`);
 
     // 2. Clear old settlements and grids to prevent duplicate primary keys on re-runs
     console.log('Clearing old mock settlements and population grids for ZMB...');
