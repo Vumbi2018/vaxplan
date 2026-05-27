@@ -678,6 +678,11 @@ export default function SessionPlanning({
   ];
 
   const onSubmit = (data: InsertSessionPlan) => {
+    // In detail mode the parent microplan is locked to the route id; force it
+    // server-side regardless of any client tampering.
+    if (lockedMicroplanId != null) {
+      (data as any).microplanId = lockedMicroplanId;
+    }
     // Avoid duplicates scoped to (parent microplan, sessionType): same session
     // type cannot appear twice inside one microplan.
     const exists = (sessions ?? []).some(
@@ -826,16 +831,6 @@ export default function SessionPlanning({
                 New session
               </Button>
             </DialogTrigger>
-            <DialogTrigger asChild>
-              <Button
-                data-testid="button-add-session"
-                disabled={microplansOfRouteType.length === 0}
-                title={microplansOfRouteType.length === 0 ? "Create a parent microplan first" : undefined}
-              >
-                <Plus className="h-4 w-4 mr-1" />
-                New session
-              </Button>
-            </DialogTrigger>
             <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>
@@ -848,44 +843,17 @@ export default function SessionPlanning({
               </DialogHeader>
               <Form {...form}>
                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                  <FormField
-                    control={form.control}
-                    name={"microplanId" as any}
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Parent microplan *</FormLabel>
-                        <Select
-                          value={field.value ? String(field.value) : ""}
-                          onValueChange={(v) => field.onChange(parseInt(v))}
-                        >
-                          <FormControl>
-                            <SelectTrigger data-testid="select-parent-microplan">
-                              <SelectValue
-                                placeholder={
-                                  microplansOfRouteType.length
-                                    ? `Pick a ${planTypeFilter === "campaign" ? "campaign" : "routine"} microplan`
-                                    : "No microplans available — create one in the Builder"
-                                }
-                              />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {microplansOfRouteType.map((m) => (
-                              <SelectItem
-                                key={m.id}
-                                value={String(m.id)}
-                                data-testid={`option-microplan-${m.id}`}
-                              >
-                                {m.name} · Q{m.quarter} {m.year}
-                                {m.status === "locked" ? " · locked" : ""}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                  <FormItem>
+                    <FormLabel>Parent microplan</FormLabel>
+                    <div
+                      className="text-sm border rounded-md px-3 py-2 bg-muted"
+                      data-testid="locked-parent-microplan"
+                    >
+                      {lockedParent?.name ?? `Microplan #${lockedMicroplanId}`}
+                      {lockedParent ? ` · Q${lockedParent.quarter} ${lockedParent.year}` : ""}
+                      {parentIsLocked ? " · locked" : ""}
+                    </div>
+                  </FormItem>
                   <FormField
                     control={form.control}
                     name="name"
