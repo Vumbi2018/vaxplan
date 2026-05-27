@@ -60,7 +60,7 @@ import {
   Plus,
 } from "lucide-react";
 import type { Facility, Village, FacilityCatchment } from "@shared/schema";
-import { distance } from "@turf/turf";
+import { distance, centroid as turfCentroid, booleanPointInPolygon as turfBooleanPointInPolygon, bbox as turfBbox } from "@turf/turf";
 import {
   Dialog,
   DialogContent,
@@ -121,6 +121,23 @@ const normalizeName = (name: string): string => {
     .replace(/district/g, "")
     .trim();
 };
+
+// Creates a dedicated Leaflet pane for the GRID3 Settlement Footprints with a
+// z-index above the default overlay pane (400). This guarantees the GRID3
+// layer is painted ON TOP of administrative boundary polygons, so re-mounting
+// of boundary <GeoJSON> elements (which happens on every Province change)
+// can never visually bury the GRID3 footprints.
+function Grid3PaneCreator() {
+  const map = useMap();
+  useEffect(() => {
+    if (!map.getPane("grid3Pane")) {
+      const pane = map.createPane("grid3Pane");
+      pane.style.zIndex = "450"; // overlayPane=400, markerPane=600
+      pane.style.pointerEvents = "auto";
+    }
+  }, [map]);
+  return null;
+}
 
 const getBoundaryStyle = (adminLevel: number) => {
   if (adminLevel === 1) {
@@ -795,7 +812,12 @@ function LayerPanel({
                     subtext = "WorldPop gridded raster heat-map (upload via Resources)";
                   } else if (key === "grid3Settlements") {
                     displayName = "GRID3 Settlement Footprints";
-                    subtext = "High-fidelity building footprint extents (external API)";
+                    if (countryCode !== "ZMB") {
+                      subtext = "⚠ GRID3 settlement dataset not available for this country";
+                      subtextClass = "text-[10px] text-amber-400 font-medium block mt-0.5 leading-normal";
+                    } else {
+                      subtext = "High-fidelity building footprint extents (external API)";
+                    }
                   }
 
                   // ── Data-availability dot color ──
@@ -804,7 +826,8 @@ function LayerPanel({
                   let dotColor = "bg-emerald-500";
                   if ((key === "boundaries" && !hasAnyBoundary) ||
                       (key === "wards" && !hasLevel3) ||
-                      (key === "constituencies" && !hasLevel2)) {
+                      (key === "constituencies" && !hasLevel2) ||
+                      (key === "grid3Settlements" && countryCode !== "ZMB")) {
                     dotColor = "bg-amber-400";
                   } else if (key === "populationGeoTIFF") {
                     dotColor = "bg-sky-400";
@@ -813,6 +836,8 @@ function LayerPanel({
                   } else if (key === "hcwCatchments") {
                     dotColor = "bg-sky-400";
                   }
+
+                  const isDisabled = key === "grid3Settlements" && countryCode !== "ZMB";
 
                   return (
                     <div key={key} className="border-b border-border/10 pb-1.5 last:border-0 last:pb-0">
@@ -826,8 +851,10 @@ function LayerPanel({
                         </div>
                         <Switch
                           id={key}
-                          checked={value}
-                          onCheckedChange={() => onLayerToggle(key as keyof MapOverlayLayers)}
+                          checked={value && !isDisabled}
+                          onCheckedChange={() => !isDisabled && onLayerToggle(key as keyof MapOverlayLayers)}
+                          disabled={isDisabled}
+                          title={isDisabled ? "GRID3 settlement dataset not available for this country" : undefined}
                           data-testid={`switch-layer-${key}`}
                           className="mt-0.5 flex-shrink-0"
                         />
@@ -1814,6 +1841,12 @@ export function MapView({
       return geojson;
     },
   });
+
+  // Imperative ref to the GRID3 Leaflet layer so we can re-style features when
+  // the active Province / District / LLG selection changes WITHOUT remounting
+  // the GeoJSON layer (remount would otherwise re-add it last in the SVG paint
+  // order and cause it to flicker / disappear under boundary polygons).
+  const grid3LayerRef = useRef<any>(null);
 
   const [facilityPanelOpen, setFacilityPanelOpen] = useState(true);
   const [filterPanelOpen, setFilterPanelOpen] = useState(true);
@@ -2912,6 +2945,131 @@ export function MapView({
     llgNameLookup,
   ]);
 
+  // ─── GRID3 selection-aware emphasis ──────────────────────────────────────
+  // When a Province / District / LLG is selected, compute the matching admin
+  // polygon(s) from the boundary GeoJSON layer. We never *exclude* GRID3
+  // features based on the filter — settlements that straddle the boundary
+  // must still be visible — but we visually emphasize footprints whose
+  // centroid falls inside the selected admin area and dim those outside.
+  const selectedAdminFeatures = useMemo<any | null>(() => {
+    if (!boundaryList) return null;
+    let targetLevel = 0;
+    let targetName = "";
+    if (selectedLlgId !== "all") {
+      targetLevel = 3;
+      targetName = llgLookup.get(Number(selectedLlgId))?.name || "";
+    } else if (selectedDistrictId !== "all") {
+      targetLevel = 2;
+      targetName = districtLookup.get(Number(selectedDistrictId))?.name || "";
+    } else if (selectedProvinceId !== "all") {
+      targetLevel = 1;
+      targetName = provinceLookup.get(Number(selectedProvinceId))?.name || "";
+    } else {
+      return null;
+    }
+    const normTarget = normalizeName(targetName);
+    if (!normTarget) return null;
+    const boundary = boundaryList.find((b) => b.adminLevel === targetLevel && b.isActive);
+    if (!boundary) return null;
+    const gj = boundaryGeoJSONs[boundary.id];
+    if (!gj || !gj.features) return null;
+    const matches = gj.features.filter((f: any) => {
+      const name =
+        f.properties?.name ||
+        f.properties?.NAME ||
+        f.properties?.shapeName ||
+        f.properties?.NAME_1 ||
+        f.properties?.NAME_2 ||
+        f.properties?.NAME_3 ||
+        "";
+      return normalizeName(name) === normTarget;
+    });
+    if (matches.length === 0) return null;
+    return { type: "FeatureCollection", features: matches };
+  }, [
+    boundaryList,
+    boundaryGeoJSONs,
+    selectedProvinceId,
+    selectedDistrictId,
+    selectedLlgId,
+    provinceLookup,
+    districtLookup,
+    llgLookup,
+  ]);
+
+  // Pre-compute the bounding boxes of the selected admin polygon(s) for a
+  // cheap first-pass filter before running the more expensive point-in-polygon
+  // test. The GRID3 Zambia dataset has tens of thousands of features so we
+  // want to avoid running booleanPointInPolygon on every one of them.
+  const grid3InsideIds = useMemo<Set<any> | null>(() => {
+    if (!selectedAdminFeatures || !grid3GeoJSON?.features) return null;
+    const features = grid3GeoJSON.features as any[];
+    // Hard cap — bail out of emphasis on huge datasets to keep the UI fluid.
+    if (features.length > 80000) return null;
+    let admBboxes: number[][] = [];
+    try {
+      admBboxes = selectedAdminFeatures.features.map((f: any) => turfBbox(f));
+    } catch {
+      return null;
+    }
+    const ids = new Set<any>();
+    for (const feat of features) {
+      let c: number[] | null = null;
+      try {
+        c = (turfCentroid(feat) as any).geometry.coordinates as number[];
+      } catch {
+        continue;
+      }
+      const [x, y] = c;
+      for (let i = 0; i < admBboxes.length; i++) {
+        const bb = admBboxes[i];
+        if (x < bb[0] || x > bb[2] || y < bb[1] || y > bb[3]) continue;
+        try {
+          if (turfBooleanPointInPolygon(c as any, selectedAdminFeatures.features[i])) {
+            ids.add(feat.id ?? feat.properties?.OBJECTID ?? feat);
+            break;
+          }
+        } catch {
+          // ignore malformed polygons
+        }
+      }
+    }
+    return ids;
+  }, [selectedAdminFeatures, grid3GeoJSON]);
+
+  // GRID3 style function — closes over the latest insideIds set so we can
+  // apply it imperatively via grid3LayerRef.setStyle without remounting the
+  // GeoJSON layer.
+  const grid3StyleFn = useCallback(
+    (feature: any) => {
+      const baseColor = "#8b5cf6";
+      const baseFill = "#a78bfa";
+      if (!grid3InsideIds) {
+        return { color: baseColor, weight: 1.5, fillOpacity: 0.15, fillColor: baseFill };
+      }
+      const fid = feature.id ?? feature.properties?.OBJECTID ?? feature;
+      const inside = grid3InsideIds.has(fid);
+      return inside
+        ? { color: baseColor, weight: 2, fillOpacity: 0.35, fillColor: baseFill }
+        : { color: baseColor, weight: 1, fillOpacity: 0.04, fillColor: baseFill, opacity: 0.5 };
+    },
+    [grid3InsideIds],
+  );
+
+  // Re-apply GRID3 styles in place whenever the selection changes. Because we
+  // hold the layer with a STABLE key (`grid3-settlements-overlay`) the
+  // <GeoJSON> never remounts on a Province / District / LLG change — this
+  // keeps it from being unmounted and re-added under the boundary polygons.
+  useEffect(() => {
+    const layer = grid3LayerRef.current;
+    if (!layer || typeof layer.setStyle !== "function") return;
+    try {
+      layer.setStyle(grid3StyleFn);
+    } catch {
+      // ignore — layer may not be mounted yet
+    }
+  }, [grid3StyleFn]);
+
   const saveCatchmentMutation = useMutation({
     mutationFn: async () => {
       if (!catchmentFacilityId || drawPoints.length < 3) throw new Error("Invalid polygon");
@@ -3658,18 +3816,24 @@ export function MapView({
           />
         )}
 
-        {/* GRID3 Zambia Settlement Extents footprints */}
-        {layers.grid3Settlements && grid3GeoJSON && (
-          <GeoJSON
-            key="grid3-settlements-overlay"
-            data={grid3GeoJSON}
-            style={{
-              color: "#8b5cf6", // Vibrant Violet/Coral Outline
-              weight: 1.5,
-              fillOpacity: 0.15,
-              fillColor: "#a78bfa",
-            }}
-            onEachFeature={(feature, layer) => {
+        {/* GRID3 Zambia Settlement Extents footprints.
+            Rendered on a dedicated Leaflet pane (`grid3Pane`, z-index 450) so
+            it always paints *above* boundary polygons no matter what the
+            JSX order is or when boundary layers remount on Province change.
+            The component key is intentionally STABLE — it must not include
+            selectedProvinceId / selectedDistrictId / selectedLlgId — so this
+            layer is never unmounted by a filter change. Selection-aware
+            emphasis is applied imperatively via `grid3LayerRef.setStyle`. */}
+        {layers.grid3Settlements && grid3GeoJSON && tenantInfo?.countryCode === "ZMB" && (
+          <>
+            <Grid3PaneCreator />
+            <GeoJSON
+              key="grid3-settlements-overlay"
+              ref={(r) => { grid3LayerRef.current = r as any; }}
+              data={grid3GeoJSON}
+              pane="grid3Pane"
+              style={grid3StyleFn as any}
+              onEachFeature={(feature, layer) => {
               const props = feature.properties || {};
               const name = props.name || `${props.type || 'Settlement'} #${props.OBJECTID || ''}`;
               const count = props.building_count || 0;
@@ -3690,7 +3854,8 @@ export function MapView({
                 </div>
               `, { maxWidth: 200 });
             }}
-          />
+            />
+          </>
         )}
 
         {/* Plotted Session geofence drawing previews */}
