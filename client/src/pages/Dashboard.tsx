@@ -18,7 +18,8 @@ import {
   Clock,
   CheckCircle2,
   DollarSign,
-  Activity
+  Activity,
+  Syringe,
 } from "lucide-react";
 import { Link } from "wouter";
 import type { Facility, Village, SessionPlan, BudgetItem, ApprovalRequest, PopulationData } from "@shared/schema";
@@ -30,6 +31,26 @@ interface StatsData {
   totalSessions: number;
   totalPopulation: number;
   activeFacilities: number;
+}
+
+interface CoverageVaccine {
+  vaccineName: string;
+  targetPopulation: number;
+  dosesRequired: number;
+  administered: number;
+  coveragePct: number;
+}
+
+interface CoverageData {
+  quarter: number;
+  year: number;
+  facilityId: number | null;
+  vaccines: CoverageVaccine[];
+  totals: {
+    targetPopulation: number;
+    administered: number;
+    coveragePct: number;
+  };
 }
 
 export default function Dashboard() {
@@ -110,6 +131,10 @@ export default function Dashboard() {
 
   const { data: provinces, isLoading: loadingProvinces } = useQuery<any[]>({
     queryKey: ["/api/provinces"],
+  });
+
+  const { data: coverage, isLoading: loadingCoverage } = useQuery<CoverageData>({
+    queryKey: ["/api/coverage"],
   });
 
   const htrVillages = stats?.htrVillages || 0;
@@ -333,6 +358,12 @@ export default function Dashboard() {
     loadingDistricts ||
     loadingProvinces;
 
+  const coverageBarColor = (pct: number) => {
+    if (pct >= 80) return "bg-emerald-500";
+    if (pct >= 50) return "bg-amber-500";
+    return "bg-rose-500";
+  };
+
   return (
     <div className="p-6 space-y-6">
       {/* Premium Welcome Banner */}
@@ -454,6 +485,68 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between gap-2">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Syringe className="h-5 w-5 text-primary" />
+              Vaccine Coverage
+            </CardTitle>
+            {coverage && (
+              <Badge variant="secondary">
+                Q{coverage.quarter} {coverage.year} · {coverage.totals.coveragePct}% overall
+              </Badge>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent className="pt-3">
+          {loadingCoverage ? (
+            <div className="space-y-3">
+              {[1, 2, 3].map((i) => (
+                <Skeleton key={i} className="h-8 w-full" />
+              ))}
+            </div>
+          ) : !coverage || coverage.vaccines.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-6 text-center space-y-2 border border-dashed rounded-xl bg-muted/20">
+              <Syringe className="h-8 w-8 text-muted-foreground shrink-0" />
+              <p className="text-sm font-semibold text-foreground">No vaccine targets set</p>
+              <p className="text-xs text-muted-foreground max-w-[320px]">
+                Add vaccine requirements for this quarter to track coverage against target population.
+              </p>
+            </div>
+          ) : (
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {coverage.vaccines.map((v) => (
+                <div
+                  key={v.vaccineName}
+                  className="rounded-xl border bg-card p-3 space-y-2"
+                  data-testid={`coverage-${v.vaccineName}`}
+                >
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="text-sm font-semibold text-foreground truncate">
+                      {v.vaccineName}
+                    </span>
+                    <span className="text-base font-mono font-bold text-foreground">
+                      {v.coveragePct}%
+                    </span>
+                  </div>
+                  <div className="h-2 bg-muted rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all duration-500 ${coverageBarColor(v.coveragePct)}`}
+                      style={{ width: `${Math.min(v.coveragePct, 100)}%` }}
+                    />
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    {v.administered.toLocaleString()} administered of{" "}
+                    {v.targetPopulation.toLocaleString()} target
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <div className="grid md:grid-cols-2 gap-6">
         <Card>

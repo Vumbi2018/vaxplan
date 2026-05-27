@@ -45,6 +45,9 @@ import {
   settlementsMaster,
   candidateUnmappedSettlements,
   populationGrids,
+  vaccineRequirements,
+  clientVaccinations,
+  monthlyReports,
 } from "@shared/schema";
 import {
   runMissingSettlementDetection,
@@ -56,7 +59,7 @@ import { z } from "zod";
 import { db, pool } from "./db";
 import { readFileSync, existsSync, readdirSync, createReadStream, createWriteStream } from "fs";
 import { join } from "path";
-import { eq, and, desc, ne, inArray } from "drizzle-orm";
+import { eq, and, desc, ne, inArray, gte, lte, sql as dsql } from "drizzle-orm";
 import {
   fetchGeoBoundariesGeoJSON,
   calcBBox,
@@ -3587,6 +3590,132 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error updating vaccine requirement:", error);
       res.status(400).json({ message: "Failed to update vaccine requirement" });
+    }
+  });
+
+  // ─── Vaccine coverage (doses administered ÷ target population) ──────────
+  app.get("/api/coverage", ...auth, async (req: any, res) => {
+    try {
+      const tenantId = req.tenantId as string;
+      const now = new Date();
+      const year = req.query.year ? parseInt(req.query.year as string) : now.getUTCFullYear();
+      const quarter = req.query.quarter
+        ? parseInt(req.query.quarter as string)
+        : Math.floor(now.getUTCMonth() / 3) + 1;
+      const facilityId = req.query.facilityId ? parseInt(req.query.facilityId as string) : undefined;
+
+      const startMonth = (quarter - 1) * 3; // 0,3,6,9
+      const quarterStart = new Date(Date.UTC(year, startMonth, 1));
+      const quarterEnd = new Date(Date.UTC(year, startMonth + 3, 1));
+
+      // 1. Targets from vaccine_requirements
+      const reqWhere = and(
+        eq(vaccineRequirements.tenantId, tenantId),
+        eq(vaccineRequirements.quarter, quarter),
+        eq(vaccineRequirements.year, year),
+        facilityId ? eq(vaccineRequirements.facilityId, facilityId) : undefined,
+      );
+      const targets = await db
+        .select({
+          vaccineName: vaccineRequirements.vaccineName,
+          targetPopulation: dsql<number>`COALESCE(SUM(${vaccineRequirements.targetPopulation}), 0)::int`,
+          dosesRequired: dsql<number>`COALESCE(SUM(${vaccineRequirements.dosesRequired}), 0)::int`,
+        })
+        .from(vaccineRequirements)
+        .where(reqWhere)
+        .groupBy(vaccineRequirements.vaccineName);
+
+      // 2. Administered doses from client_vaccinations during quarter
+      const cvWhere = and(
+        eq(clientVaccinations.tenantId, tenantId),
+        gte(clientVaccinations.administeredDate, quarterStart),
+        lte(clientVaccinations.administeredDate, quarterEnd),
+      );
+      const cvRows = await db
+        .select({
+          vaccineName: clientVaccinations.vaccineName,
+          administered: dsql<number>`COUNT(*)::int`,
+        })
+        .from(clientVaccinations)
+        .where(cvWhere)
+        .groupBy(clientVaccinations.vaccineName);
+
+      // 3. Administered doses from monthly_reports.immunizations (jsonb)
+      const mrWhere = and(
+        eq(monthlyReports.tenantId, tenantId),
+        eq(monthlyReports.year, year),
+        gte(monthlyReports.month, startMonth + 1),
+        lte(monthlyReports.month, startMonth + 3),
+        facilityId ? eq(monthlyReports.facilityId, facilityId) : undefined,
+      );
+      const mrRows = await db
+        .select({ immunizations: monthlyReports.immunizations })
+        .from(monthlyReports)
+        .where(mrWhere);
+
+      const administeredByVaccine = new Map<string, number>();
+      for (const r of cvRows) {
+        if (!r.vaccineName) continue;
+        administeredByVaccine.set(
+          r.vaccineName,
+          (administeredByVaccine.get(r.vaccineName) || 0) + Number(r.administered || 0),
+        );
+      }
+      for (const r of mrRows) {
+        const map = (r.immunizations as Record<string, number>) || {};
+        for (const [k, v] of Object.entries(map)) {
+          // Match the antigen prefix (e.g. "Penta-1" → "Penta") so monthly
+          // report counts roll up onto the matching vaccine requirement row.
+          const num = Number(v);
+          if (!Number.isFinite(num) || num <= 0) continue;
+          administeredByVaccine.set(k, (administeredByVaccine.get(k) || 0) + num);
+        }
+      }
+
+      // Build response
+      const vaccines = targets.map((t) => {
+        // Sum administered for any antigen key that starts with this
+        // vaccine name (covers dose-numbered antigens like Penta-1/2/3).
+        let administered = administeredByVaccine.get(t.vaccineName) || 0;
+        for (const [k, v] of Array.from(administeredByVaccine.entries())) {
+          if (k === t.vaccineName) continue;
+          if (k.toLowerCase().startsWith(t.vaccineName.toLowerCase() + "-")) {
+            administered += v;
+          }
+        }
+        const target = Number(t.targetPopulation || 0);
+        const doses = Number(t.dosesRequired || 0);
+        const coveragePct = target > 0 ? Math.round((administered / target) * 1000) / 10 : 0;
+        return {
+          vaccineName: t.vaccineName,
+          targetPopulation: target,
+          dosesRequired: doses,
+          administered,
+          coveragePct,
+        };
+      });
+
+      vaccines.sort((a, b) => a.vaccineName.localeCompare(b.vaccineName));
+
+      const totalTarget = vaccines.reduce((s, v) => s + v.targetPopulation, 0);
+      const totalAdministered = vaccines.reduce((s, v) => s + v.administered, 0);
+      const overallCoveragePct =
+        totalTarget > 0 ? Math.round((totalAdministered / totalTarget) * 1000) / 10 : 0;
+
+      res.json({
+        quarter,
+        year,
+        facilityId: facilityId ?? null,
+        vaccines,
+        totals: {
+          targetPopulation: totalTarget,
+          administered: totalAdministered,
+          coveragePct: overallCoveragePct,
+        },
+      });
+    } catch (error) {
+      console.error("Error computing coverage:", error);
+      res.status(500).json({ message: "Failed to compute coverage" });
     }
   });
 
