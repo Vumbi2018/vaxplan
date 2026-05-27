@@ -750,7 +750,7 @@ export default function Population() {
 
   return (
     <div className="p-6 space-y-6">
-      <MicroplanStepper currentStep={1} />
+      <MicroplanStepper currentStep={2} />
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold" data-testid="text-page-title">Population Data Management</h1>

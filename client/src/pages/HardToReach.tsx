@@ -61,7 +61,11 @@ export default function HardToReach() {
   const [isAddCommunityOpen, setIsAddCommunityOpen] = useState(false);
   const [geoProvinceId, setGeoProvinceId] = useState<number | null>(null);
   const [geoDistrictId, setGeoDistrictId] = useState<number | null>(null);
-  const [geoFacilityId, setGeoFacilityId] = useState<number | null>(null);
+  const [geoFacilityId, setGeoFacilityId] = useState<number | null>(() => {
+    if (typeof window === "undefined") return null;
+    const f = new URLSearchParams(window.location.search).get("facility");
+    return f && !Number.isNaN(Number(f)) ? Number(f) : null;
+  });
 
   // Stateful weights for the interactive WHO HTR scoring matrix
   const [distanceWeight, setDistanceWeight] = useState(20);
@@ -462,7 +466,7 @@ export default function HardToReach() {
 
   return (
     <div className="p-6 space-y-6">
-      <MicroplanStepper currentStep={2} />
+      <MicroplanStepper currentStep={3} facilityId={geoFacilityId} />
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold">Hard-to-Reach Planning</h1>

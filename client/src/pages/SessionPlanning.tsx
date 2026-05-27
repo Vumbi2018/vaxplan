@@ -137,7 +137,11 @@ export default function SessionPlanning({
   // Geo cascade filter (separate from create-dialog selection)
   const [geoFilterProvinceId, setGeoFilterProvinceId] = useState<number | null>(null);
   const [geoFilterDistrictId, setGeoFilterDistrictId] = useState<number | null>(null);
-  const [geoFilterFacilityId, setGeoFilterFacilityId] = useState<number | null>(null);
+  const [geoFilterFacilityId, setGeoFilterFacilityId] = useState<number | null>(() => {
+    if (typeof window === "undefined") return null;
+    const f = new URLSearchParams(window.location.search).get("facility");
+    return f && !Number.isNaN(Number(f)) ? Number(f) : null;
+  });
 
   const isCreator = canCreateSessionPlan(user);
   const isReviewer = canApproveSessionPlan(user);
@@ -814,7 +818,7 @@ export default function SessionPlanning({
     const lockedParentBase = planTypeFilter === "campaign" ? "/microplans/campaigns" : "/microplans/routine";
     return (
       <div className="p-6 space-y-6">
-        <MicroplanStepper currentStep={3} />
+        <MicroplanStepper currentStep={4} facilityId={geoFilterFacilityId} />
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div>
             <h1 className="text-2xl font-bold" data-testid="text-page-title">{pageTitle}</h1>
@@ -894,7 +898,7 @@ export default function SessionPlanning({
 
   return (
     <div className="p-6 space-y-6">
-      <MicroplanStepper currentStep={3} />
+      <MicroplanStepper currentStep={4} facilityId={geoFilterFacilityId} />
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <Link href={backHref} className="text-xs text-muted-foreground hover:underline">

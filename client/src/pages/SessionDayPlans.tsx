@@ -721,7 +721,7 @@ export default function SessionDayPlans() {
 
   return (
     <div className="p-6 space-y-6 max-w-[1600px] mx-auto">
-      <MicroplanStepper currentStep={4} activeSessionId={Number(id)} />
+      <MicroplanStepper currentStep={8} activeSessionId={Number(id)} facilityId={sessionPlan?.facilityId ?? null} />
 
       {isLocked && (
         <div className="bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 rounded-xl p-3 text-xs font-semibold shadow-md flex items-center gap-2 mb-4 animate-in fade-in slide-in-from-top-2 duration-200">

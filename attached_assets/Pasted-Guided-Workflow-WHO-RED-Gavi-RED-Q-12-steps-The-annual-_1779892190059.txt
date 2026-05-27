@@ -1,0 +1,358 @@
+Guided Workflow — WHO RED + Gavi RED-Q (12 steps)
+The annual immunization microplanning cycle, computed against your current data. You can author each step.
+Reference doc
+1 done
+7 to do
+4 not yet wired
+8% of wired steps complete
+
+RED 5 + RED-Q Monitor
+· Planning baseline
+Steps 1
+STEP 01
+Situation analysis & coverage review
+RED 5 — Planning & management · RED-Q Monitor
+
+Review last year's DTP1/DTP3/MCV1 coverage, dropout, zero-dose and stockouts before planning.
+
+What to do
+
+•
+Pull last full year of DTP1 / DTP3 / MCV1 / MCV2 coverage.
+•
+Note DTP1→DTP3 and DTP1→MCV1 dropout %.
+•
+List stockout events, AEFI cases, sessions planned vs held.
+Required outputs — what good looks like
+
+✓
+One-page coverage & equity snapshot per facility with sub-village breakdown.
+✓
+List of bottom-decile communities to prioritize next year.
+Module: Dashboard + Standards Alignment
+
+Completion check: No prior-year microplan to review
+
+To do
+Open module
+
+RED 1 + RED-Q Identify
+· Reach every community
+Steps 2, 3, 4
+STEP 02
+Catchment & population mapping
+RED 1 — Re-establish outreach · RED-Q Identify
+
+Confirm catchment polygon and assign a population denominator with source to every community.
+
+What to do
+
+•
+Confirm the catchment polygon for the facility.
+•
+List every village, hamlet, IDP camp, school in the catchment.
+•
+For each community capture target population AND its source (NSO, HMIS, WorldPop, community census).
+•
+Assign each community a primary delivery strategy (fixed / outreach / mobile).
+Required outputs — what good looks like
+
+✓
+Geocoded community list with target-pop denominator.
+✓
+A population_data row WITH a non-empty source for every village.
+Module: Boundary Manager + Population
+
+Completion check: 12 / 12 villages have a population row with a recorded source
+
+Complete
+Open module
+STEP 03
+Hard-to-reach & equity profiling
+RED 1 — Re-establish outreach · RED-Q Identify + Reach
+
+Score every village by access difficulty and tag missed-community / zero-dose hotspots.
+
+What to do
+
+•
+Score each village on distance, terrain, seasonal accessibility and insecurity.
+•
+Tag missed communities (no immunization contact in the past 12 months).
+•
+Tag zero-dose hotspots (clusters with high % of children without DTP1).
+Required outputs — what good looks like
+
+✓
+HTR composite score per village.
+✓
+Missed-community flag and zero-dose tag per village.
+Module: Hard-to-Reach
+
+Completion check: 3 / 12 villages have an HTR / access tag
+
+To do
+Open module
+STEP 04
+Service delivery strategy & session calendar
+RED 1 — Re-establish outreach
+
+Pick fixed / outreach / mobile per community and build a rolling 12-month session calendar.
+
+What to do
+
+•
+Per community pick fixed-post / outreach / mobile delivery.
+•
+Build a 12-month rolling calendar covering the next four quarters.
+•
+Schedule catch-up / periodic intensification sessions for missed communities.
+Required outputs — what good looks like
+
+✓
+Microplan exists for the current quarter.
+✓
+Sessions exist for each of the next 4 quarters (12-month rolling calendar).
+Module: Routine Microplan + SIA Campaigns
+
+Completion check: No microplan for Q2 2026
+
+To do
+Open module
+
+WHO core 4–6
+· People · Vaccines · Logistics
+Steps 5, 6, 8
+STEP 05
+Workforce & teaming
+WHO core element 6 — Human resources
+
+Per session-day name vaccinator, recorder, supervisor; for SIA add team type and daily target.
+
+What to do
+
+•
+Per session-day assign vaccinator(s), recorder and supervisor.
+•
+For SIAs add team type (house-to-house / fixed post) and per-team daily target.
+•
+Record per-diem rates for each role.
+Required outputs — what good looks like
+
+✓
+Every scheduled session-day has at least one named vaccinator.
+✓
+A staffing roster exists at microplan level with counts per role.
+Module: Session Day Plans
+
+Completion check: Not yet wired — completion check ships with the staffing roster
+
+Pending — tracked in follow-up: Staffing + funding source on microplan
+
+Not yet wired
+View
+STEP 06
+Vaccine, supplies & cold-chain forecast
+WHO core element 4 — Logistics
+
+Apply per-antigen wastage, size cold-chain capacity, and forecast doses + AD syringes + safety boxes.
+
+What to do
+
+•
+Apply wastage factors (BCG ~40%, MR/OPV ~25%, Penta/PCV ~11%, IPV/Rota ~5%) per antigen.
+•
+Forecast doses + diluents + AD syringes + safety boxes for the plan period.
+•
+Size cold boxes, ice packs and carriers per session.
+Required outputs — what good looks like
+
+✓
+Vaccine forecast row for every active antigen for the plan period.
+✓
+Cold-chain capacity check vs forecast volume (pending until cold-chain inventory ships).
+Module: Vaccine Calculator + Stock Ledger
+
+Completion check: 0 / 7 active antigens have a forecast this quarter (BCG, OPV, PENTA, PCV, IPV, MR, ROTA)
+
+Pending — tracked in follow-up: Cold-chain inventory + temperature logs + stockout/wastage + GTIN-lot-expiry are pending
+
+To do
+Open module
+STEP 08
+Logistics & transport
+WHO core element 5 — Logistics
+
+Record transport mode, distance, fuel and security clearance for every session-day.
+
+What to do
+
+•
+Per session-day record transport mode, distance and estimated fuel.
+•
+Where applicable record vehicle / boat / escort and security clearance.
+Required outputs — what good looks like
+
+✓
+Every scheduled session-day has a transport mode + estimated distance.
+✓
+Microplan-level transport rollup view (pending).
+Module: Session Day Plans
+
+Completion check: Not yet wired — completion check ships with the session-day rollup
+
+Pending — tracked in follow-up: Per-session-day transport rollup on the microplan view
+
+Not yet wired
+View
+
+RED 3 + RED-Q Reach
+· Demand
+Steps 7
+STEP 07
+Demand generation & social mobilization
+RED 3 — Community links · RED-Q Reach
+
+Schedule announcement channel and named focal point per session; pre-position IEC materials.
+
+What to do
+
+•
+Per session schedule the announcement channel (megaphone, religious leader, SMS).
+•
+Name a community focal point per session.
+•
+Pre-position IEC materials at the delivery point.
+Required outputs — what good looks like
+
+✓
+Each facility with scheduled sessions this quarter has ≥1 mobilization activity scheduled in the same quarter.
+✓
+(per-session linkage ships when mobilizationActivities gets a sessionId column).
+Module: Social Mobilization
+
+Completion check: 0 / 3 facilities with sessions also have a mobilization activity this quarter
+
+To do
+Open module
+
+WHO core 8
+· Financing
+Steps 9
+STEP 09
+Budget with funding source
+WHO core element 8 — Financing
+
+Itemize Personnel, Transport, Supplies, Per Diem, Cold Chain — each tagged to a funder.
+
+What to do
+
+•
+Itemize budget lines under Personnel / Transport / Supplies / Per Diem / Cold Chain / Training / Communication.
+•
+Tag every line with a funding source (Govt / Gavi / WHO / UNICEF / Other).
+Required outputs — what good looks like
+
+✓
+Quarterly budget has ≥1 line each for Personnel, Transport, Supplies.
+✓
+Funding source set on every line (pending until the funding-source enum ships).
+Module: Budget Planning
+
+Completion check: Missing one of Personnel / Transport / Supplies for Q2
+
+Pending — tracked in follow-up: Structured funding-source enum (Govt / Gavi / WHO / UNICEF / Other) is pending
+
+To do
+Open module
+
+RED 2
+· Supportive supervision
+Steps 10
+STEP 10
+Supportive supervision plan
+RED 2 — Supportive supervision
+
+Schedule at least one supervisory visit per facility per quarter with a standard checklist.
+
+What to do
+
+•
+Per facility schedule ≥1 supervisory visit this quarter.
+•
+Name the supervisor and the checklist to use.
+•
+Capture follow-up actions after every visit.
+Required outputs — what good looks like
+
+✓
+Supervisory visit calendar with checklist references.
+✓
+(blocked on supervisory_visits entity).
+Module: Supportive Supervision (planned)
+
+Completion check: Not yet wired — completion check ships with supervisory_visits
+
+Pending — tracked in follow-up: Supportive supervision visits + checklist
+
+Not yet wired
+View
+
+RED 5
+· Approval & lock
+Steps 11
+STEP 11
+Approval cascade
+RED 5 — Planning & management
+
+Facility submits → district → provincial → national; national approval locks the plan.
+
+What to do
+
+•
+Facility in-charge submits the microplan from Approvals.
+•
+District → provincial → national reviewers approve or return with comments.
+•
+Final national approval locks the plan for execution.
+Required outputs — what good looks like
+
+✓
+Microplan reaches approval_status = approved at the terminal review level.
+✓
+Audit trail captures who approved, when, and any comments.
+Module: Approvals
+
+Completion check: Awaiting submission / approval for the current quarter
+
+To do
+View
+
+RED 4 + RED-Q Measure
+· Execution & review
+Steps 12
+STEP 12
+Execution, monitoring & quarterly review
+RED 4 — Monitoring for action · RED-Q Measure
+
+Record doses given, run defaulter review, re-rank missed communities, feed back into Step 1.
+
+What to do
+
+•
+Record doses given per session in the Client Logbook.
+•
+Update the wall chart and review defaulters monthly.
+•
+Re-rank missed communities every quarter; trigger a coverage survey after every SIA.
+Required outputs — what good looks like
+
+✓
+Monthly tally + defaulter list + quarterly review note.
+✓
+Sessions for the current quarter are marked conducted with actual doses recorded.
+Module: Client Logbook + Dashboard
+
+Completion check: Not yet wired — 0 session(s) this quarter marked conducted, but defaulter / zero-dose / dropout views are pending
+
+Pending — tracked in follow-up: Zero-dose children indicator + defaulter list + DTP dropout view are pending

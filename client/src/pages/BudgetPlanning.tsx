@@ -124,7 +124,11 @@ export default function BudgetPlanning() {
   );
   const [geoProvinceId, setGeoProvinceId] = useState<number | null>(null);
   const [geoDistrictId, setGeoDistrictId] = useState<number | null>(null);
-  const [geoFacilityId, setGeoFacilityId] = useState<number | null>(null);
+  const [geoFacilityId, setGeoFacilityId] = useState<number | null>(() => {
+    if (typeof window === "undefined") return null;
+    const f = new URLSearchParams(window.location.search).get("facility");
+    return f && !Number.isNaN(Number(f)) ? Number(f) : null;
+  });
 
   /*
   // Original queries and mutation (commented out to preserve working code while adding offline capabilities):
@@ -604,7 +608,7 @@ export default function BudgetPlanning() {
 
   return (
     <div className="p-6 space-y-6">
-      <MicroplanStepper currentStep={7} />
+      <MicroplanStepper currentStep={9} facilityId={geoFacilityId} />
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold">Budget Planning</h1>

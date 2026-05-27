@@ -77,7 +77,11 @@ export default function VaccineCalculator() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const [selectedFacility, setSelectedFacility] = useState<string | null>(null);
+  const [selectedFacility, setSelectedFacility] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    const f = new URLSearchParams(window.location.search).get("facility");
+    return f && !Number.isNaN(Number(f)) ? f : null;
+  });
   const [selectedQuarter, setSelectedQuarter] = useState(
     Math.ceil((new Date().getMonth() + 1) / 3)
   );
@@ -389,7 +393,7 @@ export default function VaccineCalculator() {
 
   return (
     <div className="p-6 space-y-6">
-      <MicroplanStepper currentStep={5} />
+      <MicroplanStepper currentStep={6} facilityId={selectedFacility ? Number(selectedFacility) : null} />
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-primary/80">
