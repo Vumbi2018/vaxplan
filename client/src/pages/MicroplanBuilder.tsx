@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useRoute, useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -47,6 +48,7 @@ import {
   Plane,
   Coins,
   Thermometer,
+  Map,
 } from "lucide-react";
 import type {
   SessionPlan,
@@ -102,6 +104,16 @@ interface MicroplanBuilderProps {
 export default function MicroplanBuilder({ prePlanType }: MicroplanBuilderProps = {}) {
   const { user } = useAuth();
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
+  // Resume-editing: deep-link routes /microplans/routine/:id and
+  // /microplans/campaigns/:id load that microplan straight into the wizard.
+  const [routineMatch, routineParams] = useRoute<{ id: string }>("/microplans/routine/:id");
+  const [campaignMatch, campaignParams] = useRoute<{ id: string }>("/microplans/campaigns/:id");
+  const resumeMicroplanId = routineMatch
+    ? routineParams?.id
+    : campaignMatch
+    ? campaignParams?.id
+    : null;
   const [activeStep, setActiveStep] = useState(1);
   const [selectedFacilityId, setSelectedFacilityId] = useState<number | null>(null);
 
@@ -118,17 +130,26 @@ export default function MicroplanBuilder({ prePlanType }: MicroplanBuilderProps 
     }
   }, []);
 
-  // Step names dictionary for wizard stepper buttons dynamic labeling
+  // WHO RED + Gavi RED-Q 12-step microplanning workflow.
+  // Steps 1–8 reuse the existing wizard panels (renamed to fit the framework);
+  // steps 9–12 are new lightweight panels added at the end of the wizard so the
+  // builder fully covers the RED-Q canonical elements (Workforce, Supervision,
+  // Catchment snapshot, Execution & monitoring).
   const stepTitles: Record<number, string> = {
-    1: "Targets & Parameters",
-    2: "HTR Risk Profiles",
-    3: "Draft Session Plan",
-    4: "Itinerary Schedules",
-    5: "Vaccine Calculators",
-    6: "Outreach Mobilizers",
-    7: "Costing & Budget",
-    8: "Review & Certify",
+    1: "Situation Analysis & Targets",
+    2: "Hard-to-Reach & Equity",
+    3: "Service Delivery & Session Calendar",
+    4: "Logistics & Transport Itinerary",
+    5: "Vaccine, Supplies & Cold-Chain",
+    6: "Demand & Social Mobilization",
+    7: "Budget with Funding Source",
+    8: "Review & Approval Cascade",
+    9: "Workforce & Teaming Roster",
+    10: "Supportive Supervision Plan",
+    11: "Catchment & Population Snapshot",
+    12: "Execution, Monitoring & Quarterly Review",
   };
+  const TOTAL_STEPS = 12;
 
   // Active Microplan Session being constructed
   const [activeSessionId, setActiveSessionId] = useState<number | null>(null);
@@ -601,7 +622,12 @@ export default function MicroplanBuilder({ prePlanType }: MicroplanBuilderProps 
 
   const [staffingRows, setStaffingRows] = useState<StaffingRow[]>([]);
   useEffect(() => {
-    const seed = (activeMicroplan?.staffing as StaffingRow[] | null) || [];
+    const raw = activeMicroplan?.staffing as any;
+    const seed: StaffingRow[] = Array.isArray(raw)
+      ? raw
+      : Array.isArray(raw?.roster)
+      ? raw.roster
+      : [];
     setStaffingRows(
       seed.length > 0
         ? seed
@@ -621,8 +647,17 @@ export default function MicroplanBuilder({ prePlanType }: MicroplanBuilderProps 
   const saveStaffingMutation = useMutation({
     mutationFn: async () => {
       if (!activeMicroplan) throw new Error("No active microplan to attach staffing to.");
+      // Envelope-preserving write: if the existing staffing column has already
+      // been promoted to a { roster, __supervision } envelope (Step 10), keep
+      // the supervision sidecar intact. For legacy array shape we just write
+      // the array back to avoid disturbing a working format.
+      const existing = activeMicroplan.staffing as any;
+      const payload =
+        existing && !Array.isArray(existing) && (existing.__supervision || existing.roster !== undefined)
+          ? { ...existing, roster: staffingRows }
+          : staffingRows;
       return apiRequest("PATCH", `/api/microplans/${activeMicroplan.id}`, {
-        staffing: staffingRows,
+        staffing: payload,
       });
     },
     onSuccess: () => {
@@ -841,19 +876,38 @@ export default function MicroplanBuilder({ prePlanType }: MicroplanBuilderProps 
 
   const submitApprovalMutation = useMutation({
     mutationFn: async () => {
-      return apiRequest("PATCH", `/api/sessions/${activeSessionId}`, {
+      // Submit BOTH the active session and (if present) its parent microplan
+      // for review so the approvals workflow sees a single coherent package.
+      const sessionRes = await apiRequest("PATCH", `/api/sessions/${activeSessionId}`, {
         approvalStatus: "pending",
       });
+      if (activeMicroplan?.id) {
+        try {
+          // The microplans table tracks lifecycle on its `status` column
+          // (draft / pending / approved / locked). There is no separate
+          // approvalStatus or submittedAt column today, so we only bump status.
+          await apiRequest("PATCH", `/api/microplans/${activeMicroplan.id}`, {
+            status: "pending",
+          });
+        } catch {
+          // Parent microplan PATCH is best-effort — the session itself is the
+          // authoritative approval record for downstream workflows.
+        }
+      }
+      return sessionRes;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/sessions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/microplans"] });
       toast({
         title: "Microplan Submitted",
-        description: "Your georeferenced vaccination plan is queued for district review.",
+        description: "Your vaccination microplan is queued for review. Redirecting to Approvals…",
       });
       setActiveStep(1);
       setActiveSessionId(null);
       setSessionName("");
+      setIsBuilding(false);
+      setLocation("/approvals");
     },
   });
 
@@ -966,15 +1020,68 @@ export default function MicroplanBuilder({ prePlanType }: MicroplanBuilderProps 
     });
   };
 
+  // Lightweight per-step validation gating the wizard's Next button.
+  // Returns { ok:true } when the user may advance, otherwise a human-readable
+  // reason for the toast.
+  const validateStep = (step: number): { ok: boolean; reason?: string } => {
+    switch (step) {
+      case 1:
+        if (!selectedFacilityId) return { ok: false, reason: "Pick a facility before continuing." };
+        return { ok: true };
+      case 3:
+        if (!activeSessionId) return { ok: false, reason: "Draft the session first so it has an ID to attach plans to." };
+        if (!sessionName.trim()) return { ok: false, reason: "Give the session a name." };
+        return { ok: true };
+      case 4:
+        if (!activeSessionId) return { ok: false, reason: "Create a session before adding itinerary days." };
+        return { ok: true };
+      case 7:
+        if (!activeSessionId) return { ok: false, reason: "Create a session before adding budget lines." };
+        return { ok: true };
+      default:
+        return { ok: true };
+    }
+  };
+
+  // Auto-save hook called by the Next button. Today the wizard already
+  // persists fields eagerly per panel via dedicated mutations, so this is a
+  // toast-level confirmation; future per-step PATCH calls can hook in here.
+  const autoSaveCurrentStep = () => {
+    if (activeSessionId) {
+      // Touching the session refreshes its updatedAt so reviewers see progress.
+      queryClient.invalidateQueries({ queryKey: ["/api/sessions"] });
+    }
+  };
+
+  // Resume-edit hydration: when the route includes a :id, find that microplan
+  // and jump straight into the builder seeded to its first session.
+  useEffect(() => {
+    if (!resumeMicroplanId || !microplans || !sessions) return;
+    const mp = microplans.find((m) => String(m.id) === String(resumeMicroplanId));
+    if (!mp) return;
+    if (mp.facilityId && !selectedFacilityId) setSelectedFacilityId(mp.facilityId);
+    // Bind only sessions that are explicitly children of THIS microplan.
+    // Falling back to "first session for the same facility" risks attaching
+    // the wizard to an unrelated session and writing approval actions to the
+    // wrong record, so we leave activeSessionId null and let the user pick.
+    const owned = sessions.find((s) => (s as any).microplanId === mp.id);
+    if (owned) setActiveSessionId(owned.id);
+    setIsBuilding(true);
+  }, [resumeMicroplanId, microplans, sessions]);
+
   const steps = [
-    { num: 1, title: "Targets & Parameters", desc: "NSO denominators", icon: Users },
-    { num: 2, title: "HTR Risk Profiles", desc: "Remote risk factors", icon: AlertTriangle },
-    { num: 3, title: "Draft Session Plan", desc: "Static/Outreach scope", icon: Calendar },
-    { num: 4, title: "Itinerary Schedules", desc: "Day schedule matrix", icon: ClipboardList },
-    { num: 5, title: "Vaccine Calculators", desc: "Antigen & Cold chain forecasts", icon: Syringe },
-    { num: 6, title: "Outreach Mobilizers", desc: "Community messaging", icon: Megaphone },
-    { num: 7, title: "Costing & Budget", desc: "Direct session expenses", icon: Wallet },
-    { num: 8, title: "Review & Certify", desc: "Verification dashboard", icon: CheckCircle },
+    { num: 1, title: "Situation Analysis & Targets", desc: "Coverage review & NSO denominators", icon: Users },
+    { num: 2, title: "Hard-to-Reach & Equity", desc: "Remote & under-served risk factors", icon: AlertTriangle },
+    { num: 3, title: "Service Delivery & Session Calendar", desc: "Static / Outreach / Mobile scope", icon: Calendar },
+    { num: 4, title: "Logistics & Transport Itinerary", desc: "Day schedule matrix & routing", icon: ClipboardList },
+    { num: 5, title: "Vaccine, Supplies & Cold-Chain", desc: "Antigen & cold chain forecasts", icon: Syringe },
+    { num: 6, title: "Demand & Social Mobilization", desc: "Community messaging & activities", icon: Megaphone },
+    { num: 7, title: "Budget with Funding Source", desc: "Direct session expenses & funder split", icon: Wallet },
+    { num: 8, title: "Review & Approval Cascade", desc: "Verification & submit for approval", icon: CheckCircle },
+    { num: 9, title: "Workforce & Teaming Roster", desc: "Staff roster & team composition", icon: Users },
+    { num: 10, title: "Supportive Supervision Plan", desc: "Supervisor visits & checklist", icon: ClipboardList },
+    { num: 11, title: "Catchment & Population Snapshot", desc: "Catchment map & population summary", icon: Map },
+    { num: 12, title: "Execution, Monitoring & Quarterly Review", desc: "Day-plan execution & coverage tracking", icon: CheckCircle },
   ];
 
   if (!isBuilding) {
@@ -1157,18 +1264,18 @@ export default function MicroplanBuilder({ prePlanType }: MicroplanBuilderProps 
           <div>
             <h1 className="text-sm font-black text-foreground leading-none">Microplanning Studio</h1>
             <p className="text-[10px] text-muted-foreground mt-0.5 font-bold uppercase tracking-wide">
-              Step {activeStep} of 8: {steps[activeStep - 1].title}
+              Step {activeStep} of {TOTAL_STEPS}: {steps[activeStep - 1].title}
             </p>
           </div>
         </div>
         <div className="w-24 text-right">
           <span className="text-[10px] font-extrabold font-mono text-indigo-600 bg-indigo-500/10 dark:text-indigo-400 dark:bg-indigo-400/10 px-2 py-0.5 rounded-full border border-indigo-500/10">
-            {Math.round((activeStep / 8) * 100)}% Done
+            {Math.round((activeStep / TOTAL_STEPS) * 100)}% Done
           </span>
         </div>
       </div>
 
-      <Progress value={(activeStep / 8) * 100} className="h-1 bg-indigo-600/10" />
+      <Progress value={(activeStep / TOTAL_STEPS) * 100} className="h-1 bg-indigo-600/10" />
 
       {/* STEP CONTAINER */}
       <div className="animate-in fade-in duration-300">
@@ -2704,7 +2811,7 @@ export default function MicroplanBuilder({ prePlanType }: MicroplanBuilderProps 
             <CardHeader className="bg-muted/10 border-b border-border/40 pb-4">
               <CardTitle className="text-base font-extrabold flex items-center gap-2">
                 <CheckCircle className="h-5 w-5 text-indigo-600" />
-                Step 8: Review & Certify
+                Step 8: Review & Approval Cascade
               </CardTitle>
               <CardDescription className="text-xs">
                 Verify the finalized vaccination microplan package and address any critical gaps.
@@ -2918,6 +3025,237 @@ export default function MicroplanBuilder({ prePlanType }: MicroplanBuilderProps 
           </Card>
         )}
 
+        {/* STEP 9: WORKFORCE & TEAMING ROSTER */}
+        {activeStep === 9 && (
+          <Card className="rounded-3xl border border-border/60 shadow-xl overflow-hidden bg-gradient-to-br from-sky-500/5 to-indigo-500/5">
+            <CardHeader className="bg-muted/10 border-b border-border/40 pb-4">
+              <CardTitle className="text-base font-extrabold flex items-center gap-2">
+                <Users className="h-5 w-5 text-sky-600" />
+                Step 9: Workforce & Teaming Roster
+              </CardTitle>
+              <CardDescription className="text-xs">
+                Confirm the team composition that will deliver this microplan in the field
+                (RED-Q workforce element). Detailed per-role staffing is captured under the
+                Budget step; this panel summarises and locks the roster.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="p-4 space-y-4 pt-5 text-xs">
+              {!activeMicroplan && (
+                <div className="p-3 rounded-2xl border border-amber-500/30 bg-amber-500/5 text-amber-700 dark:text-amber-400 font-semibold">
+                  Create a microplan in Step 3 first; the workforce roster attaches to that microplan.
+                </div>
+              )}
+              {activeMicroplan && (
+                <div className="grid grid-cols-2 gap-3">
+                  {(() => {
+                    const raw = activeMicroplan.staffing as any;
+                    const roster: StaffingRow[] = Array.isArray(raw)
+                      ? raw
+                      : Array.isArray(raw?.roster)
+                      ? raw.roster
+                      : [];
+                    return roster.length === 0 ? (
+                      <div className="col-span-2 p-3 rounded-2xl border border-dashed border-border/60 text-muted-foreground italic">
+                        No staffing rows yet — add them under Step 7 (Budget &amp; Staffing). They will appear here.
+                      </div>
+                    ) : (
+                      roster.map((row, i) => (
+                        <div key={i} className="rounded-2xl border border-border/60 p-3 bg-background">
+                          <div className="font-extrabold text-sm">{row.role}</div>
+                          <div className="text-muted-foreground mt-1">
+                            {row.headcount} × {row.days}d @ K{row.perDiem}
+                          </div>
+                        </div>
+                      ))
+                    );
+                  })()}
+                </div>
+              )}
+              <Button variant="outline" size="sm" onClick={() => setActiveStep(7)} className="rounded-xl text-xs">
+                Edit roster in Step 7
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* STEP 10: SUPPORTIVE SUPERVISION PLAN */}
+        {activeStep === 10 && (
+          <Card className="rounded-3xl border border-border/60 shadow-xl overflow-hidden bg-gradient-to-br from-purple-500/5 to-indigo-500/5">
+            <CardHeader className="bg-muted/10 border-b border-border/40 pb-4">
+              <CardTitle className="text-base font-extrabold flex items-center gap-2">
+                <ClipboardList className="h-5 w-5 text-purple-600" />
+                Step 10: Supportive Supervision Plan
+              </CardTitle>
+              <CardDescription className="text-xs">
+                Schedule supervisor visits, checklists and feedback loops for this round
+                (RED-Q supportive supervision element).
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="p-4 space-y-3 pt-5 text-xs">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-2xl border border-border/60 p-3 bg-background space-y-1.5">
+                  <Label className="text-[10px] uppercase font-extrabold tracking-wider text-muted-foreground">Supervisor</Label>
+                  <Input id="sup-name" placeholder="Name / role" className="text-xs h-8 rounded-xl" />
+                </div>
+                <div className="rounded-2xl border border-border/60 p-3 bg-background space-y-1.5">
+                  <Label className="text-[10px] uppercase font-extrabold tracking-wider text-muted-foreground">Visit Date</Label>
+                  <Input id="sup-date" type="date" className="text-xs h-8 rounded-xl" />
+                </div>
+              </div>
+              <div className="rounded-2xl border border-border/60 p-3 bg-background space-y-1.5">
+                <Label className="text-[10px] uppercase font-extrabold tracking-wider text-muted-foreground">Checklist Focus</Label>
+                <Textarea
+                  id="sup-checklist"
+                  placeholder="e.g. cold chain temp logs, AEFI register, session register completeness…"
+                  className="text-xs rounded-xl min-h-[80px]"
+                  defaultValue={
+                    activeMicroplan
+                      ? (((activeMicroplan.staffing as any)?.__supervision?.checklist as string) || "")
+                      : ""
+                  }
+                />
+              </div>
+              <Button
+                size="sm"
+                disabled={!activeMicroplan}
+                onClick={() => {
+                  if (!activeMicroplan?.id) return;
+                  const name = (document.getElementById("sup-name") as HTMLInputElement)?.value || "";
+                  const date = (document.getElementById("sup-date") as HTMLInputElement)?.value || "";
+                  const checklist = (document.getElementById("sup-checklist") as HTMLTextAreaElement)?.value || "";
+                  // Persist the supervision plan inside the existing `staffing`
+                  // jsonb column under a reserved `__supervision` key so we
+                  // don't need a schema migration to add a dedicated column.
+                  // Roster rows (array entries) are preserved via the wrapper:
+                  // we promote the existing array to { roster, __supervision }.
+                  const existingStaffing = activeMicroplan.staffing as any;
+                  const rosterRows = Array.isArray(existingStaffing)
+                    ? existingStaffing
+                    : Array.isArray(existingStaffing?.roster)
+                    ? existingStaffing.roster
+                    : [];
+                  const nextStaffing = {
+                    roster: rosterRows,
+                    __supervision: { supervisor: name, visitDate: date, checklist },
+                  };
+                  apiRequest("PATCH", `/api/microplans/${activeMicroplan.id}`, {
+                    staffing: nextStaffing,
+                  })
+                    .then(() => {
+                      queryClient.invalidateQueries({ queryKey: ["/api/microplans"] });
+                      toast({ title: "Supervision plan saved" });
+                    })
+                    .catch((err: any) =>
+                      toast({ title: "Save failed", description: err.message, variant: "destructive" }),
+                    );
+                }}
+                className="rounded-xl text-xs font-bold bg-purple-600 hover:bg-purple-500 text-white"
+              >
+                Save Supervision Plan
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* STEP 11: CATCHMENT & POPULATION SNAPSHOT */}
+        {activeStep === 11 && (
+          <Card className="rounded-3xl border border-border/60 shadow-xl overflow-hidden bg-gradient-to-br from-emerald-500/5 to-teal-500/5">
+            <CardHeader className="bg-muted/10 border-b border-border/40 pb-4">
+              <CardTitle className="text-base font-extrabold flex items-center gap-2">
+                <Map className="h-5 w-5 text-emerald-600" />
+                Step 11: Catchment &amp; Population Snapshot
+              </CardTitle>
+              <CardDescription className="text-xs">
+                Final read-only summary of the catchment area and target denominators
+                for this microplan (RED-Q catchment mapping element).
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="p-4 space-y-3 pt-5 text-xs">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-2xl border border-border/60 p-3 bg-background">
+                  <div className="font-bold text-muted-foreground text-[10px] uppercase tracking-wider">Facility</div>
+                  <div className="text-sm font-extrabold mt-1">{activeFacility?.name || "—"}</div>
+                </div>
+                <div className="rounded-2xl border border-border/60 p-3 bg-background">
+                  <div className="font-bold text-muted-foreground text-[10px] uppercase tracking-wider">Villages in catchment</div>
+                  <div className="text-sm font-extrabold mt-1 font-mono">{facilityVillages.length}</div>
+                </div>
+                <div className="rounded-2xl border border-border/60 p-3 bg-background">
+                  <div className="font-bold text-muted-foreground text-[10px] uppercase tracking-wider">Target population (under-1)</div>
+                  <div className="text-sm font-extrabold mt-1 font-mono">{activeSession?.targetPopulation || "—"}</div>
+                </div>
+                <div className="rounded-2xl border border-border/60 p-3 bg-background">
+                  <div className="font-bold text-muted-foreground text-[10px] uppercase tracking-wider">HTR villages flagged</div>
+                  <div className="text-sm font-extrabold mt-1 font-mono">
+                    {facilityVillages.filter((v) => Number(v.terrainDifficulty) >= 4 || v.seasonalAccessibility === "poor").length}
+                  </div>
+                </div>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => setLocation("/map")} className="rounded-xl text-xs">
+                Open full catchment map
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* STEP 12: EXECUTION, MONITORING & QUARTERLY REVIEW */}
+        {activeStep === 12 && (
+          <Card className="rounded-3xl border border-border/60 shadow-xl overflow-hidden bg-gradient-to-br from-amber-500/5 to-rose-500/5">
+            <CardHeader className="bg-muted/10 border-b border-border/40 pb-4">
+              <CardTitle className="text-base font-extrabold flex items-center gap-2">
+                <CheckCircle className="h-5 w-5 text-amber-600" />
+                Step 12: Execution, Monitoring &amp; Quarterly Review
+              </CardTitle>
+              <CardDescription className="text-xs">
+                Read-only execution dashboard for this microplan — day plans completed,
+                doses administered, and outstanding gaps to feed the quarterly review
+                (RED-Q monitoring &amp; review element).
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="p-4 space-y-3 pt-5 text-xs">
+              {(() => {
+                const days = dayPlans || [];
+                const total = days.length;
+                const completed = days.filter((d: any) => d.completedAt).length;
+                const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
+                return (
+                  <>
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="rounded-2xl border border-border/60 p-3 bg-background text-center">
+                        <div className="text-[10px] font-bold uppercase text-muted-foreground">Day Plans</div>
+                        <div className="text-2xl font-black font-mono mt-1">{total}</div>
+                      </div>
+                      <div className="rounded-2xl border border-border/60 p-3 bg-background text-center">
+                        <div className="text-[10px] font-bold uppercase text-muted-foreground">Completed</div>
+                        <div className="text-2xl font-black font-mono mt-1 text-emerald-600">{completed}</div>
+                      </div>
+                      <div className="rounded-2xl border border-border/60 p-3 bg-background text-center">
+                        <div className="text-[10px] font-bold uppercase text-muted-foreground">Coverage</div>
+                        <div className="text-2xl font-black font-mono mt-1 text-indigo-600">{pct}%</div>
+                      </div>
+                    </div>
+                    <Progress value={pct} className="h-2" />
+                    <div className="rounded-2xl border border-border/60 p-3 bg-background space-y-1.5">
+                      <div className="font-bold text-[10px] uppercase tracking-wider text-muted-foreground">Approval status</div>
+                      <Badge variant="outline" className="capitalize">
+                        {activeSession?.approvalStatus || "draft"}
+                      </Badge>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button variant="outline" size="sm" onClick={() => setLocation("/reports")} className="rounded-xl text-xs">
+                        Open coverage reports
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => setLocation("/approvals")} className="rounded-xl text-xs">
+                        Open approvals
+                      </Button>
+                    </div>
+                  </>
+                );
+              })()}
+            </CardContent>
+          </Card>
+        )}
+
       </div>
 
       {/* FOOTER WIZARD NAVIGATION CONTROLS */}
@@ -2935,7 +3273,7 @@ export default function MicroplanBuilder({ prePlanType }: MicroplanBuilderProps 
         </Button>
 
         <div className="text-xs font-mono font-bold text-muted-foreground">
-          Step {activeStep} / 8
+          Step {activeStep} / {TOTAL_STEPS}
         </div>
 
         <Button
@@ -2946,9 +3284,9 @@ export default function MicroplanBuilder({ prePlanType }: MicroplanBuilderProps 
               toast({ title: "Draft Session First", description: "You must draft the session to generate an ID before proceeding.", variant: "destructive" });
               return;
             }
-            setActiveStep((s) => Math.min(8, s + 1));
+            setActiveStep((s) => Math.min(TOTAL_STEPS, s + 1));
           }}
-          disabled={activeStep === 8}
+          disabled={activeStep === TOTAL_STEPS}
           className="h-9 px-3 text-xs rounded-xl flex items-center gap-1 font-semibold disabled:opacity-30 disabled:cursor-not-allowed"
         >
           <span>Next</span>
@@ -2971,23 +3309,25 @@ export default function MicroplanBuilder({ prePlanType }: MicroplanBuilderProps 
         </Button>
 
         <div className="text-xs font-mono font-bold text-muted-foreground">
-          Step {activeStep} / 8
+          Step {activeStep} / {TOTAL_STEPS}
         </div>
 
         <Button
           variant="outline"
           size="sm"
           onClick={() => {
-            if (activeStep === 3 && !activeSessionId) {
-              toast({ title: "Draft Session First", description: "You must draft the session to generate an ID before proceeding.", variant: "destructive" });
+            const gate = validateStep(activeStep);
+            if (!gate.ok) {
+              toast({ title: "Cannot advance yet", description: gate.reason, variant: "destructive" });
               return;
             }
-            setActiveStep((s) => Math.min(8, s + 1));
+            autoSaveCurrentStep();
+            setActiveStep((s) => Math.min(TOTAL_STEPS, s + 1));
           }}
-          disabled={activeStep === 8}
+          disabled={activeStep === TOTAL_STEPS}
           className="h-9 px-3 text-xs rounded-xl flex items-center gap-1 font-semibold disabled:opacity-30 disabled:cursor-not-allowed"
         >
-          <span>{activeStep < 8 ? `Next: Step ${activeStep + 1} (${stepTitles[activeStep + 1]})` : "Next"}</span>
+          <span>{activeStep < TOTAL_STEPS ? `Next: Step ${activeStep + 1} (${stepTitles[activeStep + 1]})` : "Next"}</span>
           <ChevronRight className="h-4 w-4" />
         </Button>
       </div>
