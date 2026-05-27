@@ -60,6 +60,7 @@ import {
   Plus,
 } from "lucide-react";
 import type { Facility, Village, FacilityCatchment } from "@shared/schema";
+import { deriveSessionLifecycle } from "@/lib/sessionStatus";
 import { distance, centroid as turfCentroid, polygon as turfPolygon } from "@turf/turf";
 import RBush from "rbush";
 // Vite worker import — runs centroid + point-in-polygon emphasis off the
@@ -410,6 +411,7 @@ function MapLegend({
     // Session plan pins on the live map (Task #47). Status-driven styling.
     { key: "sessionPlanned", label: "Session • Planned", color: "bg-blue-600", count: (planningStats as any).sessionPlanned ?? 0 },
     { key: "sessionInProgress", label: "Session • In Progress", color: "bg-amber-500", count: (planningStats as any).sessionInProgress ?? 0 },
+    { key: "sessionOverdue", label: "Session • Overdue", color: "bg-rose-500", count: (planningStats as any).sessionOverdue ?? 0 },
     { key: "sessionCompleted", label: "Session • Completed", color: "bg-emerald-600", count: (planningStats as any).sessionCompleted ?? 0 },
     { key: "unserved", label: "Unserved Place", color: "bg-red-600", count: (planningStats as any).unserved ?? 0 },
   ];
@@ -2728,14 +2730,17 @@ export function MapView({
     let sessionPlanned = 0;
     let sessionInProgress = 0;
     let sessionCompleted = 0;
+    let sessionOverdue = 0;
     for (const s of sessionMapPins as any[]) {
-      if (s.status === "completed") sessionCompleted++;
-      else if (s.status === "in_progress" || s.status === "in-progress") sessionInProgress++;
+      const lc = deriveSessionLifecycle(s);
+      if (lc.phase === "reported" || lc.phase === "archived") sessionCompleted++;
+      else if (lc.phase === "in_progress") sessionInProgress++;
       else sessionPlanned++;
+      if (lc.isOverdue) sessionOverdue++;
     }
     const unserved = (unservedPlaces as any[]).length;
 
-    return { planned, missingStandard, missingHtr, total, coverage, sessionPlanned, sessionInProgress, sessionCompleted, unserved };
+    return { planned, missingStandard, missingHtr, total, coverage, sessionPlanned, sessionInProgress, sessionCompleted, sessionOverdue, unserved };
   }, [filteredVillages, plannedVillageIds, sessionMapPins, unservedPlaces]);
 
   // Updated Code: Visible villages with always-on bounds pruning for performance + category filtering.
@@ -4170,22 +4175,37 @@ export function MapView({
 
           const centroid = getSessionCentroid(plan);
 
+          const lifecycle = deriveSessionLifecycle(plan);
+
           const renderPopup = () => {
             const linkedVils = sessionVillages
               ?.filter((sv: any) => sv.sessionId === plan.id)
               .map((sv: any) => villages.find((v) => v.id === sv.villageId))
               .filter((v): v is Village => !!v);
 
+            const isClosed = lifecycle.phase === "reported" || lifecycle.phase === "archived";
+
             return (
               <Popup>
                 <div className="p-3 w-64 select-text">
-                  <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center justify-between mb-2 gap-1.5 flex-wrap">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
                       {plan.sessionType}
                     </span>
-                    <Badge variant="secondary" className={plan.isAchieved ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20" : "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20"}>
-                      {plan.isAchieved ? "ACHIEVED" : "PLANNED"}
-                    </Badge>
+                    <div className="flex items-center gap-1">
+                      {lifecycle.isOverdue && (
+                        <Badge
+                          variant="secondary"
+                          className="bg-rose-500/15 text-rose-600 dark:text-rose-400 border-rose-500/30 text-[9px] font-bold uppercase tracking-wider"
+                          data-testid={`badge-overdue-${plan.id}`}
+                        >
+                          Overdue
+                        </Badge>
+                      )}
+                      <Badge variant="secondary" className={plan.isAchieved ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20" : "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20"}>
+                        {plan.isAchieved ? "ACHIEVED" : "PLANNED"}
+                      </Badge>
+                    </div>
                   </div>
                   <h4 className="font-bold text-xs text-primary mb-1">{plan.name}</h4>
                   <p className="text-[10px] text-muted-foreground mb-2">
@@ -4208,11 +4228,11 @@ export function MapView({
                     </div>
                   )}
 
-                  <div className="pt-2 border-t border-border/40 flex gap-2">
+                  <div className="pt-2 border-t border-border/40 flex flex-col gap-1.5">
                     <Button
                       size="sm"
                       variant={plan.isAchieved ? "outline" : "default"}
-                      className="w-full text-[10px] h-7 font-bold gap-1 rounded-lg"
+                      className="w-full text-[10px] h-7 font-bold gap-1 rounded-lg min-h-[44px] sm:min-h-0"
                       onClick={() => toggleAchievedMutation.mutate({ sessionId: plan.id, isAchieved: !plan.isAchieved })}
                       disabled={toggleAchievedMutation.isPending}
                     >
@@ -4228,6 +4248,22 @@ export function MapView({
                         </>
                       )}
                     </Button>
+                    {isClosed && plan.facilityId && (
+                      <a
+                        href={`/microplans/${plan.planType === "campaign" ? "campaigns" : "routine"}?facilityId=${plan.facilityId}&fromSession=${plan.id}`}
+                        className="w-full"
+                        data-testid={`link-plan-new-${plan.id}`}
+                      >
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="w-full text-[10px] h-7 font-bold gap-1 rounded-lg border-indigo-500/30 text-indigo-600 hover:bg-indigo-500/10 min-h-[44px] sm:min-h-0"
+                        >
+                          <Plus className="h-3 w-3 mr-1" />
+                          Plan a new session here
+                        </Button>
+                      </a>
+                    )}
                   </div>
                 </div>
               </Popup>

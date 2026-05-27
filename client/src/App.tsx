@@ -70,23 +70,25 @@ function AuthenticatedRouter() {
       <Route path="/map" component={MapPage} />
       <Route path="/settlement-intelligence" component={SettlementIntelligence} />
       <Route path="/facilities" component={Facilities} />
-      <Route path="/develop-microplan" component={MicroplanBuilder} />
+      <Route path="/develop-microplan">
+        <MicroplanBuilder />
+      </Route>
       <Route path="/population" component={Population} />
+      {/* Task #51: routine + campaign routes now mount the unified Microplan
+          Builder wizard with planType pre-selected. The old SessionPlanning
+          page stays available via /sessions for users who prefer the legacy
+          standalone workspace. */}
       <Route path="/microplans/routine">
-        <SessionPlanning planTypeFilter="routine" />
+        <MicroplanBuilder prePlanType="routine" />
       </Route>
       <Route path="/microplans/routine/:id">
-        {(params) => (
-          <SessionPlanning planTypeFilter="routine" lockedMicroplanId={Number(params.id)} />
-        )}
+        <MicroplanBuilder prePlanType="routine" />
       </Route>
       <Route path="/microplans/campaigns">
-        <SessionPlanning planTypeFilter="campaign" />
+        <MicroplanBuilder prePlanType="campaign" />
       </Route>
       <Route path="/microplans/campaigns/:id">
-        {(params) => (
-          <SessionPlanning planTypeFilter="campaign" lockedMicroplanId={Number(params.id)} />
-        )}
+        <MicroplanBuilder prePlanType="campaign" />
       </Route>
       {/* Back-compat: /sessions now redirects to the routine microplan workspace. */}
       <Route path="/sessions">

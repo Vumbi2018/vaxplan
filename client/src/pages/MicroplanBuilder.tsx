@@ -90,11 +90,33 @@ const transportIcons: Record<string, typeof Car> = {
   air: Plane,
 };
 
-export default function MicroplanBuilder() {
+interface MicroplanBuilderProps {
+  /**
+   * Pre-selects the wizard plan type when the user enters via a route that
+   * already declares the intent (e.g. /microplans/routine vs /microplans/campaigns).
+   * When provided, the routine/campaign toggle in Step 3 is locked.
+   */
+  prePlanType?: "routine" | "campaign";
+}
+
+export default function MicroplanBuilder({ prePlanType }: MicroplanBuilderProps = {}) {
   const { user } = useAuth();
   const { toast } = useToast();
   const [activeStep, setActiveStep] = useState(1);
   const [selectedFacilityId, setSelectedFacilityId] = useState<number | null>(null);
+
+  // Honor ?facilityId=<id> query parameter so the "Plan a new session here"
+  // CTA on the live map can deep-link a HCW straight into a pre-targeted
+  // wizard.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const fid = params.get("facilityId");
+    if (fid) {
+      const parsed = Number(fid);
+      if (!Number.isNaN(parsed)) setSelectedFacilityId(parsed);
+    }
+  }, []);
 
   // Step names dictionary for wizard stepper buttons dynamic labeling
   const stepTitles: Record<number, string> = {
@@ -133,7 +155,12 @@ export default function MicroplanBuilder() {
   const [sessionType, setSessionType] = useState<"static" | "outreach" | "mobile">("outreach");
   const [transportMode, setTransportMode] = useState("road");
   const [targetPop, setTargetPop] = useState("120");
-  const [planType, setPlanType] = useState<"routine" | "campaign">("routine");
+  const [planType, setPlanType] = useState<"routine" | "campaign">(prePlanType ?? "routine");
+
+  // Lock planType when caller pre-selected it via the route.
+  useEffect(() => {
+    if (prePlanType) setPlanType(prePlanType);
+  }, [prePlanType]);
   const [campaignAntigen, setCampaignAntigen] = useState("Polio");
   const [campaignTargetAge, setCampaignTargetAge] = useState("0-59 months");
   const [campaignScope, setCampaignScope] = useState("National");
@@ -1404,7 +1431,11 @@ export default function MicroplanBuilder() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <Label className="text-xs">Microplan Strategy Type</Label>
-                  <Select value={planType} onValueChange={(v: any) => setPlanType(v)}>
+                  <Select
+                    value={planType}
+                    onValueChange={(v: any) => setPlanType(v)}
+                    disabled={!!prePlanType}
+                  >
                     <SelectTrigger className="bg-background rounded-xl text-xs">
                       <SelectValue />
                     </SelectTrigger>
@@ -1413,6 +1444,11 @@ export default function MicroplanBuilder() {
                       <SelectItem value="campaign">Supplementary SIA / Campaign</SelectItem>
                     </SelectContent>
                   </Select>
+                  {prePlanType && (
+                    <p className="text-[10px] text-muted-foreground">
+                      Strategy locked by entry route.
+                    </p>
+                  )}
                 </div>
 
                 <div className="space-y-1">

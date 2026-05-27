@@ -30,6 +30,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { Facility, Village, SessionPlan, BudgetItem, ApprovalRequest, PopulationData } from "@shared/schema";
+import { deriveSessionLifecycle } from "@/lib/sessionStatus";
 
 interface StatsData {
   totalFacilities: number;
@@ -453,6 +454,23 @@ export default function Dashboard() {
   const htrVillages = stats?.htrVillages || 0;
   const pendingSessions = sessions?.filter((s) => s.status === "planned")?.length || 0;
 
+  // Task #51: surface sessions that should already have been implemented
+  // (pending or in-progress with a scheduled date today or earlier). These
+  // are the ones HCWs need to either report on or replan.
+  const sessionsPendingImplementation = useMemo(() => {
+    if (!sessions) return { total: 0, overdue: 0 };
+    let total = 0;
+    let overdue = 0;
+    for (const s of sessions) {
+      const lc = deriveSessionLifecycle(s as any);
+      if (lc.phase === "pending" || lc.phase === "in_progress") {
+        total++;
+        if (lc.isOverdue) overdue++;
+      }
+    }
+    return { total, overdue };
+  }, [sessions]);
+
   // Resolve scoped annual population for the logged entity
   const annualPopulationDisplay = useMemo(() => {
     if (!populationDataList) {
@@ -740,6 +758,20 @@ export default function Dashboard() {
               subtitle="Villages requiring special attention"
               icon={AlertTriangle}
             />
+            <Link href="/microplans/routine">
+              <a className="block" data-testid="link-pending-implementation">
+                <StatsCard
+                  title="Pending Implementation"
+                  value={sessionsPendingImplementation.total}
+                  subtitle={
+                    sessionsPendingImplementation.overdue > 0
+                      ? `${sessionsPendingImplementation.overdue} overdue — needs attention`
+                      : "Sessions to conduct or report"
+                  }
+                  icon={Clock}
+                />
+              </a>
+            </Link>
           </>
         )}
       </div>
