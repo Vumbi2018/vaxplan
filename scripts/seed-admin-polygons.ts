@@ -22,15 +22,31 @@ import {
   type GeoJSONFeature,
 } from "../server/services/geoBoundariesService";
 
+const NAME_ALIASES: Record<string, string> = {
+  // PNG province alternates
+  northsolomons: "bougainville",
+  autonomousregionofbougainville: "bougainville",
+  arob: "bougainville",
+  // PNG district spelling variants between MFL CSV and GeoBoundaries
+  kainanturural: "kainantu",
+  kainanatu: "kainantu",
+  tewaesiassi: "tawaesiassi",
+  ambuntidrekikir: "ambuntidrekikier",
+  komomargarima: "komomagarima",
+};
+
 function normalizeName(raw: string | null | undefined): string {
   if (!raw) return "";
-  return String(raw)
+  const base = String(raw)
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
-    .replace(/\b(province|provincial|district|region|state|county|llg|ward|capital)\b/g, "")
+    // Drop parenthetical alternates: "Chimbu (Simbu) Province" → "Chimbu Province"
+    .replace(/\([^)]*\)/g, " ")
+    .replace(/\b(province|provincial|district|region|state|county|llg|ward|capital|rural|urban)\b/g, "")
     .replace(/[^a-z0-9]+/g, "")
     .trim();
+  return NAME_ALIASES[base] ?? base;
 }
 
 function featureName(f: GeoJSONFeature): string {
