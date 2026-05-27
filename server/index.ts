@@ -78,10 +78,26 @@ app.use((req, res, next) => {
   // Auto-run the demo operational seed on startup. Idempotent: every step
   // skips/upserts so subsequent boots are a no-op once data is in place.
   // Runs in the background so a slow seed never blocks the HTTP listener.
-  if (process.env.SKIP_DEMO_SEED !== "1") {
+  //
+  // Gating: by default the demo seed only runs in non-production environments
+  // so real tenants on a deployed instance never get synthetic clients,
+  // vaccinations, or imported coverage rows mixed into their data. To opt in
+  // on production (e.g. a preview/staging deploy that should look populated),
+  // set ENABLE_DEMO_SEED=1. To force-disable in dev, set SKIP_DEMO_SEED=1.
+  const isProduction = process.env.NODE_ENV === "production";
+  const demoSeedEnabled =
+    process.env.SKIP_DEMO_SEED !== "1" &&
+    (!isProduction || process.env.ENABLE_DEMO_SEED === "1");
+
+  if (demoSeedEnabled) {
     seedDemoOperational()
       .then(() => log("demo operational seed complete", "seed"))
       .catch((err) => log(`demo operational seed failed: ${err?.message ?? err}`, "seed"));
+  } else {
+    log(
+      `demo operational seed skipped (NODE_ENV=${process.env.NODE_ENV ?? "unset"}, set ENABLE_DEMO_SEED=1 to opt in)`,
+      "seed",
+    );
   }
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
