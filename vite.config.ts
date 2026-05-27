@@ -146,6 +146,84 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
+    chunkSizeWarningLimit: 600,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return undefined;
+
+          // Heavy mapping / geospatial libs
+          if (
+            id.includes("/leaflet/") ||
+            id.includes("/react-leaflet/") ||
+            id.includes("/@react-leaflet/") ||
+            id.includes("/leaflet.markercluster/") ||
+            id.includes("/leaflet-defaulticon-compatibility/")
+          ) {
+            return "vendor-leaflet";
+          }
+          if (
+            id.includes("/georaster") ||
+            id.includes("/geotiff") ||
+            id.includes("/proj4")
+          ) {
+            return "vendor-georaster";
+          }
+          if (id.includes("/@turf/")) {
+            return "vendor-turf";
+          }
+
+          // Charts
+          if (
+            id.includes("/recharts/") ||
+            id.includes("/d3-") ||
+            id.includes("/victory-vendor/")
+          ) {
+            return "vendor-charts";
+          }
+
+          // Document export libs (lazy-loaded callers + own chunk)
+          if (id.includes("/xlsx/")) return "vendor-xlsx";
+          if (id.includes("/docx/")) return "vendor-docx";
+          if (id.includes("/pptxgenjs/")) return "vendor-pptx";
+          if (id.includes("/jspdf") || id.includes("/html2canvas/")) {
+            return "vendor-pdf";
+          }
+
+          // Radix UI primitives
+          if (id.includes("/@radix-ui/")) {
+            return "vendor-radix";
+          }
+
+          // Icons
+          if (id.includes("/lucide-react/")) {
+            return "vendor-icons";
+          }
+
+          // Forms / validation
+          if (
+            id.includes("/react-hook-form/") ||
+            id.includes("/@hookform/") ||
+            id.includes("/zod/")
+          ) {
+            return "vendor-forms";
+          }
+
+          // React core & router / query
+          if (
+            id.includes("/react/") ||
+            id.includes("/react-dom/") ||
+            id.includes("/scheduler/") ||
+            id.includes("/wouter/") ||
+            id.includes("/@tanstack/react-query/")
+          ) {
+            return "vendor-react";
+          }
+
+          return "vendor";
+        },
+      },
+    },
   },
   server: {
     fs: {

@@ -1,5 +1,5 @@
 import { Switch, Route } from "wouter";
-import { useEffect } from "react";
+import { useEffect, lazy, Suspense } from "react";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -16,38 +16,50 @@ import { useQuery } from "@tanstack/react-query";
 
 import Landing from "@/pages/Landing";
 import Dashboard from "@/pages/Dashboard";
-import MapPage from "@/pages/MapPage";
-import Facilities from "@/pages/Facilities";
-import Population from "@/pages/Population";
-import SessionPlanning from "@/pages/SessionPlanning";
-import HardToReach from "@/pages/HardToReach";
-import BudgetPlanning from "@/pages/BudgetPlanning";
-import VaccineCalculator from "@/pages/VaccineCalculator";
-import SocialMobilization from "@/pages/SocialMobilization";
-import Approvals from "@/pages/Approvals";
-import Supervision from "@/pages/Supervision";
-import Settings from "@/pages/Settings";
-import Help from "@/pages/Help";
-import Signup from "@/pages/Signup";
-import UserManagement from "@/pages/UserManagement";
-import SignupRequests from "@/pages/SignupRequests";
-import CountryOnboarding from "@/pages/CountryOnboarding";
-import BoundaryManager from "@/pages/BoundaryManager";
+import NotFound from "@/pages/not-found";
 import { TenantSwitcher } from "@/components/TenantSwitcher";
 import { InstallPrompt } from "@/components/InstallPrompt";
-import NotFound from "@/pages/not-found";
-import ClientLogbook from "@/pages/ClientLogbook";
-import Defaulters from "@/pages/Defaulters";
-import StockLedger from "@/pages/StockLedger";
-import SessionDayPlans from "@/pages/SessionDayPlans";
-import SessionHistory from "@/pages/SessionHistory";
-import HisIntegrations from "@/pages/HisIntegrations";
-import MissedCommunities from "@/pages/MissedCommunities";
-import MicroplanBuilder from "@/pages/MicroplanBuilder";
-import MicroplanFlow from "@/pages/MicroplanFlow";
-import SettlementIntelligence from "@/pages/SettlementIntelligence";
-import StandardsAlignment from "@/pages/StandardsAlignment";
 import { OfflineBanner } from "@/components/OfflineBanner";
+
+const MapPage = lazy(() => import("@/pages/MapPage"));
+const Facilities = lazy(() => import("@/pages/Facilities"));
+const Population = lazy(() => import("@/pages/Population"));
+const SessionPlanning = lazy(() => import("@/pages/SessionPlanning"));
+const HardToReach = lazy(() => import("@/pages/HardToReach"));
+const BudgetPlanning = lazy(() => import("@/pages/BudgetPlanning"));
+const VaccineCalculator = lazy(() => import("@/pages/VaccineCalculator"));
+const SocialMobilization = lazy(() => import("@/pages/SocialMobilization"));
+const Approvals = lazy(() => import("@/pages/Approvals"));
+const Supervision = lazy(() => import("@/pages/Supervision"));
+const Settings = lazy(() => import("@/pages/Settings"));
+const Help = lazy(() => import("@/pages/Help"));
+const Signup = lazy(() => import("@/pages/Signup"));
+const UserManagement = lazy(() => import("@/pages/UserManagement"));
+const SignupRequests = lazy(() => import("@/pages/SignupRequests"));
+const CountryOnboarding = lazy(() => import("@/pages/CountryOnboarding"));
+const BoundaryManager = lazy(() => import("@/pages/BoundaryManager"));
+const ClientLogbook = lazy(() => import("@/pages/ClientLogbook"));
+const Defaulters = lazy(() => import("@/pages/Defaulters"));
+const StockLedger = lazy(() => import("@/pages/StockLedger"));
+const SessionDayPlans = lazy(() => import("@/pages/SessionDayPlans"));
+const SessionHistory = lazy(() => import("@/pages/SessionHistory"));
+const HisIntegrations = lazy(() => import("@/pages/HisIntegrations"));
+const MissedCommunities = lazy(() => import("@/pages/MissedCommunities"));
+const MicroplanBuilder = lazy(() => import("@/pages/MicroplanBuilder"));
+const MicroplanFlow = lazy(() => import("@/pages/MicroplanFlow"));
+const SettlementIntelligence = lazy(() => import("@/pages/SettlementIntelligence"));
+const StandardsAlignment = lazy(() => import("@/pages/StandardsAlignment"));
+
+function RouteFallback() {
+  return (
+    <div className="flex h-full w-full items-center justify-center p-8">
+      <div className="space-y-4 text-center">
+        <Skeleton className="h-12 w-12 rounded-full mx-auto" />
+        <Skeleton className="h-4 w-32 mx-auto" />
+      </div>
+    </div>
+  );
+}
 
 function AuthenticatedRouter() {
   const { data: tenant } = useQuery<any>({ queryKey: ["/api/me/tenant"], retry: false });
@@ -68,6 +80,7 @@ function AuthenticatedRouter() {
   };
 
   return (
+    <Suspense fallback={<RouteFallback />}>
     <Switch>
       <Route path="/" component={Dashboard} />
       <Route path="/flow" component={MicroplanFlow} />
@@ -132,6 +145,7 @@ function AuthenticatedRouter() {
       <Route path="/help" component={Help} />
       <Route component={NotFound} />
     </Switch>
+    </Suspense>
   );
 }
 
@@ -197,10 +211,12 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <TooltipProvider>
-          <Switch>
-            <Route path="/signup" component={Signup} />
-            <Route><AuthenticatedLayout /></Route>
-          </Switch>
+          <Suspense fallback={<RouteFallback />}>
+            <Switch>
+              <Route path="/signup" component={Signup} />
+              <Route><AuthenticatedLayout /></Route>
+            </Switch>
+          </Suspense>
           <Toaster />
         </TooltipProvider>
       </ThemeProvider>
