@@ -1,10 +1,13 @@
 /**
- * Phase 4 — Demo operational data (users, vaccine requirements, session plans)
+ * Phase 4 — Demo operational data (users, vaccine requirements, session
+ * plans, AND the Client Logbook / Defaulter List roster).
  *
- * Seeds a small, realistic set of mock users (one per role), vaccine
- * requirements, and session plans (in draft/pending/approved states) for the
- * ZMB and SSD tenants so microplan authoring, approval workflows, and
- * dashboards can be demoed end-to-end.
+ * Seeds a realistic set of mock users (one per role), vaccine requirements,
+ * session plans (draft / pending / approved), monthly reports, and ~28 demo
+ * clients per facility for the ZMB and SSD tenants. The client roster is
+ * designed so the Client Logbook is populated AND the Defaulter List shows a
+ * meaningful mix of mild (≥4w overdue), moderate (≥6w), and severe (≥8w)
+ * cohorts across multiple antigens and facilities.
  *
  * Idempotent and tenant-scoped:
  *   - Users are upserted by email (unique).
@@ -14,8 +17,14 @@
  *     (tenant, facility, name, quarter, year).
  *   - monthly_reports rows are skipped when one already exists for
  *     (tenant, facility, month, year).
+ *   - Demo clients & client_vaccinations are skipped for any facility that
+ *     already has a "Demo " client. This also means the in-quarter
+ *     monthly_reports adjustment is only applied once.
  *
  * Run with:  tsx server/migrations/006-seed-demo-operational.ts
+ * (Re-running is safe and a no-op for facilities that have already been
+ * seeded; this is the single command to re-seed the demo Logbook +
+ * Defaulter data for ZMB and SSD.)
  */
 
 import { db } from "../db";
@@ -581,16 +590,20 @@ async function ensureVaccineConfigs(tenantId: string): Promise<Map<string, numbe
 }
 
 /**
- * Pick one village per facility — prefer a village already assigned to the
- * facility, otherwise fall back to any village in the same district. If no
- * village exists for the district, create a "Demo Catchment Village" so
- * clients can be anchored to a real row (clients.village_id is NOT NULL).
+ * Pick up to 5 village IDs per facility so demo clients can be rotated across
+ * believable home villages. Preference order:
+ *   1. Villages already assigned to the facility.
+ *   2. Other villages in the same district.
+ *   3. A freshly-created "Demo Catchment Village (...)" fallback so
+ *      clients.village_id (NOT NULL) can always be anchored to a real row.
  */
-async function pickVillagePerFacility(
+const MAX_VILLAGES_PER_FACILITY = 5;
+
+async function pickVillagesPerFacility(
   tenantId: string,
   picks: FacilityPick[],
-): Promise<Map<number, number>> {
-  const out = new Map<number, number>();
+): Promise<Map<number, number[]>> {
+  const out = new Map<number, number[]>();
   if (picks.length === 0) return out;
 
   const rows = await db
@@ -604,41 +617,44 @@ async function pickVillagePerFacility(
     .where(eq(villages.tenantId, tenantId));
 
   for (const p of picks) {
-    const assigned = rows.find((v) => v.assignedFacilityId === p.facilityId);
-    if (assigned) {
-      out.set(p.facilityId, assigned.id);
-      continue;
+    const pool: number[] = [];
+    for (const v of rows) {
+      if (v.assignedFacilityId === p.facilityId) pool.push(v.id);
     }
-    const sameDistrict = rows.find((v) => v.districtId === p.districtId);
-    if (sameDistrict) {
-      out.set(p.facilityId, sameDistrict.id);
-      continue;
+    if (pool.length < MAX_VILLAGES_PER_FACILITY) {
+      for (const v of rows) {
+        if (pool.length >= MAX_VILLAGES_PER_FACILITY) break;
+        if (v.districtId === p.districtId && !pool.includes(v.id)) pool.push(v.id);
+      }
     }
-    const demoName = `Demo Catchment Village (${p.facilityName})`;
-    const reused = rows.find(
-      (v) => v.name === demoName && v.districtId === p.districtId,
-    );
-    if (reused) {
-      out.set(p.facilityId, reused.id);
-      continue;
+    if (pool.length === 0) {
+      const demoName = `Demo Catchment Village (${p.facilityName})`;
+      const reused = rows.find(
+        (v) => v.name === demoName && v.districtId === p.districtId,
+      );
+      if (reused) {
+        pool.push(reused.id);
+      } else {
+        const [created] = await db
+          .insert(villages)
+          .values({
+            tenantId,
+            name: demoName,
+            code: `DEMO-${p.facilityId}`,
+            districtId: p.districtId,
+            assignedFacilityId: p.facilityId,
+          })
+          .returning({ id: villages.id });
+        pool.push(created.id);
+        rows.push({
+          id: created.id,
+          name: demoName,
+          districtId: p.districtId,
+          assignedFacilityId: p.facilityId,
+        });
+      }
     }
-    const [created] = await db
-      .insert(villages)
-      .values({
-        tenantId,
-        name: demoName,
-        code: `DEMO-${p.facilityId}`,
-        districtId: p.districtId,
-        assignedFacilityId: p.facilityId,
-      })
-      .returning({ id: villages.id });
-    out.set(p.facilityId, created.id);
-    rows.push({
-      id: created.id,
-      name: demoName,
-      districtId: p.districtId,
-      assignedFacilityId: p.facilityId,
-    });
+    out.set(p.facilityId, pool);
   }
   return out;
 }
@@ -648,151 +664,232 @@ interface DemoClientSeed {
   name: string;
   clientType: "child" | "pregnant_woman";
   gender: "male" | "female";
-  ageMonths: number; // months for child; gestational age slot for pregnant
+  /** Age in days; DOB = today - ageDays. */
+  ageDays: number;
   parentName?: string;
-  /** Vaccinations administered this quarter as offsets in days from quarterEnd. */
-  vaccinations: Array<{ vaccineName: string; daysBeforeQuarterEnd: number }>;
+  contactPhone?: string;
+  villageIndex: number;
+  /**
+   * Vaccinations administered for this client. Each dose carries the display
+   * vaccine name (e.g. "Penta 1", "OPV 0") AND the number of days after DOB
+   * the dose was given. The admin date is derived as DOB + daysAfterDob.
+   *
+   * Vaccine name strings are chosen so:
+   *   - `normAntigen()` (server/routes.ts) maps them to an RI code (PENTA_1,
+   *     OPV_0, MR_1, BCG, …) for defaulter / dropout calculations.
+   *   - `vaccineConfigKey()` below strips the dose number to find the matching
+   *     vaccine_configurations row keyed by the short name ("Penta", "OPV", …).
+   */
+  vaccinations: Array<{ vaccineName: string; daysAfterDob: number }>;
+}
+
+/** Look up the vaccine_configurations short name for an antigen display name. */
+function vaccineConfigKey(displayName: string): string {
+  const u = displayName.toUpperCase().trim();
+  if (u.startsWith("BCG")) return "BCG";
+  if (u.startsWith("OPV")) return "OPV";
+  if (u.startsWith("PENTA")) return "Penta";
+  if (u.startsWith("MR") || u.startsWith("MEASLES")) return "MR";
+  if (u.startsWith("TT") || u.startsWith("TD")) return "TT";
+  return displayName;
+}
+
+// === Dose ladders, reused across cohorts so the data stays consistent. =====
+// Each entry's `daysAfterDob` mirrors the WHO infant schedule + a small offset
+// so the admin date falls a few days after the strict due-date.
+const D_BIRTH: Array<{ vaccineName: string; daysAfterDob: number }> = [
+  { vaccineName: "BCG", daysAfterDob: 1 },
+  { vaccineName: "OPV 0", daysAfterDob: 1 },
+];
+const D_6W: Array<{ vaccineName: string; daysAfterDob: number }> = [
+  { vaccineName: "OPV 1", daysAfterDob: 45 },
+  { vaccineName: "Penta 1", daysAfterDob: 45 },
+];
+const D_10W: Array<{ vaccineName: string; daysAfterDob: number }> = [
+  { vaccineName: "OPV 2", daysAfterDob: 73 },
+  { vaccineName: "Penta 2", daysAfterDob: 73 },
+];
+const D_14W: Array<{ vaccineName: string; daysAfterDob: number }> = [
+  { vaccineName: "OPV 3", daysAfterDob: 101 },
+  { vaccineName: "Penta 3", daysAfterDob: 101 },
+];
+const D_9M: Array<{ vaccineName: string; daysAfterDob: number }> = [
+  { vaccineName: "MR 1", daysAfterDob: 277 },
+];
+
+const CHILD_FIRST_NAMES = [
+  "Amina", "Joseph", "Grace", "Kofi", "Lulu", "Moses", "Nia",
+  "Tatu", "Eli", "Hawa", "Samuel", "Mercy", "Ezra", "Ada",
+  "Jabari", "Zara", "Kweku", "Imani", "Jamal", "Naomi",
+  "Tafadzwa", "Sipho", "Chipo", "Bongani", "Thandi",
+];
+const CHILD_LAST_NAMES = [
+  "Banda", "Mwale", "Phiri", "Tembo", "Zulu", "Daka", "Nyirenda",
+  "Mbewe", "Chanda", "Sakala", "Lungu", "Kalonga", "Mulenga",
+  "Chileshe", "Mvula", "Bwalya", "Chola", "Kapata",
+];
+const MOTHER_NAMES = [
+  "Mary Banda", "Ruth Mwale", "Esther Phiri", "Joyce Tembo",
+  "Linda Zulu", "Hope Daka", "Agnes Mbewe", "Beatrice Lungu",
+  "Faith Sakala", "Charity Mulenga", "Lucy Chanda", "Patricia Mvula",
+  "Janet Chileshe", "Doris Bwalya", "Brenda Kapata",
+];
+
+interface CohortDef {
+  slug: string;
+  clientType: "child" | "pregnant_woman";
+  gender: "male" | "female";
+  ageDays: number;
+  vaccinations: Array<{ vaccineName: string; daysAfterDob: number }>;
 }
 
 /**
- * Demo client roster per facility. Vaccination counts (totals across all
- * facilities) — small enough to keep monthly_reports adjustments non-negative:
- *   BCG: 2 • OPV: 3 • Penta: 3 • MR: 2 • TT: 2
+ * Shared cohort blueprint applied to every demo facility. Together with
+ * per-facility villages, names and phone numbers (built below), this yields
+ * ~28 demo clients per facility — enough for a populated Client Logbook and
+ * a Defaulter List that spans mild (≥4w overdue), moderate (≥6w) and severe
+ * (≥8w) buckets across multiple antigens.
+ *
+ * NOTE on monthly_reports impact: the seed only subtracts doses whose admin
+ * date falls inside the *current quarter* (see seedDemoClients below). Most
+ * cohorts here have older DOBs so their priming doses land in past quarters
+ * and don't disturb the demo coverage rollup.
  */
-const CHILD_FIRST_NAMES = ["Amina", "Joseph", "Grace", "Kofi", "Lulu", "Moses", "Nia"];
-const CHILD_LAST_NAMES = ["Banda", "Mwale", "Phiri", "Tembo", "Zulu", "Daka", "Nyirenda"];
-const MOTHER_NAMES = ["Mary Banda", "Ruth Mwale", "Esther Phiri", "Joyce Tembo", "Linda Zulu", "Hope Daka"];
+const COHORTS: CohortDef[] = [
+  // --- Up-to-date (5) -------------------------------------------------------
+  { slug: "uptd-newborn", clientType: "child", gender: "female", ageDays: 5,
+    vaccinations: [...D_BIRTH] },
+  { slug: "uptd-8w", clientType: "child", gender: "male", ageDays: 56,
+    vaccinations: [...D_BIRTH, ...D_6W] },
+  { slug: "uptd-14w", clientType: "child", gender: "female", ageDays: 98,
+    vaccinations: [...D_BIRTH, ...D_6W, ...D_10W] },
+  { slug: "uptd-5m", clientType: "child", gender: "male", ageDays: 150,
+    vaccinations: [...D_BIRTH, ...D_6W, ...D_10W, ...D_14W] },
+  { slug: "uptd-12m", clientType: "child", gender: "female", ageDays: 365,
+    vaccinations: [...D_BIRTH, ...D_6W, ...D_10W, ...D_14W, ...D_9M] },
 
-function buildClientRoster(facilityIndex: number, quarterStart: Date): DemoClientSeed[] {
+  // --- In-progress, still inside the 4-week grace (3) ----------------------
+  { slug: "inpr-4w", clientType: "child", gender: "male", ageDays: 28,
+    vaccinations: [...D_BIRTH] },
+  { slug: "inpr-9w", clientType: "child", gender: "female", ageDays: 63,
+    vaccinations: [...D_BIRTH, ...D_6W] },
+  { slug: "inpr-13w", clientType: "child", gender: "male", ageDays: 91,
+    vaccinations: [...D_BIRTH, ...D_6W, ...D_10W] },
+
+  // --- Mild defaulters: ~29-41 days overdue (6) -----------------------------
+  { slug: "mild-bcg", clientType: "child", gender: "female", ageDays: 35,
+    vaccinations: [] }, // BCG due day 0 → 35d overdue
+  { slug: "mild-opv0", clientType: "child", gender: "male", ageDays: 35,
+    vaccinations: [{ vaccineName: "BCG", daysAfterDob: 1 }] }, // OPV_0 due day 0 → 35d
+  { slug: "mild-opv1", clientType: "child", gender: "female", ageDays: 75,
+    vaccinations: [...D_BIRTH] }, // OPV_1 due day 42 → 33d overdue
+  { slug: "mild-penta1", clientType: "child", gender: "male", ageDays: 75,
+    vaccinations: [...D_BIRTH, { vaccineName: "OPV 1", daysAfterDob: 45 }] }, // Penta_1 due day 42 → 33d
+  { slug: "mild-penta2", clientType: "child", gender: "female", ageDays: 105,
+    vaccinations: [...D_BIRTH, ...D_6W, { vaccineName: "OPV 2", daysAfterDob: 73 }] }, // Penta_2 due 70 → 35d
+  { slug: "mild-opv3", clientType: "child", gender: "male", ageDays: 135,
+    vaccinations: [...D_BIRTH, ...D_6W, ...D_10W] }, // OPV_3 due 98 → 37d overdue
+
+  // --- Moderate defaulters: ~42-55 days overdue (5) ------------------------
+  { slug: "mod-opv0", clientType: "child", gender: "female", ageDays: 50,
+    vaccinations: [{ vaccineName: "BCG", daysAfterDob: 1 }] }, // OPV_0 → 50d overdue
+  { slug: "mod-penta1", clientType: "child", gender: "male", ageDays: 90,
+    vaccinations: [...D_BIRTH, { vaccineName: "OPV 1", daysAfterDob: 45 }] }, // Penta_1 due 42 → 48d
+  { slug: "mod-penta2", clientType: "child", gender: "female", ageDays: 120,
+    vaccinations: [...D_BIRTH, ...D_6W, { vaccineName: "OPV 2", daysAfterDob: 73 }] }, // Penta_2 → 50d
+  { slug: "mod-penta3", clientType: "child", gender: "male", ageDays: 150,
+    vaccinations: [...D_BIRTH, ...D_6W, ...D_10W, { vaccineName: "OPV 3", daysAfterDob: 101 }] }, // Penta_3 due 98 → 52d
+  { slug: "mod-mr1", clientType: "child", gender: "female", ageDays: 320,
+    vaccinations: [...D_BIRTH, ...D_6W, ...D_10W, ...D_14W] }, // MR_1 due 273 → 47d
+
+  // --- Severe defaulters: ≥56 days overdue (6) -----------------------------
+  { slug: "sev-bcg", clientType: "child", gender: "male", ageDays: 180,
+    vaccinations: [] }, // BCG → 180d overdue
+  { slug: "sev-opv0", clientType: "child", gender: "female", ageDays: 120,
+    vaccinations: [{ vaccineName: "BCG", daysAfterDob: 1 }] }, // OPV_0 → 120d
+  { slug: "sev-penta1", clientType: "child", gender: "male", ageDays: 140,
+    vaccinations: [...D_BIRTH, { vaccineName: "OPV 1", daysAfterDob: 45 }] }, // Penta_1 → 98d
+  { slug: "sev-penta3", clientType: "child", gender: "female", ageDays: 200,
+    vaccinations: [...D_BIRTH, ...D_6W, ...D_10W, { vaccineName: "OPV 3", daysAfterDob: 101 }] }, // Penta_3 → 102d
+  { slug: "sev-mr1", clientType: "child", gender: "male", ageDays: 450,
+    vaccinations: [...D_BIRTH, ...D_6W, ...D_10W, ...D_14W] }, // MR_1 due 273 → 177d
+  { slug: "sev-mr2", clientType: "child", gender: "female", ageDays: 900,
+    vaccinations: [...D_BIRTH, ...D_6W, ...D_10W, ...D_14W, ...D_9M] }, // MR_2 due 546 → 354d
+
+  // --- Pregnant women (3) ---------------------------------------------------
+  { slug: "preg-td1", clientType: "pregnant_woman", gender: "female",
+    ageDays: 365 * 25,
+    vaccinations: [{ vaccineName: "TT 1", daysAfterDob: 365 * 25 - 35 }] },
+  { slug: "preg-td2", clientType: "pregnant_woman", gender: "female",
+    ageDays: 365 * 28,
+    vaccinations: [
+      { vaccineName: "TT 1", daysAfterDob: 365 * 28 - 95 },
+      { vaccineName: "TT 2", daysAfterDob: 365 * 28 - 25 },
+    ] },
+  { slug: "preg-new", clientType: "pregnant_woman", gender: "female",
+    ageDays: 365 * 22,
+    vaccinations: [] },
+];
+
+function buildClientRoster(facilityIndex: number): DemoClientSeed[] {
   // Deterministic per facility so re-runs are idempotent.
-  const pick = <T>(arr: T[], offset: number) => arr[(facilityIndex * 7 + offset) % arr.length];
+  const pick = <T>(arr: T[], offset: number) => arr[(facilityIndex * 17 + offset) % arr.length];
   const childName = (i: number) =>
     `Demo ${pick(CHILD_FIRST_NAMES, i)} ${pick(CHILD_LAST_NAMES, i + 3)}`;
   const motherName = (i: number) => `Demo ${pick(MOTHER_NAMES, i)}`;
+  const phoneFor = (i: number) => {
+    // Deterministic, clearly-fake +000 demo numbers.
+    const subscriber = ((facilityIndex * 1009 + i * 37) % 9000) + 1000;
+    return `+000-${String(700 + (facilityIndex % 30)).padStart(3, "0")}-${subscriber}`;
+  };
 
-  // Reference points within the quarter for vaccination dates.
-  // (quarterStart is day 0; we use daysBeforeQuarterEnd ~= 1-80.)
-  return [
-    {
-      slug: "child-1",
-      name: childName(0),
-      clientType: "child",
-      gender: "female",
-      ageMonths: 3,
-      parentName: motherName(0),
-      vaccinations: [
-        { vaccineName: "BCG", daysBeforeQuarterEnd: 70 },
-        { vaccineName: "OPV", daysBeforeQuarterEnd: 40 },
-        { vaccineName: "Penta", daysBeforeQuarterEnd: 40 },
-      ],
-    },
-    {
-      slug: "child-2",
-      name: childName(1),
-      clientType: "child",
-      gender: "male",
-      ageMonths: 7,
-      parentName: motherName(1),
-      vaccinations: [
-        { vaccineName: "OPV", daysBeforeQuarterEnd: 35 },
-        { vaccineName: "Penta", daysBeforeQuarterEnd: 35 },
-      ],
-    },
-    {
-      slug: "child-3",
-      name: childName(2),
-      clientType: "child",
-      gender: "female",
-      ageMonths: 10,
-      parentName: motherName(2),
-      vaccinations: [
-        { vaccineName: "MR", daysBeforeQuarterEnd: 20 },
-      ],
-    },
-    {
-      slug: "child-4",
-      name: childName(3),
-      clientType: "child",
-      gender: "male",
-      ageMonths: 1,
-      parentName: motherName(3),
-      vaccinations: [
-        { vaccineName: "BCG", daysBeforeQuarterEnd: 25 },
-        { vaccineName: "OPV", daysBeforeQuarterEnd: 25 },
-      ],
-    },
-    {
-      slug: "child-5",
-      name: childName(4),
-      clientType: "child",
-      gender: "female",
-      ageMonths: 14,
-      parentName: motherName(4),
-      vaccinations: [
-        { vaccineName: "MR", daysBeforeQuarterEnd: 50 },
-        { vaccineName: "Penta", daysBeforeQuarterEnd: 60 },
-      ],
-    },
-    {
-      slug: "pregnant-1",
-      name: motherName(5),
-      clientType: "pregnant_woman",
-      gender: "female",
-      ageMonths: 12 * 26, // ~26 years old, gestational tracked elsewhere
-      vaccinations: [
-        { vaccineName: "TT", daysBeforeQuarterEnd: 30 },
-      ],
-    },
-    {
-      slug: "pregnant-2",
-      name: motherName(2),
-      clientType: "pregnant_woman",
-      gender: "female",
-      ageMonths: 12 * 22,
-      vaccinations: [
-        { vaccineName: "TT", daysBeforeQuarterEnd: 10 },
-      ],
-    },
-  ];
-  void quarterStart;
+  return COHORTS.map((c, i) => {
+    const isPregnant = c.clientType === "pregnant_woman";
+    return {
+      slug: c.slug,
+      name: isPregnant ? motherName(i) : childName(i),
+      clientType: c.clientType,
+      gender: c.gender,
+      ageDays: c.ageDays,
+      parentName: isPregnant ? undefined : motherName(i + 5),
+      contactPhone: phoneFor(i),
+      villageIndex: i, // rotated across the facility's village pool
+      vaccinations: c.vaccinations,
+    };
+  });
 }
 
 async function seedDemoClients(
   tenantId: string,
   picks: FacilityPick[],
-  villageByFacility: Map<number, number>,
+  villagesByFacility: Map<number, number[]>,
   vaccineConfigByName: Map<string, number>,
 ): Promise<{ clientsInserted: number; vaccinationsInserted: number }> {
   if (picks.length === 0) return { clientsInserted: 0, vaccinationsInserted: 0 };
 
   const startMonth = (QUARTER - 1) * 3; // 0-indexed
   const quarterStart = new Date(Date.UTC(YEAR, startMonth, 1));
-  const quarterEnd = new Date(Date.UTC(YEAR, startMonth + 3, 0)); // last day of quarter
+  const quarterEndExclusive = new Date(Date.UTC(YEAR, startMonth + 3, 1));
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  const DAY_MS = 24 * 3600 * 1000;
 
   let clientsInserted = 0;
   let vaccinationsInserted = 0;
 
   for (let pi = 0; pi < picks.length; pi++) {
     const p = picks[pi];
-    const villageId = villageByFacility.get(p.facilityId);
-    if (villageId === undefined) {
+    const villagePool = villagesByFacility.get(p.facilityId);
+    if (!villagePool || villagePool.length === 0) {
       console.warn(`  [facility ${p.facilityId}] no village available — skipping demo clients.`);
       continue;
     }
 
-    const roster = buildClientRoster(pi, quarterStart);
+    const roster = buildClientRoster(pi);
 
-    // Per-vaccine totals we will insert as client_vaccinations.
-    const addedByVaccine: Record<string, number> = {};
-    for (const c of roster) {
-      for (const v of c.vaccinations) {
-        addedByVaccine[v.vaccineName] = (addedByVaccine[v.vaccineName] ?? 0) + 1;
-      }
-    }
-
-    // Idempotency: if any demo client already exists for this facility, skip
-    // both client and vaccination inserts (and skip monthly_reports adjustment)
-    // so re-running the seed does nothing.
+    // Idempotency: if any "Demo " client already exists for this facility, the
+    // seed is treated as already-run for this facility — skip insertion AND
+    // the monthly_reports adjustment so re-running is a true no-op.
     const existing = await db
       .select({ id: clients.id, name: clients.name })
       .from(clients)
@@ -801,12 +898,13 @@ async function seedDemoClients(
     const anyDemoExists = existing.some((r) => r.name.startsWith("Demo "));
     if (anyDemoExists) continue;
 
-    // Insert clients (skip names already present in case of partial reuse).
+    // Insert clients (skip any whose name happens to collide with a non-demo
+    // row — extremely unlikely thanks to the "Demo " prefix, but defensive).
     const clientIdBySlug = new Map<string, string>();
     for (const c of roster) {
       if (existingNames.has(c.name)) continue;
-      const dob = new Date(quarterEnd);
-      dob.setUTCMonth(dob.getUTCMonth() - c.ageMonths);
+      const dob = new Date(today.getTime() - c.ageDays * DAY_MS);
+      const villageId = villagePool[c.villageIndex % villagePool.length];
       const [row] = await db
         .insert(clients)
         .values({
@@ -818,6 +916,7 @@ async function seedDemoClients(
           dateOfBirth: dob,
           gender: c.gender,
           parentName: c.parentName ?? null,
+          contactPhone: c.contactPhone ?? null,
           catchmentStatus: "catchment",
           contraindications: [],
           isRefusal: false,
@@ -828,31 +927,40 @@ async function seedDemoClients(
       clientsInserted++;
     }
 
-    // Insert client_vaccinations.
+    // Insert client_vaccinations and tally how many doses (per config-key)
+    // landed *inside the current quarter* — only those need to be subtracted
+    // from monthly_reports.immunizations to keep coverage totals consistent.
+    const inQuarterByConfig: Record<string, number> = {};
     for (const c of roster) {
       const clientId = clientIdBySlug.get(c.slug);
       if (!clientId) continue;
+      const dob = new Date(today.getTime() - c.ageDays * DAY_MS);
       for (const v of c.vaccinations) {
-        const configId = vaccineConfigByName.get(v.vaccineName);
+        const configKey = vaccineConfigKey(v.vaccineName);
+        const configId = vaccineConfigByName.get(configKey);
         if (!configId) continue;
-        const administered = new Date(quarterEnd);
-        administered.setUTCDate(administered.getUTCDate() - v.daysBeforeQuarterEnd);
+        const administered = new Date(dob.getTime() + v.daysAfterDob * DAY_MS);
+        // Never insert a future-dated vaccination.
+        if (administered > today) continue;
         await db.insert(clientVaccinations).values({
           tenantId,
           clientId,
           vaccineConfigId: configId,
           vaccineName: v.vaccineName,
           administeredDate: administered,
-          batchNumber: `DEMO-${v.vaccineName}-${YEAR}Q${QUARTER}`,
+          batchNumber: `DEMO-${configKey}-${administered.getUTCFullYear()}`,
           vvmStatus: 1,
         });
         vaccinationsInserted++;
+        if (administered >= quarterStart && administered < quarterEndExclusive) {
+          inQuarterByConfig[configKey] = (inQuarterByConfig[configKey] ?? 0) + 1;
+        }
       }
     }
 
-    // Subtract added vaccination counts from monthly_reports so the per-vaccine
-    // totals shown by /api/coverage stay roughly constant. Spread the
-    // subtraction across the quarter's three months, clamping each bucket at 0.
+    // Subtract in-quarter additions from monthly_reports so /api/coverage
+    // doesn't double-count this quarter's roll-up. Spread across the quarter's
+    // months and clamp each bucket at 0 so we never produce a negative.
     const months = [startMonth + 1, startMonth + 2, startMonth + 3];
     const reports = await db
       .select({
@@ -877,7 +985,7 @@ async function seedDemoClients(
       });
     }
 
-    for (const [vaccineName, toRemove] of Object.entries(addedByVaccine)) {
+    for (const [vaccineName, toRemove] of Object.entries(inQuarterByConfig)) {
       let remaining = toRemove;
       for (const m of months) {
         if (remaining <= 0) break;
@@ -934,11 +1042,11 @@ async function run() {
     const sp = await seedSessionPlans(tenant.id, picks, demographics, catchmentByFacility);
     const mr = await seedMonthlyReports(tenant.id, picks, demographics, catchmentByFacility);
     const vaccineConfigByName = await ensureVaccineConfigs(tenant.id);
-    const villageByFacility = await pickVillagePerFacility(tenant.id, picks);
+    const villagesByFacility = await pickVillagesPerFacility(tenant.id, picks);
     const { clientsInserted, vaccinationsInserted } = await seedDemoClients(
       tenant.id,
       picks,
-      villageByFacility,
+      villagesByFacility,
       vaccineConfigByName,
     );
     console.log(
