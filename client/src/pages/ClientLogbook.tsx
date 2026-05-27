@@ -582,6 +582,16 @@ export default function ClientLogbook() {
     },
   });
 
+  const { data: defaulterRows = [], isLoading: defaultersLoading } = useQuery<any[]>({
+    queryKey: ["/api/indicators/defaulters"],
+    queryFn: async () => {
+      const res = await fetch("/api/indicators/defaulters", { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+  const defaulterCount = defaulterRows.length;
+
   const { data: vaccineConfigs, isLoading: loadingConfigs } = useQuery<VaccineConfig[]>({
     queryKey: ["/api/vaccines/config"],
     queryFn: async () => {
@@ -673,6 +683,18 @@ export default function ClientLogbook() {
           title: "Authenticity Verified",
           description: `Successfully loaded EPI Certified digital health record for ${foundClient.name}.`,
         });
+      }
+    }
+
+    // Defaulter "View" link → open timeline for that client
+    const selectId = params.get("selectClient");
+    if (selectId && clients && clients.length > 0) {
+      const found = clients.find((c) => c.id === selectId);
+      if (found) {
+        setSelectedClient(found);
+        setIsTimelineOpen(true);
+        const newUrl = window.location.pathname;
+        window.history.replaceState({}, document.title, newUrl);
       }
     }
   }, [clients, toast]);
@@ -1793,13 +1815,21 @@ export default function ClientLogbook() {
       </Card>
 
       <Tabs defaultValue="registry" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 max-w-md">
+        <TabsList className="grid w-full grid-cols-3 max-w-2xl">
           <TabsTrigger value="registry">Active Registry</TabsTrigger>
           <TabsTrigger value="due" className="flex items-center gap-1.5">
             Cohort Due Queue
             {dueQueue.length > 0 && (
               <Badge variant="destructive" className="h-5 min-w-5 px-1 py-0 rounded-full flex items-center justify-center text-[10px]">
                 {dueQueue.length}
+              </Badge>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="defaulters" className="flex items-center gap-1.5">
+            Defaulters
+            {defaulterCount > 0 && (
+              <Badge variant="destructive" className="h-5 min-w-5 px-1 py-0 rounded-full flex items-center justify-center text-[10px]">
+                {defaulterCount}
               </Badge>
             )}
           </TabsTrigger>
@@ -1985,6 +2015,87 @@ export default function ClientLogbook() {
               </div>
             )}
           </div>
+        </TabsContent>
+
+        <TabsContent value="defaulters" className="space-y-4 mt-6">
+          <Card className="glassmorphic shadow-lg">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 text-rose-500" />
+                Defaulters in catchment
+              </CardTitle>
+              <CardDescription>
+                Children with a routine vaccination dose overdue by more than 4
+                weeks (routine RI only — campaign / SIA doses excluded). Click
+                a row to open the client record.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="p-6 space-y-3">
+              {defaultersLoading ? (
+                <div className="py-6 text-center text-sm text-muted-foreground">
+                  Loading defaulter list…
+                </div>
+              ) : defaulterRows.length === 0 ? (
+                <Card className="flex flex-col items-center justify-center p-12 text-center text-muted-foreground bg-muted/20">
+                  <CheckCircle2 className="h-10 w-10 text-emerald-500 mb-2" />
+                  <p className="font-semibold text-sm">No overdue children</p>
+                  <p className="text-xs">All tracked infants are within their routine schedule.</p>
+                </Card>
+              ) : (
+                <DataTable
+                  data={defaulterRows}
+                  searchable
+                  searchKeys={["name", "parentName", "facilityName", "villageName"] as any}
+                  searchPlaceholder="Search defaulter name, parent, facility, village…"
+                  emptyMessage="No overdue children in your catchment."
+                  onRowClick={(row: any) => {
+                    const c = (clients ?? []).find((cl) => cl.id === row.clientId);
+                    if (c) {
+                      setSelectedClient(c);
+                      setIsTimelineOpen(true);
+                    }
+                  }}
+                  columns={[
+                    { key: "name", header: "Child", sortable: true },
+                    {
+                      key: "nextDoseAntigen",
+                      header: "Next due",
+                      render: (r: any) => r.nextDoseAntigen.replace(/_/g, " "),
+                    },
+                    {
+                      key: "daysOverdue",
+                      header: "Days overdue",
+                      sortable: true,
+                      render: (r: any) => (
+                        <Badge
+                          variant="outline"
+                          className={
+                            r.daysOverdue >= 56
+                              ? "border-rose-500 text-rose-600"
+                              : r.daysOverdue >= 42
+                                ? "border-amber-500 text-amber-600"
+                                : "border-muted-foreground"
+                          }
+                        >
+                          {r.daysOverdue}
+                        </Badge>
+                      ),
+                    },
+                    { key: "villageName", header: "Village", render: (r: any) => r.villageName ?? "—" },
+                    { key: "facilityName", header: "Facility" },
+                    {
+                      key: "lastDoseAntigen",
+                      header: "Last dose",
+                      render: (r: any) =>
+                        r.lastDoseAntigen
+                          ? `${r.lastDoseAntigen.replace(/_/g, " ")} · ${new Date(r.lastDoseDate).toLocaleDateString()}`
+                          : "None",
+                    },
+                  ]}
+                />
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
 

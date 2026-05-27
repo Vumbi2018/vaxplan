@@ -5970,6 +5970,34 @@ export async function registerRoutes(
   ];
   const GRACE_WEEKS = 4; // days overdue counted past dueDate + grace
 
+  // --- Indicator cache (monthly close refresh) ------------------------------
+  // Cache key includes YYYY-MM so entries auto-invalidate on month rollover —
+  // i.e. results refresh at monthly close without an explicit cron job.
+  const indicatorCache = new Map<string, { month: string; data: any }>();
+  function currentMonthKey(): string {
+    const d = new Date();
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+  }
+  function cacheGetIndicator(key: string): any | null {
+    const e = indicatorCache.get(key);
+    if (!e) return null;
+    if (e.month !== currentMonthKey()) {
+      indicatorCache.delete(key);
+      return null;
+    }
+    return e.data;
+  }
+  function cacheSetIndicator(key: string, data: any): void {
+    indicatorCache.set(key, { month: currentMonthKey(), data });
+  }
+  function indicatorCacheKey(
+    name: string,
+    tenantId: string,
+    filters: Record<string, unknown>,
+  ): string {
+    return `${name}:${tenantId}:${JSON.stringify(filters)}`;
+  }
+
   // Resolve allowed facility IDs for the current user (geo-scoped).
   async function getScopedFacilityIds(
     req: any,
@@ -6055,8 +6083,19 @@ export async function registerRoutes(
           districtId,
           provinceId,
         );
+        const scopeSig = scopedFacilityIds === null
+          ? "ALL"
+          : [...scopedFacilityIds].sort((a, b) => a - b).join(",");
+        const cacheKey = indicatorCacheKey("zero-dose", tenantId, {
+          provinceId, districtId, facilityId, userId: dbUser.id, scopeSig,
+        });
+        const cached = cacheGetIndicator(cacheKey);
+        if (cached) return res.json(cached);
+
         if (scopedFacilityIds && scopedFacilityIds.length === 0) {
-          return res.json({ total: 0, denominator: 0, byDistrict: [] });
+          const empty = { total: 0, denominator: 0, byDistrict: [] };
+          cacheSetIndicator(cacheKey, empty);
+          return res.json(empty);
         }
 
         const twelveMonthsAgo = new Date();
@@ -6133,12 +6172,14 @@ export async function registerRoutes(
           }))
           .sort((a, b) => b.zeroDose - a.zeroDose);
 
-        res.json({
+        const payload = {
           total,
           denominator: eligible.length,
           pct: eligible.length > 0 ? Math.round((total / eligible.length) * 1000) / 10 : 0,
           byDistrict,
-        });
+        };
+        cacheSetIndicator(cacheKey, payload);
+        res.json(payload);
       } catch (err: any) {
         console.error("GET /api/indicators/zero-dose failed:", err);
         res.status(500).json({ message: "Failed to compute zero-dose indicator" });
@@ -6166,6 +6207,16 @@ export async function registerRoutes(
         const facilityId = req.query.facilityId
           ? parseInt(req.query.facilityId as string)
           : undefined;
+        // Current period = last 12 months ending today (rolling RI cohort year).
+        // Optional override via ?periodMonths=N.
+        const periodMonths = Math.max(
+          1,
+          Math.min(60, parseInt((req.query.periodMonths as string) ?? "12") || 12),
+        );
+        const periodStart = new Date();
+        periodStart.setMonth(periodStart.getMonth() - periodMonths);
+        const periodEnd = new Date();
+
         const scopedFacilityIds = await getScopedFacilityIds(
           req,
           dbUser,
@@ -6173,18 +6224,33 @@ export async function registerRoutes(
           districtId,
           provinceId,
         );
+        const scopeSig = scopedFacilityIds === null
+          ? "ALL"
+          : [...scopedFacilityIds].sort((a, b) => a - b).join(",");
+        const cacheKey = indicatorCacheKey("dropout", tenantId, {
+          provinceId, districtId, facilityId, periodMonths,
+          userId: dbUser.id, scopeSig,
+        });
+        const cached = cacheGetIndicator(cacheKey);
+        if (cached) return res.json(cached);
+
         if (scopedFacilityIds && scopedFacilityIds.length === 0) {
-          return res.json({
-            dtp1_dtp3: { num: 0, denom: 0, rate: 0, byDistrict: [] },
-            dtp1_mcv1: { num: 0, denom: 0, rate: 0, byDistrict: [] },
-          });
+          const empty = {
+            period: { months: periodMonths, start: periodStart.toISOString(), end: periodEnd.toISOString() },
+            dtp1_dtp3: { num: 0, denom: 0, rate: 0, byDistrict: [], byFacility: [] },
+            dtp1_mcv1: { num: 0, denom: 0, rate: 0, byDistrict: [], byFacility: [] },
+          };
+          cacheSetIndicator(cacheKey, empty);
+          return res.json(empty);
         }
 
         const rows = await db
           .select({
             clientId: clientVaccinations.clientId,
             vaccineName: clientVaccinations.vaccineName,
+            administeredDate: clientVaccinations.administeredDate,
             facilityId: clients.facilityId,
+            facilityName: facilities.name,
             districtId: facilities.districtId,
             districtName: districts.name,
           })
@@ -6195,98 +6261,123 @@ export async function registerRoutes(
           .where(
             and(
               eq(clientVaccinations.tenantId, tenantId),
+              gte(clientVaccinations.administeredDate, periodStart),
+              lte(clientVaccinations.administeredDate, periodEnd),
               scopedFacilityIds
                 ? inArray(clients.facilityId, scopedFacilityIds)
                 : undefined,
             ),
           );
 
-        // Per-district per-client antigen presence
-        type DistrictAgg = {
-          districtId: number;
-          districtName: string;
+        type Agg = {
           dtp1: Set<string>;
           dtp3: Set<string>;
           mcv1: Set<string>;
         };
+        const makeAgg = (): Agg => ({
+          dtp1: new Set<string>(),
+          dtp3: new Set<string>(),
+          mcv1: new Set<string>(),
+        });
+
+        type DistrictAgg = Agg & { districtId: number; districtName: string };
+        type FacilityAgg = Agg & {
+          facilityId: number;
+          facilityName: string;
+          districtId: number;
+          districtName: string;
+        };
+
         const districtAgg = new Map<number, DistrictAgg>();
+        const facilityAgg = new Map<number, FacilityAgg>();
+
         for (const r of rows) {
           if (isCampaignDose(r.vaccineName)) continue;
           const code = normAntigen(r.vaccineName);
           if (code !== "PENTA_1" && code !== "PENTA_3" && code !== "MR_1") continue;
-          let entry = districtAgg.get(r.districtId);
-          if (!entry) {
-            entry = {
+
+          let d = districtAgg.get(r.districtId);
+          if (!d) {
+            d = { ...makeAgg(), districtId: r.districtId, districtName: r.districtName };
+            districtAgg.set(r.districtId, d);
+          }
+          let f = facilityAgg.get(r.facilityId);
+          if (!f) {
+            f = {
+              ...makeAgg(),
+              facilityId: r.facilityId,
+              facilityName: r.facilityName,
               districtId: r.districtId,
               districtName: r.districtName,
-              dtp1: new Set<string>(),
-              dtp3: new Set<string>(),
-              mcv1: new Set<string>(),
             };
-            districtAgg.set(r.districtId, entry);
+            facilityAgg.set(r.facilityId, f);
           }
-          if (code === "PENTA_1") entry.dtp1.add(r.clientId);
-          else if (code === "PENTA_3") entry.dtp3.add(r.clientId);
-          else if (code === "MR_1") entry.mcv1.add(r.clientId);
+          if (code === "PENTA_1") { d.dtp1.add(r.clientId); f.dtp1.add(r.clientId); }
+          else if (code === "PENTA_3") { d.dtp3.add(r.clientId); f.dtp3.add(r.clientId); }
+          else if (code === "MR_1") { d.mcv1.add(r.clientId); f.mcv1.add(r.clientId); }
         }
 
-        // WHO formula: dropout = (DTP1_cohort − cohort_with_DTPn) / DTP1_cohort × 100
-        // Numerator is the intersection of children who got DTP1 AND the later dose,
-        // ensuring dropout >= 0 even when some children received DTPn without a
-        // recorded DTP1 (e.g. data migration / paper-based catch-up entries).
+        // WHO formula on the DTP1 cohort: numerator is the intersection of
+        // children with DTP1 AND the later dose, so the rate stays in [0,100].
         const compute = (numCompleted: number, denom: number) =>
           denom > 0 ? Math.round(((denom - numCompleted) / denom) * 1000) / 10 : 0;
+
+        const cohort = (a: Agg) => {
+          const d1 = a.dtp1.size;
+          let d3 = 0;
+          let m1 = 0;
+          a.dtp1.forEach((id) => {
+            if (a.dtp3.has(id)) d3 += 1;
+            if (a.mcv1.has(id)) m1 += 1;
+          });
+          return { d1, d3, m1 };
+        };
 
         let totalDtp1 = 0;
         let totalDtp3InCohort = 0;
         let totalMcv1InCohort = 0;
         const dtp3ByDistrict: Array<{ districtId: number; districtName: string; dtp1: number; dtp3: number; rate: number }> = [];
         const mcv1ByDistrict: Array<{ districtId: number; districtName: string; dtp1: number; mcv1: number; rate: number }> = [];
-        const districtEntries: DistrictAgg[] = [];
-        districtAgg.forEach((v) => districtEntries.push(v));
-        for (const e of districtEntries) {
-          const d1 = e.dtp1.size;
-          let d3InCohort = 0;
-          let m1InCohort = 0;
-          e.dtp1.forEach((id) => {
-            if (e.dtp3.has(id)) d3InCohort += 1;
-            if (e.mcv1.has(id)) m1InCohort += 1;
-          });
+        const dtp3ByFacility: Array<{ facilityId: number; facilityName: string; districtId: number; districtName: string; dtp1: number; dtp3: number; rate: number }> = [];
+        const mcv1ByFacility: Array<{ facilityId: number; facilityName: string; districtId: number; districtName: string; dtp1: number; mcv1: number; rate: number }> = [];
+
+        districtAgg.forEach((e) => {
+          const { d1, d3, m1 } = cohort(e);
           totalDtp1 += d1;
-          totalDtp3InCohort += d3InCohort;
-          totalMcv1InCohort += m1InCohort;
-          dtp3ByDistrict.push({
-            districtId: e.districtId,
-            districtName: e.districtName,
-            dtp1: d1,
-            dtp3: d3InCohort,
-            rate: compute(d3InCohort, d1),
-          });
-          mcv1ByDistrict.push({
-            districtId: e.districtId,
-            districtName: e.districtName,
-            dtp1: d1,
-            mcv1: m1InCohort,
-            rate: compute(m1InCohort, d1),
-          });
-        }
+          totalDtp3InCohort += d3;
+          totalMcv1InCohort += m1;
+          dtp3ByDistrict.push({ districtId: e.districtId, districtName: e.districtName, dtp1: d1, dtp3: d3, rate: compute(d3, d1) });
+          mcv1ByDistrict.push({ districtId: e.districtId, districtName: e.districtName, dtp1: d1, mcv1: m1, rate: compute(m1, d1) });
+        });
+        facilityAgg.forEach((e) => {
+          const { d1, d3, m1 } = cohort(e);
+          dtp3ByFacility.push({ facilityId: e.facilityId, facilityName: e.facilityName, districtId: e.districtId, districtName: e.districtName, dtp1: d1, dtp3: d3, rate: compute(d3, d1) });
+          mcv1ByFacility.push({ facilityId: e.facilityId, facilityName: e.facilityName, districtId: e.districtId, districtName: e.districtName, dtp1: d1, mcv1: m1, rate: compute(m1, d1) });
+        });
         dtp3ByDistrict.sort((a, b) => b.rate - a.rate);
         mcv1ByDistrict.sort((a, b) => b.rate - a.rate);
+        dtp3ByFacility.sort((a, b) => b.rate - a.rate);
+        mcv1ByFacility.sort((a, b) => b.rate - a.rate);
 
-        res.json({
+        const payload = {
+          period: { months: periodMonths, start: periodStart.toISOString(), end: periodEnd.toISOString() },
           dtp1_dtp3: {
             num: totalDtp3InCohort,
             denom: totalDtp1,
             rate: compute(totalDtp3InCohort, totalDtp1),
             byDistrict: dtp3ByDistrict,
+            byFacility: dtp3ByFacility,
           },
           dtp1_mcv1: {
             num: totalMcv1InCohort,
             denom: totalDtp1,
             rate: compute(totalMcv1InCohort, totalDtp1),
             byDistrict: mcv1ByDistrict,
+            byFacility: mcv1ByFacility,
           },
-        });
+        };
+        cacheSetIndicator(cacheKey, payload);
+        res.json(payload);
       } catch (err: any) {
         console.error("GET /api/indicators/dropout failed:", err);
         res.status(500).json({ message: "Failed to compute dropout indicator" });
@@ -6324,7 +6415,18 @@ export async function registerRoutes(
           districtId,
           provinceId,
         );
+        const scopeSig = scopedFacilityIds === null
+          ? "ALL"
+          : [...scopedFacilityIds].sort((a, b) => a - b).join(",");
+        const cacheKey = indicatorCacheKey("defaulters", tenantId, {
+          provinceId, districtId, facilityId, antigen,
+          userId: dbUser.id, scopeSig,
+        });
+        const cached = cacheGetIndicator(cacheKey);
+        if (cached) return res.json(cached);
+
         if (scopedFacilityIds && scopedFacilityIds.length === 0) {
+          cacheSetIndicator(cacheKey, []);
           return res.json([]);
         }
 
@@ -6465,6 +6567,7 @@ export async function registerRoutes(
           });
         }
         defaulters.sort((a, b) => b.daysOverdue - a.daysOverdue);
+        cacheSetIndicator(cacheKey, defaulters);
         res.json(defaulters);
       } catch (err: any) {
         console.error("GET /api/indicators/defaulters failed:", err);

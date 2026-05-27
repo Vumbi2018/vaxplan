@@ -11,7 +11,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, ExternalLink } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Link } from "wouter";
 
 interface DefaulterRow {
   id: string;
@@ -228,6 +230,23 @@ export default function Defaulters() {
                     >
                       {r.daysOverdue}
                     </Badge>
+                  ),
+                },
+                {
+                  key: "id",
+                  header: "Client",
+                  render: (r) => (
+                    <Link href={`/clients?selectClient=${encodeURIComponent(r.clientId)}`}>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 gap-1"
+                        data-testid={`button-view-defaulter-${r.clientId}`}
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" />
+                        View
+                      </Button>
+                    </Link>
                   ),
                 },
               ]}
