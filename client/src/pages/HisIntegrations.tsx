@@ -281,8 +281,7 @@ export default function HisIntegrations() {
     mutationFn: async () => {
       const body: Record<string, any> = { reportId: parseInt(selectedReportId) };
       if (selectedIntegration) body.integrationId = selectedIntegration;
-      const resp = await apiRequest("POST", "/api/his/push-immunizations", body);
-      return (resp as any).json ? (resp as any).json() : resp;
+      return (await apiRequest("POST", "/api/his/push-immunizations", body)) as any;
     },
     onSuccess: (data) => {
       setPushResults(data.results ?? []);

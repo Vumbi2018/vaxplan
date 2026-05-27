@@ -130,8 +130,7 @@ export default function SettlementIntelligence() {
   // Mutations
   const detectionMutation = useMutation({
     mutationFn: async (params: any) => {
-      const res = (await apiRequest("POST", "/api/unmapped-settlements/run-engine", params)) as any;
-      return res.json();
+      return (await apiRequest("POST", "/api/unmapped-settlements/run-engine", params)) as any;
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/unmapped-settlements"] });
@@ -152,8 +151,7 @@ export default function SettlementIntelligence() {
 
   const validateMutation = useMutation({
     mutationFn: async ({ id, payload }: { id: number; payload: any }) => {
-      const res = (await apiRequest("POST", `/api/unmapped-settlements/${id}/validate`, payload)) as any;
-      return res.json();
+      return (await apiRequest("POST", `/api/unmapped-settlements/${id}/validate`, payload)) as any;
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/unmapped-settlements"] });

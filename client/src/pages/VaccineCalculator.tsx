@@ -180,8 +180,7 @@ export default function VaccineCalculator() {
   // API Mutations
   const createMutation = useMutation({
     mutationFn: async (data: typeof newConfig) => {
-      const res: any = await apiRequest("POST", "/api/vaccines/config", data);
-      return res.json();
+      return (await apiRequest("POST", "/api/vaccines/config", data)) as any;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/vaccines/config"] });
@@ -205,8 +204,7 @@ export default function VaccineCalculator() {
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: number; data: Partial<VaccineConfig> }) => {
-      const res: any = await apiRequest("PATCH", `/api/vaccines/config/${id}`, data);
-      return res.json();
+      return (await apiRequest("PATCH", `/api/vaccines/config/${id}`, data)) as any;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/vaccines/config"] });
