@@ -159,6 +159,11 @@ function resolveToken(secretRef: string): string {
   return value;
 }
 
+// Exported helper for sibling services (Task #40 inbound coverage pull)
+export function resolveTokenForRef(secretRef: string): string {
+  return resolveToken(secretRef);
+}
+
 function buildHeaders(token: string): Record<string, string> {
   return {
     "Authorization": `Bearer ${token}`,

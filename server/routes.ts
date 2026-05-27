@@ -6191,6 +6191,321 @@ export async function registerRoutes(
     }
   });
 
+  // ─────────────────────────────────────────────────────────────────────
+  // INBOUND COVERAGE IMPORT + MISSED COMMUNITIES (Task #40)
+  // CSV upload (multer) and DHIS2 dataValueSets pull, both writing to the
+  // tenant-scoped imported_coverage table. /api/missed-communities runs
+  // the deterministic scorer.
+  // ─────────────────────────────────────────────────────────────────────
+  const _multer = (await import("multer")).default;
+  const _coverageSvc = await import("./services/coverageImportService");
+  const upload = _multer({
+    storage: _multer.memoryStorage(),
+    limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  });
+
+  function requireImportRole(req: any, res: any, next: any) {
+    const role = req.user?.dbRole as string | undefined;
+    const allowed = ["national_admin", "gis_specialist", "provincial_coordinator", "district_manager"];
+    if (!role || !allowed.includes(role)) {
+      return res.status(403).json({
+        message: "Coverage import requires national_admin, gis_specialist, provincial_coordinator, or district_manager role.",
+      });
+    }
+    next();
+  }
+
+  // GET /api/imports/csv/template — return a sample CSV header
+  app.get("/api/imports/csv/template", isAuthenticated, async (_req, res) => {
+    const tmpl =
+      "facility_external_id,period,antigen,doses_administered,target_pop_override\n" +
+      "FAC001,202504,BCG,45,\n" +
+      "FAC001,202504,PENTA1,42,\n" +
+      "FAC002,202504,MEASLES1,30,120\n";
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader("Content-Disposition", 'attachment; filename="coverage_template.csv"');
+    res.send(tmpl);
+  });
+
+  // POST /api/imports/csv — upload CSV, return dry-run preview
+  app.post(
+    "/api/imports/csv",
+    isAuthenticated,
+    requireTenant,
+    loadRole,
+    requireImportRole,
+    upload.single("file"),
+    async (req: any, res) => {
+      try {
+        if (!req.file) return res.status(400).json({ message: "No file uploaded (field name: file)" });
+        const preview = await _coverageSvc.previewCsvImport(req.tenantId, req.file.originalname, req.file.buffer);
+        res.json(preview);
+      } catch (err: any) {
+        console.error("POST /api/imports/csv failed:", err);
+        res.status(500).json({ message: err?.message ?? "CSV preview failed" });
+      }
+    },
+  );
+
+  // POST /api/imports/csv/commit — commit a previewed CSV import
+  app.post(
+    "/api/imports/csv/commit",
+    isAuthenticated,
+    requireTenant,
+    loadRole,
+    requireImportRole,
+    upload.single("file"),
+    async (req: any, res) => {
+      try {
+        if (!req.file) return res.status(400).json({ message: "No file uploaded (field name: file)" });
+        const preview = await _coverageSvc.previewCsvImport(req.tenantId, req.file.originalname, req.file.buffer);
+        const userId = req.user?.claims?.sub || null;
+        const committed = await _coverageSvc.commitCsvImport(req.tenantId, userId, preview);
+        await logAudit(req, "coverage_csv_import", "csv_imports", committed.csvImportId, null, {
+          filename: req.file.originalname,
+          rowCount: preview.rowCount,
+          importedCount: committed.importedCount,
+          errorCount: preview.errors.length,
+        });
+        res.json({
+          ...committed,
+          rowCount: preview.rowCount,
+          errorCount: preview.errors.length,
+          errors: preview.errors.slice(0, 100),
+        });
+      } catch (err: any) {
+        console.error("POST /api/imports/csv/commit failed:", err);
+        res.status(500).json({ message: err?.message ?? "CSV commit failed" });
+      }
+    },
+  );
+
+  // GET /api/imports/csv — list recent CSV imports for this tenant
+  app.get("/api/imports/csv", isAuthenticated, requireTenant, loadRole, requireImportRole, async (req: any, res) => {
+    try {
+      const rows = await db.execute(dsql`
+        SELECT id, filename, row_count, error_count, imported_count, status, uploaded_by_user_id, uploaded_at
+        FROM csv_imports WHERE tenant_id = ${req.tenantId}
+        ORDER BY uploaded_at DESC LIMIT 50
+      `);
+      res.json((rows as any).rows ?? []);
+    } catch (err: any) {
+      res.status(500).json({ message: err?.message ?? "Failed to list imports" });
+    }
+  });
+
+  // GET /api/imports/csv/:id — fetch error report for a CSV import
+  app.get("/api/imports/csv/:id", isAuthenticated, requireTenant, loadRole, requireImportRole, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid id" });
+      const rows = await db.execute(dsql`
+        SELECT id, filename, row_count, error_count, imported_count, status, error_report, uploaded_at
+        FROM csv_imports WHERE id = ${id} AND tenant_id = ${req.tenantId}
+      `);
+      const row = (rows as any).rows?.[0];
+      if (!row) return res.status(404).json({ message: "Import not found" });
+      res.json(row);
+    } catch (err: any) {
+      res.status(500).json({ message: err?.message ?? "Failed to fetch import" });
+    }
+  });
+
+  // POST /api/imports/dhis2/pull — preview DHIS2 dataValueSets fetch
+  app.post(
+    "/api/imports/dhis2/pull",
+    isAuthenticated,
+    requireTenant,
+    loadRole,
+    requireImportRole,
+    async (req: any, res) => {
+      try {
+        const schema = z.object({
+          integrationId: z.string().min(1),
+          period: z.string().regex(/^\d{4}-?\d{2}$/).transform((p) => p.replace("-", "")),
+          rootOrgUnit: z.string().optional(),
+          commit: z.boolean().optional().default(false),
+        });
+        const body = schema.parse(req.body);
+        const tenant = await storage.getTenant(req.tenantId);
+        if (!tenant) return res.status(404).json({ message: "Tenant not found" });
+        const integrations = parseHisIntegrations(tenant.settings as Record<string, any>);
+        const cfg = integrations.find((i) => i.id === body.integrationId && i.enabled);
+        if (!cfg) return res.status(400).json({ message: `Integration "${body.integrationId}" not found or disabled.` });
+
+        const pulled = await _coverageSvc.pullDhis2Coverage(req.tenantId, cfg as any, {
+          period: body.period,
+          rootOrgUnit: body.rootOrgUnit,
+        });
+        let importedCount = 0;
+        if (body.commit && pulled.rows.length > 0) {
+          const userId = req.user?.claims?.sub || null;
+          const result = await _coverageSvc.commitDhis2Coverage(req.tenantId, userId, cfg.id, pulled.rows);
+          importedCount = result.importedCount;
+          await logAudit(req, "coverage_dhis2_pull", "imported_coverage", null, null, {
+            integrationId: cfg.id,
+            period: body.period,
+            rowCount: pulled.rows.length,
+            importedCount,
+          });
+        }
+        res.json({
+          rowCount: pulled.rows.length,
+          warnings: pulled.warnings,
+          errors: pulled.errors,
+          simulated: pulled.simulated,
+          committed: body.commit,
+          importedCount,
+          sample: pulled.rows.slice(0, 50),
+        });
+      } catch (err: any) {
+        if (err?.name === "ZodError") return res.status(400).json({ message: "Invalid payload", errors: err.errors });
+        console.error("POST /api/imports/dhis2/pull failed:", err);
+        res.status(500).json({ message: err?.message ?? "DHIS2 pull failed" });
+      }
+    },
+  );
+
+  // GET /api/missed-communities — deterministic missedness scorer
+  app.get("/api/missed-communities", isAuthenticated, requireTenant, async (req: any, res) => {
+    try {
+      const schema = z.object({
+        antigen: z.string().min(1).transform((a) => a.toUpperCase()),
+        period: z.string().regex(/^\d{4}-?\d{2}$/).transform((p) => p.replace("-", "")),
+        provinceId: z.coerce.number().int().positive().optional(),
+        districtId: z.coerce.number().int().positive().optional(),
+      });
+      const q = schema.parse(req.query);
+      const results = await _coverageSvc.scoreMissedCommunities({
+        tenantId: req.tenantId,
+        antigen: q.antigen,
+        period: q.period,
+        provinceId: q.provinceId,
+        districtId: q.districtId,
+      });
+      res.json({ count: results.length, results });
+    } catch (err: any) {
+      if (err?.name === "ZodError") return res.status(400).json({ message: "Invalid query", errors: err.errors });
+      console.error("GET /api/missed-communities failed:", err);
+      res.status(500).json({ message: err?.message ?? "Scoring failed" });
+    }
+  });
+
+  // POST /api/missed-communities/create-outreach — bulk-draft outreach microplan
+  // from selected village IDs. Allowed for district_manager and above (overrides
+  // the facility-staff-only authoring rule for bulk planning purposes — gated by
+  // requireImportRole).
+  app.post(
+    "/api/missed-communities/create-outreach",
+    isAuthenticated,
+    requireTenant,
+    loadRole,
+    requireImportRole,
+    async (req: any, res) => {
+      try {
+        const schema = z.object({
+          villageIds: z.array(z.number().int().positive()).min(1).max(500),
+          antigen: z.string().min(1),
+          year: z.coerce.number().int().min(2000).max(2100),
+          quarter: z.coerce.number().int().min(1).max(4),
+          name: z.string().min(1).max(255).optional(),
+        });
+        const body = schema.parse(req.body);
+        const userId = req.user?.claims?.sub || null;
+
+        // Group villages by their assigned facility
+        const vrows = await db
+          .select()
+          .from(villages)
+          .where(and(eq(villages.tenantId, req.tenantId), inArray(villages.id, body.villageIds)));
+        const byFacility = new Map<number, typeof vrows>();
+        for (const v of vrows) {
+          if (!v.assignedFacilityId) continue;
+          const arr = byFacility.get(v.assignedFacilityId) ?? [];
+          arr.push(v);
+          byFacility.set(v.assignedFacilityId, arr);
+        }
+        if (byFacility.size === 0) {
+          return res.status(400).json({ message: "No selected villages have an assigned facility." });
+        }
+
+        // Geographic scope check: ensure the user has manage_session_plans permission
+        // for every facility involved. Reuses the same row-level guard used by
+        // POST /api/sessions so this bulk path cannot escape geographic scope.
+        const dbUser = userId ? await storage.getUser(userId) : null;
+        if (!dbUser) return res.status(401).json({ message: "Unauthorized" });
+        for (const fid of Array.from(byFacility.keys())) {
+          const geoContext = await getFacilityHierarchy(fid, req.tenantId);
+          if (!hasPermission(dbUser, "manage_session_plans", geoContext)) {
+            return res.status(403).json({
+              message: "Forbidden: You do not have permission to draft outreach for one or more selected facilities.",
+            });
+          }
+        }
+
+        // Create one microplan per facility to preserve the parent-child invariant
+        // (microplan.facilityId === session.facilityId enforced by /api/sessions).
+        const createdMicroplans: any[] = [];
+        const createdSessions: any[] = [];
+        const entries = Array.from(byFacility.entries()) as Array<[number, typeof vrows]>;
+        for (const [facilityId, vlist] of entries) {
+          const microplanName =
+            (body.name ?? `Missed-Communities Outreach ${body.year}-Q${body.quarter} (${body.antigen})`) +
+            (entries.length > 1 ? ` — facility ${facilityId}` : "");
+          const microplan = await storage.createMicroplan(req.tenantId, {
+            name: microplanName,
+            planType: "facility_routine",
+            year: body.year,
+            quarter: body.quarter,
+            status: "draft",
+            facilityId,
+          } as any);
+          createdMicroplans.push(microplan);
+
+          const session = await storage.createSessionPlan(req.tenantId, {
+            microplanId: microplan.id,
+            facilityId,
+            name: `Outreach – ${vlist.length} missed communities (${body.antigen})`,
+            sessionType: "outreach" as any,
+            quarter: body.quarter,
+            year: body.year,
+            planType: "routine" as any,
+            status: "planned",
+            approvalStatus: "draft",
+            notes: `Auto-drafted from Missed Communities analysis (${body.antigen}).`,
+          } as any);
+          createdSessions.push(session);
+
+          // Persist session ↔ village links for traceability & downstream workflow.
+          if (vlist.length > 0) {
+            await db.insert(sessionVillages).values(
+              vlist.map((v: any, idx: number) => ({
+                tenantId: req.tenantId,
+                sessionId: session.id,
+                villageId: v.id,
+                orderIndex: idx,
+              })),
+            );
+          }
+        }
+
+        await logAudit(req, "missed_communities_create_outreach", "microplans", createdMicroplans[0]?.id ?? 0, null, {
+          villageCount: vrows.length,
+          facilityCount: byFacility.size,
+          microplanCount: createdMicroplans.length,
+          sessionCount: createdSessions.length,
+          antigen: body.antigen,
+        });
+
+        res.json({ microplans: createdMicroplans, sessions: createdSessions });
+      } catch (err: any) {
+        if (err?.name === "ZodError") return res.status(400).json({ message: "Invalid payload", errors: err.errors });
+        console.error("POST /api/missed-communities/create-outreach failed:", err);
+        res.status(500).json({ message: err?.message ?? "Failed to create outreach microplan" });
+      }
+    },
+  );
+
   // ============================================================================
   // NATIONAL SETTLEMENT MASTER REGISTRY & DETECTION ENGINE ENDPOINTS
   // ============================================================================

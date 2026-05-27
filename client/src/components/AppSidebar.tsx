@@ -32,6 +32,7 @@ import {
   Share2,
   Sparkles,
   ShieldCheck,
+  Target,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useQuery } from "@tanstack/react-query";
@@ -51,6 +52,7 @@ const mainNavItems = [
   { title: "Population Hub", path: "/population", icon: Users },
   { title: "Client Logbook", path: "/clients", icon: ClipboardList },
   { title: "Defaulter List", path: "/clients/defaulters", icon: AlertTriangle },
+  { title: "Missed Communities", path: "/missed-communities", icon: Target },
 ];
 
 const planningNavItems = [

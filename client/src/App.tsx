@@ -41,6 +41,7 @@ import StockLedger from "@/pages/StockLedger";
 import SessionDayPlans from "@/pages/SessionDayPlans";
 import SessionHistory from "@/pages/SessionHistory";
 import HisIntegrations from "@/pages/HisIntegrations";
+import MissedCommunities from "@/pages/MissedCommunities";
 import MicroplanBuilder from "@/pages/MicroplanBuilder";
 import SettlementIntelligence from "@/pages/SettlementIntelligence";
 import StandardsAlignment from "@/pages/StandardsAlignment";
@@ -121,6 +122,7 @@ function AuthenticatedRouter() {
       <Route path="/his-integrations">
         {modules.interop !== false ? <HisIntegrations /> : <NotFound />}
       </Route>
+      <Route path="/missed-communities" component={MissedCommunities} />
       <Route path="/standards-alignment" component={StandardsAlignment} />
       <Route path="/settings" component={Settings} />
       <Route path="/help" component={Help} />

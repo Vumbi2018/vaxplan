@@ -49,6 +49,9 @@ import {
   Plus,
   Edit,
   Trash2,
+  Upload,
+  Download,
+  FileSpreadsheet,
 } from "lucide-react";
 import type { Tenant } from "@shared/schema";
 
@@ -233,6 +236,80 @@ export default function HisIntegrations() {
   const [selectedIntegration, setSelectedIntegration] = useState("");
   const [pushResults, setPushResults] = useState<PushResult[]>([]);
   const [pullResults, setPullResults] = useState<{ result: PushResult; orgUnits: any[] } | null>(null);
+
+  // ─── Coverage Import (Task #40) ───────────────────────────────────────────
+  const [csvUploadOpen, setCsvUploadOpen] = useState(false);
+  const [csvFile, setCsvFile] = useState<File | null>(null);
+  const [csvPreview, setCsvPreview] = useState<any | null>(null);
+  const [csvCommitting, setCsvCommitting] = useState(false);
+
+  const [coveragePullOpen, setCoveragePullOpen] = useState(false);
+  const [coveragePullIntegration, setCoveragePullIntegration] = useState("");
+  const [coveragePullPeriod, setCoveragePullPeriod] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}`;
+  });
+  const [coveragePullResult, setCoveragePullResult] = useState<any | null>(null);
+
+  const previewCsv = async (file: File) => {
+    setCsvFile(file);
+    setCsvPreview(null);
+    const fd = new FormData();
+    fd.append("file", file);
+    const r = await fetch("/api/imports/csv", { method: "POST", body: fd, credentials: "include" });
+    if (!r.ok) {
+      toast({ title: "Preview failed", description: await r.text(), variant: "destructive" });
+      return;
+    }
+    setCsvPreview(await r.json());
+  };
+  const commitCsv = async () => {
+    if (!csvFile) return;
+    setCsvCommitting(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", csvFile);
+      const r = await fetch("/api/imports/csv/commit", { method: "POST", body: fd, credentials: "include" });
+      if (!r.ok) throw new Error(await r.text());
+      const data = await r.json();
+      toast({
+        title: "Coverage CSV imported",
+        description: `${data.importedCount}/${data.rowCount} rows committed (${data.errorCount} errors).`,
+      });
+      setCsvUploadOpen(false);
+      setCsvFile(null);
+      setCsvPreview(null);
+    } catch (err: any) {
+      toast({ title: "Commit failed", description: err.message, variant: "destructive" });
+    } finally {
+      setCsvCommitting(false);
+    }
+  };
+
+  const pullCoverageMutation = useMutation({
+    mutationFn: async (commit: boolean) => {
+      return await apiRequest<any>("POST", "/api/imports/dhis2/pull", {
+        integrationId: coveragePullIntegration,
+        period: coveragePullPeriod,
+        commit,
+      });
+    },
+    onSuccess: (data, commit) => {
+      setCoveragePullResult(data);
+      if (commit) {
+        toast({
+          title: "DHIS2 coverage imported",
+          description: `${data.importedCount} rows committed${data.simulated ? " (simulation)" : ""}.`,
+        });
+      } else {
+        toast({
+          title: "DHIS2 coverage preview ready",
+          description: `${data.rowCount} rows fetched${data.simulated ? " (simulation)" : ""}.`,
+        });
+      }
+    },
+    onError: (err: Error) => toast({ title: "DHIS2 pull failed", description: err.message, variant: "destructive" }),
+  });
 
   // Configuration edit states
   const [isAddConfigOpen, setIsAddConfigOpen] = useState(false);
@@ -470,6 +547,27 @@ export default function HisIntegrations() {
           >
             <ArrowDownLeft className="h-4 w-4" />
             Pull Facilities
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => { setCoveragePullResult(null); setCoveragePullOpen(true); }}
+            disabled={enabledIntegrations.filter((i) => i.type === "dhis2").length === 0}
+            className="gap-1.5"
+            id="btn-pull-coverage"
+          >
+            <Download className="h-4 w-4" />
+            Pull Coverage (DHIS2)
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => { setCsvFile(null); setCsvPreview(null); setCsvUploadOpen(true); }}
+            className="gap-1.5"
+            id="btn-upload-csv"
+          >
+            <Upload className="h-4 w-4" />
+            Upload Coverage CSV
           </Button>
         </div>
       </div>
@@ -909,6 +1007,207 @@ export default function HisIntegrations() {
               ) : (
                 <><ArrowDownLeft className="h-4 w-4" /> Pull Facilities</>
               )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── Coverage CSV Upload Dialog (Task #40) ──────────────────── */}
+      <Dialog open={csvUploadOpen} onOpenChange={setCsvUploadOpen}>
+        <DialogContent className="max-w-2xl bg-card border border-border text-foreground rounded-3xl shadow-2xl p-6 font-sans">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-xl font-bold">
+              <FileSpreadsheet className="h-5 w-5 text-indigo-500" />
+              Upload Coverage CSV
+            </DialogTitle>
+            <DialogDescription className="text-muted-foreground">
+              Bulk-import facility coverage from HMIS or paper-tally CSV exports. Upload runs as a dry-run preview first; commit writes idempotent rows to imported_coverage (re-uploading overwrites prior values).
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-2">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs uppercase text-muted-foreground">CSV file (max 10MB)</Label>
+              <a href="/api/imports/csv/template" className="text-xs text-indigo-500 underline">Download template</a>
+            </div>
+            <Input
+              type="file"
+              accept=".csv,text/csv"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) previewCsv(f);
+              }}
+              data-testid="input-csv-file"
+            />
+            <p className="text-[11px] text-muted-foreground">
+              Required columns: <code>facility_external_id</code> (facility HMIS code), <code>period</code> (YYYYMM), <code>antigen</code>, <code>doses_administered</code>. Optional: <code>target_pop_override</code>.
+            </p>
+
+            {csvPreview && (
+              <div className="space-y-2 border border-border rounded-xl p-3 bg-secondary/40">
+                <div className="flex flex-wrap gap-3 text-xs">
+                  <Badge variant="secondary">Total rows: {csvPreview.rowCount}</Badge>
+                  <Badge className="bg-emerald-500/10 text-emerald-700 border-emerald-200" variant="secondary">
+                    Valid: {csvPreview.validRows?.length ?? 0}
+                  </Badge>
+                  <Badge className="bg-red-500/10 text-red-700 border-red-200" variant="secondary">
+                    Errors: {csvPreview.errors?.length ?? 0}
+                  </Badge>
+                  {csvPreview.unknownFacilityExternalIds?.length > 0 && (
+                    <Badge className="bg-amber-500/10 text-amber-700 border-amber-200" variant="secondary">
+                      Unknown facilities: {csvPreview.unknownFacilityExternalIds.length}
+                    </Badge>
+                  )}
+                </div>
+
+                {csvPreview.errors?.length > 0 && (
+                  <div className="max-h-48 overflow-auto text-[11px] font-mono space-y-1 bg-background rounded-lg p-2 border border-border">
+                    {csvPreview.errors.slice(0, 25).map((e: any, i: number) => (
+                      <div key={i} className="text-red-700">
+                        Row {e.row}{e.field ? ` · ${e.field}` : ""}: {e.message}
+                      </div>
+                    ))}
+                    {csvPreview.errors.length > 25 && (
+                      <div className="text-muted-foreground">… and {csvPreview.errors.length - 25} more</div>
+                    )}
+                  </div>
+                )}
+
+                {csvPreview.validRows?.length > 0 && (
+                  <div className="max-h-40 overflow-auto text-[11px] bg-background rounded-lg p-2 border border-border">
+                    <div className="grid grid-cols-5 gap-2 font-semibold text-muted-foreground mb-1">
+                      <span>Facility</span><span>Period</span><span>Antigen</span><span>Doses</span><span>Override</span>
+                    </div>
+                    {csvPreview.validRows.slice(0, 20).map((r: any, i: number) => (
+                      <div key={i} className="grid grid-cols-5 gap-2 py-0.5 border-t border-border/50">
+                        <span>{r.facility_external_id}</span>
+                        <span>{r.period}</span>
+                        <span>{r.antigen}</span>
+                        <span>{r.doses_administered}</span>
+                        <span>{r.target_pop_override ?? "—"}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="border-t border-border pt-4 gap-2">
+            <Button variant="outline" onClick={() => setCsvUploadOpen(false)} className="rounded-xl">Close</Button>
+            <Button
+              onClick={commitCsv}
+              disabled={!csvPreview?.validRows?.length || csvCommitting}
+              className="gap-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl"
+              data-testid="btn-commit-csv"
+            >
+              {csvCommitting
+                ? <><RefreshCw className="h-4 w-4 animate-spin" /> Committing…</>
+                : <><Upload className="h-4 w-4" /> Commit {csvPreview?.validRows?.length ?? 0} rows</>}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── DHIS2 Pull Coverage Dialog (Task #40) ──────────────────── */}
+      <Dialog open={coveragePullOpen} onOpenChange={setCoveragePullOpen}>
+        <DialogContent className="max-w-2xl bg-card border border-border text-foreground rounded-3xl shadow-2xl p-6 font-sans">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-xl font-bold">
+              <Download className="h-5 w-5 text-indigo-500" />
+              Pull Coverage from DHIS2
+            </DialogTitle>
+            <DialogDescription className="text-muted-foreground">
+              Fetch dataValueSets from a configured DHIS2 instance. Org units are mapped to facilities via <code>facilities.externalIds.dhis2</code>; data elements are mapped to antigens via <code>DHIS2_DE_&lt;ANTIGEN&gt;_UID</code> environment variables.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-2">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs uppercase text-muted-foreground">DHIS2 Integration</Label>
+                <Select value={coveragePullIntegration} onValueChange={setCoveragePullIntegration}>
+                  <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
+                  <SelectContent>
+                    {enabledIntegrations.filter((i) => i.type === "dhis2").map((i) => (
+                      <SelectItem key={i.id} value={i.id}>{i.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs uppercase text-muted-foreground">Period (YYYYMM)</Label>
+                <Input
+                  value={coveragePullPeriod}
+                  onChange={(e) => setCoveragePullPeriod(e.target.value)}
+                  placeholder="202504"
+                  className="font-mono"
+                />
+              </div>
+            </div>
+
+            {coveragePullResult && (
+              <div className="space-y-2 border border-border rounded-xl p-3 bg-secondary/40">
+                <div className="flex flex-wrap gap-2 text-xs">
+                  <Badge variant="secondary">Rows: {coveragePullResult.rowCount}</Badge>
+                  {coveragePullResult.simulated && (
+                    <Badge className="bg-amber-500/10 text-amber-700 border-amber-200" variant="secondary">SIMULATION</Badge>
+                  )}
+                  {coveragePullResult.committed && (
+                    <Badge className="bg-emerald-500/10 text-emerald-700 border-emerald-200" variant="secondary">
+                      Committed: {coveragePullResult.importedCount}
+                    </Badge>
+                  )}
+                </div>
+                {coveragePullResult.warnings?.length > 0 && (
+                  <ul className="text-[11px] text-amber-700 space-y-0.5 max-h-32 overflow-auto">
+                    {coveragePullResult.warnings.slice(0, 15).map((w: string, i: number) => <li key={i}>⚠ {w}</li>)}
+                  </ul>
+                )}
+                {coveragePullResult.errors?.length > 0 && (
+                  <ul className="text-[11px] text-red-700 space-y-0.5">
+                    {coveragePullResult.errors.map((e: string, i: number) => <li key={i} className="font-mono">{e}</li>)}
+                  </ul>
+                )}
+                {coveragePullResult.sample?.length > 0 && (
+                  <div className="max-h-40 overflow-auto text-[11px] bg-background rounded-lg p-2 border border-border">
+                    <div className="grid grid-cols-4 gap-2 font-semibold text-muted-foreground mb-1">
+                      <span>OrgUnit</span><span>Period</span><span>Antigen</span><span>Doses</span>
+                    </div>
+                    {coveragePullResult.sample.map((r: any, i: number) => (
+                      <div key={i} className="grid grid-cols-4 gap-2 py-0.5 border-t border-border/50">
+                        <span className="font-mono">{r.orgUnitId}</span>
+                        <span>{r.period}</span>
+                        <span>{r.antigen}</span>
+                        <span>{r.dosesAdministered}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="border-t border-border pt-4 gap-2">
+            <Button variant="outline" onClick={() => setCoveragePullOpen(false)} className="rounded-xl">Close</Button>
+            <Button
+              variant="outline"
+              onClick={() => pullCoverageMutation.mutate(false)}
+              disabled={!coveragePullIntegration || pullCoverageMutation.isPending}
+              className="gap-2 rounded-xl"
+              data-testid="btn-preview-dhis2-pull"
+            >
+              <Download className="h-4 w-4" /> Preview
+            </Button>
+            <Button
+              onClick={() => pullCoverageMutation.mutate(true)}
+              disabled={!coveragePullIntegration || pullCoverageMutation.isPending}
+              className="gap-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl"
+              data-testid="btn-commit-dhis2-pull"
+            >
+              {pullCoverageMutation.isPending
+                ? <><RefreshCw className="h-4 w-4 animate-spin" /> Working…</>
+                : <><CheckCircle2 className="h-4 w-4" /> Pull & Commit</>}
             </Button>
           </DialogFooter>
         </DialogContent>

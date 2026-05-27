@@ -1309,6 +1309,63 @@ export const candidateUnmappedSettlements = pgTable(
 );
 
 // ============================================================================
+// IMPORTED COVERAGE — Inbound DHIS2 / CSV immunization data for missed-community analysis
+// ============================================================================
+
+export const importedCoverage = pgTable(
+  "imported_coverage",
+  {
+    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+    tenantId: varchar("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    facilityId: integer("facility_id")
+      .notNull()
+      .references(() => facilities.id, { onDelete: "cascade" }),
+    period: varchar("period", { length: 10 }).notNull(), // "YYYYMM"
+    antigen: varchar("antigen", { length: 50 }).notNull(),
+    dosesAdministered: integer("doses_administered").notNull().default(0),
+    targetPopOverride: integer("target_pop_override"),
+    source: varchar("source", { length: 20 }).notNull(), // "dhis2" | "csv"
+    sourceRef: varchar("source_ref", { length: 255 }), // csvImportId or dhis2 integrationId
+    importedByUserId: varchar("imported_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    importedAt: timestamp("imported_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    tenantIdx: index("idx_imported_coverage_tenant").on(table.tenantId),
+    facilityIdx: index("idx_imported_coverage_facility").on(table.tenantId, table.facilityId, table.period),
+    uniqRow: unique("imported_coverage_unique").on(
+      table.tenantId,
+      table.facilityId,
+      table.period,
+      table.antigen,
+      table.source,
+    ),
+  }),
+);
+
+export const csvImports = pgTable(
+  "csv_imports",
+  {
+    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+    tenantId: varchar("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    filename: varchar("filename", { length: 255 }).notNull(),
+    rowCount: integer("row_count").notNull().default(0),
+    errorCount: integer("error_count").notNull().default(0),
+    importedCount: integer("imported_count").notNull().default(0),
+    status: varchar("status", { length: 20 }).notNull().default("preview"), // preview | committed | failed
+    errorReport: jsonb("error_report").default([]).notNull(), // [{row, field, message}]
+    uploadedByUserId: varchar("uploaded_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    tenantIdx: index("idx_csv_imports_tenant").on(table.tenantId),
+  }),
+);
+
+// ============================================================================
 // RELATIONS
 // ============================================================================
 
@@ -1475,6 +1532,32 @@ export const insertCandidateUnmappedSettlementSchema = createInsertSchema(candid
   updatedAt: true,
 });
 
+export const insertImportedCoverageSchema = createInsertSchema(importedCoverage).omit({
+  id: true,
+  importedAt: true,
+});
+
+export const insertCsvImportSchema = createInsertSchema(csvImports).omit({
+  id: true,
+  uploadedAt: true,
+});
+
+// Standard CSV row shape for immunization coverage imports.
+// Required columns: facility_external_id, period (YYYYMM or YYYY-MM), antigen, doses_administered
+// Optional: target_pop_override
+export const coverageCsvRowSchema = z.object({
+  facility_external_id: z.string().min(1, "facility_external_id required"),
+  period: z
+    .string()
+    .regex(/^\d{4}-?\d{2}$/, 'period must be "YYYYMM" or "YYYY-MM"')
+    .transform((p) => p.replace("-", "")),
+  antigen: z.string().min(1, "antigen required").transform((a) => a.trim().toUpperCase()),
+  doses_administered: z.coerce.number().int().nonnegative(),
+  target_pop_override: z.coerce.number().int().nonnegative().optional().nullable(),
+});
+
+export type CoverageCsvRow = z.infer<typeof coverageCsvRowSchema>;
+
 // ============================================================================
 // INSERT SCHEMAS — existing domain tables (restored)
 // ============================================================================
@@ -1573,3 +1656,9 @@ export type PopulationGrid = typeof populationGrids.$inferSelect;
 export type InsertPopulationGrid = z.infer<typeof insertPopulationGridSchema>;
 export type CandidateUnmappedSettlement = typeof candidateUnmappedSettlements.$inferSelect;
 export type InsertCandidateUnmappedSettlement = z.infer<typeof insertCandidateUnmappedSettlementSchema>;
+
+// Inbound coverage import types (Task #40)
+export type ImportedCoverage = typeof importedCoverage.$inferSelect;
+export type InsertImportedCoverage = z.infer<typeof insertImportedCoverageSchema>;
+export type CsvImport = typeof csvImports.$inferSelect;
+export type InsertCsvImport = z.infer<typeof insertCsvImportSchema>;
