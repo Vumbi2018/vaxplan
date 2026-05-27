@@ -944,12 +944,15 @@ export default function HisIntegrations() {
 
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Target Integration (leave blank for all)</Label>
-              <Select value={selectedIntegration} onValueChange={setSelectedIntegration}>
+              <Select
+                value={selectedIntegration || "__all__"}
+                onValueChange={(v) => setSelectedIntegration(v === "__all__" ? "" : v)}
+              >
                 <SelectTrigger id="push-integration-select" className="bg-background border-border text-foreground rounded-xl">
                   <SelectValue placeholder="All enabled integrations" />
                 </SelectTrigger>
                 <SelectContent className="bg-card border-border text-foreground">
-                  <SelectItem value="">All enabled integrations</SelectItem>
+                  <SelectItem value="__all__">All enabled integrations</SelectItem>
                   {enabledIntegrations.map((i) => (
                     <SelectItem key={i.id} value={i.id}>
                       {i.label}

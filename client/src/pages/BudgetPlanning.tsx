@@ -691,8 +691,8 @@ export default function BudgetPlanning() {
                       <FormItem>
                         <FormLabel>Linked Microplan Session (Optional)</FormLabel>
                         <Select
-                          onValueChange={(v) => field.onChange(v ? parseInt(v) : undefined)}
-                          value={field.value?.toString() ?? ""}
+                          onValueChange={(v) => field.onChange(v && v !== "__none__" ? parseInt(v) : undefined)}
+                          value={field.value?.toString() ?? "__none__"}
                           disabled={!formFacilityId}
                         >
                           <FormControl>
@@ -701,7 +701,7 @@ export default function BudgetPlanning() {
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            <SelectItem value="">None / Facility Level</SelectItem>
+                            <SelectItem value="__none__">None / Facility Level</SelectItem>
                             {filteredSessions.map((s) => {
                               const isSessLocked = s.approvalStatus === "approved" || s.approvalStatus === "locked";
                               return (

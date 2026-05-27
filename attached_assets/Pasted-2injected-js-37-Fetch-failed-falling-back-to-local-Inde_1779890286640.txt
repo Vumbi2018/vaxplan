@@ -1,0 +1,238 @@
+2injected.js:37 Fetch failed, falling back to local IndexedDB: Error: 401: {"message":"Unauthorized"}
+    at throwIfResNotOk (queryClient.ts:7:11)
+    at async queryClient.ts:424:7
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ queryClient.ts:433
+await in (anonymous)
+fetchFn @ @tanstack_react-query.js?v=1c181f7a:840
+run @ @tanstack_react-query.js?v=1c181f7a:494
+start @ @tanstack_react-query.js?v=1c181f7a:536
+fetch @ @tanstack_react-query.js?v=1c181f7a:926
+executeFetch_fn @ @tanstack_react-query.js?v=1c181f7a:2211
+onSubscribe @ @tanstack_react-query.js?v=1c181f7a:1898
+subscribe @ @tanstack_react-query.js?v=1c181f7a:24
+(anonymous) @ @tanstack_react-query.js?v=1c181f7a:3022
+subscribeToStore @ chunk-276SZO74.js?v=1c181f7a:11984
+commitHookEffectListMount @ chunk-276SZO74.js?v=1c181f7a:16915
+commitPassiveMountOnFiber @ chunk-276SZO74.js?v=1c181f7a:18156
+commitPassiveMountEffects_complete @ chunk-276SZO74.js?v=1c181f7a:18129
+commitPassiveMountEffects_begin @ chunk-276SZO74.js?v=1c181f7a:18119
+commitPassiveMountEffects @ chunk-276SZO74.js?v=1c181f7a:18109
+flushPassiveEffectsImpl @ chunk-276SZO74.js?v=1c181f7a:19490
+flushPassiveEffects @ chunk-276SZO74.js?v=1c181f7a:19447
+commitRootImpl @ chunk-276SZO74.js?v=1c181f7a:19416
+commitRoot @ chunk-276SZO74.js?v=1c181f7a:19277
+performSyncWorkOnRoot @ chunk-276SZO74.js?v=1c181f7a:18895
+flushSyncCallbacks @ chunk-276SZO74.js?v=1c181f7a:9119
+(anonymous) @ chunk-276SZO74.js?v=1c181f7a:18627Understand this warning
+injected.js:37 Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ chunk-4FJ3U5SI.js?v=1c181f7a:337
+commitHookEffectListMount @ chunk-276SZO74.js?v=1c181f7a:16915
+commitPassiveMountOnFiber @ chunk-276SZO74.js?v=1c181f7a:18156
+commitPassiveMountEffects_complete @ chunk-276SZO74.js?v=1c181f7a:18129
+commitPassiveMountEffects_begin @ chunk-276SZO74.js?v=1c181f7a:18119
+commitPassiveMountEffects @ chunk-276SZO74.js?v=1c181f7a:18109
+flushPassiveEffectsImpl @ chunk-276SZO74.js?v=1c181f7a:19490
+flushPassiveEffects @ chunk-276SZO74.js?v=1c181f7a:19447
+commitRootImpl @ chunk-276SZO74.js?v=1c181f7a:19416
+commitRoot @ chunk-276SZO74.js?v=1c181f7a:19277
+performSyncWorkOnRoot @ chunk-276SZO74.js?v=1c181f7a:18895
+flushSyncCallbacks @ chunk-276SZO74.js?v=1c181f7a:9119
+(anonymous) @ chunk-276SZO74.js?v=1c181f7a:18627Understand this warning
+@radix-ui_react-select.js?v=1c181f7a:871 Uncaught Error: A <Select.Item /> must have a value prop that is not an empty string. This is because the Select value can be set to an empty string to clear the selection and show the placeholder.
+    at @radix-ui_react-select.js?v=1c181f7a:871:13
+    at renderWithHooks (chunk-276SZO74.js?v=1c181f7a:11548:26)
+    at updateForwardRef (chunk-276SZO74.js?v=1c181f7a:14325:28)
+    at beginWork (chunk-276SZO74.js?v=1c181f7a:15946:22)
+    at HTMLUnknownElement.callCallback2 (chunk-276SZO74.js?v=1c181f7a:3674:22)
+    at Object.invokeGuardedCallbackDev (chunk-276SZO74.js?v=1c181f7a:3699:24)
+    at invokeGuardedCallback (chunk-276SZO74.js?v=1c181f7a:3733:39)
+    at beginWork$1 (chunk-276SZO74.js?v=1c181f7a:19765:15)
+    at performUnitOfWork (chunk-276SZO74.js?v=1c181f7a:19198:20)
+    at workLoopSync (chunk-276SZO74.js?v=1c181f7a:19137:13)
+(anonymous) @ @radix-ui_react-select.js?v=1c181f7a:871
+renderWithHooks @ chunk-276SZO74.js?v=1c181f7a:11548
+updateForwardRef @ chunk-276SZO74.js?v=1c181f7a:14325
+beginWork @ chunk-276SZO74.js?v=1c181f7a:15946
+callCallback2 @ chunk-276SZO74.js?v=1c181f7a:3674
+invokeGuardedCallbackDev @ chunk-276SZO74.js?v=1c181f7a:3699
+invokeGuardedCallback @ chunk-276SZO74.js?v=1c181f7a:3733
+beginWork$1 @ chunk-276SZO74.js?v=1c181f7a:19765
+performUnitOfWork @ chunk-276SZO74.js?v=1c181f7a:19198
+workLoopSync @ chunk-276SZO74.js?v=1c181f7a:19137
+renderRootSync @ chunk-276SZO74.js?v=1c181f7a:19116
+performSyncWorkOnRoot @ chunk-276SZO74.js?v=1c181f7a:18874
+flushSyncCallbacks @ chunk-276SZO74.js?v=1c181f7a:9119
+(anonymous) @ chunk-276SZO74.js?v=1c181f7a:18627Understand this error
+@radix-ui_react-select.js?v=1c181f7a:871 Uncaught Error: A <Select.Item /> must have a value prop that is not an empty string. This is because the Select value can be set to an empty string to clear the selection and show the placeholder.
+    at @radix-ui_react-select.js?v=1c181f7a:871:13
+    at renderWithHooks (chunk-276SZO74.js?v=1c181f7a:11548:26)
+    at updateForwardRef (chunk-276SZO74.js?v=1c181f7a:14325:28)
+    at beginWork (chunk-276SZO74.js?v=1c181f7a:15946:22)
+    at HTMLUnknownElement.callCallback2 (chunk-276SZO74.js?v=1c181f7a:3674:22)
+    at Object.invokeGuardedCallbackDev (chunk-276SZO74.js?v=1c181f7a:3699:24)
+    at invokeGuardedCallback (chunk-276SZO74.js?v=1c181f7a:3733:39)
+    at beginWork$1 (chunk-276SZO74.js?v=1c181f7a:19765:15)
+    at performUnitOfWork (chunk-276SZO74.js?v=1c181f7a:19198:20)
+    at workLoopSync (chunk-276SZO74.js?v=1c181f7a:19137:13)
+(anonymous) @ @radix-ui_react-select.js?v=1c181f7a:871
+renderWithHooks @ chunk-276SZO74.js?v=1c181f7a:11548
+updateForwardRef @ chunk-276SZO74.js?v=1c181f7a:14325
+beginWork @ chunk-276SZO74.js?v=1c181f7a:15946
+callCallback2 @ chunk-276SZO74.js?v=1c181f7a:3674
+invokeGuardedCallbackDev @ chunk-276SZO74.js?v=1c181f7a:3699
+invokeGuardedCallback @ chunk-276SZO74.js?v=1c181f7a:3733
+beginWork$1 @ chunk-276SZO74.js?v=1c181f7a:19765
+performUnitOfWork @ chunk-276SZO74.js?v=1c181f7a:19198
+workLoopSync @ chunk-276SZO74.js?v=1c181f7a:19137
+renderRootSync @ chunk-276SZO74.js?v=1c181f7a:19116
+recoverFromConcurrentError @ chunk-276SZO74.js?v=1c181f7a:18736
+performSyncWorkOnRoot @ chunk-276SZO74.js?v=1c181f7a:18879
+flushSyncCallbacks @ chunk-276SZO74.js?v=1c181f7a:9119
+(anonymous) @ chunk-276SZO74.js?v=1c181f7a:18627Understand this error
+injected.js:37 The above error occurred in the <SelectItem> component:
+
+    at https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@radix-ui_react-select.js?v=1c181f7a:844:7
+    at _c1 (https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit.dev/src/components/ui/select.tsx:204:12)
+    at div
+    at https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-DVHSTOKX.js?v=1c181f7a:42:13
+    at https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-GR3B7I3S.js?v=1c181f7a:79:13
+    at https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-GR3B7I3S.js?v=1c181f7a:56:13
+    at https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-WM6SXSWM.js?v=1c181f7a:39:15
+    at https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@radix-ui_react-select.js?v=1c181f7a:755:13
+    at div
+    at https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-GR3B7I3S.js?v=1c181f7a:79:13
+    at https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-GR3B7I3S.js?v=1c181f7a:56:13
+    at https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-WM6SXSWM.js?v=1c181f7a:39:15
+    at Provider (https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-3RXG37ZK.js?v=1c181f7a:38:15)
+    at https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@radix-ui_react-select.js?v=1c181f7a:298:58
+    at _c7 (https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit.dev/src/components/ui/select.tsx:123:12)
+    at Provider (https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-3RXG37ZK.js?v=1c181f7a:38:15)
+    at Provider (https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-3RXG37ZK.js?v=1c181f7a:38:15)
+    at CollectionProvider (https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-WM6SXSWM.js?v=1c181f7a:29:13)
+    at Provider (https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-3RXG37ZK.js?v=1c181f7a:38:15)
+    at Provider (https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-3RXG37ZK.js?v=1c181f7a:38:15)
+    at Popper (https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-FZ3EWJ2E.js?v=1c181f7a:1921:11)
+    at Select (https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@radix-ui_react-select.js?v=1c181f7a:86:5)
+    at div
+    at https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit.dev/src/components/ui/form.tsx:72:6
+    at Controller (https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-YGCRICWC.js?v=1c181f7a:298:35)
+    at FormField (https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit.dev/src/components/ui/form.tsx:33:6)
+    at form
+    at FormProvider (https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-YGCRICWC.js?v=1c181f7a:102:11)
+    at div
+    at https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-DVHSTOKX.js?v=1c181f7a:42:13
+    at https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-QSIPOHEG.js?v=1c181f7a:61:7
+    at https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-GR3B7I3S.js?v=1c181f7a:79:13
+    at https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-GR3B7I3S.js?v=1c181f7a:56:13
+    at https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit.dev/@fs/ho
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+(anonymous) @ injected.js:37
+logCapturedError @ chunk-276SZO74.js?v=1c181f7a:14032
+update.callback @ chunk-276SZO74.js?v=1c181f7a:14052
+callCallback @ chunk-276SZO74.js?v=1c181f7a:11248
+commitUpdateQueue @ chunk-276SZO74.js?v=1c181f7a:11265
+commitLayoutEffectOnFiber @ chunk-276SZO74.js?v=1c181f7a:17093
+commitLayoutMountEffects_complete @ chunk-276SZO74.js?v=1c181f7a:17980
+commitLayoutEffects_begin @ chunk-276SZO74.js?v=1c181f7a:17969
+commitLayoutEffects @ chunk-276SZO74.js?v=1c181f7a:17920
+commitRootImpl @ chunk-276SZO74.js?v=1c181f7a:19353
+commitRoot @ chunk-276SZO74.js?v=1c181f7a:19277
+performSyncWorkOnRoot @ chunk-276SZO74.js?v=1c181f7a:18895
+flushSyncCallbacks @ chunk-276SZO74.js?v=1c181f7a:9119
+(anonymous) @ chunk-276SZO74.js?v=1c181f7a:18627Understand this error
+chunk-276SZO74.js?v=1c181f7a:9129 Uncaught Error: A <Select.Item /> must have a value prop that is not an empty string. This is because the Select value can be set to an empty string to clear the selection and show the placeholder.
+    at @radix-ui_react-select.js?v=1c181f7a:871:13
+    at renderWithHooks (chunk-276SZO74.js?v=1c181f7a:11548:26)
+    at updateForwardRef (chunk-276SZO74.js?v=1c181f7a:14325:28)
+    at beginWork (chunk-276SZO74.js?v=1c181f7a:15946:22)
+    at beginWork$1 (chunk-276SZO74.js?v=1c181f7a:19753:22)
+    at performUnitOfWork (chunk-276SZO74.js?v=1c181f7a:19198:20)
+    at workLoopSync (chunk-276SZO74.js?v=1c181f7a:19137:13)
+    at renderRootSync (chunk-276SZO74.js?v=1c181f7a:19116:15)
+    at recoverFromConcurrentError (chunk-276SZO74.js?v=1c181f7a:18736:28)
+    at performSyncWorkOnRoot (chunk-276SZO74.js?v=1c181f7a:18879:28)
+(anonymous) @ @radix-ui_react-select.js?v=1c181f7a:871
+renderWithHooks @ chunk-276SZO74.js?v=1c181f7a:11548
+updateForwardRef @ chunk-276SZO74.js?v=1c181f7a:14325
+beginWork @ chunk-276SZO74.js?v=1c181f7a:15946
+beginWork$1 @ chunk-276SZO74.js?v=1c181f7a:19753
+performUnitOfWork @ chunk-276SZO74.js?v=1c181f7a:19198
+workLoopSync @ chunk-276SZO74.js?v=1c181f7a:19137
+renderRootSync @ chunk-276SZO74.js?v=1c181f7a:19116
+recoverFromConcurrentError @ chunk-276SZO74.js?v=1c181f7a:18736
+performSyncWorkOnRoot @ chunk-276SZO74.js?v=1c181f7a:18879
+flushSyncCallbacks @ chunk-276SZO74.js?v=1c181f7a:9119
+(anonymous) @ chunk-276SZO74.js?v=1c181f7a:18627Understand this error
