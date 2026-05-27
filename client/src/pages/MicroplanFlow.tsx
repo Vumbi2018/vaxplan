@@ -1,6 +1,21 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, lazy, Suspense } from "react";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
+import { Skeleton } from "@/components/ui/skeleton";
+
+// Lazy-load the Plan-phase module pages so they only load when their step is open.
+const DashboardPage = lazy(() => import("@/pages/Dashboard"));
+const PopulationPage = lazy(() => import("@/pages/Population"));
+const HardToReachPage = lazy(() => import("@/pages/HardToReach"));
+const SessionPlanningPage = lazy(() => import("@/pages/SessionPlanning"));
+
+// Which step renders which module inline (Plan phase only, per user brief).
+const INLINE_MODULES: Record<number, React.ComponentType<any>> = {
+  1: DashboardPage,
+  2: PopulationPage,
+  3: HardToReachPage,
+  4: SessionPlanningPage,
+};
 import {
   PHASES,
   buildMicroplanSteps,
@@ -605,6 +620,50 @@ export default function MicroplanFlow() {
             </div>
           </CardContent>
         </Card>
+
+        {/* ============ INLINE LIVE MODULE ============ */}
+        {INLINE_MODULES[activeStep] && (
+          <Card className="rounded-3xl border bg-background/80 backdrop-blur shadow-sm overflow-hidden">
+            <CardContent className="p-0">
+              <div className={`flex items-center gap-2 px-4 sm:px-5 py-3 border-b ${currentPhase.accent.bg} ${currentPhase.accent.border}`}>
+                <current.icon className={`h-4 w-4 ${currentPhase.accent.text}`} />
+                <span className={`text-xs font-bold uppercase tracking-wider ${currentPhase.accent.text}`}>
+                  Live workspace
+                </span>
+                <span className="text-[11px] text-muted-foreground truncate">
+                  {current.moduleLabel} — your edits save to the same tables you'd use on the full page
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="ml-auto h-7 rounded-full text-[11px]"
+                  onClick={() => goModule(current)}
+                  data-testid="flow-open-full"
+                >
+                  Open full page
+                  <ArrowUpRight className="h-3 w-3 ml-1" />
+                </Button>
+              </div>
+              <div className="microplan-flow-embed">
+                <Suspense
+                  fallback={
+                    <div className="p-6 space-y-3">
+                      <Skeleton className="h-8 w-64" />
+                      <Skeleton className="h-32 w-full" />
+                      <Skeleton className="h-32 w-full" />
+                    </div>
+                  }
+                >
+                  {(() => {
+                    const Embedded = INLINE_MODULES[activeStep];
+                    return <Embedded key={`embed-${activeStep}-${facilityId ?? "none"}-${microplanId ?? "none"}`} />;
+                  })()}
+                </Suspense>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* ============ ALL STEPS GRID — quick jump ============ */}
         <Card className="rounded-3xl border bg-background/80 backdrop-blur shadow-sm">
