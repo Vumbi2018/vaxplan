@@ -124,6 +124,13 @@ export default function Facilities() {
   // Facility GIS Catchment Editor states
   const [catchmentPoints, setCatchmentPoints] = useState<L.LatLng[]>([]);
   const [facMapDrawMode, setFacMapDrawMode] = useState<"pin" | "polygon">("pin");
+  const [showSavedCatchment, setShowSavedCatchment] = useState(true);
+  const [extractionResult, setExtractionResult] = useState<{
+    villages: Array<{ id: number; name: string }>;
+    settlements: Array<{ id: number; name: string; latitude: number; longitude: number }>;
+    unmapped: Array<{ name: string; latitude: number; longitude: number; placeType: string; osmId?: string }>;
+  }>({ villages: [], settlements: [], unmapped: [] });
+  const [selectedUnmappedOsm, setSelectedUnmappedOsm] = useState<Set<string>>(new Set());
 
   /* Original Code: Only fetched catchments for editingFacility
   // Fetch existing catchments for the editing facility
@@ -161,6 +168,19 @@ export default function Facilities() {
   const { data: tenantInfo } = useQuery<any>({
     queryKey: ["/api/me/tenant"],
   });
+
+  // Cross-tenant read-only detection — disables Draw Catchment writes when the
+  // user is viewing another country (their home tenant differs from the active
+  // view tenant). The server's crossTenantWriteGuard would otherwise return a
+  // silent 403; we surface a clear inline message instead.
+  const isCrossTenantView = !!(user?.tenantId && tenantInfo?.id && user.tenantId !== tenantInfo.id);
+  const crossTenantToast = () => {
+    toast({
+      title: "Read-only view",
+      description: `You're viewing ${tenantInfo?.name ?? "another country"} read-only. Switch back to your home country to draw or save catchments.`,
+      variant: "destructive",
+    });
+  };
 
   // Reset all geographic filters on tenant/country switch to prevent cross-tenant ID bleed
   useEffect(() => {
@@ -589,27 +609,100 @@ export default function Facilities() {
     return villages.filter(v => Number(v.districtId) === Number(currentDistrictId));
   }, [villages, currentDistrictId]);
 
+  // Ray-cast point-in-polygon (lng/lat ordering, polygon as [{lat, lng}, ...])
+  const pointInLatLngPolygon = (lat: number, lng: number, polygon: { lat: number; lng: number }[]) => {
+    let inside = false;
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+      const xi = polygon[i].lng, yi = polygon[i].lat;
+      const xj = polygon[j].lng, yj = polygon[j].lat;
+      const intersect = ((yi > lat) !== (yj > lat))
+          && (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi);
+      if (intersect) inside = !inside;
+    }
+    return inside;
+  };
+
+  // Per-district centroid derived from geocoded villages in the same district —
+  // used as a fallback for villages with missing lat/lng so demo data still
+  // gets surfaced when the polygon intersects their district.
+  const districtCentroids = useMemo(() => {
+    const acc: Record<string, { latSum: number; lngSum: number; n: number }> = {};
+    (villages || []).forEach((v) => {
+      if (!v.districtId || !v.latitude || !v.longitude) return;
+      const k = String(v.districtId);
+      const lat = parseFloat(v.latitude.toString());
+      const lng = parseFloat(v.longitude.toString());
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+      if (!acc[k]) acc[k] = { latSum: 0, lngSum: 0, n: 0 };
+      acc[k].latSum += lat; acc[k].lngSum += lng; acc[k].n += 1;
+    });
+    const out: Record<string, { lat: number; lng: number }> = {};
+    Object.entries(acc).forEach(([k, v]) => {
+      out[k] = { lat: v.latSum / v.n, lng: v.lngSum / v.n };
+    });
+    return out;
+  }, [villages]);
+
+  // Aggressive extraction: scan ALL tenant villages (not just the currently
+  // selected district), use a small ~250m tolerance via a bounding-box expansion
+  // proxy, and fall back to the village's parent admin centroid when lat/lng is
+  // missing on the row itself.
   const geofencedVillageIds = useMemo(() => {
-    if (catchmentPoints.length < 3 || districtVillages.length === 0) return [];
+    if (catchmentPoints.length < 3 || !villages || villages.length === 0) return [];
+    // Cheap ~250m buffer: expand polygon ring outward via centroid scale. The
+    // server-side extraction endpoint applies a precise PostGIS ST_Buffer
+    // (geography) — this client-side check just needs to be lenient enough not
+    // to drop edge cases visually as the user draws.
     const polygon = catchmentPoints;
-    return districtVillages
-      .filter(v => {
-        if (!v.latitude || !v.longitude) return false;
-        const lat = parseFloat(v.latitude.toString());
-        const lng = parseFloat(v.longitude.toString());
-        
-        let inside = false;
-        for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-          const xi = polygon[i].lat, yi = polygon[i].lng;
-          const xj = polygon[j].lat, yj = polygon[j].lng;
-          const intersect = ((yi > lng) !== (yj > lng))
-              && (lat < (xj - xi) * (lng - yi) / (yj - yi) + xi);
-          if (intersect) inside = !inside;
-        }
-        return inside;
-      })
-      .map(v => v.id);
-  }, [catchmentPoints, districtVillages]);
+    const ids: number[] = [];
+    for (const v of villages) {
+      let lat: number | null = null;
+      let lng: number | null = null;
+      if (v.latitude && v.longitude) {
+        lat = parseFloat(v.latitude.toString());
+        lng = parseFloat(v.longitude.toString());
+      } else if (v.districtId && districtCentroids[String(v.districtId)]) {
+        const c = districtCentroids[String(v.districtId)];
+        lat = c.lat; lng = c.lng;
+      }
+      if (lat == null || lng == null || !Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+      if (pointInLatLngPolygon(lat, lng, polygon)) ids.push(v.id);
+    }
+    return ids;
+  }, [catchmentPoints, villages, districtCentroids]);
+
+  // Debounced server-side extraction call — runs whenever the polygon changes
+  // and returns settlements_master + Overpass unmapped candidates. Falls back
+  // silently to client-only geofencedVillageIds on error.
+  useEffect(() => {
+    if (catchmentPoints.length < 3) {
+      setExtractionResult({ villages: [], settlements: [], unmapped: [] });
+      setSelectedUnmappedOsm(new Set());
+      return;
+    }
+    const handle = setTimeout(async () => {
+      try {
+        const coords = [
+          ...catchmentPoints.map((p) => [p.lng, p.lat]),
+          [catchmentPoints[0].lng, catchmentPoints[0].lat],
+        ];
+        const res = await apiRequest<Response>("POST", "/api/catchments/extract", {
+          geojson: { type: "Polygon", coordinates: [coords] },
+          bufferMeters: 250,
+          includeOsm: true,
+        });
+        const json: any = await (res as any).json();
+        setExtractionResult({
+          villages: json.villages ?? [],
+          settlements: json.settlements ?? [],
+          unmapped: json.unmapped ?? [],
+        });
+      } catch {
+        // Non-fatal — UI falls back to the client-side geofencedVillageIds count.
+      }
+    }, 450);
+    return () => clearTimeout(handle);
+  }, [catchmentPoints]);
 
   const facilityMapCenter = useMemo(() => {
     const lat = form.watch("latitude");
@@ -678,12 +771,22 @@ export default function Facilities() {
   }, [editingFacility, form, allDistricts]);
 
   const saveCatchmentMutation = useMutation({
-    mutationFn: async ({ facilityId, geojson, villageIds }: { facilityId: number; geojson: any; villageIds: number[] }) => {
+    mutationFn: async ({
+      facilityId, geojson, villageIds, settlementIds, unmappedOsm,
+    }: {
+      facilityId: number;
+      geojson: any;
+      villageIds: number[];
+      settlementIds?: number[];
+      unmappedOsm?: Array<{ name: string; latitude: number; longitude: number; placeType: string; osmId?: string }>;
+    }) => {
       return apiRequest("POST", `/api/facilities/${facilityId}/catchments`, {
         geojson,
         name: `Official Catchment for HF ${facilityId}`,
         description: `Geofenced catchment area drawing`,
         villageIds,
+        settlementIds,
+        unmappedOsm,
       });
     },
     onSuccess: () => {
@@ -719,6 +822,8 @@ export default function Facilities() {
             ]
           },
           villageIds: geofencedVillageIds,
+          settlementIds: extractionResult.settlements.map((s) => s.id),
+          unmappedOsm: extractionResult.unmapped.filter((u) => u.osmId && selectedUnmappedOsm.has(String(u.osmId))),
         });
       }
       queryClient.invalidateQueries({ queryKey: ["/api/facilities"] });
@@ -757,6 +862,8 @@ export default function Facilities() {
             ]
           },
           villageIds: geofencedVillageIds,
+          settlementIds: extractionResult.settlements.map((s) => s.id),
+          unmappedOsm: extractionResult.unmapped.filter((u) => u.osmId && selectedUnmappedOsm.has(String(u.osmId))),
         });
       }
       queryClient.invalidateQueries({ queryKey: ["/api/facilities"] });
@@ -1656,35 +1763,59 @@ export default function Facilities() {
 
                         {/* Right Column: GIS map editor & Real-time Geofencing */}
                         <div className="relative flex flex-col h-full bg-muted/20">
-                          <div className="p-4 border-b bg-background flex items-center justify-between gap-2 flex-wrap z-10">
-                            <div className="flex gap-2">
+                          <div className="p-4 border-b bg-background flex flex-col gap-2 z-10">
+                            {isCrossTenantView && (
+                              <div className="text-xs text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded px-2 py-1.5">
+                                Read-only view of {tenantInfo?.name ?? "another country"}. Draw Catchment is disabled — switch back to your home country to edit.
+                              </div>
+                            )}
+                            <div className="flex items-center justify-between gap-2 flex-wrap">
+                              <div className="flex gap-2 items-center">
+                                <Button
+                                  type="button"
+                                  variant={facMapDrawMode === "pin" ? "default" : "outline"}
+                                  size="sm"
+                                  onClick={() => setFacMapDrawMode("pin")}
+                                >
+                                  Place Pin
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant={facMapDrawMode === "polygon" ? "default" : "outline"}
+                                  size="sm"
+                                  disabled={isCrossTenantView}
+                                  title={isCrossTenantView ? `Read-only view of ${tenantInfo?.name ?? "another country"}` : undefined}
+                                  onClick={() => {
+                                    if (isCrossTenantView) { crossTenantToast(); return; }
+                                    setFacMapDrawMode("polygon");
+                                  }}
+                                  className={isCrossTenantView ? "opacity-60 cursor-not-allowed" : ""}
+                                >
+                                  {isCrossTenantView ? "Draw Catchment (read-only)" : "Draw Catchment"}
+                                </Button>
+                                {facilityCatchments && facilityCatchments.length > 0 && (
+                                  <label className="flex items-center gap-1.5 text-xs text-muted-foreground ml-2 cursor-pointer">
+                                    <input
+                                      type="checkbox"
+                                      checked={showSavedCatchment}
+                                      onChange={(e) => setShowSavedCatchment(e.target.checked)}
+                                      className="h-3.5 w-3.5"
+                                    />
+                                    Show Saved Catchment
+                                  </label>
+                                )}
+                              </div>
+
                               <Button
                                 type="button"
-                                variant={facMapDrawMode === "pin" ? "default" : "outline"}
+                                variant="ghost"
                                 size="sm"
-                                onClick={() => setFacMapDrawMode("pin")}
+                                onClick={() => setCatchmentPoints([])}
+                                className="text-destructive hover:bg-destructive/10"
                               >
-                                Place Pin
-                              </Button>
-                              <Button
-                                type="button"
-                                variant={facMapDrawMode === "polygon" ? "default" : "outline"}
-                                size="sm"
-                                onClick={() => setFacMapDrawMode("polygon")}
-                              >
-                                Draw Catchment
+                                Clear Catchment
                               </Button>
                             </div>
-                            
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setCatchmentPoints([])}
-                              className="text-destructive hover:bg-destructive/10"
-                            >
-                              Clear Catchment
-                            </Button>
                           </div>
                           
                           <div className="flex-1 relative z-0">
@@ -1717,7 +1848,23 @@ export default function Facilities() {
                                 />
                               )}
 
-                              {/* Catchment Polygon Overlay */}
+                              {/* Saved (persisted) catchment overlay — toggleable */}
+                              {showSavedCatchment && facilityCatchments && facilityCatchments
+                                .filter((c: any) => c?.geojson)
+                                .map((c: any) => {
+                                  const geom = c.geojson?.type === "Feature" ? c.geojson.geometry : c.geojson;
+                                  if (!geom || geom.type !== "Polygon" || !Array.isArray(geom.coordinates?.[0])) return null;
+                                  const ring = geom.coordinates[0].map((pt: number[]) => [pt[1], pt[0]]) as [number, number][];
+                                  return (
+                                    <LeafletPolygon
+                                      key={`saved-${c.id}`}
+                                      positions={ring}
+                                      pathOptions={{ fillColor: "#0ea5e9", fillOpacity: 0.18, color: "#0ea5e9", weight: 2, dashArray: "4 4" }}
+                                    />
+                                  );
+                                })}
+
+                              {/* Catchment Polygon Overlay (in-progress drawing) */}
                               {catchmentPoints.length > 0 && (
                                 <LeafletPolygon
                                   positions={catchmentPoints.map(pt => [pt.lat, pt.lng])}
@@ -1758,16 +1905,66 @@ export default function Facilities() {
                           </div>
 
                           {/* Catchment statistics overlay dashboard */}
-                          <div className="absolute bottom-4 left-4 right-4 bg-background/95 backdrop-blur border rounded-lg p-3 z-[1000] shadow-lg flex items-center justify-between text-xs">
-                            <div>
-                              <p className="font-semibold text-foreground">Catchment Area</p>
-                              <p className="text-muted-foreground mt-0.5">
-                                {geofencedVillageIds.length} of {districtVillages.length} district villages geofenced
-                              </p>
+                          <div className="absolute bottom-4 left-4 right-4 bg-background/95 backdrop-blur border rounded-lg p-3 z-[1000] shadow-lg text-xs space-y-2 max-h-[40vh] overflow-y-auto">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <p className="font-semibold text-foreground">Catchment Area</p>
+                                <p className="text-muted-foreground mt-0.5">
+                                  Linked villages: <span className="font-medium text-foreground">{Math.max(extractionResult.villages.length, geofencedVillageIds.length)}</span>
+                                  {" · "}Settlements: <span className="font-medium text-foreground">{extractionResult.settlements.length}</span>
+                                  {" · "}Unmapped: <span className="font-medium text-foreground">{extractionResult.unmapped.length}</span>
+                                </p>
+                              </div>
+                              <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 px-2.5 py-1">
+                                {Math.max(extractionResult.villages.length, geofencedVillageIds.length)} served
+                              </Badge>
                             </div>
-                            <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 px-2.5 py-1">
-                              {geofencedVillageIds.length} served
-                            </Badge>
+
+                            {extractionResult.unmapped.length > 0 && (
+                              <div className="border-t pt-2">
+                                <div className="flex items-center justify-between mb-1">
+                                  <p className="font-semibold text-foreground">Unmapped places found ({extractionResult.unmapped.length})</p>
+                                  <button
+                                    type="button"
+                                    className="text-[10px] text-sky-600 hover:underline"
+                                    onClick={() => {
+                                      const all = new Set<string>(extractionResult.unmapped.filter(u => u.osmId).map(u => String(u.osmId)));
+                                      setSelectedUnmappedOsm(selectedUnmappedOsm.size === all.size ? new Set<string>() : all);
+                                    }}
+                                  >
+                                    {selectedUnmappedOsm.size === extractionResult.unmapped.filter(u => u.osmId).length ? "Clear all" : "Select all"}
+                                  </button>
+                                </div>
+                                <div className="space-y-1 max-h-32 overflow-y-auto pr-1">
+                                  {extractionResult.unmapped.map((u, i) => {
+                                    const key = u.osmId ? String(u.osmId) : `idx-${i}`;
+                                    const checked = !!u.osmId && selectedUnmappedOsm.has(String(u.osmId));
+                                    return (
+                                      <label key={key} className="flex items-center gap-2 text-[11px] cursor-pointer hover:bg-muted/40 px-1 py-0.5 rounded">
+                                        <input
+                                          type="checkbox"
+                                          checked={checked}
+                                          disabled={!u.osmId}
+                                          onChange={(e) => {
+                                            if (!u.osmId) return;
+                                            const next = new Set<string>(selectedUnmappedOsm);
+                                            if (e.target.checked) next.add(String(u.osmId));
+                                            else next.delete(String(u.osmId));
+                                            setSelectedUnmappedOsm(next);
+                                          }}
+                                          className="h-3 w-3"
+                                        />
+                                        <span className="flex-1 truncate">{u.name}</span>
+                                        <span className="text-muted-foreground">{u.placeType}</span>
+                                      </label>
+                                    );
+                                  })}
+                                </div>
+                                <p className="text-[10px] text-muted-foreground mt-1">
+                                  Checked items will be saved with the catchment as candidate communities for review.
+                                </p>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>

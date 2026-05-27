@@ -4397,19 +4397,54 @@ export async function registerRoutes(
       const schema = z.object({
         name: z.string().min(1).max(255),
         description: z.string().max(2000).optional(),
-        geojson: z.object({ type: z.string(), coordinates: z.any() }),
+        geojson: z.object({ type: z.string(), coordinates: z.any() }).passthrough(),
         populationEstimate: z.number().int().nonnegative().optional(),
         isOfficial: z.boolean().optional().default(false),
+        villageIds: z.array(z.number().int()).optional(),
+        settlementIds: z.array(z.number().int()).optional(),
+        unmappedOsm: z.array(z.object({
+          name: z.string(),
+          latitude: z.number(),
+          longitude: z.number(),
+          placeType: z.string().optional(),
+          osmId: z.union([z.string(), z.number()]).optional(),
+        })).optional(),
       });
       const parsed = schema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: "Invalid payload", errors: parsed.error.errors });
 
+      // Extract the raw geometry for area calculation
+      const rawGeom = (parsed.data.geojson as any).type === "Feature"
+        ? (parsed.data.geojson as any).geometry
+        : parsed.data.geojson;
+
       // Calculate area server-side using Turf.js
       let areaSqKm: string | undefined;
       try {
-        const areaM2 = turfArea({ type: "Feature", properties: {}, geometry: parsed.data.geojson as any });
+        const areaM2 = turfArea({ type: "Feature", properties: {}, geometry: rawGeom as any });
         areaSqKm = (areaM2 / 1_000_000).toFixed(4);
       } catch { /* non-fatal */ }
+
+      // Wrap geometry into a Feature so we can carry extraction metadata
+      // (linked villageIds / settlementIds / unmappedOsm candidates) without
+      // a schema change. The MapView GeoJSON renderer accepts both shapes.
+      const hasExtractionMeta =
+        (parsed.data.villageIds && parsed.data.villageIds.length > 0) ||
+        (parsed.data.settlementIds && parsed.data.settlementIds.length > 0) ||
+        (parsed.data.unmappedOsm && parsed.data.unmappedOsm.length > 0);
+
+      const geoOut: any = hasExtractionMeta
+        ? {
+            type: "Feature",
+            properties: {
+              villageIds: parsed.data.villageIds ?? [],
+              settlementIds: parsed.data.settlementIds ?? [],
+              unmappedOsm: parsed.data.unmappedOsm ?? [],
+              drawnAt: new Date().toISOString(),
+            },
+            geometry: rawGeom,
+          }
+        : parsed.data.geojson;
 
       const catchment = await storage.createFacilityCatchment(tenantId, {
         tenantId,
@@ -4420,7 +4455,7 @@ export async function registerRoutes(
         drawnByUserId: req.user?.id ?? req.user?.claims?.sub ?? null,
         name: parsed.data.name,
         description: parsed.data.description ?? null,
-        geojson: parsed.data.geojson,
+        geojson: geoOut,
         areaSqKm: areaSqKm ?? null,
         populationEstimate: parsed.data.populationEstimate ?? null,
         isOfficial: parsed.data.isOfficial ?? false,
@@ -4429,6 +4464,183 @@ export async function registerRoutes(
       res.status(201).json(catchment);
     } catch (err: any) {
       res.status(500).json({ message: err?.message ?? "Failed to save catchment" });
+    }
+  });
+
+  // POST /api/catchments/extract — aggressive community extraction
+  // Accepts a GeoJSON polygon (geometry or Feature) and returns three lists:
+  // villages inside (with ~250m buffer), settlements_master entries inside,
+  // and — when both are empty — an Overpass fallback of place=village/hamlet/...
+  // nodes inside the polygon (tagged as "unmapped").
+  app.post("/api/catchments/extract", isAuthenticated, requireTenant, async (req: any, res) => {
+    try {
+      const tenantId = req.tenantId as string;
+      const schema = z.object({
+        geojson: z.object({ type: z.string(), coordinates: z.any().optional(), geometry: z.any().optional() }).passthrough(),
+        bufferMeters: z.number().min(0).max(5000).optional().default(250),
+        includeOsm: z.boolean().optional().default(true),
+      });
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Invalid payload", errors: parsed.error.errors });
+
+      const rawGeom: any = (parsed.data.geojson as any).type === "Feature"
+        ? (parsed.data.geojson as any).geometry
+        : parsed.data.geojson;
+      if (!rawGeom || !rawGeom.coordinates) {
+        return res.status(400).json({ message: "GeoJSON polygon required" });
+      }
+      const polyJson = JSON.stringify(rawGeom);
+      const bufM = parsed.data.bufferMeters ?? 250;
+
+      // Villages inside buffered polygon (coordinate-based)
+      const villagesGeoQ = await pool.query(
+        `
+        WITH poly AS (
+          SELECT ST_Buffer(ST_SetSRID(ST_GeomFromGeoJSON($1), 4326)::geography, $2)::geometry AS geom
+        )
+        SELECT v.id, v.name, v.district_id AS "districtId",
+               v.latitude::float AS latitude, v.longitude::float AS longitude
+          FROM villages v, poly
+         WHERE v.tenant_id = $3
+           AND v.latitude IS NOT NULL AND v.longitude IS NOT NULL
+           AND ST_Contains(poly.geom, ST_SetSRID(ST_MakePoint(v.longitude::float, v.latitude::float), 4326))
+        `,
+        [polyJson, bufM, tenantId],
+      );
+
+      // Villages WITHOUT coordinates — fall back to their parent district's admin
+      // polygon centroid (admin_boundaries level 2 matched by district name).
+      const villagesByCentroidQ = await pool.query(
+        `
+        WITH poly AS (
+          SELECT ST_Buffer(ST_SetSRID(ST_GeomFromGeoJSON($1), 4326)::geography, $2)::geometry AS geom
+        ),
+        district_centroids AS (
+          SELECT d.id AS district_id, d.name AS district_name,
+                 ST_Centroid(ST_Collect(ST_SetSRID(ST_GeomFromGeoJSON(feat->>'geometry'), 4326))) AS centroid
+            FROM districts d
+            JOIN admin_boundaries ab ON ab.tenant_id = d.tenant_id AND ab.admin_level = 2
+                 AND COALESCE(ab.is_active, true) = true,
+                 LATERAL jsonb_array_elements(ab.geojson->'features') AS feat
+           WHERE d.tenant_id = $3
+             AND lower(trim(d.name)) = lower(trim(COALESCE(
+                   feat->'properties'->>'shapeName',
+                   feat->'properties'->>'name',
+                   feat->'properties'->>'NAME', '')))
+           GROUP BY d.id, d.name
+        )
+        SELECT v.id, v.name, v.district_id AS "districtId",
+               NULL::float AS latitude, NULL::float AS longitude
+          FROM villages v
+          JOIN district_centroids dc ON dc.district_id = v.district_id,
+               poly
+         WHERE v.tenant_id = $3
+           AND (v.latitude IS NULL OR v.longitude IS NULL)
+           AND ST_Contains(poly.geom, dc.centroid)
+        `,
+        [polyJson, bufM, tenantId],
+      );
+
+      // Settlements_master inside buffered polygon
+      const settlementsQ = await pool.query(
+        `
+        WITH poly AS (
+          SELECT ST_Buffer(ST_SetSRID(ST_GeomFromGeoJSON($1), 4326)::geography, $2)::geometry AS geom
+        )
+        SELECT s.id, s.name, s.place_type AS "placeType",
+               s.latitude::float AS latitude, s.longitude::float AS longitude,
+               s.population_estimate AS "populationEstimate"
+          FROM settlements_master s, poly
+         WHERE s.tenant_id = $3
+           AND ST_Contains(poly.geom, ST_SetSRID(ST_MakePoint(s.longitude::float, s.latitude::float), 4326))
+         ORDER BY s.population_estimate DESC NULLS LAST
+         LIMIT 500
+        `,
+        [polyJson, bufM, tenantId],
+      );
+
+      const villagesAll = [
+        ...villagesGeoQ.rows,
+        ...villagesByCentroidQ.rows,
+      ];
+      const settlements = settlementsQ.rows;
+
+      // Overpass fallback — only when nothing local matched and caller wants it.
+      let unmapped: Array<{ name: string; latitude: number; longitude: number; placeType: string; osmId?: string }> = [];
+      if (parsed.data.includeOsm && villagesAll.length === 0 && settlements.length === 0) {
+        try {
+          const bboxQ = await pool.query(
+            `SELECT ST_XMin(g) AS minx, ST_YMin(g) AS miny, ST_XMax(g) AS maxx, ST_YMax(g) AS maxy
+               FROM (SELECT ST_SetSRID(ST_GeomFromGeoJSON($1), 4326) AS g) t`,
+            [polyJson],
+          );
+          const b = bboxQ.rows[0];
+          if (b && b.miny != null) {
+            const overpassQL = `[out:json][timeout:15];(
+              node["place"~"village|hamlet|town|suburb|neighbourhood"](${b.miny},${b.minx},${b.maxy},${b.maxx});
+            );out body 200;`;
+            const controller = new AbortController();
+            const tm = setTimeout(() => controller.abort(), 18000);
+            const r = await fetch("https://overpass-api.de/api/interpreter", {
+              method: "POST",
+              body: "data=" + encodeURIComponent(overpassQL),
+              headers: { "Content-Type": "application/x-www-form-urlencoded" },
+              signal: controller.signal,
+            }).catch(() => null);
+            clearTimeout(tm);
+            if (r && r.ok) {
+              const j: any = await r.json();
+              const nodes: any[] = Array.isArray(j?.elements) ? j.elements : [];
+              if (nodes.length > 0) {
+                // Filter to those actually inside the polygon using PostGIS in one query
+                const values = nodes
+                  .filter((n) => typeof n.lat === "number" && typeof n.lon === "number")
+                  .map((n) => `(${n.id}, ${n.lon}, ${n.lat}, '${String(n.tags?.place ?? "village").replace(/'/g, "")}', '${String(n.tags?.name ?? "Unnamed").replace(/'/g, "''")}')`);
+                if (values.length > 0) {
+                  const filterQ = await pool.query(
+                    `
+                    WITH poly AS (
+                      SELECT ST_SetSRID(ST_GeomFromGeoJSON($1), 4326) AS geom
+                    ), cand(osm_id, lon, lat, place_type, name) AS (
+                      VALUES ${values.join(",")}
+                    )
+                    SELECT c.osm_id, c.lon::float AS lon, c.lat::float AS lat, c.place_type, c.name
+                      FROM cand c, poly
+                     WHERE ST_Contains(poly.geom, ST_SetSRID(ST_MakePoint(c.lon, c.lat), 4326))
+                     LIMIT 200
+                    `,
+                    [polyJson],
+                  );
+                  unmapped = filterQ.rows.map((row: any) => ({
+                    name: row.name || "Unnamed settlement",
+                    latitude: row.lat,
+                    longitude: row.lon,
+                    placeType: row.place_type || "village",
+                    osmId: String(row.osm_id),
+                  }));
+                }
+              }
+            }
+          }
+        } catch (osmErr) {
+          // Non-fatal — Overpass is a best-effort fallback.
+          console.warn("Overpass fallback failed:", (osmErr as any)?.message ?? osmErr);
+        }
+      }
+
+      res.json({
+        villages: villagesAll,
+        settlements,
+        unmapped,
+        counts: {
+          villages: villagesAll.length,
+          settlements: settlements.length,
+          unmapped: unmapped.length,
+        },
+      });
+    } catch (err: any) {
+      console.error("POST /api/catchments/extract failed:", err);
+      res.status(500).json({ message: err?.message ?? "Failed to extract communities" });
     }
   });
 
