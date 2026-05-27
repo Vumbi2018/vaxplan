@@ -1,0 +1,57 @@
+Top 12 prioritized actions
+The smallest, highest-leverage changes that move VaxPlan from "strong" to "audit-ready" against WHO, UNICEF, Gavi and MoH standards.
+1
+Enforce session → microplan parenthood (NOT NULL, plan-type match, lock cascade)
+WHO/UNICEF Microplanning §1.3 · Effort: M
+2
+Split the UI into Routine RI vs SIA Campaigns workspaces
+WHO RED + IA2030 SP5; JRF separation · Effort: M
+3
+Zero-dose children indicator on Dashboard (no DTP1 by 12 mo)
+Gavi 5.0 flagship; IA2030 SP1 · Effort: S
+4
+AEFI reports entity + DHIS2 push
+JRF; IHR 2005; Gavi safety · Effort: M
+5
+Cold-chain equipment + temperature logs with PQS codes
+EVM 2.0 E2–E4 · Effort: M
+6
+Stockout days + actual wastage in monthly reports
+JRF; EVM 2.0 E6 · Effort: M
+7
+Staffing + funding source on microplan
+WHO/UNICEF core elements 6 & 8; Gavi HSS · Effort: S
+8
+GTIN + lot/expiry on stock; barcode-scan UI
+GS1; Gavi traceability · Effort: M
+9
+Supportive supervision visits entity + checklist
+RED/REC; Gavi FCE 4.2 · Effort: S
+10
+Defaulter list + DTP1→DTP3 / DTP1→MCV1 dropout
+WUENIC; RED/REC monitoring · Effort: S
+11
+Service Worker Background Sync for outbox
+Principles for Digital Development · Effort: M
+12
+Extend FHIR adapter (Encounter + MedicationAdministration + Location + Practitioner)
+WHO SMART Guidelines IMMZ · Effort: M
+Standards & sources referenced
+WHO/UNICEF Microplanning for Immunization (RED, 2021 rev.)
+WHO Immunization Agenda 2030 (IA2030) + M&E framework
+WHO/UNICEF Joint Reporting Form (JRF) & WUENIC
+WHO Effective Vaccine Management (EVM 2.0)
+WHO SMART Guidelines (L1–L4, IMMZ DAK)
+WHO Classification of Digital Health Interventions v1.0
+WHO Global Strategy on Digital Health 2020–2025
+WHO International Health Regulations (IHR 2005)
+WHO Reaching Every District / Every Community (RED/REC)
+WHO AccessMod travel-time / catchment analysis
+Gavi 5.0 Strategy + Full Country Evaluation indicators
+Principles for Digital Development
+HL7 FHIR R4 + IPS + Immunization profile
+DHIS2 Aggregate & Tracker APIs + WHO DHIS2 Immunization pkg
+GS1 Healthcare (GTIN, 2D vaccine barcoding)
+CVX, SNOMED CT, ICD-11, LOINC
+GRID3 / WorldPop / LandScan gridded population
+ISO 27001 / ISO 27799; GDPR Arts. 5, 17, 32
