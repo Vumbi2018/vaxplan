@@ -60,7 +60,7 @@ import {
   Plus,
 } from "lucide-react";
 import type { Facility, Village, FacilityCatchment } from "@shared/schema";
-import { distance } from "@turf/turf";
+import { distance, centroid as turfCentroid, polygon as turfPolygon } from "@turf/turf";
 import RBush from "rbush";
 // Vite worker import — runs centroid + point-in-polygon emphasis off the
 // main thread so Province / District / LLG changes never block the UI on
@@ -2753,6 +2753,9 @@ export function MapView({
   const [catchmentDescription, setCatchmentDescription] = useState("");
   const [catchmentFacilityId, setCatchmentFacilityId] = useState<number | null>(null);
   const [catchmentPopEst, setCatchmentPopEst] = useState("");
+  const [catchmentProvinceId, setCatchmentProvinceId] = useState<number | null>(null);
+  const [catchmentDistrictId, setCatchmentDistrictId] = useState<number | null>(null);
+  const [catchmentAutoDetectKm, setCatchmentAutoDetectKm] = useState<number | null>(null);
 
   // ─── Queries for boundary and catchment data ──────────────────────────
 
@@ -3163,12 +3166,106 @@ export function MapView({
       setCatchmentName("");
       setCatchmentDescription("");
       setCatchmentFacilityId(null);
+      setCatchmentProvinceId(null);
+      setCatchmentDistrictId(null);
+      setCatchmentAutoDetectKm(null);
       toast({ title: "Catchment saved", description: "The facility catchment area is now visible on the map." });
     },
     onError: (err: Error) => {
       toast({ title: "Failed to save catchment", description: err.message, variant: "destructive" });
     },
   });
+
+  // ─── Catchment dialog: auto-detect nearest facility + cascading picker ──
+  // Compute polygon centroid via Turf. Returns [lat, lng] or null if the
+  // polygon is invalid (fewer than 3 unique points or contains non-finite coords).
+  const computeCatchmentCenter = useCallback(
+    (points: [number, number][]): [number, number] | null => {
+      if (!points || points.length < 3) return null;
+      for (const [lat, lng] of points) {
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+      }
+      try {
+        // GeoJSON polygon needs [lng, lat] order and a closed ring.
+        const ring: [number, number][] = points.map(([lat, lng]) => [lng, lat]);
+        ring.push([ring[0][0], ring[0][1]]);
+        const poly = turfPolygon([ring]);
+        const c = turfCentroid(poly);
+        const [cLng, cLat] = c.geometry.coordinates as [number, number];
+        if (!Number.isFinite(cLat) || !Number.isFinite(cLng)) return null;
+        return [cLat, cLng];
+      } catch {
+        return null;
+      }
+    },
+    [],
+  );
+
+  // Find the nearest facility (with valid coordinates) to a given [lat, lng] center.
+  const findNearestFacility = useCallback(
+    (center: [number, number], facilityList: Facility[]): { facility: Facility; distanceKm: number } | null => {
+      const [lat, lng] = center;
+      let best: { facility: Facility; distanceKm: number } | null = null;
+      for (const fac of facilityList) {
+        const fLat = fac.latitude != null ? Number(fac.latitude) : NaN;
+        const fLng = fac.longitude != null ? Number(fac.longitude) : NaN;
+        if (!Number.isFinite(fLat) || !Number.isFinite(fLng)) continue;
+        const km = distance([lng, lat], [fLng, fLat], { units: "kilometers" });
+        if (!best || km < best.distanceKm) {
+          best = { facility: fac, distanceKm: km };
+        }
+      }
+      return best;
+    },
+    [],
+  );
+
+  // Run auto-detect when the Save Catchment dialog opens after drawing a polygon.
+  useEffect(() => {
+    if (!saveCatchmentOpen) {
+      // Reset all cascading picker state whenever the dialog closes so the next
+      // save starts from a clean auto-detected guess rather than the previous pick.
+      setCatchmentProvinceId(null);
+      setCatchmentDistrictId(null);
+      setCatchmentFacilityId(null);
+      setCatchmentAutoDetectKm(null);
+      return;
+    }
+    const center = computeCatchmentCenter(drawPoints);
+    const nearest = center ? findNearestFacility(center, facilities) : null;
+    if (!nearest) {
+      // Fall back to fully manual selection: clear any stale preselection so
+      // the user starts from empty selectors instead of a leftover facility.
+      setCatchmentProvinceId(null);
+      setCatchmentDistrictId(null);
+      setCatchmentFacilityId(null);
+      setCatchmentAutoDetectKm(null);
+      return;
+    }
+    const fac = nearest.facility;
+    const dist = districts.find((d: any) => Number(d.id) === Number(fac.districtId));
+    setCatchmentFacilityId(fac.id);
+    setCatchmentDistrictId(fac.districtId ?? null);
+    setCatchmentProvinceId(dist?.provinceId != null ? Number(dist.provinceId) : null);
+    setCatchmentAutoDetectKm(nearest.distanceKm);
+    // Only react to the dialog opening / draw points changing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [saveCatchmentOpen]);
+
+  // Districts scoped to the chosen province in the catchment picker.
+  const catchmentDistrictOptions = useMemo(() => {
+    if (catchmentProvinceId == null) return [];
+    return districts.filter((d: any) => Number(d.provinceId) === Number(catchmentProvinceId));
+  }, [districts, catchmentProvinceId]);
+
+  // Facilities scoped to the chosen district in the catchment picker.
+  // Facilities without coordinates still appear here so they can be selected manually.
+  const catchmentFacilityOptions = useMemo(() => {
+    if (catchmentDistrictId == null) return [];
+    return facilities
+      .filter((f) => Number(f.districtId) === Number(catchmentDistrictId))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [facilities, catchmentDistrictId]);
 
   const createSessionPlanMutation = useMutation({
     // Original Code (apiRequest already parses res.json() directly, calling res.json() here throws TypeError):
@@ -5622,24 +5719,83 @@ export function MapView({
 
           <div className="space-y-4 py-4">
             <div className="space-y-1.5">
+              <Label htmlFor="catchment-province" className="text-sm font-semibold">
+                Province *
+              </Label>
+              <Select
+                value={catchmentProvinceId ? String(catchmentProvinceId) : ""}
+                onValueChange={(val) => {
+                  const next = Number(val);
+                  setCatchmentProvinceId(next);
+                  setCatchmentDistrictId(null);
+                  setCatchmentFacilityId(null);
+                  setCatchmentAutoDetectKm(null);
+                }}
+              >
+                <SelectTrigger id="catchment-province" className="w-full" data-testid="select-catchment-province">
+                  <SelectValue placeholder="Select province..." />
+                </SelectTrigger>
+                <SelectContent className="max-h-56">
+                  {provinces.map((p) => (
+                    <SelectItem key={p.id} value={String(p.id)}>
+                      {p.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="catchment-district" className="text-sm font-semibold">
+                District *
+              </Label>
+              <Select
+                value={catchmentDistrictId ? String(catchmentDistrictId) : ""}
+                onValueChange={(val) => {
+                  setCatchmentDistrictId(Number(val));
+                  setCatchmentFacilityId(null);
+                  setCatchmentAutoDetectKm(null);
+                }}
+                disabled={catchmentProvinceId == null}
+              >
+                <SelectTrigger id="catchment-district" className="w-full" data-testid="select-catchment-district">
+                  <SelectValue placeholder={catchmentProvinceId == null ? "Select a province first..." : "Select district..."} />
+                </SelectTrigger>
+                <SelectContent className="max-h-56">
+                  {catchmentDistrictOptions.map((d: any) => (
+                    <SelectItem key={d.id} value={String(d.id)}>
+                      {d.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
               <Label htmlFor="catchment-facility" className="text-sm font-semibold">
                 Associated Health Facility *
               </Label>
               <Select
                 value={catchmentFacilityId ? String(catchmentFacilityId) : ""}
                 onValueChange={(val) => setCatchmentFacilityId(Number(val))}
+                disabled={catchmentDistrictId == null}
               >
-                <SelectTrigger id="catchment-facility" className="w-full">
-                  <SelectValue placeholder="Select facility..." />
+                <SelectTrigger id="catchment-facility" className="w-full" data-testid="select-catchment-facility">
+                  <SelectValue placeholder={catchmentDistrictId == null ? "Select a district first..." : "Select facility..."} />
                 </SelectTrigger>
                 <SelectContent className="max-h-56">
-                  {facilities.map((fac) => (
+                  {catchmentFacilityOptions.map((fac) => (
                     <SelectItem key={fac.id} value={String(fac.id)}>
                       {fac.name} ({fac.hmisCode})
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              {catchmentAutoDetectKm != null && catchmentFacilityId != null && (
+                <p className="text-xs text-muted-foreground" data-testid="text-catchment-auto-detect-hint">
+                  Nearest to drawn area · ~{catchmentAutoDetectKm.toFixed(1)} km — change if incorrect
+                </p>
+              )}
             </div>
 
             <div className="space-y-1.5">
