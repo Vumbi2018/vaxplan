@@ -403,38 +403,66 @@ export const getQueryFn: <T>(options: {
       }
     }
 
+    let res: Response;
     try {
-      const res = await fetch(url, {
+      res = await fetch(url, {
         credentials: "include",
       });
-
-      if (unauthorizedBehavior === "returnNull" && res.status === 401) {
-        return null;
+    } catch (err) {
+      // Genuine network failure (fetch rejected — no response). Fall back to
+      // local IndexedDB so the app stays usable when truly offline.
+      try {
+        console.warn("Network unreachable, falling back to local IndexedDB:", err);
+        return await getOfflineData(url);
+      } catch (offlineErr) {
+        throw err;
       }
+    }
 
-      // Guard: if the server returns HTML instead of JSON (e.g. Vite SPA fallback
-      // for an undefined route, or a proxy error page), throw immediately so the
-      // IndexedDB fallback path handles it cleanly instead of crashing on JSON.parse.
-      const contentType = res.headers.get("content-type") || "";
-      if (!contentType.includes("application/json")) {
-        // Non-JSON response — likely HTML error page
-        throw new Error(`${res.status}: Server returned non-JSON (${contentType.split(";")[0]})`);
+    if (unauthorizedBehavior === "returnNull" && res.status === 401) {
+      return null;
+    }
+
+    const contentType = res.headers.get("content-type") || "";
+    const isJson = contentType.includes("application/json");
+
+    // A clean JSON response from the server — including 4xx like 403
+    // (cross-tenant write blocked) — is a real answer, not an offline
+    // situation. Surface it to the caller so the toast layer sees the
+    // server's actual message instead of falling through to IndexedDB.
+    if (isJson) {
+      if (!res.ok) {
+        let message = `${res.status}`;
+        try {
+          const body = await res.json();
+          if (body && typeof body === "object" && body.message) {
+            message = `${res.status}: ${body.message}`;
+          } else {
+            message = `${res.status}: ${JSON.stringify(body)}`;
+          }
+        } catch {
+          message = `${res.status}: ${res.statusText}`;
+        }
+        throw new Error(message);
       }
-
-      await throwIfResNotOk(res);
       const data = await res.json();
       if (url === "/api/auth/user" && data) {
         localStorage.setItem("vaxplan_active_user", JSON.stringify(data));
       }
       return data;
-    } catch (err) {
-      // Online fetch failed (network timeout / server down), fallback to IndexedDB
-      try {
-        console.warn("Fetch failed, falling back to local IndexedDB:", err);
-        return await getOfflineData(url);
-      } catch (offlineErr) {
-        throw err;
-      }
+    }
+
+    // Non-JSON response — likely an HTML error page (Vite SPA fallback,
+    // proxy error, gateway timeout, etc.). Try the IndexedDB cache so the
+    // user still sees data; if that also fails, surface the original error.
+    const nonJsonErr = new Error(
+      `${res.status}: Server returned non-JSON (${contentType.split(";")[0] || "unknown"})`,
+    );
+    try {
+      console.warn("Server returned non-JSON, falling back to local IndexedDB:", nonJsonErr);
+      return await getOfflineData(url);
+    } catch (offlineErr) {
+      throw nonJsonErr;
     }
   };
 

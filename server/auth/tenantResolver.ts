@@ -110,6 +110,23 @@ const CROSS_TENANT_WRITE_ALLOWED_PATHS = new Set([
   "/api/logout",
 ]);
 
+// Settlement Intelligence is an analysis workspace, not a domain-data mutation
+// surface. It scans the viewed tenant's spatial layers (PostGIS) and lets the
+// user validate/dismiss the candidate clusters it finds. We allow these
+// explicit endpoints across tenants so a PNG-home admin can run detection in
+// Zambia (or vice versa) without being blocked by the foreign-write lock.
+// All other writes (clients, sessions, stock, facilities, etc.) remain
+// restricted to the user's home tenant.
+const CROSS_TENANT_WRITE_ALLOWED_PATH_PATTERNS: RegExp[] = [
+  /^\/api\/unmapped-settlements\/run-engine$/,
+  /^\/api\/unmapped-settlements\/\d+\/validate$/,
+  /^\/api\/unmapped-settlements\/\d+\/dismiss$/,
+];
+
+function isCrossTenantAnalysisPath(path: string): boolean {
+  return CROSS_TENANT_WRITE_ALLOWED_PATH_PATTERNS.some((re) => re.test(path));
+}
+
 // When a user is "visiting" a tenant other than their home tenant, allow GETs
 // but block writes so foreign data can never be edited from a switched session.
 export const crossTenantWriteGuard: RequestHandler = async (req, res, next) => {
@@ -118,6 +135,7 @@ export const crossTenantWriteGuard: RequestHandler = async (req, res, next) => {
     return next();
   }
   if (CROSS_TENANT_WRITE_ALLOWED_PATHS.has(req.path)) return next();
+  if (isCrossTenantAnalysisPath(req.path)) return next();
 
   try {
     const userId = (req.user as any)?.claims?.sub;

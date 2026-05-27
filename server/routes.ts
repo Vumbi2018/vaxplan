@@ -6895,12 +6895,17 @@ export async function registerRoutes(
         })
         .returning();
 
-      // Log audit trail
+      // Log audit trail (capture cross-tenant attribution)
+      const actingUserId = req.user?.claims?.sub || null;
+      const actingUser = actingUserId ? await storage.getUser(actingUserId) : null;
       await logAudit(req, "validate_settlement", "settlements_master", newSettlement.id, null, {
         candidateId: id,
         name,
         admin,
-        facility
+        facility,
+        actingUserHomeTenantId: actingUser?.tenantId || null,
+        viewedTenantId: req.tenantId,
+        crossTenant: !!(actingUser?.tenantId && actingUser.tenantId !== req.tenantId)
       });
 
       res.json({
@@ -6925,9 +6930,14 @@ export async function registerRoutes(
         radiusKm: radiusKm ? parseFloat(radiusKm) : undefined,
       });
 
+      const actingUserId = req.user?.claims?.sub || null;
+      const actingUser = actingUserId ? await storage.getUser(actingUserId) : null;
       await logAudit(req, "run_detection_engine", "candidate_unmapped_settlements", null, null, {
         parameters: req.body,
-        detectedCount: result.candidatesDetected
+        detectedCount: result.candidatesDetected,
+        actingUserHomeTenantId: actingUser?.tenantId || null,
+        viewedTenantId: req.tenantId,
+        crossTenant: !!(actingUser?.tenantId && actingUser.tenantId !== req.tenantId)
       });
 
       res.json(result);
