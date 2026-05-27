@@ -14,18 +14,19 @@ async function seedDatabase() {
 
   try {
     await db.transaction(async (tx) => {
-      console.log("\nClearing existing seed data...");
-      await tx.execute(sql`DELETE FROM population_data`);
-      await tx.execute(sql`DELETE FROM session_villages`);
-      await tx.execute(sql`DELETE FROM vaccine_requirements`);
-      await tx.execute(sql`DELETE FROM budget_items`);
-      await tx.execute(sql`DELETE FROM session_plans`);
-      await tx.execute(sql`DELETE FROM mobilization_activities`);
-      await tx.execute(sql`DELETE FROM htr_scores`);
-      await tx.execute(sql`DELETE FROM villages`);
-      await tx.execute(sql`DELETE FROM facilities`);
-      await tx.execute(sql`DELETE FROM districts`);
-      await tx.execute(sql`DELETE FROM provinces`);
+      console.log("\nClearing existing seed data (rows with NULL tenant_id only)...");
+      await tx.execute(sql`DELETE FROM population_data WHERE tenant_id IS NULL`);
+      await tx.execute(sql`DELETE FROM session_villages WHERE tenant_id IS NULL`);
+      await tx.execute(sql`DELETE FROM vaccine_requirements WHERE tenant_id IS NULL`);
+      await tx.execute(sql`DELETE FROM budget_items WHERE tenant_id IS NULL`);
+      await tx.execute(sql`DELETE FROM session_plans WHERE tenant_id IS NULL`);
+      await tx.execute(sql`DELETE FROM mobilization_activities WHERE tenant_id IS NULL`);
+      await tx.execute(sql`DELETE FROM htr_scores WHERE tenant_id IS NULL`);
+      await tx.execute(sql`DELETE FROM villages WHERE tenant_id IS NULL`);
+      await tx.execute(sql`DELETE FROM facilities WHERE tenant_id IS NULL`);
+      await tx.execute(sql`DELETE FROM llgs WHERE tenant_id IS NULL`);
+      await tx.execute(sql`DELETE FROM districts WHERE tenant_id IS NULL`);
+      await tx.execute(sql`DELETE FROM provinces WHERE tenant_id IS NULL`);
       console.log("Cleared existing data.");
 
       const insertedProvinces = await tx
