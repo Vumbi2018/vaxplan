@@ -46,6 +46,7 @@ interface AppSidebarProps {
 
 const mainNavItems = [
   { title: "Dashboard", path: "/", icon: LayoutDashboard },
+  { title: "Microplan Flow", path: "/flow", icon: Sparkles },
   { title: "Map View", path: "/map", icon: Map },
   { title: "Settlement Intel", path: "/settlement-intelligence", icon: Globe },
   { title: "Facilities", path: "/facilities", icon: Building2 },

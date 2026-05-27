@@ -43,6 +43,7 @@ import SessionHistory from "@/pages/SessionHistory";
 import HisIntegrations from "@/pages/HisIntegrations";
 import MissedCommunities from "@/pages/MissedCommunities";
 import MicroplanBuilder from "@/pages/MicroplanBuilder";
+import MicroplanFlow from "@/pages/MicroplanFlow";
 import SettlementIntelligence from "@/pages/SettlementIntelligence";
 import StandardsAlignment from "@/pages/StandardsAlignment";
 import { OfflineBanner } from "@/components/OfflineBanner";
@@ -68,6 +69,7 @@ function AuthenticatedRouter() {
   return (
     <Switch>
       <Route path="/" component={Dashboard} />
+      <Route path="/flow" component={MicroplanFlow} />
       <Route path="/map" component={MapPage} />
       <Route path="/settlement-intelligence" component={SettlementIntelligence} />
       <Route path="/facilities" component={Facilities} />
