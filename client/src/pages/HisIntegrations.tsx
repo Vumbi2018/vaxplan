@@ -311,6 +311,12 @@ export default function HisIntegrations() {
     onError: (err: Error) => toast({ title: "DHIS2 pull failed", description: err.message, variant: "destructive" }),
   });
 
+  // FHIR test bundle (Patient + Encounter + Immunization + Location + Practitioner)
+  const [testBundleDialog, setTestBundleDialog] = useState(false);
+  const [testBundleIntegration, setTestBundleIntegration] = useState("");
+  const [testBundleVaccinationId, setTestBundleVaccinationId] = useState("");
+  const [testBundleResult, setTestBundleResult] = useState<any | null>(null);
+
   // Configuration edit states
   const [isAddConfigOpen, setIsAddConfigOpen] = useState(false);
   const [isEditConfigOpen, setIsEditConfigOpen] = useState(false);
@@ -371,6 +377,29 @@ export default function HisIntegrations() {
     },
     onError: (err: Error) => {
       toast({ title: "Push Failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const testBundleMutation = useMutation({
+    mutationFn: async () => {
+      const body = {
+        integrationId: testBundleIntegration,
+        vaccinationId: parseInt(testBundleVaccinationId, 10),
+      };
+      return (await apiRequest("POST", "/api/his/test-bundle", body)) as any;
+    },
+    onSuccess: (data) => {
+      setTestBundleResult(data);
+      toast({
+        title: data.success ? "Test Bundle Built" : "Bundle Build Reported Issues",
+        description: data.success
+          ? `Patient + Encounter + Immunization + Location + Practitioner — ${data.bundle?.entry?.length ?? 0} entries.`
+          : (data.errors?.[0] ?? "See validation errors."),
+        variant: data.success ? "default" : "destructive",
+      });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Test Bundle Failed", description: err.message, variant: "destructive" });
     },
   });
 
@@ -568,6 +597,17 @@ export default function HisIntegrations() {
           >
             <Upload className="h-4 w-4" />
             Upload Coverage CSV
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => { setTestBundleResult(null); setTestBundleDialog(true); }}
+            disabled={enabledIntegrations.filter((i) => i.type === "fhir_r4").length === 0}
+            className="gap-1.5"
+            id="btn-test-fhir-bundle"
+          >
+            <Stethoscope className="h-4 w-4" />
+            Send test bundle
           </Button>
         </div>
       </div>
@@ -942,6 +982,121 @@ export default function HisIntegrations() {
                 <><RefreshCw className="h-4 w-4 animate-spin" /> Pushing…</>
               ) : (
                 <><ArrowUpRight className="h-4 w-4" /> Push</>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── FHIR Test Bundle Dialog ─────────────────────────────────── */}
+      <Dialog open={testBundleDialog} onOpenChange={setTestBundleDialog}>
+        <DialogContent className="max-w-2xl bg-card border border-border text-foreground rounded-3xl shadow-2xl p-6 font-sans">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-xl font-bold">
+              <Stethoscope className="h-5 w-5 text-purple-500" />
+              Send Test FHIR Bundle
+            </DialogTitle>
+            <DialogDescription className="text-muted-foreground">
+              Build a fully-linked FHIR R4 transaction Bundle (Patient + Encounter + Immunization + Location + Practitioner)
+              for one chosen vaccination and post it to the destination FHIR server. Resources are upserted by tenant-namespaced identifiers.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">FHIR R4 Integration</Label>
+              <Select value={testBundleIntegration} onValueChange={setTestBundleIntegration}>
+                <SelectTrigger id="test-bundle-integration-select" className="bg-background border-border text-foreground rounded-xl">
+                  <SelectValue placeholder="Select a FHIR R4 integration..." />
+                </SelectTrigger>
+                <SelectContent className="bg-card border-border text-foreground">
+                  {enabledIntegrations
+                    .filter((i) => i.type === "fhir_r4")
+                    .map((i) => (
+                      <SelectItem key={i.id} value={i.id}>
+                        {i.label}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="test-bundle-vac-id" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Vaccination ID (client_vaccinations.id)</Label>
+              <Input
+                id="test-bundle-vac-id"
+                type="number"
+                placeholder="Enter a vaccination row ID"
+                value={testBundleVaccinationId}
+                onChange={(e) => setTestBundleVaccinationId(e.target.value)}
+                className="bg-background border-border text-foreground rounded-xl font-mono"
+              />
+            </div>
+
+            {testBundleResult && (
+              <>
+                <Separator className="border-border" />
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Result</p>
+                    {testBundleResult.success ? (
+                      <Badge className="bg-emerald-500/10 text-emerald-700 border-emerald-200 text-[10px]" variant="secondary">
+                        <CheckCircle2 className="h-2.5 w-2.5 mr-1" /> Built &amp; validated
+                      </Badge>
+                    ) : (
+                      <Badge className="bg-red-500/10 text-red-700 border-red-200 text-[10px]" variant="secondary">
+                        <XCircle className="h-2.5 w-2.5 mr-1" /> Failed
+                      </Badge>
+                    )}
+                  </div>
+                  {testBundleResult.validation && (
+                    <p className="text-[11px] text-muted-foreground">
+                      Validation: {testBundleResult.validation.valid ? "passed (R4 + WHO IMMZ subset)" : `${testBundleResult.validation.errors.length} issue(s)`}
+                      {" · "}Entries: <strong>{testBundleResult.bundle?.entry?.length ?? 0}</strong>
+                      {" · "}{testBundleResult.durationMs}ms
+                    </p>
+                  )}
+                  {testBundleResult.validation?.errors?.length > 0 && (
+                    <ul className="text-[11px] text-red-700 space-y-0.5 list-disc pl-4">
+                      {testBundleResult.validation.errors.map((e: string, i: number) => <li key={i}><span className="font-mono">{e}</span></li>)}
+                    </ul>
+                  )}
+                  {testBundleResult.warnings?.length > 0 && (
+                    <ul className="text-[11px] text-amber-700 space-y-0.5">
+                      {testBundleResult.warnings.map((w: string, i: number) => <li key={i}>⚠ {w}</li>)}
+                    </ul>
+                  )}
+                  <div className="grid sm:grid-cols-2 gap-2">
+                    <div>
+                      <p className="text-[11px] font-semibold text-muted-foreground mb-1">Bundle JSON</p>
+                      <pre className="text-[10px] font-mono bg-muted/50 p-2 rounded-lg max-h-72 overflow-auto border border-border">
+{JSON.stringify(testBundleResult.bundle, null, 2)}
+                      </pre>
+                    </div>
+                    <div>
+                      <p className="text-[11px] font-semibold text-muted-foreground mb-1">Destination Response</p>
+                      <pre className="text-[10px] font-mono bg-muted/50 p-2 rounded-lg max-h-72 overflow-auto border border-border">
+{JSON.stringify(testBundleResult.response, null, 2)}
+                      </pre>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+
+          <DialogFooter className="border-t border-border pt-4 gap-2">
+            <Button variant="outline" onClick={() => setTestBundleDialog(false)} className="rounded-xl">Close</Button>
+            <Button
+              onClick={() => testBundleMutation.mutate()}
+              disabled={!testBundleIntegration || !testBundleVaccinationId || testBundleMutation.isPending}
+              id="btn-confirm-test-bundle"
+              className="gap-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl font-semibold shadow-md"
+            >
+              {testBundleMutation.isPending ? (
+                <><RefreshCw className="h-4 w-4 animate-spin" /> Building…</>
+              ) : (
+                <><Stethoscope className="h-4 w-4" /> Build &amp; Send</>
               )}
             </Button>
           </DialogFooter>

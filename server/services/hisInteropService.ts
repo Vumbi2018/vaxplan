@@ -100,6 +100,46 @@ export interface PatientRecord {
   tenantCode: string;
 }
 
+/**
+ * Inputs needed to build a fully-linked FHIR vaccination bundle
+ * (Patient + Encounter + Immunization + Location + Practitioner)
+ * for WHO SMART Guidelines IMMZ / SMART Vaccination Certificate compatibility.
+ */
+export interface VaccinationBundleInput {
+  tenantCode: string;
+  client: {
+    id: string;
+    name: string;
+    dateOfBirth?: string | Date | null;
+    gender?: string | null;
+    externalHisId?: string | null;
+  };
+  vaccination: {
+    id: number;
+    vaccineName: string;
+    vaccineCode?: string | null;   // CVX code if known
+    doseNumber?: number | null;
+    administeredDate: string | Date;
+    batchNumber?: string | null;
+    expiryDate?: string | Date | null;
+    vvmStatus?: number | string | null;
+  };
+  facility: {
+    id: number;
+    name: string;
+    hmisCode?: string | null;
+    latitude?: string | number | null;
+    longitude?: string | number | null;
+    address?: string | null;
+  };
+  practitioner?: {
+    id: string;
+    firstName?: string | null;
+    lastName?: string | null;
+    email?: string | null;
+  } | null;
+}
+
 /** Org unit pulled from DHIS2 for facility enrichment */
 export interface OrgUnitRecord {
   dhis2Id: string;
@@ -417,12 +457,388 @@ export class Dhis2Adapter implements HisAdapter {
 // HL7 FHIR R4 Adapter
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// FHIR R4 Resource Builders (Patient, Encounter, Immunization, Location, Practitioner)
+// ---------------------------------------------------------------------------
+
+/**
+ * Tenant-namespaced FHIR identifier system URLs. Using a stable per-tenant
+ * system + the VaxPlan primary key as the identifier value guarantees the
+ * destination server can upsert (conditional update) instead of duplicating
+ * resources on every push.
+ */
+function fhirIdSystem(tenantCode: string, kind: string): string {
+  return `http://vaxplan.io/fhir/sid/${tenantCode.toLowerCase()}/${kind}`;
+}
+
+function toIsoDate(d: string | Date | null | undefined): string | undefined {
+  if (!d) return undefined;
+  const dt = typeof d === "string" ? new Date(d) : d;
+  if (isNaN(dt.getTime())) return undefined;
+  return dt.toISOString();
+}
+
+function toIsoDay(d: string | Date | null | undefined): string | undefined {
+  const iso = toIsoDate(d);
+  return iso ? iso.slice(0, 10) : undefined;
+}
+
+function normalizeGender(g: string | null | undefined): "male" | "female" | "other" | "unknown" {
+  const v = (g ?? "").toLowerCase();
+  if (v === "male" || v === "female" || v === "other") return v;
+  return "unknown";
+}
+
+/**
+ * Minimal CVX (vaccine code) mapping for the antigens VaxPlan ships seeded.
+ * Fuller SNOMED/CVX coverage is a separate task; this gives us valid coding
+ * for the common WHO EPI antigens so SMART VC clients can parse them.
+ */
+const VAXPLAN_CVX_MAP: Record<string, { code: string; display: string }> = {
+  BCG:                { code: "19",  display: "BCG" },
+  "HEPB":             { code: "08",  display: "Hep B" },
+  "HEPB-BIRTH":       { code: "08",  display: "Hep B, adolescent or pediatric" },
+  OPV:                { code: "89",  display: "Polio, NOS (OPV)" },
+  IPV:                { code: "10",  display: "IPV" },
+  PENTA:              { code: "120", display: "DTaP-Hib-IPV" },
+  "PENTA-1":          { code: "120", display: "DTaP-Hib-IPV" },
+  "PENTA-2":          { code: "120", display: "DTaP-Hib-IPV" },
+  "PENTA-3":          { code: "120", display: "DTaP-Hib-IPV" },
+  PCV:                { code: "133", display: "Pneumococcal conjugate PCV 13" },
+  ROTA:               { code: "116", display: "Rotavirus, pentavalent" },
+  MEASLES:            { code: "05",  display: "Measles" },
+  MR:                 { code: "04",  display: "M/R" },
+  MMR:                { code: "03",  display: "MMR" },
+  TT:                 { code: "113", display: "Td (adult)" },
+  TD:                 { code: "113", display: "Td (adult)" },
+};
+
+function vaccineCoding(name: string, explicit?: string | null): { system: string; code: string; display: string }[] {
+  if (explicit) {
+    return [{ system: "http://hl7.org/fhir/sid/cvx", code: explicit, display: name }];
+  }
+  const key = name.toUpperCase().replace(/\s+/g, "");
+  const mapped = VAXPLAN_CVX_MAP[key] ?? VAXPLAN_CVX_MAP[key.split("-")[0]];
+  if (mapped) {
+    return [{ system: "http://hl7.org/fhir/sid/cvx", code: mapped.code, display: mapped.display }];
+  }
+  return [{ system: "http://vaxplan.io/fhir/CodeSystem/vaccine-name", code: key || "UNKNOWN", display: name }];
+}
+
+export function buildPatient(input: VaccinationBundleInput): any {
+  const c = input.client;
+  const identifiers: any[] = [
+    { system: fhirIdSystem(input.tenantCode, "client"), value: c.id },
+  ];
+  if (c.externalHisId) {
+    identifiers.push({ system: "http://vaxplan.io/fhir/sid/external-his", value: c.externalHisId });
+  }
+  const parts = c.name.trim().split(/\s+/);
+  const family = parts.length > 1 ? parts[parts.length - 1] : undefined;
+  const given = parts.length > 1 ? parts.slice(0, -1) : [c.name];
+  return {
+    resourceType: "Patient",
+    identifier: identifiers,
+    name: [family ? { family, given } : { given: [c.name], text: c.name }],
+    gender: normalizeGender(c.gender),
+    birthDate: toIsoDay(c.dateOfBirth ?? undefined),
+  };
+}
+
+export function buildLocation(input: VaccinationBundleInput): any {
+  const f = input.facility;
+  const lat = f.latitude != null ? Number(f.latitude) : undefined;
+  const lon = f.longitude != null ? Number(f.longitude) : undefined;
+  const identifiers: any[] = [
+    { system: fhirIdSystem(input.tenantCode, "facility"), value: String(f.id) },
+  ];
+  if (f.hmisCode) {
+    identifiers.push({ system: "http://vaxplan.io/fhir/sid/hmis", value: f.hmisCode });
+  }
+  return {
+    resourceType: "Location",
+    identifier: identifiers,
+    status: "active",
+    name: f.name,
+    address: f.address ? { text: f.address } : undefined,
+    position:
+      Number.isFinite(lat) && Number.isFinite(lon)
+        ? { latitude: lat, longitude: lon }
+        : undefined,
+    physicalType: {
+      coding: [
+        {
+          system: "http://terminology.hl7.org/CodeSystem/location-physical-type",
+          code: "si",
+          display: "Site",
+        },
+      ],
+    },
+  };
+}
+
+export function buildPractitioner(input: VaccinationBundleInput): any | null {
+  const p = input.practitioner;
+  if (!p) return null;
+  const parts = [p.firstName, p.lastName].filter(Boolean) as string[];
+  const display = parts.length ? parts.join(" ") : (p.email ?? p.id);
+  return {
+    resourceType: "Practitioner",
+    identifier: [{ system: fhirIdSystem(input.tenantCode, "practitioner"), value: p.id }],
+    active: true,
+    name: [
+      {
+        text: display,
+        family: p.lastName ?? undefined,
+        given: p.firstName ? [p.firstName] : undefined,
+      },
+    ],
+    telecom: p.email ? [{ system: "email", value: p.email }] : undefined,
+  };
+}
+
+export function buildEncounter(
+  input: VaccinationBundleInput,
+  refs: { patientUrn: string; locationUrn: string; practitionerUrn?: string },
+): any {
+  const occurredAt = toIsoDate(input.vaccination.administeredDate) ?? new Date().toISOString();
+  return {
+    resourceType: "Encounter",
+    identifier: [
+      { system: fhirIdSystem(input.tenantCode, "encounter"), value: `vacc-${input.vaccination.id}` },
+    ],
+    status: "finished",
+    class: {
+      system: "http://terminology.hl7.org/CodeSystem/v3-ActCode",
+      code: "AMB",
+      display: "ambulatory",
+    },
+    type: [
+      {
+        coding: [
+          { system: "http://snomed.info/sct", code: "33879002", display: "Active immunization" },
+        ],
+      },
+    ],
+    subject: { reference: refs.patientUrn },
+    period: { start: occurredAt, end: occurredAt },
+    location: [{ location: { reference: refs.locationUrn } }],
+    participant: refs.practitionerUrn
+      ? [{ individual: { reference: refs.practitionerUrn } }]
+      : undefined,
+  };
+}
+
+export function buildImmunization(
+  input: VaccinationBundleInput,
+  refs: { patientUrn: string; locationUrn: string; encounterUrn: string; practitionerUrn?: string },
+): any {
+  const v = input.vaccination;
+  const occurredAt = toIsoDate(v.administeredDate) ?? new Date().toISOString();
+  const extensions: any[] = [];
+  if (v.vvmStatus != null) {
+    extensions.push({
+      url: "http://vaxplan.io/fhir/StructureDefinition/vvm-status",
+      valueString: String(v.vvmStatus),
+    });
+  }
+  return {
+    resourceType: "Immunization",
+    identifier: [
+      { system: fhirIdSystem(input.tenantCode, "immunization"), value: String(v.id) },
+    ],
+    status: "completed",
+    vaccineCode: { coding: vaccineCoding(v.vaccineName, v.vaccineCode) },
+    patient: { reference: refs.patientUrn },
+    encounter: { reference: refs.encounterUrn },
+    occurrenceDateTime: occurredAt,
+    primarySource: true,
+    location: { reference: refs.locationUrn },
+    lotNumber: v.batchNumber ?? undefined,
+    expirationDate: toIsoDay(v.expiryDate ?? undefined),
+    performer: refs.practitionerUrn
+      ? [
+          {
+            function: {
+              coding: [
+                {
+                  system: "http://terminology.hl7.org/CodeSystem/v2-0443",
+                  code: "AP",
+                  display: "Administering Provider",
+                },
+              ],
+            },
+            actor: { reference: refs.practitionerUrn },
+          },
+        ]
+      : undefined,
+    protocolApplied: v.doseNumber != null
+      ? [{ doseNumberPositiveInt: v.doseNumber }]
+      : undefined,
+    extension: extensions.length ? extensions : undefined,
+  };
+}
+
+/**
+ * Build a fully-linked FHIR R4 transaction Bundle for a single vaccination
+ * event. Resources are referenced via urn:uuid: fullUrls; each entry uses
+ * a conditional PUT (request.url: ResourceType?identifier=system|value) so
+ * re-pushing the same vaccination upserts on the destination FHIR server
+ * instead of creating duplicates.
+ */
+export function buildVaccinationBundle(input: VaccinationBundleInput): any {
+  const ids = {
+    patient: `urn:uuid:patient-${input.client.id}`,
+    location: `urn:uuid:location-${input.facility.id}`,
+    practitioner: input.practitioner ? `urn:uuid:practitioner-${input.practitioner.id}` : undefined,
+    encounter: `urn:uuid:encounter-vacc-${input.vaccination.id}`,
+    immunization: `urn:uuid:immunization-${input.vaccination.id}`,
+  };
+
+  const patient = buildPatient(input);
+  const location = buildLocation(input);
+  const practitioner = buildPractitioner(input);
+  const encounter = buildEncounter(input, {
+    patientUrn: ids.patient,
+    locationUrn: ids.location,
+    practitionerUrn: ids.practitioner,
+  });
+  const immunization = buildImmunization(input, {
+    patientUrn: ids.patient,
+    locationUrn: ids.location,
+    encounterUrn: ids.encounter,
+    practitionerUrn: ids.practitioner,
+  });
+
+  const conditionalUrl = (resourceType: string, identifier: { system: string; value: string }) =>
+    `${resourceType}?identifier=${encodeURIComponent(identifier.system)}|${encodeURIComponent(identifier.value)}`;
+
+  const entries: any[] = [];
+
+  entries.push({
+    fullUrl: ids.patient,
+    resource: patient,
+    request: { method: "PUT", url: conditionalUrl("Patient", patient.identifier[0]) },
+  });
+
+  entries.push({
+    fullUrl: ids.location,
+    resource: location,
+    request: { method: "PUT", url: conditionalUrl("Location", location.identifier[0]) },
+  });
+
+  if (practitioner) {
+    entries.push({
+      fullUrl: ids.practitioner!,
+      resource: practitioner,
+      request: { method: "PUT", url: conditionalUrl("Practitioner", practitioner.identifier[0]) },
+    });
+  }
+
+  entries.push({
+    fullUrl: ids.encounter,
+    resource: encounter,
+    request: { method: "PUT", url: conditionalUrl("Encounter", encounter.identifier[0]) },
+  });
+
+  entries.push({
+    fullUrl: ids.immunization,
+    resource: immunization,
+    request: { method: "PUT", url: conditionalUrl("Immunization", immunization.identifier[0]) },
+  });
+
+  return {
+    resourceType: "Bundle",
+    type: "transaction",
+    timestamp: new Date().toISOString(),
+    entry: entries,
+  };
+}
+
+/**
+ * Structural validator for the bundles we emit. This is intentionally light:
+ * it enforces the R4 fields we actually populate plus a subset of the WHO IMMZ
+ * profile constraints (Patient.identifier, Immunization.status=completed,
+ * vaccineCode.coding present, patient + encounter references resolvable).
+ * A full FHIR validator is out of scope for this task.
+ */
+export function validateFhirBundle(bundle: any): { valid: boolean; errors: string[] } {
+  const errors: string[] = [];
+  if (!bundle || typeof bundle !== "object") {
+    return { valid: false, errors: ["bundle is not an object"] };
+  }
+  if (bundle.resourceType !== "Bundle") errors.push("resourceType must be 'Bundle'");
+  if (bundle.type !== "transaction") errors.push("Bundle.type must be 'transaction'");
+  if (!Array.isArray(bundle.entry) || bundle.entry.length === 0) {
+    errors.push("Bundle.entry must be a non-empty array");
+    return { valid: false, errors };
+  }
+
+  const fullUrls = new Set<string>();
+  const byType: Record<string, any[]> = {};
+
+  for (const [i, entry] of bundle.entry.entries()) {
+    const where = `entry[${i}]`;
+    if (!entry.fullUrl) errors.push(`${where}.fullUrl is required`);
+    if (entry.fullUrl) fullUrls.add(entry.fullUrl);
+    if (!entry.resource?.resourceType) errors.push(`${where}.resource.resourceType is required`);
+    if (!entry.request?.method || !entry.request?.url) {
+      errors.push(`${where}.request.method and request.url are required for transaction bundles`);
+    }
+    if (entry.request?.method === "PUT" && !entry.request.url.includes("identifier=")) {
+      errors.push(`${where}.request.url must use a conditional identifier= match for idempotent PUT`);
+    }
+    const rt = entry.resource?.resourceType;
+    if (rt) {
+      (byType[rt] ||= []).push(entry.resource);
+      if (!Array.isArray(entry.resource.identifier) || entry.resource.identifier.length === 0) {
+        errors.push(`${where} (${rt}) must have at least one identifier`);
+      }
+    }
+  }
+
+  // WHO IMMZ subset: Patient + Encounter + Immunization + Location must all be present.
+  for (const rt of ["Patient", "Encounter", "Immunization", "Location"]) {
+    if (!byType[rt]?.length) errors.push(`Bundle is missing required resource: ${rt}`);
+  }
+
+  for (const imm of byType["Immunization"] ?? []) {
+    if (imm.status !== "completed") errors.push("Immunization.status must be 'completed'");
+    if (!imm.vaccineCode?.coding?.length) errors.push("Immunization.vaccineCode.coding is required");
+    if (!imm.patient?.reference) errors.push("Immunization.patient.reference is required");
+    if (!imm.occurrenceDateTime) errors.push("Immunization.occurrenceDateTime is required");
+    if (imm.patient?.reference && !fullUrls.has(imm.patient.reference)) {
+      errors.push(`Immunization.patient.reference '${imm.patient.reference}' does not resolve within bundle`);
+    }
+    if (imm.encounter?.reference && !fullUrls.has(imm.encounter.reference)) {
+      errors.push(`Immunization.encounter.reference '${imm.encounter.reference}' does not resolve within bundle`);
+    }
+    if (imm.location?.reference && !fullUrls.has(imm.location.reference)) {
+      errors.push(`Immunization.location.reference '${imm.location.reference}' does not resolve within bundle`);
+    }
+  }
+
+  for (const enc of byType["Encounter"] ?? []) {
+    if (!enc.status) errors.push("Encounter.status is required");
+    if (!enc.class?.code) errors.push("Encounter.class.code is required");
+    if (!enc.subject?.reference) errors.push("Encounter.subject.reference is required");
+    if (enc.subject?.reference && !fullUrls.has(enc.subject.reference)) {
+      errors.push(`Encounter.subject.reference '${enc.subject.reference}' does not resolve within bundle`);
+    }
+  }
+
+  return { valid: errors.length === 0, errors };
+}
+
 /**
  * HL7 FHIR R4 adapter.
  *
  * Resources used:
  *   Patient         — for client demographics registration
  *   Immunization    — for individual vaccination records
+ *   Encounter       — visit context for the dose
+ *   Location        — facility/outreach site where the dose was given
+ *   Practitioner    — vaccinator who administered the dose
  *
  * Compatible with:
  *   - OpenMRS FHIR module
@@ -433,6 +849,7 @@ export class Dhis2Adapter implements HisAdapter {
  * FHIR references:
  *   https://www.hl7.org/fhir/R4/immunization.html
  *   https://www.hl7.org/fhir/R4/patient.html
+ *   WHO SMART Guidelines IMMZ: https://www.who.int/teams/digital-health-and-innovation/smart-guidelines
  */
 export class FhirR4Adapter implements HisAdapter {
   readonly type = "fhir_r4";
@@ -635,6 +1052,121 @@ export class FhirR4Adapter implements HisAdapter {
         timestamp: new Date().toISOString(),
       };
     }
+  }
+
+  /**
+   * Export a single vaccination event as a fully-linked FHIR R4 transaction
+   * Bundle (Patient + Encounter + Immunization + Location + Practitioner).
+   *
+   * Idempotent: every entry is a conditional PUT keyed by tenant-namespaced
+   * identifier, so re-running the export upserts on the destination server
+   * instead of duplicating resources.
+   *
+   * Includes a fast retry with exponential backoff (3 attempts) for transient
+   * network/5xx failures; persistent failures are reported in the result so
+   * callers can route them to a dead-letter queue.
+   */
+  async exportVaccinationBundle(
+    input: VaccinationBundleInput,
+  ): Promise<HisOperationResult & { bundle: any; response?: any; validation: { valid: boolean; errors: string[] } }> {
+    const startMs = Date.now();
+    const bundle = buildVaccinationBundle(input);
+    const validation = validateFhirBundle(bundle);
+
+    if (!validation.valid) {
+      return {
+        integrationId: this.config.id,
+        integrationLabel: this.config.label,
+        success: false,
+        recordsProcessed: 0,
+        errors: validation.errors,
+        warnings: [],
+        durationMs: Date.now() - startMs,
+        timestamp: new Date().toISOString(),
+        bundle,
+        validation,
+      };
+    }
+
+    const token = this.getToken();
+    if (token === "mock_his_integration_token_for_demo_purposes") {
+      return {
+        integrationId: this.config.id,
+        integrationLabel: this.config.label,
+        success: true,
+        recordsProcessed: bundle.entry.length,
+        errors: [],
+        warnings: ["SIMULATION MODE: vaccination bundle assembled but not posted (no destination token)."],
+        durationMs: Date.now() - startMs,
+        timestamp: new Date().toISOString(),
+        bundle,
+        response: { simulated: true, entry: bundle.entry.map((e: any) => ({ response: { status: "201 Created" } })) },
+        validation,
+      };
+    }
+
+    const maxAttempts = 3;
+    let lastErr: string | null = null;
+    let responseJson: any = null;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const response = await fetch(`${this.fhirBase}/`, {
+          method: "POST",
+          headers: buildHeaders(token),
+          body: JSON.stringify(bundle),
+          signal: AbortSignal.timeout(60_000),
+        });
+
+        const body = await response.text();
+        if (!response.ok) {
+          lastErr = `FHIR transaction POST ${response.status}: ${body}`;
+          // Retry only on transient 5xx / 408 / 429
+          if (response.status >= 500 || response.status === 408 || response.status === 429) {
+            if (attempt < maxAttempts) {
+              await new Promise((r) => setTimeout(r, 250 * Math.pow(2, attempt - 1)));
+              continue;
+            }
+          }
+          break;
+        }
+
+        try { responseJson = JSON.parse(body); } catch { responseJson = { raw: body }; }
+        return {
+          integrationId: this.config.id,
+          integrationLabel: this.config.label,
+          success: true,
+          recordsProcessed: bundle.entry.length,
+          errors: [],
+          warnings: [],
+          durationMs: Date.now() - startMs,
+          timestamp: new Date().toISOString(),
+          bundle,
+          response: responseJson,
+          validation,
+        };
+      } catch (err: any) {
+        lastErr = err?.message ?? String(err);
+        if (attempt < maxAttempts) {
+          await new Promise((r) => setTimeout(r, 250 * Math.pow(2, attempt - 1)));
+          continue;
+        }
+      }
+    }
+
+    // All attempts exhausted — dead-letter signal in result
+    return {
+      integrationId: this.config.id,
+      integrationLabel: this.config.label,
+      success: false,
+      recordsProcessed: 0,
+      errors: [lastErr ?? "FHIR transaction POST failed", `Exhausted ${maxAttempts} attempts — route to dead-letter queue`],
+      warnings: [],
+      durationMs: Date.now() - startMs,
+      timestamp: new Date().toISOString(),
+      bundle,
+      validation,
+    };
   }
 
   async pullOrgUnits(): Promise<{ result: HisOperationResult; orgUnits: OrgUnitRecord[] }> {

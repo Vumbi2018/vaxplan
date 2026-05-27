@@ -71,6 +71,8 @@ import { area as turfArea } from "@turf/turf";
 // HIS Interoperability service
 import {
   parseHisIntegrations,
+  FhirR4Adapter,
+  type VaccinationBundleInput,
   getIntegrationStatus,
   createHisAdapter,
   type ImmunizationRecord,
@@ -6505,6 +6507,116 @@ export async function registerRoutes(
       }
     },
   );
+
+  /**
+   * POST /api/his/test-bundle
+   * Build and (optionally) send a fully-linked FHIR R4 vaccination bundle
+   * (Patient + Encounter + Immunization + Location + Practitioner) for one
+   * chosen vaccination. Returns the bundle JSON + validation result + the
+   * destination FHIR server's response (or a simulated response if no token
+   * is configured).
+   *
+   * Body: { integrationId: string, vaccinationId: number }
+   */
+  app.post("/api/his/test-bundle", isAuthenticated, requireTenant, loadRole, requireHisRole, async (req: any, res) => {
+    try {
+      const { integrationId, vaccinationId } = z.object({
+        integrationId: z.string().min(1),
+        vaccinationId: z.number().int().positive(),
+      }).parse(req.body);
+
+      const tenant = await storage.getTenant(req.tenantId!);
+      if (!tenant) return res.status(404).json({ message: "Tenant not found" });
+
+      const integrations = parseHisIntegrations(tenant.settings as Record<string, any>);
+      const cfg = integrations.find((i) => i.id === integrationId && i.enabled);
+      if (!cfg) return res.status(400).json({ message: `Integration "${integrationId}" not found or disabled.` });
+      if (cfg.type !== "fhir_r4") {
+        return res.status(400).json({ message: "Test bundle is only supported for FHIR R4 integrations." });
+      }
+
+      const [vac] = await db
+        .select()
+        .from(clientVaccinations)
+        .where(and(eq(clientVaccinations.id, vaccinationId), eq(clientVaccinations.tenantId, req.tenantId)))
+        .limit(1);
+      if (!vac) return res.status(404).json({ message: "Vaccination not found in this tenant" });
+
+      const client = await storage.getClient(req.tenantId, vac.clientId);
+      if (!client) return res.status(404).json({ message: "Client for vaccination not found" });
+
+      const facility = await storage.getFacility(req.tenantId, client.facilityId);
+      if (!facility) return res.status(404).json({ message: "Facility for vaccination not found" });
+
+      const practitioner = vac.administeredByUserId
+        ? await storage.getUser(vac.administeredByUserId)
+        : null;
+
+      const input: VaccinationBundleInput = {
+        tenantCode: tenant.code,
+        client: {
+          id: client.id,
+          name: client.name,
+          dateOfBirth: client.dateOfBirth,
+          gender: client.gender,
+          externalHisId: (client as any).externalHisId ?? null,
+        },
+        vaccination: {
+          id: vac.id,
+          vaccineName: vac.vaccineName,
+          vaccineCode: null,
+          doseNumber: null,
+          administeredDate: vac.administeredDate,
+          batchNumber: vac.batchNumber,
+          expiryDate: vac.expiryDate,
+          vvmStatus: vac.vvmStatus,
+        },
+        facility: {
+          id: facility.id,
+          name: facility.name,
+          hmisCode: facility.hmisCode,
+          latitude: facility.latitude,
+          longitude: facility.longitude,
+          address: facility.address,
+        },
+        practitioner: practitioner
+          ? {
+              id: practitioner.id,
+              firstName: practitioner.firstName,
+              lastName: practitioner.lastName,
+              email: practitioner.email,
+            }
+          : null,
+      };
+
+      const adapter = new FhirR4Adapter(cfg);
+      const result = await adapter.exportVaccinationBundle(input);
+
+      await logAudit(req, "his_test_bundle", "client_vaccination", vaccinationId, null, {
+        integrationId,
+        success: result.success,
+        validationErrors: result.validation.errors.length,
+      });
+
+      res.json({
+        integrationId,
+        vaccinationId,
+        success: result.success,
+        validation: result.validation,
+        bundle: result.bundle,
+        response: result.response ?? null,
+        errors: result.errors,
+        warnings: result.warnings,
+        durationMs: result.durationMs,
+      });
+    } catch (err: any) {
+      if (err?.name === "ZodError") {
+        return res.status(400).json({ message: "Invalid payload", errors: err.errors });
+      }
+      console.error("POST /api/his/test-bundle failed:", err);
+      res.status(500).json({ message: "Failed to build/send test bundle" });
+    }
+  });
 
   // ============================================================================
   // NATIONAL SETTLEMENT MASTER REGISTRY & DETECTION ENGINE ENDPOINTS
