@@ -22,6 +22,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { offlineDb } from "../lib/offlineDb";
 import { AddCommunityDialog } from "@/components/AddCommunityDialog";
+import RedRedQGuidedWorkflow from "@/components/RedRedQGuidedWorkflow";
 import {
   Sparkles,
   Users,
@@ -816,6 +817,9 @@ export default function MicroplanBuilder() {
   if (!isBuilding) {
     return (
       <div className="p-4 md:p-6 space-y-6 max-w-4xl mx-auto font-sans bg-slate-50/50 dark:bg-slate-900/10 min-h-[90vh]">
+        {/* WHO RED + Gavi RED-Q guided workflow (12 steps) */}
+        <RedRedQGuidedWorkflow />
+
         {/* Developed Microplans Dashboard Listing */}
         <div className="flex items-center justify-between gap-4 flex-wrap pb-2 border-b border-border/40">
           <div>

@@ -113,6 +113,7 @@ const defaultGuides = [
 ];
 
 const defaultResources = [
+  { name: "VaxPlan — Microplanning Workflow (WHO RED + Gavi RED-Q)", url: "/docs/microplanning-workflow.md" },
   { name: "WHO Immunization Guidelines", url: "https://www.who.int/teams/immunization-vaccines-and-biologicals" },
   { name: "National Health Plan Guideline", url: "https://www.health.gov" },
   { name: "EPI Program Reference Manual", url: "https://www.cdc.gov/vaccines/imz-managers/index.html" },

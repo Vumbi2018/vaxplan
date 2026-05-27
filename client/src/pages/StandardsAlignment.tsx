@@ -152,28 +152,61 @@ const SECTIONS: Section[] = [
   {
     id: "red-rec",
     title: "3. RED / REC operational components",
-    subtitle: "Reaching Every District / Every Community",
+    subtitle: "Reaching Every District / Every Community — grouped by RED component (full reference: /docs/microplanning-workflow.md)",
     icon: Target,
+    intro:
+      "VaxPlan's 12-step guided microplanning workflow (Develop Microplan → Guided Workflow) maps every step to one of the five WHO RED components plus the four Gavi RED-Q equity layers (Identify · Reach · Monitor · Measure). The rows below are grouped by RED component and tagged with their RED-Q layer where applicable.",
     rows: [
-      { area: "Re-establish outreach & mobile services", status: "aligned", evidence: "Session type covers outreach + mobile." },
-      {
-        area: "Supportive supervision",
-        status: "gap",
-        recommendation: "Add `supervisory_visits` (date, supervisor, facility, checklist score, follow-up actions).",
-      },
-      {
-        area: "Community links with service delivery",
-        status: "partial",
-        evidence: "mobilizationActivities exists.",
-        recommendation: "Add structured community feedback / dialogue capture.",
-      },
-      {
-        area: "Monitoring for action (defaulter / dropout)",
-        status: "partial",
-        evidence: "ClientLogbook.tsx tracks doses.",
-        recommendation: "Add defaulter list view + DTP1→DTP3 and DTP1→MCV1 dropout indicators.",
-      },
-      { area: "Planning & management of resources", status: "aligned", evidence: "Facility-restricted authoring + approval workflow." },
+      // RED 1 — Re-establish outreach
+      { area: "RED 1 · Re-establish outreach & mobile services", status: "aligned", evidence: "sessionType covers fixed / outreach / mobile; guided workflow Step 4." },
+      { area: "RED 1 · Catchment population denominators with source [RED-Q Identify]", status: "partial", evidence: "villages table + Population page. Guided workflow Step 2 checks every village has a population source.", recommendation: "Require populationSource on every village row at write time." },
+      { area: "RED 1 · Missed-community + zero-dose tagging [RED-Q Identify + Reach]", status: "gap", recommendation: "Add a `missedCommunity` boolean + `zeroDoseBurden` int on villages and surface them in Hard-to-Reach (guided workflow Step 3)." },
+      // RED 2 — Supportive supervision
+      { area: "RED 2 · Supportive supervision visits + checklist", status: "gap", recommendation: "Add `supervisory_visits` (date, supervisor, facility, checklist score, follow-up actions). Guided workflow Step 10 is marked 'not yet wired' until this ships." },
+      // RED 3 — Community links
+      { area: "RED 3 · Community links via mobilization activities [RED-Q Reach]", status: "partial", evidence: "mobilizationActivities table + Social Mobilization page. Guided workflow Step 7 checks ≥1 activity per scheduled session.", recommendation: "Add named community focal point + dialogue / feedback capture." },
+      // RED 4 — Monitoring for action
+      { area: "RED 4 · Monthly tally + defaulter list [RED-Q Measure]", status: "partial", evidence: "ClientLogbook tracks doses given.", recommendation: "Add defaulter list view + DTP1→DTP3 / DTP1→MCV1 dropout indicators + zero-dose children indicator." },
+      { area: "RED 4 · Quarterly review feedback into next plan [RED-Q Measure]", status: "partial", evidence: "Guided workflow Step 12 flags whether a session this quarter has actual doses recorded.", recommendation: "Add a structured quarterly review note linked to the microplan." },
+      // RED 5 — Planning & management
+      { area: "RED 5 · HF microplan as parent of sessions", status: "aligned", evidence: "microplans + sessionPlans.microplanId NOT NULL; facility-only authoring (permissions.ts)." },
+      { area: "RED 5 · Vaccine, supplies & cold-chain forecast (WHO core 4)", status: "partial", evidence: "Vaccine Calculator computes antigen forecasts per session. Guided workflow Step 6 checks vaccinesRequired persisted.", recommendation: "Add cold-chain inventory + temperature logs + stockout/wastage + GTIN-lot-expiry (Step 6 secondary pending)." },
+      { area: "RED 5 · Workforce & teaming roster (WHO core 6)", status: "gap", recommendation: "Add structured staffing + per-diem fields on the microplan. Guided workflow Step 5 is marked 'not yet wired'." },
+      { area: "RED 5 · Logistics & transport per session-day (WHO core 5)", status: "partial", evidence: "Session Day Plans capture transportMode, distance, fuel.", recommendation: "Roll up transport coverage to the microplan view (Step 8 pending)." },
+      { area: "RED 5 · Budget tagged to funding source (WHO core 8)", status: "partial", evidence: "budgetItems with category. Guided workflow Step 9 checks Personnel + Transport + Supplies for the quarter.", recommendation: "Add a structured funding-source enum (Govt / Gavi / WHO / UNICEF / Other) per budget line." },
+      { area: "RED 5 · Approval cascade (facility → district → provincial → national)", status: "aligned", evidence: "Approvals workflow; Step 11 of the guided workflow flips green when the current-quarter microplan is approved." },
+    ],
+  },
+  {
+    id: "red-indicators",
+    title: "3b. RED + Gavi indicator computation status",
+    subtitle: "Which microplanning indicators VaxPlan computes today, grouped by RED component (full reference: /docs/microplanning-workflow.md §4)",
+    icon: Target,
+    intro:
+      "Status legend for this section: Aligned = computed end-to-end today and fed by the 12-step guided workflow · Partial = partially computed (data captured but the indicator view or full disaggregation is missing) · Gap = not yet wired (the indicator is required by WHO/Gavi but no compute path exists yet). Rows are grouped by the RED component they belong to.",
+    rows: [
+      // RED 1 — Re-establish outreach
+      { area: "RED 1 · Sessions planned vs held (per facility, per quarter)", status: "partial", evidence: "sessions + sessionStatus capture scheduled vs conducted; guided workflow Step 4 + 12.", recommendation: "Add a per-facility 'sessions held / planned' tile on Dashboard." },
+      { area: "RED 1 · Missed-community % (no session in past 12 mo)", status: "gap", recommendation: "RED-Q Measure flagship. Derive from village ↔ sessions join over a rolling 12-mo window." },
+      // RED 2 — Supportive supervision
+      { area: "RED 2 · Supervisory visits completed vs planned", status: "gap", recommendation: "Blocked on the supportive_supervision entity (see Section 3 RED 2 row)." },
+      // RED 3 — Community links
+      { area: "RED 3 · Mobilization activities per session", status: "aligned", evidence: "Computed by guided workflow Step 7: mobilization rows / scheduled sessions for the current quarter." },
+      // RED 4 — Monitoring for action (computes coverage / dropout / zero-dose)
+      { area: "RED 4 · DTP1 / DTP3 / MCV1 / MCV2 coverage", status: "partial", evidence: "Dose-level data exists in clientLogbook; aggregate coverage tiles are not yet on the Dashboard.", recommendation: "Add antigen-coverage tiles per facility / district / province." },
+      { area: "RED 4 · DTP1→DTP3 dropout %", status: "gap", recommendation: "Compute from clientLogbook; required by WUENIC and JRF." },
+      { area: "RED 4 · DTP1→MCV1 dropout %", status: "gap", recommendation: "Compute from clientLogbook; required by WUENIC." },
+      { area: "RED 4 · Zero-dose children (no DTP1 by 12 mo) [Gavi 5.0 flagship]", status: "gap", recommendation: "Surface a Dashboard tile; the single most important Gavi 5.0 indicator." },
+      { area: "RED 4 · Under-immunized children (DTP1 yes, DTP3 no)", status: "gap", recommendation: "Derive from clientLogbook." },
+      { area: "RED 4 · Defaulter list (children due, not yet vaccinated)", status: "gap", recommendation: "Add a Defaulters page; required by the WHO/UNICEF monitoring for action core." },
+      // RED 5 — Planning & management (vaccines, cold chain, safety, financing)
+      { area: "RED 5 · Vaccine doses + AD syringes + safety boxes forecast", status: "aligned", evidence: "Vaccine Calculator + guided workflow Step 6 check on persisted vaccinesRequired." },
+      { area: "RED 5 · Per-antigen wastage rate (actual)", status: "partial", evidence: "Stock transactions capture issuances.", recommendation: "Add wastage reason codes + monthly wastage % per antigen." },
+      { area: "RED 5 · Stockout-days per antigen per month", status: "partial", recommendation: "Compute days at zero stock from stock_transactions (also called out in Section 5 JRF)." },
+      { area: "RED 5 · Cold-chain equipment functional %", status: "partial", evidence: "facility.has_refrigerator flag only.", recommendation: "Add cold_chain_equipment table with PQS codes + status." },
+      { area: "RED 5 · AEFI cases per 100k doses", status: "gap", recommendation: "Blocked on the aefi_reports entity (see Section 5 JRF)." },
+      { area: "RED 5 · Microplan approved before quarter starts", status: "aligned", evidence: "Computed by guided workflow Step 11 against microplans.status." },
+      { area: "RED 5 · Budget executed by funding source (planned vs actual)", status: "gap", recommendation: "Blocked on the funding-source enum on budgetItems (see Section 3 RED 5)." },
     ],
   },
   {
