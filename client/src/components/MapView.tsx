@@ -1394,9 +1394,18 @@ interface GeoTIFFOverlayProps {
   url: string;
   opacity?: number;
   onRasterLoaded?: (georaster: any) => void;
+  // Active *view* tenant id — used to scope the IndexedDB raster cache so a
+  // cached raster from another country (e.g. the user's home tenant) is never
+  // re-served when the user has switched to a different tenant.
+  cacheScope?: string;
+  // When false, the overlay will NOT auto-fit the map to the raster bounds on
+  // load. The tenant's configured mapCenter/mapZoom and the explicit raster
+  // selector already handle centering — auto-fitting here was causing the map
+  // to snap to whatever raster happened to be cached.
+  autoFit?: boolean;
 }
 
-function GeoTIFFOverlay({ url, opacity = 0.65, onRasterLoaded }: GeoTIFFOverlayProps) {
+function GeoTIFFOverlay({ url, opacity = 0.65, onRasterLoaded, cacheScope, autoFit = false }: GeoTIFFOverlayProps) {
   const map = useMap();
   const layerRef = useRef<any>(null);
   const { toast } = useToast();
@@ -1405,9 +1414,15 @@ function GeoTIFFOverlay({ url, opacity = 0.65, onRasterLoaded }: GeoTIFFOverlayP
   useEffect(() => {
     let active = true;
 
-    // Derive a stable cache key from the URL (strip query params for the base filename)
-    const cacheKey = `geotiff_${url.split("?")[0].split("/").pop() ?? "default"}`;
-    const tenantId = (user as any)?.tenantId ?? "global";
+    // Derive a stable cache key from the URL — include any ?file= query so the
+    // default (auto-resolved) raster gets its own per-scope slot distinct from
+    // explicitly selected files.
+    const urlPath = url.split("?")[0].split("/").pop() ?? "default";
+    const urlQuery = url.includes("?") ? url.split("?")[1] : "";
+    const cacheKey = `geotiff_${urlPath}${urlQuery ? `_${urlQuery}` : ""}`;
+    // Scope cache to the active *view* tenant, falling back to the user's home
+    // tenant only when no explicit scope was passed.
+    const tenantId = cacheScope ?? (user as any)?.tenantId ?? "global";
 
     async function loadRaster() {
       let arrayBuffer: ArrayBuffer | undefined;
@@ -1498,8 +1513,12 @@ function GeoTIFFOverlay({ url, opacity = 0.65, onRasterLoaded }: GeoTIFFOverlayP
       layerRef.current = layer;
       layer.addTo(map);
 
-      // Auto-zoom map to GeoTIFF bounding box limits if available
-      if (georaster.xmin && georaster.ymin && georaster.xmax && georaster.ymax) {
+      // Auto-zoom map to GeoTIFF bounding box limits if available.
+      // Disabled by default: this was the cause of the map snapping to a
+      // foreign country (e.g. PNG while viewing ZMB) whenever the overlay
+      // (re)loaded. The active tenant's mapCenter/mapZoom and the explicit
+      // raster selector dropdown already center the map correctly.
+      if (autoFit && georaster.xmin && georaster.ymin && georaster.xmax && georaster.ymax) {
         const bounds = L.latLngBounds(
           [georaster.ymin, georaster.xmin],
           [georaster.ymax, georaster.xmax]
@@ -1525,7 +1544,7 @@ function GeoTIFFOverlay({ url, opacity = 0.65, onRasterLoaded }: GeoTIFFOverlayP
         map.removeLayer(layerRef.current);
       }
     };
-  }, [map, url, opacity]);
+  }, [map, url, opacity, cacheScope, autoFit]);
 
   return null;
 }
@@ -3603,13 +3622,25 @@ export function MapView({
               );
             })}
 
-        {/* GeoTIFF population gridded density overlay */}
-        {layers.populationGeoTIFF && (
+        {/* GeoTIFF population gridded density overlay.
+            Gated on tenantInfo?.id so the overlay never loads with an
+            undefined cache scope (which would fall back to the home tenant
+            and briefly serve a foreign-country raster on first render). */}
+        {layers.populationGeoTIFF && tenantInfo?.id && (
           <GeoTIFFOverlay 
             url={selectedRasterFile ? `/api/resources/geotiff?file=${selectedRasterFile}` : "/api/resources/geotiff"} 
             onRasterLoaded={(gr) => {
               georasterRef.current = gr;
             }}
+            // Scope the IndexedDB raster cache to the active view tenant so a
+            // raster cached under the user's home tenant is never served when
+            // they have switched to another country.
+            cacheScope={tenantInfo.id}
+            // Only auto-fit the map to the raster bounds when the user has
+            // explicitly picked a raster from the dropdown. For the default
+            // (tenant-resolved) raster, the tenant's mapCenter/mapZoom keeps
+            // the map on the right country.
+            autoFit={!!selectedRasterFile}
           />
         )}
 
