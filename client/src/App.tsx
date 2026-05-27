@@ -41,6 +41,7 @@ import SessionDayPlans from "@/pages/SessionDayPlans";
 import HisIntegrations from "@/pages/HisIntegrations";
 import MicroplanBuilder from "@/pages/MicroplanBuilder";
 import SettlementIntelligence from "@/pages/SettlementIntelligence";
+import StandardsAlignment from "@/pages/StandardsAlignment";
 import { OfflineBanner } from "@/components/OfflineBanner";
 
 function AuthenticatedRouter() {
@@ -95,6 +96,7 @@ function AuthenticatedRouter() {
       <Route path="/his-integrations">
         {modules.interop !== false ? <HisIntegrations /> : <NotFound />}
       </Route>
+      <Route path="/standards-alignment" component={StandardsAlignment} />
       <Route path="/settings" component={Settings} />
       <Route path="/help" component={Help} />
       <Route component={NotFound} />

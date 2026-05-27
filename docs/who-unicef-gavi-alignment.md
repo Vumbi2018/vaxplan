@@ -1,232 +1,313 @@
-# VaxPlan — Alignment Review against WHO, UNICEF & Gavi Standards
+# VaxPlan — Alignment with WHO, UNICEF, Gavi & MoH Standards for Microplanning and GIS-Microplanning
 
-**Scope:** GIS-enabled microplanning for routine immunization (RI) and supplementary immunization activities (SIAs).
-**Method:** Each standard is matched against concrete code in this repository. Findings are graded:
-
-- ✅ **Aligned** — capability is implemented end-to-end.
-- 🟡 **Partial** — implemented but missing fields, workflows, or outputs needed for formal compliance.
-- 🔴 **Gap** — not implemented; clear add-on required.
-
-> "Evidence" cites real files/lines in the codebase at the time of writing. "Gap-closure" is the smallest concrete change that would close the gap.
+> Living document. Mirrored in-app at **Settings → Standards Alignment** (`/standards-alignment`). Last refreshed: 2026-05-27.
+>
+> **Grading scale**
+> - ✅ **Aligned** — implemented end-to-end and enforced.
+> - 🟡 **Partial** — present in schema/UI but missing fields, enforcement, or outputs needed for formal compliance.
+> - 🔴 **Gap** — not implemented.
 
 ---
 
-## 1. WHO/UNICEF Microplanning for Immunization Services *(2021 revision)* and RED / REC strategy
+## 0. Executive summary
 
-The 2021 WHO/UNICEF guide defines a microplan as a facility-level plan with **8 core elements**. Mapped to VaxPlan:
+VaxPlan has the **right shape** for a WHO/UNICEF/Gavi-aligned microplanning platform: a clean multitenant model per MoH, a parent `microplans` table distinguishing routine vs SIA, a `sessionPlans` table that *can* link to a parent microplan, an approval workflow, an offline-first client, and FHIR + DHIS2 adapters.
 
-| # | Core element (WHO/UNICEF) | Status | Evidence | Gap-closure |
+The **biggest correctness gap is workflow enforcement**. The data model permits the WHO/UNICEF "annual microplan → quarterly sessions" cascade, but the code does not enforce it:
+
+1. `sessionPlans.microplanId` is **nullable** — a session can be created with no parent plan.
+2. `sessionPlans.planType` (`routine` / `campaign`) can **drift** from the parent microplan's `planType` (no validation).
+3. SIA fields (`campaignAntigen`, `campaignTargetAge`, `campaignScope`) are **duplicated** on each session instead of being inherited.
+4. There is no **"lock"** semantics — even though `microplans.status` includes `locked`, sessions can be edited after the parent is locked.
+5. The UI does not visually segregate **Routine RI planning** from **SIA / campaign planning**; they share the same `/sessions` page with a `planType` field hidden inside the form.
+
+The remaining gaps fall into well-known global-standards buckets: AEFI surveillance, EVM 2.0 cold-chain, GS1 traceability, SMART Guidelines IMMZ, zero-dose indicator, supportive supervision, and full FHIR/DHIS2 mapping.
+
+A prioritized 12-item action list at the end (§13) lists exactly what to change, with file references and effort estimates.
+
+---
+
+## 1. Workflow architecture — how WHO/UNICEF expects planning to cascade
+
+WHO/UNICEF *Microplanning for Immunization Service Delivery using the RED Strategy* (2009, revised 2021), reinforced by IA2030 and Gavi 5.0, defines **three planning horizons that must be kept separate but linked**:
+
+```
+                ┌─────────────────────────────────────────────────────────┐
+                │  NATIONAL / SUB-NATIONAL ANNUAL PLAN (cMYP / NIMP)      │
+                │  - Country EPI strategy, targets, financing             │
+                └───────────────┬─────────────────────────────────────────┘
+                                │ informs targets & budget envelope
+                                ▼
+        ┌─────────────────────────────────────────────────────────────────┐
+        │  HEALTH FACILITY ANNUAL/QUARTERLY MICROPLAN  (planType = routine)│
+        │  Owner: facility_in_charge.  One per (facility, year, quarter). │
+        │  Contains: target pop by antigen, session strategy mix,         │
+        │  staffing, cold-chain, budget, mobilization plan.               │
+        └───────────────┬─────────────────────────────────────────────────┘
+                        │ parent of
+                        ▼
+        ┌─────────────────────────────────────────────────────────────────┐
+        │  SESSION PLAN  (one per fixed/outreach/mobile session)          │
+        │  Must inherit antigens, target pop, transport, geofence from    │
+        │  the parent microplan.  Editable only while parent is "draft".  │
+        └───────────────┬─────────────────────────────────────────────────┘
+                        │ parent of
+                        ▼
+        ┌─────────────────────────────────────────────────────────────────┐
+        │  SESSION DAY PLAN  (one per session day)                        │
+        │  Vaccinator team, cold boxes, ice packs, vials taken, actuals.  │
+        └─────────────────────────────────────────────────────────────────┘
+
+  Parallel track (NOT the same as routine RI):
+
+        ┌─────────────────────────────────────────────────────────────────┐
+        │  SIA / CAMPAIGN MASTER MICROPLAN  (planType = sia_campaign)     │
+        │  Owner: provincial/national.  One per (campaign, scope).        │
+        │  Contains: antigen, target age band, geographic scope,          │
+        │  vaccinators, social-mob plan, post-campaign coverage survey.   │
+        └───────────────┬─────────────────────────────────────────────────┘
+                        │ parent of
+                        ▼
+        ┌─────────────────────────────────────────────────────────────────┐
+        │  CAMPAIGN SESSION PLAN  (one per team-day)                       │
+        │  House-to-house / fixed-post / school-based teams.              │
+        └─────────────────────────────────────────────────────────────────┘
+```
+
+**VaxPlan today vs the expected cascade**
+
+| Layer | Status in code | File evidence |
+|---|---|---|
+| National / sub-national annual plan | 🔴 **Missing** as a distinct entity (`cMYP` / NIMP) | — |
+| HF microplan (routine) | ✅ Present | `shared/schema.ts:395` `microplans`, `planType = facility_routine` |
+| SIA / campaign master microplan | ✅ Present (same table) | `shared/schema.ts:400` `planType = sia_campaign` + `campaign*` columns |
+| Session plan parented to microplan | 🟡 FK exists but **nullable & unvalidated** | `shared/schema.ts:449` `microplanId integer references microplans.id` |
+| Session day plan | ✅ Present | `shared/schema.ts:~1075` `session_day_plans` |
+| Approval cascade (microplan → sessions) | 🟡 `approvalStatus` per row; no parent-locks-children rule | `shared/schema.ts:382`, `:430`, `:459` + `server/routes.ts:3443` |
+| UI segregation (Routine vs SIA) | 🔴 Both live on `/sessions`; SIA fields hidden in same form | `client/src/pages/SessionPlanning.tsx`; sidebar has only one "Session Planning" entry |
+
+---
+
+## 2. Workflow segregation — Routine RI vs SIA, in detail
+
+### 2.1 What WHO/UNICEF requires
+- **Routine RI** is a *standing* program: fixed-post + outreach + mobile sessions delivering the national EPI schedule (BCG, DPT-HepB-Hib, OPV/IPV, MCV1/MCV2, PCV, Rota, HPV, etc.) to age-eligible cohorts.
+- **SIAs** are *time-bound* mass-vaccination activities (measles follow-up, polio NIDs/SNIDs, MR catch-up, COVID-19, cholera). They have a different target group definition (often 0–59 mo, or 9 mo–14 y, regardless of prior history), different team structures (often house-to-house), and a different M&E framework (independent monitoring + post-campaign coverage survey).
+- The two **must never be merged in reporting** — WHO JRF, WUENIC and Gavi indicators treat them separately.
+
+### 2.2 What VaxPlan does today
+
+✅ **Good**
+- Single `microplans` table with `microplanTypeEnum` cleanly distinguishes the two at the *master plan* level.
+- SIA-specific fields (`campaign_antigen`, `campaign_target_age`, `campaign_scope`, `target_population`, `budget`) live on the master microplan row.
+- `sessionPlans.microplanId` FK *allows* linking each session back to either a routine or campaign master plan.
+
+🟡 **Partial**
+- `sessionPlans.planType` is a `varchar` with default `"routine"` — **not an enum**. A user could enter any string.
+- There is **no DB-level or server-level constraint** that `sessionPlans.planType == microplans.planType` for its parent microplan. So a "routine" session could be attached to an "sia_campaign" microplan, polluting reporting.
+- SIA fields (`campaign_antigen`, `campaign_target_age`, `campaign_scope`) are duplicated on `sessionPlans` — they should be *inherited* (read-only) from the parent microplan.
+
+🔴 **Gap**
+- `sessionPlans.microplanId` is **nullable**. A session can be created with no parent — and 100% of legacy seeded sessions currently have `microplanId = NULL`. WHO microplanning rules require every session to derive from a microplan.
+- The UI has **one** "Session Planning" sidebar entry. There is no dedicated **"SIA Campaigns"** workspace separating campaign master plans, campaign sessions, independent monitoring, and post-campaign coverage survey from the routine RI workflow.
+- There is no SIA-specific module for: (i) independent monitoring, (ii) post-campaign coverage survey, (iii) finger-marking, (iv) micro-census of households visited.
+
+### 2.3 Recommended workflow enforcement
+
+1. **Add a NOT NULL constraint** to `sessionPlans.microplanId` after backfilling existing rows. *Migration step:* create per-facility "Untitled Q{quarter} {year}" microplans for any orphan session and point them at it.
+2. **Promote `sessionPlans.planType`** to a `pgEnum('routine','campaign')` shared with a derived check: `sessionPlans.planType` must equal `microplans.planType` of its parent (validate on `insertSessionPlanSchema`).
+3. **Drop duplicated SIA columns** from `sessionPlans` (or mark them generated). Inherit at API-read time via JOIN.
+4. **Lock semantics**: when `microplans.status = 'locked'`, `POST/PATCH/DELETE /api/sessions` for any session under that microplan returns 409.
+5. **Split the UI** into two top-level entries:
+   - `/microplans/routine` — HF routine microplan builder + the sessions it owns
+   - `/microplans/campaigns` — SIA campaign master plan + campaign sessions + independent monitoring + post-campaign survey
+6. **Reporting**: every coverage view (`Dashboard.tsx`, `MonthlyReports`, `/api/coverage`) must filter by `planType` so RI doses are never mixed with campaign doses.
+
+---
+
+## 3. WHO/UNICEF Microplanning core elements (2021 RED revision)
+
+| # | Core element | Status | Evidence | Gap-closure |
 |---|---|---|---|---|
-| 1 | Map of catchment area with all communities, target population & service points | ✅ | `MapView.tsx` (Leaflet + GeoJSON catchments, villages, facilities), `shared/schema.ts` Facilities/Villages/FacilityCatchments | — |
-| 2 | List of all communities with target population by antigen / age cohort | ✅ | `PopulationData` schema with `male_population`, `female_population`, age cohorts; `Population.tsx` | — |
-| 3 | Schedule of fixed, outreach, mobile sessions | ✅ | `SessionPlans` (`static`/`outreach`/`mobile`), `SessionPlanning.tsx`, `SessionDayPlans.tsx` | — |
-| 4 | Vaccine, supplies, cold-chain & waste forecast per session | 🟡 | `VaccineRequirements` + `VaccineCalculator.tsx` (wastage), `has_refrigerator`, cold boxes in day plans | Add **waste-management** counters (safety boxes, sharps disposal) and **AD syringe / diluent / dropper** line items as first-class quantities, not free text. |
-| 5 | Transportation & itinerary (incl. terrain & insecurity) | ✅ | `transport_mode` enum (walking/road/boat/air), `is_hard_to_reach`, `insecurity_level`; `HardToReach.tsx` | — |
-| 6 | Human resources (vaccinators, mobilizers, supervisors) per session | 🔴 | Not in `SessionPlans` schema | Add `staffing` JSON column (roles, count, per-diem) — drives budget & supervision. |
-| 7 | Social mobilization plan (channels, materials, dates, audience) | ✅ | `MobilizationActivities` table; `SocialMobilization.tsx` | — |
-| 8 | Budget summarized by activity & funding source | 🟡 | `BudgetItems` table with categories & approval workflow | Add **funding source** field (Government / Gavi / WHO / UNICEF / other) — required by Gavi HSS reporting. |
-
-**RED / REC five operational components**
-
-| RED/REC component | Status | Evidence | Gap-closure |
-|---|---|---|---|
-| Re-establish outreach & mobile services | ✅ | Session types include outreach + mobile; mobile-first UI | — |
-| Supportive supervision | 🔴 | No `SupervisoryVisit` entity; checklists absent | Add `supervisory_visits` table (date, supervisor, facility, checklist score, follow-up actions) — see Gavi FCE indicator 4.2. |
-| Community links with service delivery | 🟡 | `MobilizationActivities` exists | Add **community dialogue / feedback** capture (open text + structured concerns). |
-| Monitoring for action (defaulter tracking, dropout) | 🟡 | `ClientLogbook.tsx` tracks doses; coverage card on dashboard | Add **defaulter list** view (clients past-due by antigen) and computed **DTP1 → MCV1 dropout** and **DTP1 → DTP3 dropout** indicators. |
-| Planning & management of resources | ✅ | Microplan authoring restricted to facility staff with approval workflow | — |
+| 1 | Map of catchment area | ✅ | `MapView.tsx`, `FacilityCatchments` polygons | — |
+| 2 | List of communities with target pop per antigen | ✅ | `villages`, `populationData` with sex & age cohorts | — |
+| 3 | Schedule of fixed/outreach/mobile sessions | ✅ | `sessionTypeEnum`, `SessionPlanning.tsx` | — |
+| 4 | Vaccine + supplies + cold-chain + waste forecast | 🟡 | `vaccineRequirements` (forecast only), wastage % | Add **safety boxes**, **AD syringes**, **diluents**, **droppers** as first-class line items |
+| 5 | Transportation & itinerary | ✅ | `transportModeEnum`, `is_hard_to_reach`, `insecurity_level` | — |
+| 6 | Human resources per session | 🔴 | Only `humanResources` text field on session plan | Add structured `staffing` (roles, count, per-diem) at microplan level |
+| 7 | Social mobilization plan | ✅ | `mobilizationActivities` | — |
+| 8 | Budget by activity & funding source | 🟡 | `budgetItems` | Add **funding source** enum (Govt / Gavi / WHO / UNICEF / Other) — Gavi HSS reporting requirement |
 
 ---
 
-## 2. WHO Immunization Agenda 2030 (IA2030) — strategic priorities & indicators
+## 4. RED / REC five operational components
 
-| IA2030 lens | Status | Evidence | Gap-closure |
+| Component | Status | Evidence | Gap-closure |
 |---|---|---|---|
-| **SP1 — Coverage & equity:** disaggregate coverage by sex, geography, wealth, urban/rural, IDP | 🟡 | Sex disaggregation in `PopulationData`; geography via tenant hierarchy; **no wealth/IDP markers** | Add `equity_dimensions` JSON to `clients` and `population_data` (urban/rural flag, IDP/refugee status, wealth quintile if known). Surface in Dashboard. |
-| **SP2 — Life course immunization:** schedule beyond infant (adolescent HPV, maternal Td/Tdap, adult booster) | 🟡 | Vaccine config is generic, but UI/seed data is infant-centric | Seed HPV, Td/Tdap, COVID-19 schedules per tenant; allow age-band targeting on `VaccineRequirements`. |
-| **SP3 — Strengthen PHC integration** | ✅ | Multi-program data model (sessions, clients, stock) generalizes beyond EPI | — |
-| **SP4 — Supply, sustainability, innovation:** cold-chain status, stockout indicator | 🟡 | `has_refrigerator` per facility; stock ledger exists | Add **cold-chain functionality status** (working / not working / no equipment) and **stockout days per antigen per month** — both are WUENIC/JRF inputs. |
-| **SP5 — Outbreaks & emergencies:** SIA / campaign mode | 🔴 | No campaign entity distinct from RI sessions | Add `campaigns` table with target diseases, age band, start/end dates, and a campaign-mode flag on `SessionPlans`. |
-| **SP6 — R&D** — N/A for an MoH planning tool | — | — | — |
-| **SP7 — Coverage in regions/countries (sub-national equity)** | ✅ | Province → District → LLG hierarchy with cascading filters across all tables | — |
+| Re-establish outreach & mobile services | ✅ | Session type covers outreach + mobile | — |
+| Supportive supervision | 🔴 | No `supervisory_visits` entity | Add table (date, supervisor, facility, checklist score, follow-up actions) |
+| Community links with service delivery | 🟡 | `mobilizationActivities` exists | Add structured **community feedback** capture |
+| Monitoring for action (defaulter / dropout) | 🟡 | `ClientLogbook.tsx` tracks doses | Compute **DTP1→DTP3** and **DTP1→MCV1 dropout**, and a **defaulter list** view |
+| Planning & management of resources | ✅ | Facility-restricted authoring + approval workflow | — |
 
 ---
 
-## 3. WHO/UNICEF JRF (Joint Reporting Form) & WUENIC reporting
+## 5. WHO Immunization Agenda 2030 (IA2030) strategic priorities
 
-JRF/WUENIC require national aggregates for: target population, doses administered by antigen + dose, coverage, dropout, stockouts, AEFI, cold-chain status, vaccine wastage, financing.
-
-| JRF field | Status | Evidence | Gap-closure |
+| SP | Status | Evidence | Gap-closure |
 |---|---|---|---|
-| Doses administered by antigen + dose number | ✅ | `ClientVaccinations` + `MonthlyReports` | — |
-| Target population by antigen | ✅ | `VaccineRequirements` × `PopulationData` | — |
-| Stockouts | 🟡 | Stock ledger exists; no "days of stockout" aggregate | Compute "days at zero stock per antigen" in `/api/coverage` style endpoint. |
-| Vaccine wastage rate | 🟡 | Wastage % in `VaccineRequirements` (forecast input), not actual | Capture **opened-vial / closed-vial wastage** events in `stock_transactions`; expose actual rate per facility/month. |
-| AEFI surveillance | 🔴 | No AEFI entity | Add `aefi_reports` (event date, vaccine + lot, severity, outcome, investigated). Needed for IHR 2005 reporting & Gavi safety. |
-| Cold-chain functional capacity | 🟡 | Binary `has_refrigerator` flag | Add cold-chain inventory table aligned with WHO **EVM 2.0** (equipment type, PQS code, status, temperature alarms). |
-| Financing breakdown by source | 🟡 | `BudgetItems` exists | Add funding source enum (see microplanning gap above). |
-
-> Closing these gaps lets the country generate WHO JRF Section 6 exports directly from VaxPlan.
+| SP1 Coverage & equity | 🟡 | Sex disaggregation; geography hierarchy | Add **wealth quintile**, **urban/rural**, **IDP/refugee** equity dimensions on `populationData` and `clients` |
+| SP2 Life-course immunization | 🟡 | Vaccine config is generic; UI infant-centric | Seed HPV, Td/Tdap, COVID-19 per tenant; age-band targeting on `vaccineRequirements` |
+| SP3 PHC integration | ✅ | Generalizable session/stock/budget model | — |
+| SP4 Supply, sustainability, innovation | 🟡 | `has_refrigerator`; stock ledger | Add cold-chain functionality status & stockout days per antigen per month |
+| SP5 Outbreaks & emergencies (SIA mode) | 🟡 | `planType=sia_campaign` exists | Build the SIA workspace (§2.3 #5) and **independent monitoring** entity |
+| SP6 R&D | — | N/A for MoH planning tool | — |
+| SP7 Sub-national equity | ✅ | Province → District → LLG cascade across tables | — |
 
 ---
 
-## 4. WHO Effective Vaccine Management (EVM 2.0)
+## 6. JRF (Joint Reporting Form) & WUENIC inputs
 
-| EVM criterion | Status | Evidence | Gap-closure |
-|---|---|---|---|
-| E1 Arrival | 🔴 | — | Not in scope for an MoH microplanning app (port-of-entry); can be safely deferred. |
-| E2 Temperature monitoring | 🔴 | — | Add temperature log entries (timestamped readings per device) — essential for cold-chain audits. |
-| E3 Storage capacity & E4 Buildings | 🟡 | Facility has `has_refrigerator` flag only | Add `cold_chain_equipment` table (capacity in L, PQS code, last service date). |
-| E5 Maintenance | 🔴 | — | Add maintenance log linked to equipment. |
-| E6 Stock management | 🟡 | `stock_transactions` exists | Add **batch/lot + expiry tracking** at transaction level (currently only at vaccine config). |
-| E7 Distribution | 🟡 | Transport mode tracked | Add **shipment** entity with chain-of-custody. |
-| E8 Vaccine management & E9 Information systems | 🟡 | Strong info system; weak on vaccine-management metrics | Same gaps as above. |
-
----
-
-## 5. Data interoperability — WHO SMART Guidelines & global standards
-
-| Standard | Status | Evidence | Gap-closure |
-|---|---|---|---|
-| **DHIS2 Aggregate (`/api/dataValueSets`)** for monthly aggregates | ✅ | `server/services/hisInteropService.ts` `Dhis2Adapter` | Make tenant-configurable dataset & dataElement mappings (currently hard-coded for the demo). |
-| **DHIS2 Tracker** for individual-level (CRVS-style) data | 🔴 | — | Add Tracker adapter for `ClientVaccinations`. |
-| **HL7 FHIR R4** Patient + Immunization | ✅ | `FhirR4Adapter` in `hisInteropService.ts` | Add **MedicationAdministration**, **Encounter**, **Location** (catchment), and **Practitioner** resources for full WHO SMART Vaccination Certificate compatibility. |
-| **WHO SMART Guidelines IMMZ** (computable RI schedule, e.g., DAK → L2 → L3) | 🔴 | — | Adopt the IMMZ data dictionary & decision tables; map `vaccine_configs.code` to **CVX** and **WHO ATC** codes; align ages to IMMZ schedule. |
-| **WHO SMART Vaccination Certificates (DVC-VAC)** — signed digital cert | 🔴 | — | Out of scope for MVP; flag as roadmap if cross-border use is anticipated. |
-| **GS1 GTIN + lot + expiry (2D barcode)** | 🔴 | — | Add GTIN field to `vaccine_configs` and barcode scan support on stock entry — required by Gavi for traceability. |
-| **ICD-11 / SNOMED CT / LOINC** | 🔴 | — | Map vaccine indications and AEFI events to SNOMED CT or ICD-11 codes. |
-| **WHO IATI / OpenHIE Health Information Mediator** | 🔴 | — | Optional; only relevant if integrating into a national HIE (e.g., OpenHIM). |
-| **iHRIS** for health workforce | 🔴 | — | Future: link vaccinators/supervisors to iHRIS records. |
-
----
-
-## 6. WHO Classification of Digital Health Interventions v1.0 & Principles for Digital Development
-
-VaxPlan implements the following intervention classes (CDHI taxonomy):
-
-- ✅ **1.1** Targeted communication to clients (mobilization)
-- ✅ **2.1, 2.2, 2.3** Provider-to-provider communication, decision support, registries (client logbook, defaulter list)
-- ✅ **2.5** Health worker activity planning & scheduling (microplan)
-- ✅ **2.7** Referral coordination (cross-facility approvals)
-- ✅ **3.2, 3.3** Resource & supply chain management (stock ledger)
-- ✅ **4.1** Data collection & management (offline-first, IndexedDB outbox)
-
-**Principles for Digital Development** — quick audit:
-
-| Principle | Status | Evidence |
+| Field | Status | Gap-closure |
 |---|---|---|
-| Design with the user | ✅ | Mobile-first React, role-aware UI, offline support |
-| Understand the existing ecosystem | ✅ | DHIS2 + FHIR adapters, multi-tenant per MoH |
-| Design for scale | 🟡 | Multitenant SaaS; **add quotas & rate limits per tenant** |
-| Build for sustainability | ✅ | Open-source stack, no proprietary lock-in |
-| Be data-driven | ✅ | Audit log + dashboards |
-| Use open standards / open data / open source | 🟡 | FHIR/DHIS2 yes; add CVX/SNOMED/GS1 |
-| Reuse and improve | ✅ | Built on Leaflet, OSM, Turf, Drizzle |
-| Address privacy & security | 🟡 | Sessions + audit + tenant guards; **see §9** |
-| Be collaborative | ✅ | Approvals + supervisor hierarchy in design |
+| Doses administered by antigen + dose | ✅ | — |
+| Target population by antigen | ✅ | — |
+| Stockout days per antigen per month | 🟡 | Compute from `stock_transactions` (days at zero stock) |
+| Actual wastage rate (opened-vial / closed-vial) | 🟡 | Capture in `stock_transactions` with reason codes |
+| AEFI surveillance | 🔴 | Add `aefi_reports` (date, vaccine + lot, severity, outcome, investigated) |
+| Cold-chain functional capacity | 🟡 | Add `cold_chain_equipment` with PQS code + functionality status |
+| Financing by source | 🟡 | Add funding source enum (see §3 #8) |
 
 ---
 
-## 7. Gavi alignment — Full Country Evaluation indicators & HSS
+## 7. Gavi 5.0 / Full Country Evaluation indicators
 
-| Gavi expectation | Status | Evidence | Gap-closure |
-|---|---|---|---|
-| Sub-national equity tracking (district-level dropout, zero-dose) | 🟡 | Hierarchy + coverage card exist; **no zero-dose indicator** | Add `zero_dose_children` view: children registered in `clients` with **no DTP1** by 12 months of age. This is Gavi's flagship 5.0 indicator. |
-| HMIS / DHIS2 reporting | ✅ | Adapter exists | Tenant-configurable mapping (see §5). |
-| Supply chain & EVM | 🟡 | See §4 | — |
-| Financial sustainability (co-financing, budget execution) | 🟡 | Budget approval workflow | Add **planned vs. actual** execution rate per quarter. |
-| Health workforce | 🔴 | — | See §1 row 6 (staffing). |
-| Service delivery in fragile / conflict settings | ✅ | `insecurity_level`, hard-to-reach module | — |
+| Indicator | Status | Gap-closure |
+|---|---|---|
+| **Zero-dose children** (DTP1 = 0 in target age) | 🔴 | Materialized view: `clients` with no DTP1 dose by 12 months. Surface on Dashboard. **Gavi 5.0 flagship.** |
+| Sub-national equity (district-level dropout) | 🟡 | Add DTP1→DTP3 + DTP1→MCV1 dropout by district |
+| HMIS / DHIS2 reporting | ✅ | `Dhis2Adapter` exists; make tenant-configurable mappings |
+| Supply chain / EVM | 🟡 | See §10 |
+| Financial sustainability | 🟡 | Add planned-vs-actual execution rate per quarter |
+| Health workforce | 🔴 | Tie staffing (§3 #6) to facility roster |
+| Fragile / conflict settings | ✅ | `insecurity_level` + HTR module | — |
 | Demand generation | ✅ | Social mobilization module | — |
-| Data quality / triangulation | 🟡 | Audit log + approvals | Add **DQA self-assessment** tool (verification factor between recorded and reported doses). |
+| Data quality / triangulation | 🟡 | Add DQA self-assessment (verification factor between recorded and reported doses) |
 
 ---
 
-## 8. GIS-microplanning standards — WHO/CDC Geographic Information System guidance
+## 8. WHO Effective Vaccine Management (EVM 2.0) — cold chain
 
-| GIS standard | Status | Evidence | Gap-closure |
-|---|---|---|---|
-| Authoritative basemap (OSM, government layers) | ✅ | OSM tiles via Leaflet |  — |
-| Settlement enumeration aligned to **GRID3 / Maxar / Ecopia / Microsoft Building Footprints** | 🟡 | GRID3 settlement extents wired for ZMB | Extend to SSD + PNG; add Microsoft/Ecopia building-count as a fallback. |
-| **WorldPop / GRID3 / LandScan** gridded population | ✅ | WorldPop 100m R2025A rasters for ZMB/SSD/PNG; refresh job per tenant | — |
-| Catchment delineation methods (Voronoi, drive-time, walking-time isochrones) | 🟡 | Custom polygon authoring only | Add **walking-isochrone** generation (e.g., OSRM or WHO **AccessMod**-style friction surface) on the server. |
-| Facility geolocation accuracy ≥ 25 m (WHO master facility list standard) | 🟡 | `latitude`/`longitude` columns; **no accuracy / source metadata** | Add `coord_accuracy_m`, `coord_source` (GPS / digitized / centroid), `coord_captured_at` to `Facilities`. |
-| Hard-to-reach classification per WHO operational definition | ✅ | `is_hard_to_reach`, `insecurity_level`, distance & travel-time | — |
-| **OpenStreetMap-compatible data export (GeoJSON, KML, Shapefile)** | 🟡 | Excel + dashboard exports | Add GeoJSON / KML export of catchments, sessions, and facilities. |
-| Coordinate reference system: WGS84 / EPSG:4326 throughout | ✅ | Leaflet + WorldPop standard | — |
+| EVM criterion | Status | Gap-closure |
+|---|---|---|
+| E1 Arrival | — | Port-of-entry, out of scope for an MoH planning app |
+| E2 Temperature monitoring | 🔴 | Add `temperature_logs` (timestamped readings per device) |
+| E3 Storage capacity & E4 Buildings | 🟡 | Add `cold_chain_equipment` (capacity-L, PQS code, status, last service) |
+| E5 Maintenance | 🔴 | Add `maintenance_log` linked to equipment |
+| E6 Stock management | 🟡 | Add batch/lot + expiry on `stock_transactions` (currently only on vaccine config) |
+| E7 Distribution | 🟡 | Add `shipments` entity with chain-of-custody |
+| E8 / E9 Vaccine management & info systems | 🟡 | Information system is strong; vaccine-management metrics weak |
 
 ---
 
-## 9. Security, privacy & data protection
+## 9. Interoperability — DHIS2 / FHIR / SMART Guidelines / GS1
 
 | Standard | Status | Evidence | Gap-closure |
 |---|---|---|---|
-| **Authentication & SSO** (OIDC + SAML for MoH IdPs) | ✅ | `oidcAdapter.ts`, `samlAdapter.ts` | Add **WebAuthn / passkey** option for field offline. |
-| **Multitenant data isolation** | ✅ | `tenantContext`, `crossTenantWriteGuard` | — |
-| **Audit log** (who/what/when/old/new) | ✅ | `logAudit` writes to `audit_logs` with IP | Add **export to SIEM** (CEF or JSON over syslog) for ISO 27001 alignment. |
-| **Encryption at rest** | 🟡 | Managed Postgres typically encrypted; **not asserted in app config** | Document in `SECURITY.md`; confirm provider setting. |
-| **Encryption in transit** | ✅ | Replit serves over HTTPS; OAuth/SAML over TLS | — |
-| **PII minimization** | 🟡 | Client logbook stores names + DOB | Add per-tenant **PII redaction** toggle for analytics exports. |
-| **Right to erasure / data subject requests (GDPR Art. 17)** | 🔴 | — | Add a "purge client" admin action that cascades to vaccinations and writes an audit entry. |
-| **Data residency** | 🟡 | Single Replit-managed region | For some MoHs, **in-country hosting** is a procurement requirement — document deployment options. |
-| **Backups & disaster recovery RPO/RTO** | 🔴 | — | Document backup schedule + restore drill cadence. |
-| **Vulnerability disclosure & dependency audit** | 🟡 | npm-audit available | Adopt a published `SECURITY.md`; run `npm audit` in CI. |
-| **WHO/ISO 27799** health-data specific controls | 🟡 | Generic controls in place | Map controls to ISO 27799 annex; many already satisfied. |
+| DHIS2 Aggregate (`/api/dataValueSets`) | ✅ | `hisInteropService.ts:190` | Make mappings tenant-configurable |
+| DHIS2 Tracker (individual-level) | 🔴 | — | Add Tracker adapter for `clientVaccinations` |
+| HL7 FHIR R4 Patient + Immunization | ✅ | `FhirR4Adapter` | Add Encounter, MedicationAdministration, Location, Practitioner |
+| WHO SMART Guidelines IMMZ (DAK→L2→L3) | 🔴 | — | Adopt IMMZ data dictionary; map vaccines to CVX + WHO ATC; align ages |
+| SMART Vaccination Certificates (DDCC-VS) | 🔴 | — | Roadmap if cross-border use is anticipated |
+| GS1 GTIN + lot + expiry (2D barcode) | 🔴 | — | Add `gtin` to `vaccine_configs`; barcode scan on stock entry — Gavi traceability |
+| ICD-11 / SNOMED CT / LOINC | 🔴 | — | Map AEFI events to SNOMED CT or ICD-11 |
+| iHRIS for health workforce | 🔴 | — | Roadmap |
 
 ---
 
-## 10. Offline-first (rural deployment) — alignment with WHO Digital Health "low-resource" guidance
+## 10. GIS-Microplanning standards (WHO/CDC GIS guidance, GRID3, AccessMod)
 
-| Capability | Status | Evidence |
+| Standard | Status | Gap-closure |
 |---|---|---|
-| Local persistent store mirroring server schema | ✅ | Dexie `offlineDb.ts` |
-| Mutation outbox + replay | ✅ | `syncEngine.ts` flush, `OutboxItem` |
-| Conflict log for divergent writes | ✅ | `ConflictLog` table |
-| GIS binary caching for offline maps | ✅ | `gisCache` (GeoJSON + GeoTIFF ArrayBuffer) |
-| Progressive Web App install | 🟡 | Manifest exists; **need explicit "install on Android" UX in onboarding** |
-| Background sync (Service Worker) | 🔴 | Outbox flushes only when the page is open | Register a Service Worker with **Background Sync** to flush queued mutations after connectivity returns. |
+| Authoritative basemap | ✅ | OSM via Leaflet |
+| Building / settlement enumeration (GRID3 / Microsoft / Ecopia) | 🟡 | GRID3 wired for ZMB; extend to SSD + PNG |
+| WorldPop / GRID3 / LandScan gridded population | ✅ | WorldPop 100m R2025A per tenant + refresh job |
+| Catchment delineation (Voronoi / drive-time / walking isochrone) | 🟡 | Custom polygon authoring only | Add WHO **AccessMod**-style friction-surface isochrones |
+| Facility geolocation accuracy (≥25m, MFL standard) | 🟡 | `lat`/`lng` only | Add `coord_accuracy_m`, `coord_source` (GPS/digitized/centroid), `coord_captured_at` |
+| Hard-to-reach classification | ✅ | `is_hard_to_reach`, `insecurity_level`, distance, travel time | — |
+| OSM-compatible export (GeoJSON / KML / Shapefile) | 🟡 | Excel only | Add GeoJSON / KML exports of catchments, sessions, facilities |
+| CRS = WGS84 / EPSG:4326 | ✅ | — | — |
 
 ---
 
-## 11. Top 10 prioritized actions to lift overall alignment from "strong" to "audit-ready"
+## 11. Governance, security & data protection
 
-| # | Action | Standard satisfied | Estimated effort |
-|---|---|---|---|
-| 1 | Add `zero_dose_children` indicator (no DTP1 by 12 mo) on the dashboard | Gavi 5.0 flagship; IA2030 SP1 | S |
-| 2 | Capture **AEFI reports** + report to DHIS2 / WHO IHR | JRF, IHR 2005, Gavi safety | M |
-| 3 | Add **stockout days** + **actual wastage** aggregation in monthly reports | JRF, EVM 2.0 E6 | M |
-| 4 | Add **cold-chain equipment** table with PQS codes + temperature logs | EVM 2.0 E2–E4 | M |
-| 5 | Add **staffing** + **funding source** to microplans | WHO/UNICEF Microplanning core elements 6 & 8 | S |
-| 6 | Extend FHIR adapter with Encounter / MedicationAdministration / Location | SMART Vaccination Certificates, SMART Guidelines IMMZ | M |
-| 7 | Add **GTIN + lot/expiry** capture on stock entry | GS1 / Gavi traceability | M |
-| 8 | Add **supportive supervision visits** entity + checklist | RED/REC; Gavi FCE 4.2 | S |
-| 9 | Add **defaulter list** + **DTP1→DTP3 / DTP1→MCV1 dropout** metrics | WUENIC, RED/REC monitoring | S |
-| 10 | Register a Service Worker for **Background Sync** + document offline UX | Principles for Digital Development; WHO low-resource guidance | M |
+| Standard | Status | Gap-closure |
+|---|---|---|
+| Authentication & SSO (OIDC + SAML for MoH IdPs) | ✅ | Add WebAuthn / passkey for field |
+| Multitenant isolation | ✅ | `tenantContext` + `crossTenantWriteGuard` | — |
+| Audit log (who/what/when/old/new + IP) | ✅ | Export to SIEM (CEF/JSON over syslog) for ISO 27001 |
+| Encryption at rest | 🟡 | Document in `SECURITY.md` |
+| Encryption in transit | ✅ | TLS via Replit | — |
+| PII minimization | 🟡 | Add per-tenant PII redaction for analytics exports |
+| Right to erasure (GDPR Art. 17) | 🔴 | Add "purge client" admin action that cascades and writes audit |
+| Data residency | 🟡 | Document in-country hosting options for MoH procurement |
+| Backups + RPO/RTO documentation | 🔴 | Document backup schedule + restore drill cadence |
+| ISO 27799 mapping | 🟡 | Map existing controls to annex |
 
 ---
 
-## 12. Standards / sources referenced
+## 12. Offline-first capability (low-resource deployment)
 
-- WHO/UNICEF **Microplanning for Immunization Service Delivery using the RED strategy** (2009, revised 2021)
-- WHO **Immunization Agenda 2030 (IA2030)** and its M&E indicator framework
-- WHO/UNICEF **Joint Reporting Form (JRF)** and **WUENIC** methodology
-- WHO **Effective Vaccine Management (EVM 2.0)** assessment standard
-- WHO **SMART Guidelines** (Layer 1–4, IMMZ Digital Adaptation Kit)
+| Capability | Status |
+|---|---|
+| Local store mirroring server schema | ✅ Dexie `offlineDb.ts` |
+| Mutation outbox + replay | ✅ `syncEngine.ts` |
+| Conflict log | ✅ `ConflictLog` table |
+| GIS binary cache (GeoJSON + GeoTIFF) | ✅ `gisCache` |
+| PWA install on Android | 🟡 Manifest exists; add onboarding UX |
+| Service Worker Background Sync | 🔴 Outbox flushes only when page is open |
+
+---
+
+## 13. Top-12 prioritized actions
+
+| # | Action | Standard satisfied | Effort | Files most affected |
+|---|---|---|---|---|
+| 1 | **Enforce session → microplan parenthood** (NOT NULL, plan-type match, lock on parent.locked, backfill) | WHO/UNICEF Microplanning §1.3; workflow integrity | M | `shared/schema.ts`, `server/routes.ts` `/api/sessions`, migration |
+| 2 | **Split the UI** into Routine RI vs SIA workspaces; separate sidebar entries | WHO RED + IA2030 SP5; JRF separation | M | `App.tsx`, `AppSidebar.tsx`, new `pages/CampaignWorkspace.tsx` |
+| 3 | **Zero-dose children indicator** on Dashboard (no DTP1 by 12 mo, by district) | Gavi 5.0 flagship; IA2030 SP1 | S | `Dashboard.tsx`, new SQL view |
+| 4 | **AEFI reports** entity + DHIS2 push | JRF; IHR 2005; Gavi safety | M | `shared/schema.ts`, `pages/AefiReports.tsx`, `hisInteropService.ts` |
+| 5 | **Cold-chain equipment + temperature logs** with PQS codes | EVM 2.0 E2-E4 | M | `shared/schema.ts`, new admin module |
+| 6 | **Stockout days + actual wastage** in monthly reports | JRF; EVM 2.0 E6 | M | `MonthlyReports`, computed in `/api/coverage` |
+| 7 | **Staffing + funding source** on microplan | WHO/UNICEF core elements 6 & 8; Gavi HSS | S | `microplans` schema; `MicroplanBuilder.tsx` |
+| 8 | **GTIN + lot/expiry** on stock entries; barcode-scan UI | GS1; Gavi traceability | M | `vaccine_configs`, `stock_transactions`, `StockLedger.tsx` |
+| 9 | **Supportive supervision visits** entity + checklist | RED/REC; Gavi FCE 4.2 | S | `shared/schema.ts`, new `pages/Supervision.tsx` |
+| 10 | **Defaulter list + DTP1→DTP3 / DTP1→MCV1 dropout** | WUENIC; RED/REC monitoring | S | `ClientLogbook.tsx`, `Dashboard.tsx` |
+| 11 | **Service Worker Background Sync** for outbox | Principles for Digital Development; low-resource WHO | M | `client/src/sw.ts`, `syncEngine.ts` |
+| 12 | **Extend FHIR adapter** (Encounter + MedicationAdministration + Location + Practitioner) | WHO SMART Guidelines IMMZ; FHIR IPS | M | `hisInteropService.ts` |
+
+---
+
+## 14. Standards & sources referenced
+
+- WHO/UNICEF **Microplanning for Immunization Service Delivery using the RED Strategy** (2009, revised 2021)
+- WHO **Immunization Agenda 2030 (IA2030)** + M&E framework
+- WHO/UNICEF **JRF** and **WUENIC** methodology
+- WHO **Effective Vaccine Management (EVM 2.0)**
+- WHO **SMART Guidelines** (L1–L4, IMMZ Digital Adaptation Kit)
 - WHO **Classification of Digital Health Interventions v1.0**
 - WHO **Global Strategy on Digital Health 2020–2025**
-- WHO **Digital Documentation of COVID-19 Certificates: Vaccination Status (DDCC-VS)** / **SMART Vaccination Certificates**
-- WHO **International Health Regulations (IHR 2005)** — Annex 2 reporting
-- WHO **Reaching Every District (RED) / Reaching Every Community (REC)** operational components
-- **Gavi 5.0 Strategy** and **Full Country Evaluation (FCE)** indicators
+- WHO **Digital Documentation of COVID-19 Certificates (DDCC-VS) / SMART Vaccination Certificates**
+- WHO **International Health Regulations (IHR 2005)** Annex 2
+- WHO **Reaching Every District / Reaching Every Community** operational components
+- WHO **AccessMod** for travel-time / catchment analysis
+- **Gavi 5.0 Strategy** + **Full Country Evaluation (FCE)** indicators
 - **Principles for Digital Development** (digitalprinciples.org)
-- **HL7 FHIR R4** + **International Patient Summary** + Immunization profile
-- **DHIS2** Aggregate & Tracker APIs; WHO **DHIS2 Immunization package**
+- **HL7 FHIR R4** + International Patient Summary + Immunization profile
+- **DHIS2** Aggregate & Tracker APIs; WHO DHIS2 Immunization package
 - **GS1 Healthcare** standards (GTIN, 2D barcoding for vaccines)
 - **CVX**, **SNOMED CT**, **ICD-11**, **LOINC**
-- **GRID3 / WorldPop / LandScan** gridded population datasets
+- **GRID3 / WorldPop / LandScan** gridded population
 - **ISO 27001 / ISO 27799** health information security
-- **GDPR** Art. 5, 17, 32 (lawfulness, erasure, security)
-
----
-
-*Generated by the engineering review process on 2026-05-27. Re-run after major releases.*
+- **GDPR** Arts. 5, 17, 32

@@ -31,6 +31,7 @@ import {
   Package,
   Share2,
   Sparkles,
+  ShieldCheck,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useQuery } from "@tanstack/react-query";
@@ -74,6 +75,7 @@ const adminNavItems = [
 ];
 
 const systemNavItems = [
+  { title: "Standards Alignment", path: "/standards-alignment", icon: ShieldCheck },
   { title: "Settings", path: "/settings", icon: Settings },
   { title: "Help", path: "/help", icon: HelpCircle },
 ];
