@@ -89,7 +89,7 @@ import {
 // Delete default Leaflet icons and replace with offline-available premium vector SVG pins
 delete (L.Icon.Default.prototype as any)._getIconUrl;
 L.Icon.Default.prototype.options.iconUrl = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIzNSIgdmlld0JveD0iMCAwIDI0IDM1IiBmaWxsPSJub25lIj48cGF0aCBkPSJNMTIgMEM1LjM3IDAgMCA1LjM3IDAgMTJjMCA5LjMgMTIgMjMgMTIgMjNzMTItMTMuNyAxMi0yM2MwLTYuNjMtNS4zNy0xMi0xMi0xMnoiIGZpbGw9IiMyNTYzZWIiLz48Y2lyY2xlIGN4PSIxMiIgY3k9IjEyIiByPSI0LjUiIGZpbGw9IiNmZmZmZmYiLz48L3N2Zz4=";
-L.Icon.Default.prototype.options.iconRetinaUrl = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIzNSIgdmlld0JveD0iMCAwIDI0IDM1IiBmaWxsPSJub25lIj48cGF0aCBkPSJNMTIgMEM1LjM3IDAgMCA1LjM3IDAgMTJjMCA5LjMgMTIgMjMgMTIgMjNzMTItMTMuNyAxMi-yM2MwLTYuNjMtNS4zNy0xMi0xMi0xMnoiIGZpbGw9IiMyNTYzZWIiLz48Y2lyY2xlIGN4PSIxMiIgY3k9IjEyIiByPSI0LjUiIGZpbGw9IiNmZmZmZmYiLz48L3N2Zz4=";
+L.Icon.Default.prototype.options.iconRetinaUrl = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIzNSIgdmlld0JveD0iMCAwIDI0IDM1IiBmaWxsPSJub25lIj48cGF0aCBkPSJNMTIgMEM1LjM3IDAgMCA1LjM3IDAgMTJjMCA5LjMgMTIgMjMgMTIgMjNzMTItMTMuNyAxMi0yM2MwLTYuNjMtNS4zNy0xMi0xMi0xMnoiIGZpbGw9IiMyNTYzZWIiLz48Y2lyY2xlIGN4PSIxMiIgY3k9IjEyIiByPSI0LjUiIGZpbGw9IiNmZmZmZmYiLz48L3N2Zz4=";
 L.Icon.Default.prototype.options.shadowUrl = ""; // Offline flat vector shadow override
 L.Icon.Default.prototype.options.iconSize = [24, 35];
 L.Icon.Default.prototype.options.iconAnchor = [12, 35];
@@ -4279,7 +4279,7 @@ export function MapView({
                     new L.Icon({
                       iconUrl: plan.isAchieved
                         ? "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIzNSIgdmlld0JveD0iMCAwIDI0IDM1IiBmaWxsPSJub25lIj48cGF0aCBkPSJNMTIgMEM1LjM3IDAgMCA1LjM3IDAgMTJjMCA5LjMgMTIgMjMgMTIgMjNzMTItMTMuNyAxMi0yM2MwLTYuNjMtNS4zNy0xMi0xMi0xMnoiIGZpbGw9IiMxMGI5ODEiLz48Y2lyY2xlIGN4PSIxMiIgY3k9IjEyIiByPSI0LjUiIGZpbGw9IiNmZmZmZmYiLz48L3N2Zz4="
-                        : "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIzNSIgdmlld0JveD0iMCAwIDI0IDM1IiBmaWxsPSJub25lIj48cGF0aCBkPSJNMTIgMEM1LjM3IDAgMCA1LjM3IDAgMTJjMCA5LjMgMTIgMjMgMTIgMjNzMTItMTMuNyAxMi-yM2MwLTYuNjMtNS4zNy0xMi0xMi0xMnoiIGZpbGw9IiNmNTllMGIiLz48Y2lyY2xlIGN4PSIxMiIgY3k9IjEyIiByPSI0LjUiIGZpbGw9IiNmZmZmZmYiLz48L3N2Zz4=",
+                        : "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIzNSIgdmlld0JveD0iMCAwIDI0IDM1IiBmaWxsPSJub25lIj48cGF0aCBkPSJNMTIgMEM1LjM3IDAgMCA1LjM3IDAgMTJjMCA5LjMgMTIgMjMgMTIgMjNzMTItMTMuNyAxMi0yM2MwLTYuNjMtNS4zNy0xMi0xMi0xMnoiIGZpbGw9IiNmNTllMGIiLz48Y2lyY2xlIGN4PSIxMiIgY3k9IjEyIiByPSI0LjUiIGZpbGw9IiNmZmZmZmYiLz48L3N2Zz4=",
                       iconSize: [22, 32],
                       iconAnchor: [11, 32],
                       popupAnchor: [0, -32],
