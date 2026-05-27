@@ -708,11 +708,13 @@ export default function SessionPlanning({
     mutationFn: async ({ id, counts }: { id: number; counts: Record<string, number> }) => {
       if (!navigator.onLine) {
         await enqueueOutbox({
+          tenantId: user?.tenantId ?? "SSD",
+          entityType: "sessionPlan",
           method: "POST",
           url: `/api/sessions/${id}/mark-done`,
-          entityType: "sessionPlan",
-          body: { vaccinatedCounts: counts },
-        } as any);
+          body: JSON.stringify({ vaccinatedCounts: counts }),
+          serverId: id,
+        });
         return { queued: true };
       }
       return apiRequest("POST", `/api/sessions/${id}/mark-done`, { vaccinatedCounts: counts });

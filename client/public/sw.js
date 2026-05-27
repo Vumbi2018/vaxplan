@@ -98,9 +98,9 @@ self.addEventListener("fetch", (event) => {
     return;
   }
   if (url.pathname.startsWith("/api/")) {
-    // Never cache the sync endpoints — they must always hit the network.
-    if (url.pathname.startsWith("/api/sync/")) return;
-    event.respondWith(networkFirst(event.request, API_CACHE));
+    // Per Task #38 spec, /api/* requests bypass the SW cache so the
+    // app always sees fresh data and the outbox/Background-Sync flow
+    // is the single source of truth for offline writes.
     return;
   }
   if (url.pathname.match(/\.(js|css|png|jpg|svg|ico|woff2?|ttf)$/)) {

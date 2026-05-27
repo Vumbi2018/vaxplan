@@ -543,6 +543,15 @@ export async function releaseOutboxLease(owner: string): Promise<void> {
 
 /** Queue a mutation to replay when online */
 export async function enqueueOutbox(item: Omit<OutboxItem, "id" | "retries" | "createdAt">): Promise<number> {
+  // Runtime guard — the server batch replay does JSON.parse(body) and
+  // groups by tenantId, so a missing tenantId or a non-string body
+  // would silently break sync. Fail loudly here instead.
+  if (!item || typeof item.tenantId !== "string" || !item.tenantId) {
+    throw new Error("enqueueOutbox: tenantId is required");
+  }
+  if (item.body !== undefined && typeof item.body !== "string") {
+    throw new Error("enqueueOutbox: body must be a JSON string (use JSON.stringify)");
+  }
   const id = await offlineDb.outbox.add({
     ...item,
     retries: 0,
