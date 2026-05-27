@@ -12,6 +12,7 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { startPopulationRefreshScheduler } from "./jobs/populationRefresh";
+import { seedDemoOperational } from "./migrations/006-seed-demo-operational";
 
 
 const app = express();
@@ -73,6 +74,15 @@ app.use((req, res, next) => {
 (async () => {
   await registerRoutes(httpServer, app);
   startPopulationRefreshScheduler();
+
+  // Auto-run the demo operational seed on startup. Idempotent: every step
+  // skips/upserts so subsequent boots are a no-op once data is in place.
+  // Runs in the background so a slow seed never blocks the HTTP listener.
+  if (process.env.SKIP_DEMO_SEED !== "1") {
+    seedDemoOperational()
+      .then(() => log("demo operational seed complete", "seed"))
+      .catch((err) => log(`demo operational seed failed: ${err?.message ?? err}`, "seed"));
+  }
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;

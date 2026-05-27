@@ -28,7 +28,7 @@
  */
 
 import { db } from "../db";
-import { sql, eq, and } from "drizzle-orm";
+import { sql, eq, and, inArray } from "drizzle-orm";
 import {
   tenants,
   users,
@@ -43,6 +43,8 @@ import {
   monthlyReports,
   clients,
   clientVaccinations,
+  importedCoverage,
+  microplans,
 } from "../../shared/schema";
 
 type TenantCode = "ZMB" | "SSD";
@@ -508,6 +510,43 @@ async function seedSessionPlans(
   for (const p of picks) {
     const catchmentPop = catchmentByFacility.get(p.facilityId);
     if (catchmentPop === undefined) continue;
+
+    // Each session_plan must belong to a parent microplan (NOT NULL FK).
+    // Reuse the demo facility-routine microplan for this quarter, or create
+    // one. Idempotent: re-running picks up the existing row.
+    const microplanName = `${p.facilityName} — Demo Microplan Q${QUARTER} ${YEAR}`;
+    const existingMicroplan = await db
+      .select({ id: microplans.id })
+      .from(microplans)
+      .where(
+        and(
+          eq(microplans.tenantId, tenantId),
+          eq(microplans.facilityId, p.facilityId),
+          eq(microplans.name, microplanName),
+          eq(microplans.year, YEAR),
+          eq(microplans.quarter, QUARTER),
+        ),
+      )
+      .limit(1);
+    let microplanId: number;
+    if (existingMicroplan.length > 0) {
+      microplanId = existingMicroplan[0].id;
+    } else {
+      const [created] = await db
+        .insert(microplans)
+        .values({
+          tenantId,
+          facilityId: p.facilityId,
+          name: microplanName,
+          planType: "facility_routine",
+          year: YEAR,
+          quarter: QUARTER,
+          status: "approved",
+        })
+        .returning({ id: microplans.id });
+      microplanId = created.id;
+    }
+
     // Per-quarter under-1 cohort served by this facility.
     const quarterlyUnder1 = (catchmentPop * demographics.under1) / 4;
     for (const tpl of SESSION_TEMPLATES) {
@@ -520,6 +559,7 @@ async function seedSessionPlans(
       await db.insert(sessionPlans).values({
         tenantId,
         facilityId: p.facilityId,
+        microplanId,
         name,
         sessionType: tpl.sessionType,
         quarter: QUARTER,
@@ -598,6 +638,7 @@ async function ensureVaccineConfigs(tenantId: string): Promise<Map<string, numbe
  *      clients.village_id (NOT NULL) can always be anchored to a real row.
  */
 const MAX_VILLAGES_PER_FACILITY = 5;
+const MIN_VILLAGES_PER_FACILITY = 4;
 
 async function pickVillagesPerFacility(
   tenantId: string,
@@ -627,20 +668,27 @@ async function pickVillagesPerFacility(
         if (v.districtId === p.districtId && !pool.includes(v.id)) pool.push(v.id);
       }
     }
-    if (pool.length === 0) {
-      const demoName = `Demo Catchment Village (${p.facilityName})`;
+    // Top up to MIN_VILLAGES_PER_FACILITY so Missed Communities scoring has
+    // a meaningful ranked list. Create demo catchment villages as needed,
+    // reusing any prior demo rows from previous seed runs.
+    let topUpIndex = 1;
+    while (pool.length < MIN_VILLAGES_PER_FACILITY) {
+      const demoName =
+        topUpIndex === 1
+          ? `Demo Catchment Village (${p.facilityName})`
+          : `Demo Catchment Village ${topUpIndex} (${p.facilityName})`;
       const reused = rows.find(
         (v) => v.name === demoName && v.districtId === p.districtId,
       );
       if (reused) {
-        pool.push(reused.id);
+        if (!pool.includes(reused.id)) pool.push(reused.id);
       } else {
         const [created] = await db
           .insert(villages)
           .values({
             tenantId,
             name: demoName,
-            code: `DEMO-${p.facilityId}`,
+            code: `DEMO-${p.facilityId}-${topUpIndex}`,
             districtId: p.districtId,
             assignedFacilityId: p.facilityId,
           })
@@ -653,6 +701,8 @@ async function pickVillagesPerFacility(
           assignedFacilityId: p.facilityId,
         });
       }
+      topUpIndex += 1;
+      if (topUpIndex > 20) break; // safety
     }
     out.set(p.facilityId, pool);
   }
@@ -1011,7 +1061,166 @@ async function seedDemoClients(
   return { clientsInserted, vaccinationsInserted };
 }
 
-async function run() {
+/**
+ * Seed village-level population_data rows so the Missed Communities scorer
+ * (which reads populationData.villageId → under1Population) has registered
+ * pop figures to compute unserved estimates from. Idempotent: skips any
+ * (tenant, village, source='nso', year) row that already exists.
+ */
+async function seedVillagePopulation(
+  tenantId: string,
+  villagesByFacility: Map<number, number[]>,
+  picks: FacilityPick[],
+): Promise<number> {
+  const villageIds = Array.from(new Set(Array.from(villagesByFacility.values()).flat()));
+  if (villageIds.length === 0) return 0;
+
+  const villageRows = await db
+    .select({
+      id: villages.id,
+      districtId: villages.districtId,
+      assignedFacilityId: villages.assignedFacilityId,
+    })
+    .from(villages)
+    .where(and(eq(villages.tenantId, tenantId), inArray(villages.id, villageIds)));
+
+  const provinceByDistrict = new Map<number, number>();
+  for (const p of picks) provinceByDistrict.set(p.districtId, p.provinceId);
+
+  const existing = await db
+    .select({ villageId: populationData.villageId, year: populationData.year, source: populationData.source })
+    .from(populationData)
+    .where(and(eq(populationData.tenantId, tenantId), inArray(populationData.villageId, villageIds)));
+  const existingKeys = new Set(existing.map((r) => `${r.villageId}|${r.source}|${r.year}`));
+
+  let inserted = 0;
+  for (let i = 0; i < villageRows.length; i++) {
+    const v = villageRows[i];
+    const key = `${v.id}|nso|${YEAR}`;
+    if (existingKeys.has(key)) continue;
+    // Deterministic per-village under-1 count between ~25 and ~150.
+    const under1 = 25 + ((v.id * 37) % 126);
+    const total = under1 * 28; // ~3.5% under-1 ratio
+    await db.insert(populationData).values({
+      tenantId,
+      villageId: v.id,
+      facilityId: v.assignedFacilityId ?? null,
+      districtId: v.districtId,
+      provinceId: provinceByDistrict.get(v.districtId) ?? null,
+      source: "nso",
+      year: YEAR,
+      totalPopulation: total,
+      under1Population: under1,
+      under5Population: under1 * 5,
+      confidenceScore: "80.00",
+      approvalStatus: "approved",
+    });
+    inserted++;
+  }
+  return inserted;
+}
+
+/**
+ * Seed imported_coverage rows for the Missed Communities page.
+ * Writes deliberately under-target doses across the last 3 reporting periods
+ * for the main RI antigens so the ranked list is non-trivial.
+ *
+ * Idempotent via the (tenant, facility, period, antigen, source='csv') unique
+ * constraint — re-running upserts the same dose count.
+ */
+const COVERAGE_ANTIGENS = ["BCG", "PENTA1", "PENTA3", "MEASLES1", "MEASLES2", "OPV1", "OPV3"];
+
+function lastNPeriods(n: number): string[] {
+  const out: string[] = [];
+  const now = new Date();
+  for (let i = 0; i < n; i++) {
+    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
+    out.push(`${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, "0")}`);
+  }
+  return out;
+}
+
+async function seedImportedCoverage(
+  tenantId: string,
+  picks: FacilityPick[],
+  villagesByFacility: Map<number, number[]>,
+): Promise<number> {
+  if (picks.length === 0) return 0;
+  const periods = lastNPeriods(3);
+
+  // Sum of registered under-1 across the facility's seeded villages.
+  const villageIds = Array.from(new Set(Array.from(villagesByFacility.values()).flat()));
+  const popRows = villageIds.length
+    ? await db
+        .select({ villageId: populationData.villageId, under1: populationData.under1Population })
+        .from(populationData)
+        .where(and(eq(populationData.tenantId, tenantId), inArray(populationData.villageId, villageIds)))
+    : [];
+  const popByVillage = new Map<number, number>();
+  for (const r of popRows) {
+    if (r.villageId == null) continue;
+    const prev = popByVillage.get(r.villageId) ?? 0;
+    if ((r.under1 ?? 0) > prev) popByVillage.set(r.villageId, r.under1 ?? 0);
+  }
+
+  let inserted = 0;
+  for (let pi = 0; pi < picks.length; pi++) {
+    const p = picks[pi];
+    const facVillages = villagesByFacility.get(p.facilityId) ?? [];
+    const registeredUnder1 = facVillages.reduce((s, vid) => s + (popByVillage.get(vid) ?? 0), 0);
+    if (registeredUnder1 === 0) continue;
+
+    for (const period of periods) {
+      const rows: Array<typeof importedCoverage.$inferInsert> = [];
+      for (let ai = 0; ai < COVERAGE_ANTIGENS.length; ai++) {
+        const antigen = COVERAGE_ANTIGENS[ai];
+        // Deliberately under-cover: 30%-70% depending on facility/antigen so
+        // the missed-community ranking has meaningful unserved estimates and
+        // facilities differ from each other.
+        const seed = (p.facilityId * 13 + ai * 7 + pi * 5) % 41;
+        const coverage = 0.3 + (seed / 41) * 0.4; // 0.30 – 0.70
+        const doses = Math.max(1, Math.round(registeredUnder1 * coverage));
+        rows.push({
+          tenantId,
+          facilityId: p.facilityId,
+          period,
+          antigen,
+          dosesAdministered: doses,
+          source: "csv",
+          sourceRef: "demo-seed",
+          importedByUserId: null,
+        });
+      }
+      if (rows.length === 0) continue;
+      await db
+        .insert(importedCoverage)
+        .values(rows)
+        .onConflictDoUpdate({
+          target: [
+            importedCoverage.tenantId,
+            importedCoverage.facilityId,
+            importedCoverage.period,
+            importedCoverage.antigen,
+            importedCoverage.source,
+          ],
+          set: {
+            dosesAdministered: sql`excluded.doses_administered`,
+            sourceRef: sql`excluded.source_ref`,
+            importedAt: sql`now()`,
+          },
+        });
+      inserted += rows.length;
+    }
+  }
+  return inserted;
+}
+
+/**
+ * Top-level seed entrypoint. Safe to call repeatedly — every step is
+ * idempotent and gracefully skips tenants/facilities that aren't seeded yet.
+ * Returns silently (no process.exit) so it can be invoked from server startup.
+ */
+export async function seedDemoOperational(): Promise<void> {
   for (const code of ["ZMB", "SSD"] as TenantCode[]) {
     const rows = await db.select().from(tenants).where(eq(tenants.code, code)).limit(1);
     const tenant = rows[0];
@@ -1043,6 +1252,8 @@ async function run() {
     const mr = await seedMonthlyReports(tenant.id, picks, demographics, catchmentByFacility);
     const vaccineConfigByName = await ensureVaccineConfigs(tenant.id);
     const villagesByFacility = await pickVillagesPerFacility(tenant.id, picks);
+    const vp = await seedVillagePopulation(tenant.id, villagesByFacility, picks);
+    const ic = await seedImportedCoverage(tenant.id, picks, villagesByFacility);
     const { clientsInserted, vaccinationsInserted } = await seedDemoClients(
       tenant.id,
       picks,
@@ -1050,20 +1261,25 @@ async function run() {
       vaccineConfigByName,
     );
     console.log(
-      `[${code}] picked ${picks.length} facilities • +${u} users • +${pop} population rows • +${vr} vaccine requirements • +${sp} session plans • +${mr} monthly reports • +${clientsInserted} demo clients • +${vaccinationsInserted} client vaccinations`,
+      `[${code}] picked ${picks.length} facilities • +${u} users • +${pop} facility-pop • +${vp} village-pop • +${vr} vaccine reqs • +${sp} session plans • +${mr} monthly reports • +${ic} imported-coverage rows • +${clientsInserted} demo clients • +${vaccinationsInserted} client vaccinations`,
     );
   }
+}
+
+async function runCli() {
+  await seedDemoOperational();
 
   const summary = await db.execute(sql`
     SELECT
       t.code,
-      (SELECT COUNT(*) FROM users               u WHERE u.tenant_id = t.id) AS users,
-      (SELECT COUNT(*) FROM population_data     p WHERE p.tenant_id = t.id) AS population_rows,
+      (SELECT COUNT(*) FROM users                u WHERE u.tenant_id = t.id) AS users,
+      (SELECT COUNT(*) FROM population_data      p WHERE p.tenant_id = t.id) AS population_rows,
       (SELECT COUNT(*) FROM vaccine_requirements v WHERE v.tenant_id = t.id) AS vaccine_requirements,
-      (SELECT COUNT(*) FROM session_plans       s WHERE s.tenant_id = t.id) AS session_plans,
-      (SELECT COUNT(*) FROM monthly_reports     m WHERE m.tenant_id = t.id) AS monthly_reports,
+      (SELECT COUNT(*) FROM session_plans        s WHERE s.tenant_id = t.id) AS session_plans,
+      (SELECT COUNT(*) FROM monthly_reports      m WHERE m.tenant_id = t.id) AS monthly_reports,
       (SELECT COUNT(*) FROM clients              c WHERE c.tenant_id = t.id) AS clients,
-      (SELECT COUNT(*) FROM client_vaccinations  cv WHERE cv.tenant_id = t.id) AS client_vaccinations
+      (SELECT COUNT(*) FROM client_vaccinations  cv WHERE cv.tenant_id = t.id) AS client_vaccinations,
+      (SELECT COUNT(*) FROM imported_coverage    ic WHERE ic.tenant_id = t.id) AS imported_coverage_rows
     FROM tenants t
     WHERE t.code IN ('ZMB','SSD')
     ORDER BY t.code;
@@ -1074,7 +1290,22 @@ async function run() {
   process.exit(0);
 }
 
-run().catch((err) => {
-  console.error("Demo seed failed:", err);
-  process.exit(1);
-});
+// Only auto-run process.exit-style when invoked directly via `tsx`. When this
+// module is imported (e.g. from server startup), exports are consumed and the
+// CLI runner does not fire.
+const isDirectCli = (() => {
+  try {
+    const invoked = process.argv[1] ?? "";
+    return invoked.endsWith("006-seed-demo-operational.ts") ||
+           invoked.endsWith("006-seed-demo-operational.js");
+  } catch {
+    return false;
+  }
+})();
+
+if (isDirectCli) {
+  runCli().catch((err) => {
+    console.error("Demo seed failed:", err);
+    process.exit(1);
+  });
+}
