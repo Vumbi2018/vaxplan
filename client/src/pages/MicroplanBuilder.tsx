@@ -56,7 +56,32 @@ import type {
   BudgetItem,
   MobilizationActivity,
   Tenant,
+  Microplan,
 } from "@shared/schema";
+
+type StaffingRow = {
+  role: string;
+  headcount: number;
+  days: number;
+  perDiem: number;
+};
+
+const STAFFING_ROLES = [
+  "Vaccinator",
+  "Mobilizer",
+  "Supervisor",
+  "Driver",
+  "Recorder",
+];
+
+const FUNDING_SOURCES: Array<{ value: string; label: string }> = [
+  { value: "government", label: "Government" },
+  { value: "gavi", label: "Gavi" },
+  { value: "who", label: "WHO" },
+  { value: "unicef", label: "UNICEF" },
+  { value: "other", label: "Other" },
+  { value: "unspecified", label: "Unspecified" },
+];
 
 const transportIcons: Record<string, typeof Car> = {
   walking: Footprints,
@@ -198,6 +223,10 @@ export default function MicroplanBuilder() {
 
   const { data: activeTenant } = useQuery<Tenant>({
     queryKey: ["/api/me/tenant"],
+  });
+
+  const { data: microplans, refetch: refetchMicroplans } = useQuery<Microplan[]>({
+    queryKey: ["/api/microplans"],
   });
 
   // Automatically bind selected facility to user context
@@ -519,16 +548,113 @@ export default function MicroplanBuilder() {
     description: string;
     unitCost: string;
     quantity: number;
+    fundingSource: string;
+    fundingSourceOther?: string;
   }>>([]);
+
+  // ── Staffing roster (microplan element 6) ──────────────────────────────
+  const activeMicroplan = useMemo(() => {
+    if (!microplans) return null;
+    if (activeSession?.microplanId) {
+      return microplans.find((m) => m.id === activeSession.microplanId) || null;
+    }
+    if (!selectedFacilityId) return null;
+    const q = Math.ceil((new Date().getMonth() + 1) / 3);
+    const y = new Date().getFullYear();
+    return (
+      microplans.find(
+        (m) =>
+          m.facilityId === selectedFacilityId &&
+          m.quarter === q &&
+          m.year === y &&
+          m.status !== "locked",
+      ) || null
+    );
+  }, [microplans, activeSession, selectedFacilityId]);
+
+  const [staffingRows, setStaffingRows] = useState<StaffingRow[]>([]);
+  useEffect(() => {
+    const seed = (activeMicroplan?.staffing as StaffingRow[] | null) || [];
+    setStaffingRows(
+      seed.length > 0
+        ? seed
+        : STAFFING_ROLES.map((role) => ({ role, headcount: 0, days: 0, perDiem: 0 })),
+    );
+  }, [activeMicroplan]);
+
+  const staffingTotal = useMemo(
+    () =>
+      staffingRows.reduce(
+        (sum, r) => sum + (r.headcount || 0) * (r.days || 0) * (r.perDiem || 0),
+        0,
+      ),
+    [staffingRows],
+  );
+
+  const saveStaffingMutation = useMutation({
+    mutationFn: async () => {
+      if (!activeMicroplan) throw new Error("No active microplan to attach staffing to.");
+      return apiRequest("PATCH", `/api/microplans/${activeMicroplan.id}`, {
+        staffing: staffingRows,
+      });
+    },
+    onSuccess: () => {
+      refetchMicroplans();
+      toast({ title: "Staffing saved", description: "Roster updated on the microplan." });
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to save staffing", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const syncStaffingToBudget = async () => {
+    if (!activeSessionId || !selectedFacilityId) {
+      toast({
+        title: "Select a session first",
+        description: "Draft or open a session plan before syncing staffing to budget.",
+        variant: "destructive",
+      });
+      return;
+    }
+    const q = Math.ceil((new Date().getMonth() + 1) / 3);
+    const y = new Date().getFullYear();
+    let added = 0;
+    for (const row of staffingRows) {
+      const total = (row.headcount || 0) * (row.days || 0);
+      if (total <= 0 || !row.perDiem) continue;
+      await apiRequest("POST", "/api/budget-items", {
+        facilityId: selectedFacilityId,
+        sessionId: activeSessionId,
+        category: "Per Diem",
+        description: `${row.role} per-diem (${row.headcount} × ${row.days}d)`,
+        unitCost: String(row.perDiem),
+        quantity: total,
+        totalCost: String(total * row.perDiem),
+        quarter: q,
+        year: y,
+        approvalStatus: "draft",
+        fundingSource: "unspecified",
+      });
+      added++;
+    }
+    await refetchBudgets();
+    toast({
+      title: added > 0 ? "Staffing pushed to budget" : "Nothing to push",
+      description:
+        added > 0
+          ? `${added} Per Diem line(s) added. Classify funding source on the Budget Planning page.`
+          : "Set headcount, days, and per-diem on at least one role first.",
+    });
+  };
 
   useEffect(() => {
     if (activeStep === 7 && activeSessionId && budgetItems) {
       const existing = budgetItems.filter(b => b.sessionId === activeSessionId);
       if (existing.length === 0 && draftRows.length === 0) {
         setDraftRows([
-          { tempId: "p", category: "Personnel", description: "Team allowances & per diems", unitCost: "150", quantity: 2 },
-          { tempId: "t", category: "Transport", description: "Fuel & vehicle hire", unitCost: "200", quantity: 1 },
-          { tempId: "s", category: "Supplies", description: "Cotton, disposal boxes, printing", unitCost: "50", quantity: 1 },
+          { tempId: "p", category: "Personnel", description: "Team allowances & per diems", unitCost: "150", quantity: 2, fundingSource: "unspecified" },
+          { tempId: "t", category: "Transport", description: "Fuel & vehicle hire", unitCost: "200", quantity: 1, fundingSource: "unspecified" },
+          { tempId: "s", category: "Supplies", description: "Cotton, disposal boxes, printing", unitCost: "50", quantity: 1, fundingSource: "unspecified" },
         ]);
       }
     }
@@ -541,6 +667,14 @@ export default function MicroplanBuilder() {
       toast({ title: "Validation Error", description: "Please fill in both Category and Description.", variant: "destructive" });
       return;
     }
+    if (draft.fundingSource === "other" && !(draft.fundingSourceOther ?? "").trim()) {
+      toast({
+        title: "Specify funding source",
+        description: "Enter a funding source name when 'Other' is selected.",
+        variant: "destructive",
+      });
+      return;
+    }
     addBudgetMutation.mutate({
       facilityId: selectedFacilityId,
       sessionId: activeSessionId,
@@ -551,6 +685,8 @@ export default function MicroplanBuilder() {
       quarter: Math.ceil((new Date().getMonth() + 1) / 3),
       year: new Date().getFullYear(),
       approvalStatus: "draft",
+      fundingSource: draft.fundingSource || "unspecified",
+      fundingSourceOther: draft.fundingSource === "other" ? draft.fundingSourceOther || null : null,
     }, {
       onSuccess: () => {
         setDraftRows(prev => prev.filter(r => r.tempId !== tempId));
@@ -2147,7 +2283,141 @@ export default function MicroplanBuilder() {
               </CardDescription>
             </CardHeader>
             <CardContent className="p-4 space-y-4 pt-5 overflow-x-auto">
-              
+
+              {/* Staffing Roster (WHO microplanning element 6 — Human Resources) */}
+              <div className="rounded-2xl border border-border/40 bg-muted/5 p-4 space-y-3">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div>
+                    <h3 className="text-sm font-extrabold flex items-center gap-1.5">
+                      <Users className="h-4 w-4 text-indigo-600" />
+                      Staffing Roster
+                    </h3>
+                    <p className="text-[10px] text-muted-foreground">
+                      Plan headcount, days, and per-diem per role. Totals can be pushed to the budget below.
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[9px] font-bold text-muted-foreground uppercase mr-2">Staffing Total:</span>
+                    <span className="text-sm font-mono font-black text-emerald-600 dark:text-emerald-400">
+                      K{staffingTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs text-left border-collapse min-w-[520px]">
+                    <thead>
+                      <tr className="border-b border-border/40 text-muted-foreground uppercase font-bold text-[9px] tracking-wider">
+                        <th className="py-2 px-1">Role</th>
+                        <th className="py-2 px-1 w-20">Headcount</th>
+                        <th className="py-2 px-1 w-16">Days</th>
+                        <th className="py-2 px-1 w-24">Per-diem (K)</th>
+                        <th className="py-2 px-1 w-24 text-right">Subtotal</th>
+                        <th className="py-2 px-1 w-10 text-center">—</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {staffingRows.map((row, idx) => {
+                        const subtotal = (row.headcount || 0) * (row.days || 0) * (row.perDiem || 0);
+                        const update = (patch: Partial<StaffingRow>) =>
+                          setStaffingRows(staffingRows.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
+                        return (
+                          <tr key={idx} className="border-b border-border/30">
+                            <td className="py-1.5 px-1">
+                              <Input
+                                value={row.role}
+                                onChange={(e) => update({ role: e.target.value })}
+                                className="bg-background rounded-lg text-xs h-8 px-2 font-semibold"
+                                data-testid={`input-staff-role-${idx}`}
+                              />
+                            </td>
+                            <td className="py-1.5 px-1">
+                              <Input
+                                type="number"
+                                min={0}
+                                value={row.headcount}
+                                onChange={(e) => update({ headcount: parseInt(e.target.value) || 0 })}
+                                className="bg-background rounded-lg text-xs h-8 px-2 font-mono"
+                              />
+                            </td>
+                            <td className="py-1.5 px-1">
+                              <Input
+                                type="number"
+                                min={0}
+                                value={row.days}
+                                onChange={(e) => update({ days: parseInt(e.target.value) || 0 })}
+                                className="bg-background rounded-lg text-xs h-8 px-2 font-mono"
+                              />
+                            </td>
+                            <td className="py-1.5 px-1">
+                              <Input
+                                type="number"
+                                min={0}
+                                step="0.01"
+                                value={row.perDiem}
+                                onChange={(e) => update({ perDiem: parseFloat(e.target.value) || 0 })}
+                                className="bg-background rounded-lg text-xs h-8 px-2 font-mono"
+                              />
+                            </td>
+                            <td className="py-1.5 px-1 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                              K{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </td>
+                            <td className="py-1.5 px-1 text-center">
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                onClick={() => setStaffingRows(staffingRows.filter((_, i) => i !== idx))}
+                                className="h-7 w-7 text-destructive hover:bg-destructive/10 rounded-lg"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      setStaffingRows([...staffingRows, { role: "", headcount: 0, days: 0, perDiem: 0 }])
+                    }
+                    className="rounded-xl text-xs font-bold border-indigo-600/30 text-indigo-600 hover:bg-indigo-50"
+                    data-testid="button-add-staff-row"
+                  >
+                    <Plus className="h-3.5 w-3.5 mr-1" /> Add Role
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => saveStaffingMutation.mutate()}
+                    disabled={!activeMicroplan || saveStaffingMutation.isPending}
+                    className="rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white"
+                    data-testid="button-save-staffing"
+                  >
+                    {saveStaffingMutation.isPending ? "Saving..." : "Save Roster"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={syncStaffingToBudget}
+                    disabled={!activeSessionId || staffingTotal <= 0}
+                    className="rounded-xl text-xs font-bold border-emerald-600/30 text-emerald-700 hover:bg-emerald-50"
+                    data-testid="button-sync-staff-budget"
+                  >
+                    <Wallet className="h-3.5 w-3.5 mr-1" /> Push to Budget as Per-Diem
+                  </Button>
+                  {!activeMicroplan && (
+                    <span className="text-[10px] text-muted-foreground italic">
+                      Draft or open a session to attach a microplan.
+                    </span>
+                  )}
+                </div>
+              </div>
+
               <div className="min-w-[600px]">
                 <table className="w-full text-xs text-left border-collapse">
                   <thead>
@@ -2156,6 +2426,7 @@ export default function MicroplanBuilder() {
                       <th className="py-2 px-1">Description</th>
                       <th className="py-2 px-1 w-20">Unit Cost (K)</th>
                       <th className="py-2 px-1 w-16">Qty</th>
+                      <th className="py-2 px-1 w-28">Funding</th>
                       <th className="py-2 px-1 w-24 text-right">Total</th>
                       <th className="py-2 px-1 text-center w-20">Actions</th>
                     </tr>
@@ -2203,6 +2474,17 @@ export default function MicroplanBuilder() {
                               onChange={(e) => handleExistingRowChange(b.id, "quantity", parseInt(e.target.value) || 0)}
                               className="bg-background rounded-lg text-xs h-8 px-2 font-mono"
                             />
+                          </td>
+                          <td className="py-1.5 px-1">
+                            {(!b.fundingSource || b.fundingSource === "unspecified") ? (
+                              <Badge variant="outline" className="text-[9px] border-amber-500/40 text-amber-700 dark:text-amber-400 bg-amber-500/10">
+                                Needs classification
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-[10px] capitalize">
+                                {b.fundingSource === "other" && b.fundingSourceOther ? b.fundingSourceOther : b.fundingSource}
+                              </Badge>
+                            )}
                           </td>
                           <td className="py-1.5 px-1 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400">
                             K{rowTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -2278,6 +2560,29 @@ export default function MicroplanBuilder() {
                               className="bg-background rounded-lg text-xs h-8 px-2 font-mono border-indigo-500/20"
                             />
                           </td>
+                          <td className="py-1.5 px-1">
+                            <Select
+                              value={draft.fundingSource}
+                              onValueChange={(v) => setDraftRows(draftRows.map(r => r.tempId === draft.tempId ? { ...r, fundingSource: v } : r))}
+                            >
+                              <SelectTrigger className="h-8 text-xs rounded-lg border-indigo-500/20 bg-background" data-testid={`select-draft-funding-${draft.tempId}`}>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {FUNDING_SOURCES.map((fs) => (
+                                  <SelectItem key={fs.value} value={fs.value}>{fs.label}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            {draft.fundingSource === "other" && (
+                              <Input
+                                value={draft.fundingSourceOther || ""}
+                                onChange={(e) => setDraftRows(draftRows.map(r => r.tempId === draft.tempId ? { ...r, fundingSourceOther: e.target.value } : r))}
+                                placeholder="Specify..."
+                                className="mt-1 h-7 text-[11px] rounded-lg border-indigo-500/20 bg-background"
+                              />
+                            )}
+                          </td>
                           <td className="py-1.5 px-1 text-right font-mono font-bold text-slate-500">
                             K{rowTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </td>
@@ -2307,7 +2612,7 @@ export default function MicroplanBuilder() {
 
                     {(!budgetItems || budgetItems.filter(b => b.sessionId === activeSessionId).length === 0) && draftRows.length === 0 && (
                       <tr>
-                        <td colSpan={6} className="py-8 text-center text-muted-foreground italic">
+                        <td colSpan={7} className="py-8 text-center text-muted-foreground italic">
                           No costing rows allocated. Click "+ Add Custom Row" to start adding expenses.
                         </td>
                       </tr>
@@ -2326,7 +2631,8 @@ export default function MicroplanBuilder() {
                         category: "",
                         description: "",
                         unitCost: "100",
-                        quantity: 1
+                        quantity: 1,
+                        fundingSource: "unspecified",
                       }
                     ]);
                   }}

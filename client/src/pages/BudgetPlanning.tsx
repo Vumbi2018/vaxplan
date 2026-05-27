@@ -70,11 +70,30 @@ import {
 import { MicroplanStepper } from "@/components/MicroplanStepper";
 import { z } from "zod";
 
-const budgetFormSchema = insertBudgetItemSchema.extend({
-  description: z.string().min(2, "Description is required"),
-  unitCost: z.string().transform((v) => v),
-  totalCost: z.string().transform((v) => v),
-});
+const budgetFormSchema = z
+  .object({
+    facilityId: z.coerce.number(),
+    sessionId: z.coerce.number().optional().nullable(),
+    category: z.string().min(1, "Category is required"),
+    description: z.string().min(2, "Description is required"),
+    unitCost: z.string().min(1, "Unit cost is required"),
+    quantity: z.coerce.number().min(1),
+    totalCost: z.string().optional(),
+    quarter: z.coerce.number(),
+    year: z.coerce.number(),
+    approvalStatus: z.string().optional(),
+    fundingSource: z.enum(["government", "gavi", "who", "unicef", "other", "unspecified"]),
+    fundingSourceOther: z.string().optional().nullable(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.fundingSource === "other" && !(data.fundingSourceOther ?? "").trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["fundingSourceOther"],
+        message: "Specify the funding source when 'Other' is selected.",
+      });
+    }
+  });
 
 const budgetCategories = [
   "Personnel",
@@ -85,6 +104,14 @@ const budgetCategories = [
   "Training",
   "Communication",
   "Other",
+];
+
+const fundingSourceOptions: Array<{ value: string; label: string; color: string }> = [
+  { value: "government", label: "Government", color: "bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30" },
+  { value: "gavi", label: "Gavi", color: "bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/30" },
+  { value: "who", label: "WHO", color: "bg-cyan-500/15 text-cyan-700 dark:text-cyan-300 border-cyan-500/30" },
+  { value: "unicef", label: "UNICEF", color: "bg-sky-500/15 text-sky-700 dark:text-sky-300 border-sky-500/30" },
+  { value: "other", label: "Other", color: "bg-slate-500/15 text-slate-700 dark:text-slate-300 border-slate-500/30" },
 ];
 
 export default function BudgetPlanning() {
@@ -199,8 +226,11 @@ export default function BudgetPlanning() {
       year: new Date().getFullYear(),
       quantity: 1,
       approvalStatus: "draft",
+      fundingSource: "government",
     },
   });
+
+  const formFundingSource = form.watch("fundingSource");
 
   const formFacilityId = form.watch("facilityId");
   const formQuarter = form.watch("quarter");
@@ -340,6 +370,25 @@ export default function BudgetPlanning() {
       .reduce((sum, item) => sum + parseFloat(item.totalCost || "0"), 0),
   })).filter((c) => c.total > 0);
 
+  const fundingTotals = useMemo(() => {
+    const groups: Record<string, number> = {};
+    for (const item of quarterItems) {
+      const fs = ((item as any).fundingSource as string) || "unspecified";
+      groups[fs] = (groups[fs] || 0) + parseFloat(item.totalCost || "0");
+    }
+    return groups;
+  }, [quarterItems]);
+
+  const unspecifiedCount = useMemo(
+    () =>
+      quarterItems.filter(
+        (i) => !(i as any).fundingSource || (i as any).fundingSource === "unspecified",
+      ).length,
+    [quarterItems],
+  );
+
+  const fundingGrandTotal = Object.values(fundingTotals).reduce((s, n) => s + n, 0);
+
   const columns = [
     {
       key: "_geoProvinceName",
@@ -413,6 +462,31 @@ export default function BudgetPlanning() {
           K{parseFloat(item.totalCost || "0").toLocaleString()}
         </span>
       ),
+    },
+    {
+      key: "fundingSource",
+      header: "Funding",
+      sortable: true,
+      render: (item: BudgetItem) => {
+        const fs = (item as any).fundingSource || "unspecified";
+        if (fs === "unspecified") {
+          return (
+            <Badge variant="outline" className="text-[10px] bg-amber-500/10 border-amber-500/40 text-amber-700 dark:text-amber-400">
+              Needs classification
+            </Badge>
+          );
+        }
+        const opt = fundingSourceOptions.find((o) => o.value === fs);
+        const label =
+          fs === "other" && (item as any).fundingSourceOther
+            ? (item as any).fundingSourceOther
+            : opt?.label || fs;
+        return (
+          <Badge variant="outline" className={`text-[10px] ${opt?.color || ""}`}>
+            {label}
+          </Badge>
+        );
+      },
     },
     {
       key: "approvalStatus",
@@ -720,6 +794,55 @@ export default function BudgetPlanning() {
                     />
                   </div>
 
+                  <FormField
+                    control={form.control}
+                    name="fundingSource"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Funding Source *</FormLabel>
+                        <Select
+                          onValueChange={field.onChange}
+                          value={(field.value as string) || "government"}
+                        >
+                          <FormControl>
+                            <SelectTrigger data-testid="select-funding-source">
+                              <SelectValue placeholder="Select funding source" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {fundingSourceOptions.map((opt) => (
+                              <SelectItem key={opt.value} value={opt.value}>
+                                {opt.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  {formFundingSource === "other" && (
+                    <FormField
+                      control={form.control}
+                      name="fundingSourceOther"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Specify funding source *</FormLabel>
+                          <FormControl>
+                            <Input
+                              {...field}
+                              value={(field.value as string) || ""}
+                              placeholder="e.g. Bilateral donor, NGO partner..."
+                              data-testid="input-funding-source-other"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  )}
+
                   <div className="flex justify-end gap-2 pt-4">
                     <Button
                       type="button"
@@ -821,32 +944,102 @@ export default function BudgetPlanning() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-lg">By Category</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {categoryTotals.length === 0 ? (
+        <div className="space-y-6">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg">By Category</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {categoryTotals.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    No budget allocations yet
+                  </p>
+                ) : (
+                  categoryTotals.map((cat) => (
+                    <div
+                      key={cat.category}
+                      className="flex items-center justify-between p-3 rounded-lg bg-muted/50"
+                    >
+                      <span className="text-sm font-medium">{cat.category}</span>
+                      <span className="font-mono text-sm">
+                        K{cat.total.toLocaleString()}
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg flex items-center justify-between">
+                <span>By Funding Source</span>
+                {unspecifiedCount > 0 && (
+                  <Badge variant="outline" className="text-[10px] bg-amber-500/10 border-amber-500/40 text-amber-700 dark:text-amber-400">
+                    {unspecifiedCount} unclassified
+                  </Badge>
+                )}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {fundingGrandTotal === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-4">
                   No budget allocations yet
                 </p>
               ) : (
-                categoryTotals.map((cat) => (
-                  <div
-                    key={cat.category}
-                    className="flex items-center justify-between p-3 rounded-lg bg-muted/50"
-                  >
-                    <span className="text-sm font-medium">{cat.category}</span>
-                    <span className="font-mono text-sm">
-                      K{cat.total.toLocaleString()}
-                    </span>
+                <div className="space-y-3">
+                  <div className="flex h-3 w-full rounded-full overflow-hidden bg-muted">
+                    {[...fundingSourceOptions, { value: "unspecified", label: "Unspecified", color: "bg-amber-500/60" }].map((opt) => {
+                      const amount = fundingTotals[opt.value] || 0;
+                      if (amount <= 0) return null;
+                      const pct = (amount / fundingGrandTotal) * 100;
+                      const fillClass =
+                        opt.value === "government" ? "bg-blue-500" :
+                        opt.value === "gavi" ? "bg-purple-500" :
+                        opt.value === "who" ? "bg-cyan-500" :
+                        opt.value === "unicef" ? "bg-sky-500" :
+                        opt.value === "other" ? "bg-slate-500" :
+                        "bg-amber-500";
+                      return (
+                        <div
+                          key={opt.value}
+                          className={fillClass}
+                          style={{ width: `${pct}%` }}
+                          title={`${opt.label}: K${amount.toLocaleString()}`}
+                        />
+                      );
+                    })}
                   </div>
-                ))
+                  {[...fundingSourceOptions, { value: "unspecified", label: "Unspecified", color: "" }].map((opt) => {
+                    const amount = fundingTotals[opt.value] || 0;
+                    if (amount <= 0) return null;
+                    const pct = ((amount / fundingGrandTotal) * 100).toFixed(1);
+                    return (
+                      <div key={opt.value} className="flex items-center justify-between p-2.5 rounded-lg bg-muted/50">
+                        <span className="text-sm font-medium flex items-center gap-2">
+                          <span className={`inline-block h-2.5 w-2.5 rounded-full ${
+                            opt.value === "government" ? "bg-blue-500" :
+                            opt.value === "gavi" ? "bg-purple-500" :
+                            opt.value === "who" ? "bg-cyan-500" :
+                            opt.value === "unicef" ? "bg-sky-500" :
+                            opt.value === "other" ? "bg-slate-500" :
+                            "bg-amber-500"
+                          }`} />
+                          {opt.label}
+                        </span>
+                        <span className="font-mono text-sm">
+                          K{amount.toLocaleString()} <span className="text-muted-foreground text-xs">({pct}%)</span>
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
               )}
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </div>
   );

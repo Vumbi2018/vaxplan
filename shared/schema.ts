@@ -416,6 +416,10 @@ export const microplans = pgTable("microplans", {
   campaignScope: varchar("campaign_scope", { length: 100 }), // National, Sub-national, Local
   targetPopulation: integer("target_population"),
   budget: decimal("budget", { precision: 12, scale: 2 }),
+  // Structured staffing roster (WHO/UNICEF microplanning element 6 - Human Resources).
+  // Array of { role, headcount, days, perDiem } rows. Free-form jsonb to keep the
+  // schema flexible while the UI iterates.
+  staffing: jsonb("staffing").default([]),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [index("idx_microplans_tenant").on(table.tenantId)]);
@@ -500,6 +504,17 @@ export const sessionVillages = pgTable("session_villages", {
   orderIndex: integer("order_index"),
 }, (table) => [index("idx_session_villages_tenant").on(table.tenantId)]);
 
+// Funding-source enum for budget items. Tracks Gavi HSS reporting categories.
+// `unspecified` is used as the safe default for legacy rows pre-dating this column.
+export const fundingSourceEnum = pgEnum("funding_source", [
+  "government",
+  "gavi",
+  "who",
+  "unicef",
+  "other",
+  "unspecified",
+]);
+
 // Budget Items
 export const budgetItems = pgTable("budget_items", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
@@ -514,6 +529,11 @@ export const budgetItems = pgTable("budget_items", {
   quarter: integer("quarter").notNull(),
   year: integer("year").notNull(),
   approvalStatus: approvalStatusEnum("approval_status").default("draft"),
+  // Funding source classification (Gavi HSS reporting). Legacy rows default to
+  // 'unspecified' and surface a "needs classification" hint in the UI.
+  fundingSource: fundingSourceEnum("funding_source").notNull().default("unspecified"),
+  // Free-text descriptor used when `fundingSource === 'other'`.
+  fundingSourceOther: varchar("funding_source_other", { length: 255 }),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [index("idx_budget_items_tenant").on(table.tenantId)]);
 
@@ -925,9 +945,27 @@ export const insertSessionPlanSchema = createInsertSchema(sessionPlans).omit({
 });
 // export type SessionPlan = typeof sessionPlans.$inferSelect;
 
-export const insertBudgetItemSchema = createInsertSchema(budgetItems).omit({
-  createdAt: true,
-});
+export const insertBudgetItemSchema = createInsertSchema(budgetItems)
+  .omit({
+    createdAt: true,
+  })
+  .superRefine((data, ctx) => {
+    if (data.fundingSource === "other") {
+      const v = (data.fundingSourceOther ?? "").toString().trim();
+      if (!v) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["fundingSourceOther"],
+          message: "Specify the funding source when 'Other' is selected.",
+        });
+      }
+    }
+  })
+  .transform((data) => ({
+    ...data,
+    // Normalize: drop any stale specify-text when source isn't 'other'.
+    fundingSourceOther: data.fundingSource === "other" ? data.fundingSourceOther : null,
+  }));
 
 export const insertVaccineRequirementSchema = createInsertSchema(vaccineRequirements).omit({
   createdAt: true,

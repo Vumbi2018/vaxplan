@@ -3866,7 +3866,23 @@ export async function registerRoutes(
   app.patch("/api/budget-items/:id", ...auth, async (req: any, res) => {
     try {
       const entityId = parseInt(req.params.id);
-      const item = await storage.updateBudgetItem(req.tenantId, entityId, req.body);
+      const body = { ...req.body };
+      // Enforce the same "other → must specify" rule as the insert schema,
+      // and normalize stale specify-text when source isn't 'other'.
+      if (body.fundingSource !== undefined) {
+        if (body.fundingSource === "other") {
+          const v = (body.fundingSourceOther ?? "").toString().trim();
+          if (!v) {
+            return res.status(400).json({
+              message: "Specify the funding source when 'Other' is selected.",
+              path: ["fundingSourceOther"],
+            });
+          }
+        } else {
+          body.fundingSourceOther = null;
+        }
+      }
+      const item = await storage.updateBudgetItem(req.tenantId, entityId, body);
       if (!item) return res.status(404).json({ message: "Budget item not found" });
       await logAudit(req, "update", "budget_item", entityId, null, item);
       res.json(item);
