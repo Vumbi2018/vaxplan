@@ -118,6 +118,7 @@ export default function BudgetPlanning() {
   const { toast } = useToast();
   const { user } = useAuth();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState<BudgetItem | null>(null);
   const [selectedQuarter, setSelectedQuarter] = useState(
     Math.ceil((new Date().getMonth() + 1) / 3)
   );
@@ -294,6 +295,25 @@ export default function BudgetPlanning() {
         description: error.message,
         variant: "destructive",
       });
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: Partial<InsertBudgetItem> }) => {
+      return apiRequest("PATCH", `/api/budget-items/${id}`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/budget-items"] });
+      setDialogOpen(false);
+      setEditingItem(null);
+      form.reset();
+      toast({
+        title: "Budget item updated",
+        description: "Funding source and other fields saved.",
+      });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
     },
   });
 
@@ -507,19 +527,31 @@ export default function BudgetPlanning() {
           linkedSession?.approvalStatus === "locked";
 
         return (
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => {
-              if (confirm("Are you sure you want to delete this budget item?")) {
-                deleteMutation.mutate(item.id);
-              }
-            }}
-            disabled={isLocked}
-            className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10 disabled:opacity-30 disabled:cursor-not-allowed"
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => openEditDialog(item)}
+              disabled={isLocked}
+              className="h-8 px-2 text-[11px] font-semibold disabled:opacity-30 disabled:cursor-not-allowed"
+              data-testid={`button-edit-budget-${item.id}`}
+            >
+              Edit
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => {
+                if (confirm("Are you sure you want to delete this budget item?")) {
+                  deleteMutation.mutate(item.id);
+                }
+              }}
+              disabled={isLocked}
+              className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10 disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
         );
       },
     },
@@ -527,7 +559,29 @@ export default function BudgetPlanning() {
 
   const onSubmit = (data: InsertBudgetItem) => {
     const totalCost = (parseFloat(data.unitCost as string) * data.quantity).toString();
-    createMutation.mutate({ ...data, totalCost });
+    if (editingItem) {
+      updateMutation.mutate({ id: editingItem.id, data: { ...data, totalCost } });
+    } else {
+      createMutation.mutate({ ...data, totalCost });
+    }
+  };
+
+  const openEditDialog = (item: BudgetItem) => {
+    setEditingItem(item);
+    form.reset({
+      facilityId: item.facilityId,
+      sessionId: item.sessionId ?? undefined,
+      category: item.category,
+      description: item.description,
+      unitCost: item.unitCost,
+      quantity: item.quantity,
+      quarter: item.quarter,
+      year: item.year,
+      approvalStatus: item.approvalStatus || "draft",
+      fundingSource: ((item as any).fundingSource as any) || "unspecified",
+      fundingSourceOther: (item as any).fundingSourceOther || "",
+    } as any);
+    setDialogOpen(true);
   };
 
   if (loadingBudget) {
@@ -584,7 +638,16 @@ export default function BudgetPlanning() {
             Export
           </Button>
 
-          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+          <Dialog
+            open={dialogOpen}
+            onOpenChange={(open) => {
+              setDialogOpen(open);
+              if (!open) {
+                setEditingItem(null);
+                form.reset();
+              }
+            }}
+          >
             <DialogTrigger asChild>
               <Button data-testid="button-add-budget-item">
                 <Plus className="h-4 w-4 mr-1" />
@@ -593,7 +656,7 @@ export default function BudgetPlanning() {
             </DialogTrigger>
             <DialogContent className="max-w-lg">
               <DialogHeader>
-                <DialogTitle>Add Budget Item</DialogTitle>
+                <DialogTitle>{editingItem ? "Edit Budget Item" : "Add Budget Item"}</DialogTitle>
               </DialogHeader>
               <Form {...form}>
                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
@@ -854,10 +917,14 @@ export default function BudgetPlanning() {
                     </Button>
                     <Button
                       type="submit"
-                      disabled={createMutation.isPending}
+                      disabled={createMutation.isPending || updateMutation.isPending}
                       data-testid="button-save-budget"
                     >
-                      {createMutation.isPending ? "Saving..." : "Add Item"}
+                      {createMutation.isPending || updateMutation.isPending
+                        ? "Saving..."
+                        : editingItem
+                          ? "Save Changes"
+                          : "Add Item"}
                     </Button>
                   </div>
                 </form>

@@ -2704,6 +2704,72 @@ export default function MicroplanBuilder() {
                     }
                   </div>
                 </div>
+
+                {/* Funding source breakdown */}
+                {(() => {
+                  const sessionBudget = (budgetItems || []).filter((b) => b.sessionId === activeSessionId);
+                  if (sessionBudget.length === 0) return null;
+                  const groups: Record<string, number> = {};
+                  for (const it of sessionBudget) {
+                    const fs = ((it as any).fundingSource as string) || "unspecified";
+                    groups[fs] = (groups[fs] || 0) + parseFloat(it.totalCost || "0");
+                  }
+                  const grand = Object.values(groups).reduce((s, n) => s + n, 0);
+                  if (grand <= 0) return null;
+                  const unspecified = groups["unspecified"] || 0;
+                  const colorOf = (k: string) =>
+                    k === "government" ? "bg-blue-500" :
+                    k === "gavi" ? "bg-purple-500" :
+                    k === "who" ? "bg-cyan-500" :
+                    k === "unicef" ? "bg-sky-500" :
+                    k === "other" ? "bg-slate-500" : "bg-amber-500";
+                  const labelOf = (k: string) =>
+                    FUNDING_SOURCES.find((o) => o.value === k)?.label ?? "Unspecified";
+                  return (
+                    <div className="mt-3 pt-3 border-t space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="font-bold text-[10px] uppercase tracking-wider text-muted-foreground">
+                          Budget by Funding Source
+                        </div>
+                        {unspecified > 0 && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/40 text-amber-700 dark:text-amber-400 font-semibold">
+                            Needs classification
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex h-2 w-full rounded-full overflow-hidden bg-muted">
+                        {Object.entries(groups).map(([k, v]) =>
+                          v > 0 ? (
+                            <div
+                              key={k}
+                              className={colorOf(k)}
+                              style={{ width: `${(v / grand) * 100}%` }}
+                              title={`${labelOf(k)}: K${v.toLocaleString()}`}
+                            />
+                          ) : null,
+                        )}
+                      </div>
+                      <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
+                        {Object.entries(groups)
+                          .filter(([, v]) => v > 0)
+                          .map(([k, v]) => (
+                            <div key={k} className="flex items-center justify-between">
+                              <span className="flex items-center gap-1.5 font-medium">
+                                <span className={`inline-block h-2 w-2 rounded-full ${colorOf(k)}`} />
+                                {labelOf(k)}
+                              </span>
+                              <span className="font-mono font-semibold">
+                                K{v.toLocaleString()}
+                                <span className="text-muted-foreground ml-1">
+                                  ({((v / grand) * 100).toFixed(0)}%)
+                                </span>
+                              </span>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Automated Gap Review Audit Panel */}

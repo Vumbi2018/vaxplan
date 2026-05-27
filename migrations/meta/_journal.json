@@ -15,6 +15,13 @@
       "when": 1779815182729,
       "tag": "0001_orange_yellow_claw",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1779876022614,
+      "tag": "0002_oval_ken_ellis",
+      "breakpoints": true
     }
   ]
 }
