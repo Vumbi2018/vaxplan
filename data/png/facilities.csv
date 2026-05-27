@@ -1,0 +1,706 @@
+objectid,region,province,province_code,district,district_code,llg,llg_code,facility_name,facility_type,latitude,longitude
+142,Highlands,Southern Highlands,070,Kagua/Erave,0703,Kuare Rural,070310,Ipama (Wanore),Aid Post,-6.539027999999917,144.06278500000008
+142,Highlands,Southern Highlands,070,Kagua/Erave,0703,Kuare Rural,070310,Kuare Stn,Aid Post,-6.460936999999944,144.00385000000006
+158,Highlands,Southern Highlands,070,Kewabi Rural,0701,Wiru Rural,070104,Kalane,Unknown,-6.4258239999999205,144.08526500000005
+158,Highlands,Southern Highlands,070,Kewabi Rural,0701,Wiru Rural,070104,Tokoini,Aid Post,-6.434976999999947,144.074615
+158,Highlands,Southern Highlands,070,Kewabi Rural,0701,Wiru Rural,070104,Weriko,Unknown,-6.447206999999935,144.15542400000004
+158,Highlands,Southern Highlands,070,Kewabi Rural,0701,Wiru Rural,070104,Tunda,Aid Post,-6.4880569999999125,144.16054900000006
+142,Highlands,Southern Highlands,070,Kagua/Erave,0703,Kuare Rural,070310,Kaparoi,Unknown,-6.53937899999994,144.12530400000003
+142,Highlands,Southern Highlands,070,Kagua/Erave,0703,Kuare Rural,070310,Lapongo,Aid Post,-6.50942699999996,144.01213600000005
+158,Highlands,Southern Highlands,070,Kewabi Rural,0701,Wiru Rural,070104,Kalipoi,Aid Post,-6.440456999999924,144.1589590000001
+158,Highlands,Southern Highlands,070,Kewabi Rural,0701,Wiru Rural,070104,Tipa,Unknown,-6.438718999999935,144.1005090000001
+160,Highlands,Southern Highlands,070,Nipa/Kutubu,0707,Lake Kutubu Rural,070722,Kadoba,Aid Post,-6.723230999999942,143.56710700000008
+160,Highlands,Southern Highlands,070,Nipa/Kutubu,0707,Lake Kutubu Rural,070722,Kafa,Unknown,-6.58420499999994,143.51439900000003
+160,Highlands,Southern Highlands,070,Nipa/Kutubu,0707,Lake Kutubu Rural,070722,Sisibia 2,Health Centre,-6.330126999999948,143.12126
+160,Highlands,Southern Highlands,070,Nipa/Kutubu,0707,Lake Kutubu Rural,070722,Kaipu 1,Unknown,-6.365212999999926,143.1581030000001
+160,Highlands,Southern Highlands,070,Nipa/Kutubu,0707,Lake Kutubu Rural,070722,Hidinihia (Hedinia),Unknown,-6.526326999999924,143.26554900000008
+160,Highlands,Southern Highlands,070,Nipa/Kutubu,0707,Lake Kutubu Rural,070722,Waro Stn,Health Centre,-6.539874999999938,143.20594100000005
+160,Highlands,Southern Highlands,070,Nipa/Kutubu,0707,Lake Kutubu Rural,070722,Waisame,District Hosipital,-6.361370999999906,143.22970900000007
+112,Highlands,Western Highlands,090,Tambul/Nebilyer,0907,Mt Giluwe Rural,090712,Kerepia,Health Centre,-5.9482099999999605,143.993964
+112,Highlands,Western Highlands,090,Tambul/Nebilyer,0907,Mt Giluwe Rural,090712,Waipe,Health Centre,-6.008701999999914,144.04261400000007
+158,Highlands,Southern Highlands,070,Kewabi Rural,0701,Wiru Rural,070104,Undiapu,Aid Post,-6.478365999999937,144.25451900000007
+157,Highlands,Southern Highlands,070,Kewabi Rural,0701,East Pangia Rural,070101,Tengai,Aid Post,-6.392876999999942,144.2299690000001
+158,Highlands,Southern Highlands,070,Kewabi Rural,0701,Wiru Rural,070104,Taikopini,Aid Post,-6.4283119999999485,144.21521400000006
+158,Highlands,Southern Highlands,070,Kewabi Rural,0701,Wiru Rural,070104,Naukene,Aid Post,-6.454798999999923,144.23308200000008
+158,Highlands,Southern Highlands,070,Kewabi Rural,0701,Wiru Rural,070104,Lawe,Aid Post,-6.522903999999926,144.19680500000004
+158,Highlands,Southern Highlands,070,Kewabi Rural,0701,Wiru Rural,070104,Williame,Health Centre,-6.495935999999915,144.19257500000003
+157,Highlands,Southern Highlands,070,Kewabi Rural,0701,East Pangia Rural,070101,Alia,Aid Post,-6.34043099999991,144.20305200000007
+157,Highlands,Southern Highlands,070,Kewabi Rural,0701,East Pangia Rural,070101,Pondyapu,Aid Post,-6.377043999999955,144.21818300000007
+157,Highlands,Southern Highlands,070,Kewabi Rural,0701,East Pangia Rural,070101,Pangia Station,Health Centre,-6.380690999999956,144.10935800000004
+157,Highlands,Southern Highlands,070,Kewabi Rural,0701,East Pangia Rural,070101,Yomonou,Aid Post,-6.354065999999932,144.02500800000007
+157,Highlands,Southern Highlands,070,Kewabi Rural,0701,East Pangia Rural,070101,Wapere,Aid Post,-6.38935099999992,144.0435480000001
+157,Highlands,Southern Highlands,070,Kewabi Rural,0701,East Pangia Rural,070101,Warababe,Aid Post,-6.387086999999951,144.04158800000005
+145,Highlands,Southern Highlands,070,Kewabi Rural,0701,Ialibu Urban,070102,Ialibu 01,Health Centre,-6.281339999999943,143.994775
+155,Highlands,Southern Highlands,070,Imbonggu,0702,Ialibu Basin Rural,070205,Yawaiangil,Aid Post,-6.178876999999943,143.953037
+155,Highlands,Southern Highlands,070,Imbonggu,0702,Ialibu Basin Rural,070205,Pakule,Health Centre,-6.208342999999957,143.9119300000001
+155,Highlands,Southern Highlands,070,Imbonggu,0702,Ialibu Basin Rural,070205,Kero,Aid Post,-6.194167999999934,144.02887900000007
+166,Highlands,Southern Highlands,070,Imbonggu,0702,Lower Mendi Rural,070207,Cis Bui-Yebi,Aid Post,-6.216313999999954,143.740546
+166,Highlands,Southern Highlands,070,Imbonggu,0702,Lower Mendi Rural,070207,Yara,Aid Post,-6.226079999999911,143.83590000000004
+155,Highlands,Southern Highlands,070,Imbonggu,0702,Ialibu Basin Rural,070205,Kendal 2 (Psp),Aid Post,-6.254434999999944,143.97265200000004
+129,Highlands,Southern Highlands,070,Kewabi Rural,0701,Kewabi Rural,070103,Muli,Health Centre,-6.331203999999957,143.919845
+147,Highlands,Southern Highlands,070,Koroba/Kopiago,0705,Lake Kopiago Rural,070515,Peragoia (Perakoia),Aid Post,-5.455206999999916,142.55064200000004
+149,Highlands,Southern Highlands,070,Koroba/Kopiago,0705,Awi/Pori Rural,070514,Paga High School,Sub Centre,-5.477541999999914,142.592132
+149,Highlands,Southern Highlands,070,Koroba/Kopiago,0705,Awi/Pori Rural,070514,Auwi,Aid Post,-5.511461999999938,142.639629
+149,Highlands,Southern Highlands,070,Koroba/Kopiago,0705,Awi/Pori Rural,070514,Tade,Aid Post,-5.6120639999999185,142.76055600000007
+148,Highlands,Southern Highlands,070,Koroba/Kopiago,0705,North Koroba Rural,070516,Yatamali  No1,Aid Post,-5.7467929999999114,142.70220600000005
+146,Highlands,Southern Highlands,070,Tari/Pori,0708,Tebi Rural,070830,Itapu,Aid Post,-5.826007999999945,142.998647
+146,Highlands,Southern Highlands,070,Tari/Pori,0708,Tebi Rural,070830,Hangapo No1,Aid Post,-5.848834999999951,142.99746100000004
+146,Highlands,Southern Highlands,070,Tari/Pori,0708,Tebi Rural,070830,Andawale,Aid Post,-5.863597999999911,143.00799300000006
+146,Highlands,Southern Highlands,070,Tari/Pori,0708,Tebi Rural,070830,Holebia (Hoiebia),Sub Centre,-5.831440999999927,142.97138600000005
+146,Highlands,Southern Highlands,070,Tari/Pori,0708,Tebi Rural,070830,Kuku No2,Aid Post,-5.849908999999911,142.97971800000005
+146,Highlands,Southern Highlands,070,Tari/Pori,0708,Tebi Rural,070830,Kuku No1,Aid Post,-5.8604219999999145,142.96837500000004
+150,Highlands,Southern Highlands,070,Tari/Pori,0708,Tagali Rural,070828,Nagia,Unknown,-5.817880999999943,142.95810700000004
+150,Highlands,Southern Highlands,070,Tari/Pori,0708,Tagali Rural,070828,Tibiribi,Aid Post,-5.780285999999933,142.96981200000005
+132,Highlands,Southern Highlands,070,Koroba/Kopiago,0705,South Koroba Rural,070517,Pureni Cm.Stn,Sub Centre,-5.841745999999944,142.82648100000006
+152,Highlands,Southern Highlands,070,Mendi/Munihu,0706,Lai Valley Rural,070619,Wara Munihu,Health Centre,-6.073455999999908,143.54184700000008
+152,Highlands,Southern Highlands,070,Mendi/Munihu,0706,Lai Valley Rural,070619,Kip,Aid Post,-6.115310999999906,143.55463700000007
+128,Highlands,Southern Highlands,070,Nipa/Kutubu,0707,Poroma Rural,070726,Kusa,Aid Post,-6.250962999999956,143.5216680000001
+166,Highlands,Southern Highlands,070,Imbonggu,0702,Lower Mendi Rural,070207,Yaria No1,Aid Post,-6.253829999999937,143.665884
+166,Highlands,Southern Highlands,070,Imbonggu,0702,Lower Mendi Rural,070207,Megi No2,Aid Post,-6.259129999999914,143.64647100000002
+128,Highlands,Southern Highlands,070,Nipa/Kutubu,0707,Poroma Rural,070726,Det,Health Centre,-6.277807999999936,143.607707
+160,Highlands,Southern Highlands,070,Nipa/Kutubu,0707,Lake Kutubu Rural,070722,Baibu Station,Aid Post,-6.474025999999924,143.48481700000002
+160,Highlands,Southern Highlands,070,Nipa/Kutubu,0707,Lake Kutubu Rural,070722,Inu Mission,Sub Centre,-6.370318999999938,143.3048940000001
+160,Highlands,Southern Highlands,070,Nipa/Kutubu,0707,Lake Kutubu Rural,070722,Tugiri,Sub Centre,-6.3896709999999075,143.34458100000006
+160,Highlands,Southern Highlands,070,Nipa/Kutubu,0707,Lake Kutubu Rural,070722,Kunifalu,Sub Centre,-6.529580999999951,143.62997600000006
+160,Highlands,Southern Highlands,070,Nipa/Kutubu,0707,Lake Kutubu Rural,070722,Harabiyu,Aid Post,-6.508512999999937,143.580468
+160,Highlands,Southern Highlands,070,Nipa/Kutubu,0707,Lake Kutubu Rural,070722,Pimaga Station,Health Centre,-6.499000999999907,143.50835700000005
+154,Highlands,Southern Highlands,070,Mendi/Munihu,0706,Upper Mendi Rural,070621,Kuma,Aid Post,-6.02259499999991,143.73719700000004
+154,Highlands,Southern Highlands,070,Mendi/Munihu,0706,Upper Mendi Rural,070621,Kundaga (Kundaka),Aid Post,-6.047196999999926,143.71547500000008
+272,Highlands,Eastern Highlands,110,Kainantu Rural,1104,Kainantu Rural,110405,Kurangka,Aid Post,-6.357581999999923,146.07423000000006
+272,Highlands,Eastern Highlands,110,Kainantu Rural,1104,Kainantu Rural,110405,Bioka,Aid Post,-6.3096179999999435,146.01817400000004
+83,Highlands,Eastern Highlands,110,Henganofi,1103,Henganofi Rural,110304,Kesevaka,Health Centre,-6.157142999999905,145.69296600000007
+82,Highlands,Eastern Highlands,110,Okapa,1107,Okapa Rural,110710,Henagaru,Health Centre,-6.529948999999931,145.427324
+86,Highlands,Eastern Highlands,110,Asaro/Watabung,1101,Asaro/Watabung Rural,110101,Kasena,Aid Post,-5.970357999999919,145.30348700000002
+276,Highlands,Eastern Highlands,110,Goroka,1102,Goroka Rural,110202,Hewe,Aid Post,-6.0631009999999605,145.32094500000005
+81,Highlands,Eastern Highlands,110,Obura/Wonenara,1106,Lamari Rural,110608,Obura,Sub Centre,-6.559159999999906,145.97596700000008
+169,Highlands,Eastern Highlands,110,Lufa,1105,Lufa Rural,110507,Kiseveroka,Aid Post,-6.373157999999933,145.42690700000003
+276,Highlands,Eastern Highlands,110,Goroka,1102,Goroka Rural,110202,Mt.Sion,Unknown,-6.122158999999954,145.394179
+82,Highlands,Eastern Highlands,110,Okapa,1107,Okapa Rural,110710,Purosa,Aid Post,-6.67689299999995,145.559079
+86,Highlands,Eastern Highlands,110,Asaro/Watabung,1101,Asaro/Watabung Rural,110101,Yamaiufa,Aid Post,-6.026141999999936,145.27105800000004
+66,Momase,Morobe,120,Markham,1204,Seko Rural,120413,Kabwum Stn,Unknown,-6.1547409999999445,147.18955100000005
+66,Momase,Morobe,120,Markham,1204,Seko Rural,120413,Kamandu,Unknown,-6.190663999999913,147.187142
+68,Momase,Morobe,120,Markham,1204,Yus Rural,120414,Urop,Unknown,-5.981458999999916,146.604513
+51,Momase,Morobe,120,Tewae/Siassi,1209,Sialum Rural,120926,Kalassa Miss,Unknown,-6.133640999999955,147.55925000000002
+51,Momase,Morobe,120,Tewae/Siassi,1209,Sialum Rural,120926,Kip,Unknown,-6.152718999999934,147.55544400000008
+51,Momase,Morobe,120,Tewae/Siassi,1209,Sialum Rural,120926,Kukuya,Unknown,-6.140438999999958,147.54450300000008
+52,Momase,Morobe,120,Finschafen,1202,Kotte Rural,120207,Bonga,Unknown,-6.421712999999954,147.84549600000003
+69,Momase,Morobe,120,Markham,1206,Wantoat/Leron Rural,120619,Puyaknga,Unknown,-6.135040999999944,146.4726740000001
+79,Momase,Morobe,120,Markham,1206,Onga/Waffa Rural,120617,Yasuru,Unknown,-6.603355999999906,146.17951100000005
+292,Momase,Morobe,120,Bulolo,1201,Watut Rural,120103,Menyi,Unknown,-7.284498999999926,146.38925500000005
+60,Momase,Morobe,120,Bulolo,1201,Mumeng Rural,120101,Bayematu,Unknown,-6.953428999999915,146.73177700000008
+292,Momase,Morobe,120,Bulolo,1201,Watut Rural,120103,Hawata,Unknown,-7.2512049999999135,146.40871600000003
+60,Momase,Morobe,120,Bulolo,1201,Mumeng Rural,120101,Patep 2,Unknown,-6.882840999999928,146.61152400000003
+68,Momase,Morobe,120,Markham,1204,Yus Rural,120414,Gua,Health Centre,-5.968197999999916,146.56946000000005
+68,Momase,Morobe,120,Markham,1204,Yus Rural,120414,Gangulut,Health Centre,-5.961023999999952,146.57313
+64,Momase,Morobe,120,Markham,1204,Deyamos Rural,120412,Derim,Health Centre,-6.145138999999915,147.101674
+64,Momase,Morobe,120,Markham,1204,Deyamos Rural,120412,Molong,Aid Post,-6.163758999999914,147.11589200000003
+64,Momase,Morobe,120,Markham,1204,Deyamos Rural,120412,Tumung,Aid Post,-6.169884999999908,147.11218100000008
+64,Momase,Morobe,120,Markham,1204,Deyamos Rural,120412,Onggake,Aid Post,-6.18269499999991,147.10512200000005
+66,Momase,Morobe,120,Markham,1204,Seko Rural,120413,Dengando,Aid Post,-6.202106999999955,147.15939600000002
+66,Momase,Morobe,120,Markham,1204,Seko Rural,120413,Dolo,Aid Post,-6.181798999999955,147.19908400000008
+66,Momase,Morobe,120,Markham,1204,Seko Rural,120413,Erendengan,Aid Post,-6.188237999999956,147.196417
+66,Momase,Morobe,120,Markham,1204,Seko Rural,120413,Sikam,Aid Post,-6.207127999999955,147.2267280000001
+66,Momase,Morobe,120,Markham,1204,Seko Rural,120413,Uman,Aid Post,-6.216005999999936,147.21089900000004
+66,Momase,Morobe,120,Markham,1204,Seko Rural,120413,Komban,Aid Post,-6.246490999999935,147.24233800000002
+60,Momase,Morobe,120,Bulolo,1201,Mumeng Rural,120101,Chimbulok,Aid Post,-6.902839999999912,146.74107600000002
+292,Momase,Morobe,120,Bulolo,1201,Watut Rural,120103,Golden Pine,Aid Post,-7.136082999999928,146.5951530000001
+59,Momase,Morobe,120,Menyamya,1207,Aseki Rural,120720,Hiakwata,Aid Post,-7.304717999999923,146.27893700000004
+59,Momase,Morobe,120,Menyamya,1207,Aseki Rural,120720,Aseki Station,Health Centre,-7.350619999999935,146.1913800000001
+58,Momase,Morobe,120,Menyamya,1207,Wapi Rural,120722,Hekwangi,Aid Post,-7.180766999999946,146.10007700000006
+58,Momase,Morobe,120,Menyamya,1207,Wapi Rural,120722,Kapo Station,Health Centre,-7.20513399999993,146.08926300000007
+58,Momase,Morobe,120,Menyamya,1207,Wapi Rural,120722,Pinake Stn,Aid Post,-7.242165999999941,146.07590600000003
+58,Momase,Morobe,120,Menyamya,1207,Wapi Rural,120722,Sikwong 1,Aid Post,-7.250042999999948,146.10063100000002
+57,Momase,Morobe,120,Menyamya,1207,Kome Rural,120721,Kwalemjuka,Health Centre,-7.147972999999922,145.922148
+57,Momase,Morobe,120,Menyamya,1207,Kome Rural,120721,Hewau,Aid Post,-7.157299999999907,145.92342100000008
+57,Momase,Morobe,120,Menyamya,1207,Kome Rural,120721,Kwaplarem,Health Centre,-7.196644999999933,145.92347500000005
+57,Momase,Morobe,120,Menyamya,1207,Kome Rural,120721,Longwi,Aid Post,-7.210998999999958,145.89204500000005
+66,Momase,Morobe,120,Markham,1204,Seko Rural,120413,Kondolop,Aid Post,-6.11767599999996,147.210642
+51,Momase,Morobe,120,Tewae/Siassi,1209,Sialum Rural,120926,Nanda,Aid Post,-6.1777179999999134,147.6669770000001
+296,Momase,Morobe,120,Huon,1203,Wampar Rural,120311,Nowa,Aid Post,-6.510881999999924,146.47040800000002
+79,Momase,Morobe,120,Markham,1206,Onga/Waffa Rural,120617,Yanuf,Aid Post,-6.531178999999952,146.28668900000002
+62,Momase,Morobe,120,Bulolo,1201,Waria Rural,120102,Kasu No 1,Health Centre,-7.899985999999956,147.14460000000008
+62,Momase,Morobe,120,Bulolo,1201,Waria Rural,120102,Guru Mission,Health Centre,-7.878733999999952,147.126578
+62,Momase,Morobe,120,Bulolo,1201,Waria Rural,120102,Guru Village,Health Centre,-7.880329999999958,147.12533900000005
+62,Momase,Morobe,120,Bulolo,1201,Waria Rural,120102,Garaina Station,Health Centre,-7.888495999999918,147.14533200000005
+62,Momase,Morobe,120,Bulolo,1201,Waria Rural,120102,Sopa,Health Centre,-7.889454999999941,147.13844700000004
+62,Momase,Morobe,120,Bulolo,1201,Waria Rural,120102,Kasu No 2,Health Centre,-7.911404999999945,147.141612
+62,Momase,Morobe,120,Bulolo,1201,Waria Rural,120102,Garaina,Health Centre,-7.883523999999909,147.1553100000001
+60,Momase,Morobe,120,Bulolo,1201,Mumeng Rural,120101,Wagau,Unknown,-6.852330999999936,146.80006000000003
+293,Momase,Morobe,120,Bulolo,1201,Wau/Bulolo Urban,120104,Wau Govmnt Stn,Unknown,-7.348578999999916,146.71595000000002
+52,Momase,Morobe,120,Finschafen,1202,Kotte Rural,120207,Yunzain (Old),Unknown,-6.412662999999952,147.61242000000004
+60,Momase,Morobe,120,Bulolo,1201,Mumeng Rural,120101,Gwem-Station,Unknown,-6.8749089999999455,146.76921400000003
+57,Momase,Morobe,120,Menyamya,1207,Kome Rural,120721,Kwange,Unknown,-7.1753989999999135,145.930428
+52,Momase,Morobe,120,Finschafen,1202,Kotte Rural,120207,Heldsbach,Unknown,-6.495204999999942,147.83189600000003
+40,Momase,Madang,130,Sumkar,1305,Sumgilbar Rural,130514,Murukanam,Aid Post,-4.628686999999957,145.56418500000007
+40,Momase,Madang,130,Sumkar,1305,Sumgilbar Rural,130514,Bunabung,Health Centre,-4.586003999999946,145.52293800000007
+248,Momase,Madang,130,Sumkar,1305,Karkar Rural,130513,Manga.Marek,Health Centre,-4.545931999999937,146.01789200000007
+277,Momase,Madang,130,Madang,1302,Ambenob Rural,130204,Yagaum,District Hospital,-5.289534999999944,145.738068
+38,Momase,Madang,130,Bogia,1301,Yawar Rural,130103,Numbia,Aid Post,-4.162232999999958,144.839832
+44,Momase,Madang,130,Usino Bundi,1306,Usino Rural,130616,Usino,Sub Health Centre,-5.528459999999939,145.37858900000003
+249,Momase,Madang,130,Bogia,1301,Iabu Rural,130102,Tabelle.H.C,Sub Centre,-4.10934299999991,145.001979
+44,Momase,Madang,130,Usino Bundi,1306,Usino Rural,130616,Alibeti,Aid Post,-5.822004999999933,145.56478900000002
+39,Momase,Madang,130,Bogia,1301,Almami Rural,130101,Hatzfeldhaven,Health Centre,-4.396966999999961,145.20998800000007
+39,Momase,Madang,130,Bogia,1301,Almami Rural,130101,Malala,Sub Centre,-4.449419999999918,145.35483900000008
+39,Momase,Madang,130,Bogia,1301,Almami Rural,130101,Wangor,Aid Post,-4.366321999999911,145.0699340000001
+39,Momase,Madang,130,Bogia,1301,Almami Rural,130101,Trinim,Aid Post,-4.442942999999957,145.095729
+38,Momase,Madang,130,Bogia,1301,Yawar Rural,130103,Pir,Aid Post,-4.338038999999924,144.70161000000007
+38,Momase,Madang,130,Bogia,1301,Yawar Rural,130103,Wazamb,Aid Post,-4.422079999999937,144.91451500000005
+38,Momase,Madang,130,Bogia,1301,Yawar Rural,130103,Ariangon,Sub Centre,-4.381926999999905,144.8714010000001
+38,Momase,Madang,130,Bogia,1301,Yawar Rural,130103,Igos,Sub Centre,-4.313503999999909,144.77272500000004
+38,Momase,Madang,130,Bogia,1301,Yawar Rural,130103,Kayoma,Sub Centre,-4.539821999999958,144.63073800000006
+44,Momase,Madang,130,Usino Bundi,1306,Usino Rural,130616,Begesin,Health Centre,-5.383989999999926,145.44489700000008
+44,Momase,Madang,130,Usino Bundi,1306,Usino Rural,130616,Sausi,Health Centre,-5.666260999999906,145.50055400000008
+44,Momase,Madang,130,Usino Bundi,1306,Usino Rural,130616,Walium Station,Health Centre,-5.596841999999924,145.45847600000002
+39,Momase,Madang,130,Bogia,1301,Almami Rural,130101,Yoro Aidpost,Aid Post,-4.451845999999932,145.21112800000003
+249,Momase,Madang,130,Bogia,1301,Iabu Rural,130102,Abaria,Aid Post,-4.064732999999933,145.07441300000005
+38,Momase,Madang,130,Bogia,1301,Yawar Rural,130103,Bosmun Aidpost,Aid Post,-4.176664999999957,144.64866000000006
+38,Momase,Madang,130,Bogia,1301,Yawar Rural,130103,Buliwar,Aid Post,-4.096631999999943,144.67961200000002
+249,Momase,Madang,130,Bogia,1301,Iabu Rural,130102,Boisa,Unknown,-3.996482999999955,144.96067900000003
+23,Momase,East Sepik,140,Maprik,1403,Bumbita/Muhian Rural,140311,Albinama,Sub Centre,-3.5881029999999328,142.9059900000001
+31,Momase,East Sepik,140,Maprik,1403,Albiges/Mablep Rural,140310,Brikiti,Aid Post,-3.6201659999999265,143.009457
+30,Momase,East Sepik,140,Ambunti/Drekikir,1401,Drekikier Rural,140102,Baklo,Aid Post,-3.6148869999999533,142.64033600000005
+18,Momase,East Sepik,140,Wewak,1404,Boikin/Dagua Rural,140414,Kauk,Aid Post,-3.3632389999999077,143.15794100000005
+18,Momase,East Sepik,140,Wewak,1404,Boikin/Dagua Rural,140414,Woginara,Aid Post,-3.4600469999999177,143.31044000000009
+18,Momase,East Sepik,140,Wewak,1404,Boikin/Dagua Rural,140414,Banak,Aid Post,-3.416875999999945,143.36312500000008
+18,Momase,East Sepik,140,Wewak,1404,Boikin/Dagua Rural,140414,Wautogik,Aid Post,-3.445389999999918,143.3551510000001
+19,Momase,East Sepik,140,Wewak,1404,Turubu Rural,140415,Bajiman,Aid Post,-3.7252359999999385,143.79918900000007
+19,Momase,East Sepik,140,Wewak,1404,Turubu Rural,140415,Watwat.1,Aid Post,-3.70773099999991,143.74501600000008
+287,Momase,East Sepik,140,Wewak,1404,Wewak Rural,140417,Marik,Aid Post,-3.619005999999956,143.63326800000004
+18,Momase,East Sepik,140,Wewak,1404,Boikin/Dagua Rural,140414,Sowom,Aid Post,-3.3732089999999175,143.10732200000007
+28,Momase,East Sepik,140,Wosera Gawi,1405,Burui/ Kunai Rural,140519,Burui,Health Centre,-3.9942689999999175,143.024086
+14,Momase,West Sepik,150,Aitape/Lumi,1501,East Aitape Rural,150101,Ulau.C.Mission,Sub Centre,-3.3042059999999083,142.79279700000006
+14,Momase,West Sepik,150,Aitape/Lumi,1501,East Aitape Rural,150101,Raihu,District Hospital,-3.178457999999921,142.36367700000005
+288,Momase,West Sepik,150,Vanimo/Green River,1504,Bewani/Wutung Onei Rural,150413,Yaukono,Aid Post,-2.8075359999999137,141.05325300000004
+3,Momase,West Sepik,150,Vanimo/Green River,1504,Green River Rural,150414,Kambriap.Apost,Aid Post,-3.8486169999999333,141.041152
+5,Momase,West Sepik,150,Aitape/Lumi,1501,East Wapei Rural,150102,Lumi,Health Centre,-3.490146999999922,142.05310200000008
+4,Momase,West Sepik,150,Aitape/Lumi,1501,West Wapei Rural,150104,Fatima,Sub Centre,-3.4401379999999335,142.10760600000003
+4,Momase,West Sepik,150,Aitape/Lumi,1501,West Wapei Rural,150104,Sipote,Aid Post,-3.4396449999999277,142.078165
+263,Islands,Manus,160,Manus,1601,Nali Sopat/Penabu,160108,Sirrah,Unknown,-2.139750999999933,147.16838000000007
+265,Islands,Manus,160,Manus,1601,Balopa,160111,Lago,Unknown,-2.374905999999953,147.36947800000007
+299,Islands,New Ireland,170,Kavieng,1701,Tikana Rural,170103,Lamusmus,Aid Post,-2.8960769999999343,151.13848700000005
+222,Islands,East New Britain,180,Gazelle,1801,Inland Baining Rural,180102,Alakasam,Aid Post,-4.484863999999959,151.836275
+217,Islands,East New Britain,180,Pomio,1803,West Pomio/Mamusi Rural,180314,Aona,Sub Centre,-5.738232999999923,151.0374740000001
+220,Islands,East New Britain,180,Pomio,1803,Sinivit Rural,180313,Arabam,Aid Post,-4.596666999999911,152.11411700000008
+218,Islands,East New Britain,180,Pomio,1803,Central/Inland Pomio Rural,180310,Bago,Aid Post,-5.170848999999919,151.35917200000006
+217,Islands,East New Britain,180,Pomio,1803,West Pomio/Mamusi Rural,180314,Bili,Aid Post,-5.664741999999933,151.09296300000005
+215,Islands,East New Britain,180,Gazelle,1801,Vunadidir/Toma Rural,180105,Paparatava,Sub Centre,-4.3824469999999565,152.16808300000002
+222,Islands,East New Britain,180,Gazelle,1801,Inland Baining Rural,180102,Gaulim,Sub Centre,-4.437852999999961,152.09426100000007
+224,Islands,East New Britain,180,Kokopo,1802,Kokopo/Vunamami Urban,180208,Gelagela Res'mnt,Health Centre,-4.410910999999942,152.24263800000006
+254,Islands,East New Britain,180,Kokopo,1802,Duke of York Rural,180207,Kababiai,Aid Post,-4.169108999999935,152.47076000000004
+254,Islands,East New Britain,180,Kokopo,1802,Duke of York Rural,180207,Kabatiai,Aid Post,-4.208494999999914,152.470954
+222,Islands,East New Britain,180,Gazelle,1801,Inland Baining Rural,180102,Kadulaung S/Ment No 1,Aid Post,-4.452602999999954,152.11839800000007
+217,Islands,East New Britain,180,Pomio,1803,West Pomio/Mamusi Rural,180314,Kaiton,Aid Post,-5.695838999999921,151.42792800000007
+222,Islands,East New Britain,180,Gazelle,1801,Inland Baining Rural,180102,Kamanakam,Aid Post,-4.284841999999912,151.83918100000005
+221,Islands,East New Britain,180,Gazelle,1801,Lassul Baining Rural,180103,Kanako,Aid Post,-4.5733529999999405,151.62938600000007
+218,Islands,East New Britain,180,Pomio,1803,Central/Inland Pomio Rural,180310,Kapkena,Aid Post,-5.29100399999993,151.51674500000001
+254,Islands,East New Britain,180,Kokopo,1802,Duke of York Rural,180207,Karawara,Aid Post,-4.241386999999918,152.42032700000004
+221,Islands,East New Britain,180,Gazelle,1801,Lassul Baining Rural,180103,Vunamarita,Aid Post,-4.214070999999933,151.80327
+220,Islands,East New Britain,180,Pomio,1803,Sinivit Rural,180313,Karong,Aid Post,-4.960564999999917,152.2265940000001
+216,Islands,East New Britain,180,Pomio,1803,Melkoi Rural,180312,Kenmininga,Aid Post,-5.895840999999962,151.013644
+226,Islands,East New Britain,180,Gazelle,1801,Central Gazelle Rural,180101,Keravat,Health Centre,-4.349209999999914,152.041466
+254,Islands,East New Britain,180,Kokopo,1802,Duke of York Rural,180207,Molot Health Centre,Health Centre,-4.137460999999917,152.45300400000008
+219,Islands,East New Britain,180,Pomio,1803,East Pomio Rural,180311,Korpun,Aid Post,-5.454132999999956,152.036519
+218,Islands,East New Britain,180,Pomio,1803,Central/Inland Pomio Rural,180310,Lakiri,Aid Post,-5.313243999999941,151.70188800000005
+221,Islands,East New Britain,180,Gazelle,1801,Lassul Baining Rural,180103,Lassul Bay,Health Centre,-4.21969699999994,151.71751400000005
+217,Islands,East New Britain,180,Pomio,1803,West Pomio/Mamusi Rural,180314,Lopun,Aid Post,-5.748119999999915,150.99502400000006
+227,Islands,East New Britain,180,Gazelle,1801,Livuan/Reimber Rural,180104,Lunga Lunga,Aid Post,-4.212422999999944,151.98353600000007
+222,Islands,East New Britain,180,Gazelle,1801,Inland Baining Rural,180102,Malasaet,Aid Post,-4.464257999999916,151.89020100000005
+217,Islands,East New Britain,180,Pomio,1803,West Pomio/Mamusi Rural,180314,Makaen,Aid Post,-5.628977999999961,151.464737
+222,Islands,East New Britain,180,Gazelle,1801,Inland Baining Rural,180102,Mandres,Health Centre,-4.339209999999923,151.91578000000004
+217,Islands,East New Britain,180,Pomio,1803,West Pomio/Mamusi Rural,180314,Mapuna,Aid Post,-5.754782999999918,151.08212600000002
+220,Islands,East New Britain,180,Pomio,1803,Sinivit Rural,180313,Marambu,Aid Post,-4.637730999999917,152.26321400000006
+220,Islands,East New Britain,180,Pomio,1803,Sinivit Rural,180313,Marunga,Sub Centre,-4.9703819999999155,152.0435030000001
+218,Islands,East New Britain,180,Pomio,1803,Central/Inland Pomio Rural,180310,Masuari,Aid Post,-5.17898699999995,151.460152
+221,Islands,East New Britain,180,Gazelle,1801,Lassul Baining Rural,180103,Matanakunai,Aid Post,-4.864483999999948,151.6855740000001
+218,Islands,East New Britain,180,Pomio,1803,Central/Inland Pomio Rural,180310,Mile,Aid Post,-5.3311749999999165,151.37949300000002
+218,Islands,East New Britain,180,Pomio,1803,Central/Inland Pomio Rural,180310,Muela,Sub Centre,-5.244190999999944,151.419709
+220,Islands,East New Britain,180,Pomio,1803,Sinivit Rural,180313,Mungou,Health Centre,-4.691116999999906,152.37026300000002
+226,Islands,East New Britain,180,Gazelle,1801,Central Gazelle Rural,180101,Napapar,Sub Centre,-4.339817999999923,152.11742000000004
+228,Islands,East New Britain,180,Rabaul,1804,Balanataman Rural,180415,Nonga Base Hospital,Urban Clinic,-4.159253999999919,152.15019500000005
+218,Islands,East New Britain,180,Pomio,1803,Central/Inland Pomio Rural,180310,Nutuve,Sub Centre,-5.333551999999941,151.66173400000002
+221,Islands,East New Britain,180,Gazelle,1801,Lassul Baining Rural,180103,Open Bay,Sub Centre,-4.803004999999928,151.69274700000005
+167,Southern,Western,010,Middle Fly,0101,Nomad Rural,010105,Nomad,Health Centre,-6.292660999999953,142.22950300000002
+183,Southern,Western,010,South Fly,0103,Morehead Rural,010313,Indorodoro,Aid Post,-8.592271999999923,141.3018780000001
+187,Southern,Western,010,North Fly,0102,Kiunga Urban,010207,Montfort,Aid Post,-6.121989999999926,141.29063500000007
+251,Southern,Western,010,South Fly,0103,Daru Urban,010311,Daru.Hospital,Urban Clinic,-9.071765999999911,143.21260100000006
+183,Southern,Western,010,South Fly,0103,Morehead Rural,010313,Weam,Aid Post,-8.617220999999915,141.13709900000003
+181,Southern,Western,010,South Fly,0103,Oriomo-Bituri Rural,010314,Wipim,Health Centre,-8.785481999999945,142.87808200000006
+187,Southern,Western,010,North Fly,0102,Kiunga Urban,010207,Kiunga,District Hospital,-6.115769999999941,141.302866
+279,Southern,Gulf,020,Kerema,0201,Central Kerema Rural,020101,Koaru,Health Centre,-8.070477999999923,146.03668600000003
+174,Southern,Gulf,020,Kerema,0201,East Kerema Rural,020102,Mirivase,Health Centre,-8.211168999999927,146.143417
+174,Southern,Gulf,020,Kerema,0201,East Kerema Rural,020102,Kukipi,Health Centre,-8.172523999999953,146.10549400000002
+194,Southern,Central,030,Abau,0301,Amazon Bay Rural,030101,Iruna,Health Centre,-10.301882999999918,149.33801200000005
+195,Southern,Central,030,Goilala,0302,Guari Rural,030204,Guarimeipa,Aid Post,-8.285285999999928,146.82449700000006
+195,Southern,Central,030,Goilala,0302,Guari Rural,030204,Omu Cath Miss,Aid Post,-8.077090999999939,146.87954200000001
+71,Southern,Central,030,Goilala,0302,Tapini Rural,030205,Tororo,Sub Centre,-8.251394999999945,146.93026200000008
+71,Southern,Central,030,Goilala,0302,Tapini Rural,030205,Kerau,Aid Post,-8.255447999999944,147.06518900000003
+71,Southern,Central,030,Goilala,0302,Tapini Rural,030205,Kileipi,Aid Post,-8.238118999999926,147.141433
+71,Southern,Central,030,Goilala,0302,Tapini Rural,030205,Sopu No. 1,Aid Post,-8.306921999999929,147.16816800000004
+71,Southern,Central,030,Goilala,0302,Tapini Rural,030205,Maini,Aid Post,-8.349989999999934,147.11107400000003
+197,Southern,Central,030,Goilala,0302,Woitape Rural,030206,Fane,Sub Centre,-8.551200999999935,147.0865520000001
+197,Southern,Central,030,Goilala,0302,Woitape Rural,030206,Ononge,Sub Centre,-8.68687899999992,147.25880300000006
+197,Southern,Central,030,Goilala,0302,Woitape Rural,030206,Oro,Aid Post,-8.744039999999927,147.27007300000002
+197,Southern,Central,030,Goilala,0302,Woitape Rural,030206,Tolukuma Gold Mine,Urban Clinic,-8.56083499999994,147.13339700000006
+197,Southern,Central,030,Goilala,0302,Woitape Rural,030206,Yongai,Sub Centre,-8.52959299999992,147.46025100000008
+191,Southern,Central,030,Abau,0301,Aroma Rural,030102,Kelerakwa,Aid Post,-10.087481999999909,148.16835300000002
+191,Southern,Central,030,Abau,0301,Aroma Rural,030102,Upulima,Sub Centre,-9.940985999999953,148.20532400000002
+193,Southern,Central,030,Abau,0301,Cloudy Bay Rural,030103,Boru,Health Centre,-10.236157999999932,148.847347
+194,Southern,Central,030,Abau,0301,Amazon Bay Rural,030101,Aroana,Aid Post,-10.297134999999912,149.39123600000005
+194,Southern,Central,030,Abau,0301,Amazon Bay Rural,030101,Mailu Island,Aid Post,-10.38225099999994,149.35831300000007
+194,Southern,Central,030,Abau,0301,Amazon Bay Rural,030101,Bailebo Rubber Settl,Aid Post,-10.235872999999913,149.31491900000003
+194,Southern,Central,030,Abau,0301,Amazon Bay Rural,030101,Nunumai,Aid Post,-10.179237999999941,149.37178700000004
+193,Southern,Central,030,Abau,0301,Cloudy Bay Rural,030103,Domara,Aid Post,-10.170302999999933,148.563804
+191,Southern,Central,030,Abau,0301,Aroma Rural,030102,Paramana,Aid Post,-10.15723099999991,148.00651700000003
+191,Southern,Central,030,Abau,0301,Aroma Rural,030102,Kinikalana,Aid Post,-10.144698999999946,148.01140600000008
+191,Southern,Central,030,Abau,0301,Aroma Rural,030102,Kelekapana,Aid Post,-10.132699999999943,148.08906000000002
+191,Southern,Central,030,Abau,0301,Aroma Rural,030102,Wairavanua,Aid Post,-10.131682999999953,148.11538600000006
+73,Southern,Central,030,Rigo,0304,Rigo Inland Rural,030413,Homenomu,Aid Post,-9.649859999999933,148.059703
+73,Southern,Central,030,Rigo,0304,Rigo Inland Rural,030413,Vorakogena,Aid Post,-9.890156999999931,148.01156500000002
+196,Southern,Central,030,Kairuku/Hiri,0303,Mekeo Kuni Rural,030310,Rarai,Aid Post,-8.499381999999912,146.60779300000002
+174,Southern,Gulf,020,Kerema,0201,East Kerema Rural,020102,Apanaipi,Aid Post,-8.391388999999947,146.36339900000007
+174,Southern,Gulf,020,Kerema,0201,East Kerema Rural,020102,Koaba.Sm't,Aid Post,-8.394347999999923,146.362029
+196,Southern,Central,030,Kairuku/Hiri,0303,Mekeo Kuni Rural,030310,Oriropetana,Aid Post,-8.559481999999946,146.57804600000009
+189,Southern,Central,030,Kairuku/Hiri,0303,Kairuku Rural,030308,Biotou,Aid Post,-8.737113999999906,146.62265200000002
+193,Southern,Central,030,Abau,0301,Cloudy Bay Rural,030103,Manabo Station,Aid Post,-10.057264999999916,148.49264100000005
+193,Southern,Central,030,Abau,0301,Cloudy Bay Rural,030103,Ianu Station,Aid Post,-9.963949999999954,148.42753200000004
+193,Southern,Central,030,Abau,0301,Cloudy Bay Rural,030103,Cocoaland Station,Aid Post,-10.130387999999925,148.434348
+190,Southern,Central,030,Rigo,0304,Rigo Central Rural,030411,Launakalana Ag Stn,Aid Post,-9.94452199999995,147.778816
+290,Southern,Central,030,Kairuku/Hiri,0303,Hiri Rural,030307,Barakau,Aid Post,-9.591865999999925,147.3534850000001
+290,Southern,Central,030,Kairuku/Hiri,0303,Hiri Rural,030307,Manumanu,Aid Post,-9.112837999999954,146.89149600000007
+189,Southern,Central,030,Kairuku/Hiri,0303,Kairuku Rural,030308,Mava,Aid Post,-9.012029999999925,146.84495300000003
+189,Southern,Central,030,Kairuku/Hiri,0303,Kairuku Rural,030308,Avabadina Comm. Scho,Aid Post,-9.009964999999909,146.8574440000001
+189,Southern,Central,030,Kairuku/Hiri,0303,Kairuku Rural,030308,Kanosia,Aid Post,-8.995661999999925,146.98603300000002
+290,Southern,Central,030,Kairuku/Hiri,0303,Hiri Rural,030307,Gorohu,Aid Post,-9.149705999999924,146.91340300000002
+290,Southern,Central,030,Kairuku/Hiri,0303,Hiri Rural,030307,Roku,Aid Post,-9.459123999999917,147.091274
+291,Southern,National Capital District,040,National Capital District,0401,National Capital District,040101,Pau,Sub Centre,-9.406929999999932,147.274272
+290,Southern,Central,030,Kairuku/Hiri,0303,Hiri Rural,030307,Goldie,Sub Centre,-9.349615999999912,147.2724330000001
+73,Southern,Central,030,Rigo,0304,Rigo Inland Rural,030413,Dorom.2,Aid Post,-9.661176999999952,147.865996
+190,Southern,Central,030,Rigo,0304,Rigo Central Rural,030411,Karekodobu,Aid Post,-9.733507999999915,147.72998700000005
+192,Southern,Central,030,Rigo,0304,Rigo Coastal Rural,030412,Kaparoko,Aid Post,-10.01172299999996,147.70491800000002
+192,Southern,Central,030,Rigo,0304,Rigo Coastal Rural,030412,Kemabolo,Aid Post,-9.92964799999993,147.6430160000001
+192,Southern,Central,030,Rigo,0304,Rigo Coastal Rural,030412,Gaba Gaba,Aid Post,-9.803350999999907,147.51602200000002
+193,Southern,Central,030,Abau,0301,Cloudy Bay Rural,030103,Moreguina,Health Centre,-10.015954999999906,148.47481600000003
+195,Southern,Central,030,Goilala,0302,Guari Rural,030204,Kamulai,Sub Centre,-8.135435999999913,146.839203
+196,Southern,Central,030,Kairuku/Hiri,0303,Mekeo Kuni Rural,030310,Inauani,Aid Post,-8.494256999999948,146.66342300000008
+191,Southern,Central,030,Abau,0301,Aroma Rural,030102,Maopa No. 1,Aid Post,-10.13573699999995,148.01776300000006
+189,Southern,Central,030,Kairuku/Hiri,0303,Kairuku Rural,030308,Kivori.Poe,Aid Post,-8.588223999999911,146.397197
+189,Southern,Central,030,Kairuku/Hiri,0303,Kairuku Rural,030308,Babiko,Aid Post,-8.684005999999954,146.53852900000004
+192,Southern,Central,030,Rigo,0304,Rigo Coastal Rural,030412,Kalo,Aid Post,-10.044642999999951,147.78635300000008
+190,Southern,Central,030,Rigo,0304,Rigo Central Rural,030411,Saroa,Aid Post,-9.79919899999993,147.605452
+195,Southern,Central,030,Goilala,0302,Guari Rural,030204,Suasi,Aid Post,-8.111081999999953,146.80900600000007
+72,Southern,Central,030,Kairuku/Hiri,0303,Koiari Rural,030309,Sogeri,Sub Centre,-9.422106999999926,147.41775300000006
+71,Southern,Central,030,Goilala,0302,Tapini Rural,030205,Tapini,Health Centre,-8.356155999999942,146.988558
+197,Southern,Central,030,Goilala,0302,Woitape Rural,030206,Visi,Aid Post,-8.699317999999948,147.24543500000004
+197,Southern,Central,030,Goilala,0302,Woitape Rural,030206,Woitape,Health Centre,-8.543640999999923,147.25162
+196,Southern,Central,030,Kairuku/Hiri,0303,Mekeo Kuni Rural,030310,Urulau,Aid Post,-8.179089999999917,146.43465700000002
+196,Southern,Central,030,Kairuku/Hiri,0303,Mekeo Kuni Rural,030310,Kubuna,Sub Centre,-8.69043599999992,146.754638
+193,Southern,Central,030,Abau,0301,Cloudy Bay Rural,030103,Robinson River Plant,Aid Post,-10.143840999999952,148.85008500000004
+193,Southern,Central,030,Abau,0301,Cloudy Bay Rural,030103,Merani/Mari,Aid Post,-10.112009999999941,148.45806900000002
+193,Southern,Central,030,Abau,0301,Cloudy Bay Rural,030103,Baramata No 4,Aid Post,-10.200178999999935,148.48939000000007
+191,Southern,Central,030,Abau,0301,Aroma Rural,030102,Lalaura,Aid Post,-10.184422999999924,148.35760800000003
+73,Southern,Central,030,Rigo,0304,Rigo Inland Rural,030413,Maipiko,Aid Post,-9.870368999999926,148.06657600000005
+193,Southern,Central,030,Abau,0301,Cloudy Bay Rural,030103,Tutubu,Aid Post,-10.191079999999943,148.43609000000004
+290,Southern,Central,030,Kairuku/Hiri,0303,Hiri Rural,030307,Mt. Diamond High Sch,Urban Clinic,-9.476392999999916,147.31755600000008
+72,Southern,Central,030,Kairuku/Hiri,0303,Koiari Rural,030309,Ogotana,Aid Post,-9.448633999999913,147.48542300000008
+72,Southern,Central,030,Kairuku/Hiri,0303,Koiari Rural,030309,Red.Sheld.Army,Aid Post,-9.37255499999992,147.45837700000004
+72,Southern,Central,030,Kairuku/Hiri,0303,Koiari Rural,030309,Forakorota,Aid Post,-9.481706999999915,147.50010200000008
+189,Southern,Central,030,Kairuku/Hiri,0303,Kairuku Rural,030308,Agevairu,Sub Centre,-9.018435999999951,146.816818
+72,Southern,Central,030,Kairuku/Hiri,0303,Koiari Rural,030309,Osabeai,Aid Post,-9.330356999999935,147.29900500000008
+195,Southern,Central,030,Goilala,0302,Guari Rural,030204,Torula,Aid Post,-8.013801999999941,146.89784300000008
+196,Southern,Central,030,Kairuku/Hiri,0303,Mekeo Kuni Rural,030310,Veifa'a,Health Centre,-8.542505999999946,146.56157700000006
+189,Southern,Central,030,Kairuku/Hiri,0303,Kairuku Rural,030308,Bereina,Health Centre,-8.637708999999916,146.5108160000001
+196,Southern,Central,030,Kairuku/Hiri,0303,Mekeo Kuni Rural,030310,Inauaia,Sub Centre,-8.634758999999917,146.5789410000001
+196,Southern,Central,030,Kairuku/Hiri,0303,Mekeo Kuni Rural,030310,Bakoiudu,Sub Centre,-8.619778999999937,146.82348100000002
+189,Southern,Central,030,Kairuku/Hiri,0303,Kairuku Rural,030308,Hisiu,Aid Post,-9.048337999999944,146.774317
+290,Southern,Central,030,Kairuku/Hiri,0303,Hiri Rural,030307,Tubuserea,Aid Post,-9.549388999999906,147.31882800000005
+190,Southern,Central,030,Rigo,0304,Rigo Central Rural,030411,Boregaina,Sub Centre,-9.767495999999937,147.74607000000003
+194,Southern,Central,030,Abau,0301,Amazon Bay Rural,030101,Magarida,Health Centre,-10.29743499999995,149.3385350000001
+193,Southern,Central,030,Abau,0301,Cloudy Bay Rural,030103,Gohodae,Sub Centre,-10.093373999999926,148.62960700000008
+290,Southern,Central,030,Kairuku/Hiri,0303,Hiri Rural,030307,Kuriva,Aid Post,-9.067568999999935,147.115048
+192,Southern,Central,030,Rigo,0304,Rigo Coastal Rural,030412,Tauruba,Aid Post,-9.901791999999944,147.62062100000003
+190,Southern,Central,030,Rigo,0304,Rigo Central Rural,030411,Manugoro,Aid Post,-9.712716999999941,147.4639380000001
+192,Southern,Central,030,Rigo,0304,Rigo Coastal Rural,030412,Hula,Sub Centre,-10.101856999999939,147.72565900000006
+73,Southern,Central,030,Rigo,0304,Rigo Inland Rural,030413,Boku,Sub Centre,-9.70425999999992,147.86808000000008
+73,Southern,Central,030,Rigo,0304,Rigo Inland Rural,030413,Dorobisoro,Sub Centre,-9.460451999999918,147.91906000000006
+190,Southern,Central,030,Rigo,0304,Rigo Central Rural,030411,Kwikila,Health Centre,-9.808243999999945,147.6788650000001
+72,Southern,Central,030,Kairuku/Hiri,0303,Koiari Rural,030309,Efogi,Sub Centre,-9.156233999999927,147.665661
+189,Southern,Central,030,Kairuku/Hiri,0303,Kairuku Rural,030308,Yule Island,Sub Centre,-8.835666999999944,146.539442
+189,Southern,Central,030,Kairuku/Hiri,0303,Kairuku Rural,030308,Doa,Sub Centre,-8.978235999999924,146.9520930000001
+205,Southern,Milne Bay,050,Alotau,0501,Maramatana Rural,050104,Guga,Aid Post,-10.27812599999993,150.66387500000008
+205,Southern,Milne Bay,050,Alotau,0501,Maramatana Rural,050104,Yapoa,Unknown,-10.267631999999935,150.56996300000003
+205,Southern,Milne Bay,050,Alotau,0501,Maramatana Rural,050104,Yapoa,Aid Post,-10.253823999999952,150.56189200000006
+205,Southern,Milne Bay,050,Alotau,0501,Maramatana Rural,050104,Taupota,Aid Post,-10.210238999999945,150.41987200000005
+205,Southern,Milne Bay,050,Alotau,0501,Maramatana Rural,050104,Garuahi,Health Centre,-10.21773799999994,150.48294600000008
+205,Southern,Milne Bay,050,Alotau,0501,Maramatana Rural,050104,East Cape,Health Centre,-10.226655999999934,150.87394300000005
+208,Islands,West New Britain,190,Kandrian/Gloucester,1901,Kove / Kaliai Rural,190105,Kandoka,Unknown,-5.541307999999958,149.16798700000004
+208,Islands,West New Britain,190,Kandrian/Gloucester,1901,Kove / Kaliai Rural,190105,Kwako,Unknown,-5.685065999999949,149.22398700000008
+208,Islands,West New Britain,190,Kandrian/Gloucester,1901,Kove / Kaliai Rural,190105,Maravo,Unknown,-5.822383999999943,149.303986
+208,Islands,West New Britain,190,Kandrian/Gloucester,1901,Kove / Kaliai Rural,190105,Rovos,Unknown,-5.722435999999959,149.20498700000007
+208,Islands,West New Britain,190,Kandrian/Gloucester,1901,Kove / Kaliai Rural,190105,Talewaga,Unknown,-5.636626999999919,149.24798600000008
+208,Islands,West New Britain,190,Kandrian/Gloucester,1901,Kove / Kaliai Rural,190105,Kaliai,Unknown,-5.520257999999956,149.120988
+208,Islands,West New Britain,190,Kandrian/Gloucester,1901,Kove / Kaliai Rural,190105,Iboki,Unknown,-5.558217999999954,149.19598700000006
+206,Islands,West New Britain,190,Kandrian/Gloucester,1901,Gloucester Rural,190102,Akonga,Unknown,-5.4900089999999295,148.64699400000006
+206,Islands,West New Britain,190,Kandrian/Gloucester,1901,Gloucester Rural,190102,Aimaga,Unknown,-5.59208899999993,148.38899800000002
+206,Islands,West New Britain,190,Kandrian/Gloucester,1901,Gloucester Rural,190102,Airagilpua,Unknown,-5.622717999999907,148.48999700000002
+206,Islands,West New Britain,190,Kandrian/Gloucester,1901,Gloucester Rural,190102,Aisega,Unknown,-5.73336699999993,148.35299900000007
+206,Islands,West New Britain,190,Kandrian/Gloucester,1901,Gloucester Rural,190102,Gilnit,Unknown,-5.760025999999925,148.54199600000004
+206,Islands,West New Britain,190,Kandrian/Gloucester,1901,Gloucester Rural,190102,Sagsag Mission,Unknown,-5.581718999999907,148.331999
+206,Islands,West New Britain,190,Kandrian/Gloucester,1901,Gloucester Rural,190102,Kilenge,Unknown,-5.47482999999994,148.36699800000008
+206,Islands,West New Britain,190,Kandrian/Gloucester,1901,Gloucester Rural,190102,Aumo Logging Camp 1,Unknown,-5.775495999999919,148.45399800000007
+206,Islands,West New Britain,190,Kandrian/Gloucester,1901,Gloucester Rural,190102,Aumo Logging Camp 2,Unknown,-5.77245599999992,148.43499800000006
+207,Islands,West New Britain,190,Kandrian/Gloucester,1901,Kandrian Coastal Rural,190103,Borowai,Unknown,-5.8702149999999165,148.87299200000007
+207,Islands,West New Britain,190,Kandrian/Gloucester,1901,Kandrian Coastal Rural,190103,Iungpun,Unknown,-5.9419339999999465,148.74799400000006
+207,Islands,West New Britain,190,Kandrian/Gloucester,1901,Kandrian Coastal Rural,190103,Doungon,Unknown,-6.075201999999933,149.04099000000008
+207,Islands,West New Britain,190,Kandrian/Gloucester,1901,Kandrian Coastal Rural,190103,Anepmete Logging Camp,Unknown,-5.83482499999991,148.6409950000001
+207,Islands,West New Britain,190,Kandrian/Gloucester,1901,Kandrian Coastal Rural,190103,Crocodile Point,Unknown,-6.080661999999961,149.17698800000005
+207,Islands,West New Britain,190,Kandrian/Gloucester,1901,Kandrian Coastal Rural,190103,Geren,Unknown,-5.8111959999999385,148.58899600000007
+207,Islands,West New Britain,190,Kandrian/Gloucester,1901,Kandrian Coastal Rural,190103,Sauren Logging Camp,Unknown,-5.968612999999948,148.86899200000005
+207,Islands,West New Britain,190,Kandrian/Gloucester,1901,Kandrian Coastal Rural,190103,Akinum,Unknown,-6.271437999999932,149.73198100000002
+207,Islands,West New Britain,190,Kandrian/Gloucester,1901,Kandrian Coastal Rural,190103,Wasum,Unknown,-6.054621999999938,149.3439860000001
+207,Islands,West New Britain,190,Kandrian/Gloucester,1901,Kandrian Coastal Rural,190103,Aum,Unknown,-6.27184799999992,149.70198100000005
+207,Islands,West New Britain,190,Kandrian/Gloucester,1901,Kandrian Coastal Rural,190103,Ahli,Unknown,-6.274197999999956,149.8349790000001
+207,Islands,West New Britain,190,Kandrian/Gloucester,1901,Kandrian Coastal Rural,190103,Aulo,Unknown,-6.101940999999954,149.47498400000006
+207,Islands,West New Britain,190,Kandrian/Gloucester,1901,Kandrian Coastal Rural,190103,Aliwo,Unknown,-6.262388999999928,149.57198300000005
+207,Islands,West New Britain,190,Kandrian/Gloucester,1901,Kandrian Coastal Rural,190103,Asimete,Unknown,-6.117760999999916,149.4689840000001
+139,Southern,Milne Bay,050,Esa'ala,0504,Dobu Rural,050415,Bosalewa,Aid Post,-9.449583999999959,150.71431700000005
+242,Southern,Milne Bay,050,Samarai-Murua,0502,Murua Rural,050211,Budibudi,Aid Post,-9.291540999999938,153.6868300000001
+242,Southern,Milne Bay,050,Samarai-Murua,0502,Murua Rural,050211,Nasikwabu,Aid Post,-9.552694999999915,152.43072600000005
+242,Southern,Milne Bay,050,Samarai-Murua,0502,Murua Rural,050211,Iwa Aidpost,Aid Post,-8.70462699999996,151.67127700000003
+242,Southern,Milne Bay,050,Samarai-Murua,0502,Murua Rural,050211,Madau,Aid Post,-8.990426999999954,152.404984
+242,Southern,Milne Bay,050,Samarai-Murua,0502,Murua Rural,050211,Guasopa,District Hospital,-9.225720999999908,152.94590900000003
+78,Southern,Northern,060,Ijivitari,0601,Cape Nelson Rural,060102,Sinei,Aid Post,-9.012452999999937,149.26808400000004
+78,Southern,Northern,060,Ijivitari,0601,Cape Nelson Rural,060102,Ajoa,Aid Post,-9.283905999999945,149.19027800000003
+78,Southern,Northern,060,Ijivitari,0601,Cape Nelson Rural,060102,Tufi,Health Centre,-9.079125999999917,149.3226360000001
+202,Southern,Northern,060,Sohe,0602,Higaturu Rural,060206,Saiho,Health Centre,-8.827434999999923,148.06828400000006
+202,Southern,Northern,060,Sohe,0602,Higaturu Rural,060206,Sangara,Health Centre,-8.753929999999912,148.1968720000001
+77,Southern,Northern,060,Ijivitari,0601,Oro Bay Rural,060101,Bareji,Aid Post,-9.156150999999909,148.5717360000001
+151,Highlands,Southern Highlands,070,Komo/Margarima,0704,Magarima Rural,070413,Towan,Aid Post,-6.092195999999944,143.399093
+131,Highlands,Southern Highlands,070,Nipa/Kutubu,0707,Nipa Rural,070725,Sorip,Aid Post,-6.142990999999938,143.3947280000001
+131,Highlands,Southern Highlands,070,Nipa/Kutubu,0707,Nipa Rural,070725,Nipa,Sub Centre,-6.146029999999939,143.44620400000008
+131,Highlands,Southern Highlands,070,Nipa/Kutubu,0707,Nipa Rural,070725,Semin,Aid Post,-6.22696899999994,143.490989
+128,Highlands,Southern Highlands,070,Nipa/Kutubu,0707,Poroma Rural,070726,Kar,Aid Post,-6.245442999999909,143.55298900000003
+128,Highlands,Southern Highlands,070,Nipa/Kutubu,0707,Poroma Rural,070726,Poroma,Aid Post,-6.310517999999945,143.62870600000008
+128,Highlands,Southern Highlands,070,Nipa/Kutubu,0707,Poroma Rural,070726,Toiwaro,Aid Post,-6.352651999999921,143.62717700000007
+147,Highlands,Southern Highlands,070,Koroba/Kopiago,0705,Lake Kopiago Rural,070515,Hagini,Aid Post,-5.44359199999991,142.46877600000005
+147,Highlands,Southern Highlands,070,Koroba/Kopiago,0705,Lake Kopiago Rural,070515,Arou,Unknown,-5.497075999999936,142.51520500000004
+147,Highlands,Southern Highlands,070,Koroba/Kopiago,0705,Lake Kopiago Rural,070515,Kopiago Station,Health Centre,-5.385682999999915,142.49571400000002
+149,Highlands,Southern Highlands,070,Koroba/Kopiago,0705,Awi/Pori Rural,070514,Hawinda 1,Unknown,-5.443565999999919,142.621666
+148,Highlands,Southern Highlands,070,Koroba/Kopiago,0705,North Koroba Rural,070516,Kudjebi,Aid Post,-5.581878999999958,142.57801900000004
+148,Highlands,Southern Highlands,070,Koroba/Kopiago,0705,North Koroba Rural,070516,Kagoma,Unknown,-5.618298999999922,142.62726900000007
+148,Highlands,Southern Highlands,070,Koroba/Kopiago,0705,North Koroba Rural,070516,Tangi,Aid Post,-5.654864999999916,142.6617470000001
+148,Highlands,Southern Highlands,070,Koroba/Kopiago,0705,North Koroba Rural,070516,Levani,Aid Post,-5.732313999999917,142.572184
+148,Highlands,Southern Highlands,070,Koroba/Kopiago,0705,North Koroba Rural,070516,Piangonga 2,Aid Post,-5.684971999999959,142.66343000000006
+148,Highlands,Southern Highlands,070,Koroba/Kopiago,0705,North Koroba Rural,070516,Hujenoma 1,Sub Centre,-5.714722999999935,142.69659000000001
+149,Highlands,Southern Highlands,070,Koroba/Kopiago,0705,Awi/Pori Rural,070514,Tiiba (Tieba),Aid Post,-5.649771999999928,142.78793000000007
+149,Highlands,Southern Highlands,070,Koroba/Kopiago,0705,Awi/Pori Rural,070514,Hungi,Health Centre,-5.650219999999933,142.78798400000005
+149,Highlands,Southern Highlands,070,Koroba/Kopiago,0705,Awi/Pori Rural,070514,Tugu,Aid Post,-5.573059999999941,142.7051620000001
+149,Highlands,Southern Highlands,070,Koroba/Kopiago,0705,Awi/Pori Rural,070514,Paru (Pori),Unknown,-5.583626999999922,142.735001
+149,Highlands,Southern Highlands,070,Koroba/Kopiago,0705,Awi/Pori Rural,070514,Waria,Aid Post,-5.611981999999955,142.75925100000006
+132,Highlands,Southern Highlands,070,Koroba/Kopiago,0705,South Koroba Rural,070517,Guala Station,Aid Post,-5.73490199999992,142.76471800000002
+132,Highlands,Southern Highlands,070,Koroba/Kopiago,0705,South Koroba Rural,070517,Humburu No2,Aid Post,-5.7436989999999355,142.82607400000006
+150,Highlands,Southern Highlands,070,Tari/Pori,0708,Tagali Rural,070828,Paijaka No2,Health Centre,-5.760555999999951,142.9353020000001
+150,Highlands,Southern Highlands,070,Tari/Pori,0708,Tagali Rural,070828,Eganda  No2,Aid Post,-5.729042999999933,142.8995490000001
+150,Highlands,Southern Highlands,070,Tari/Pori,0708,Tagali Rural,070828,Karita 1,Aid Post,-5.76605399999994,142.84058800000003
+132,Highlands,Southern Highlands,070,Koroba/Kopiago,0705,South Koroba Rural,070517,Hedemri (Hedemari No,Sub Centre,-5.771824999999922,142.81671600000004
+149,Highlands,Southern Highlands,070,Koroba/Kopiago,0705,Awi/Pori Rural,070514,Hurubaia,Unknown,-5.488358999999946,142.67301900000007
+167,Southern,Western,010,Middle Fly,0101,Nomad Rural,010105,Dodomona,Aid Post,-6.2433849999999325,142.61751000000004
+168,Highlands,Southern Highlands,070,Nipa/Kutubu,0707,Mt Bosavi Rural,070723,Ludesa,Sub Centre,-6.4642939999999385,142.84282700000006
+168,Highlands,Southern Highlands,070,Nipa/Kutubu,0707,Mt Bosavi Rural,070723,Muluma,Aid Post,-6.425326999999925,142.76857400000006
+151,Highlands,Southern Highlands,070,Komo/Margarima,0704,Magarima Rural,070413,Tengo,Aid Post,-5.954252999999937,143.2699540000001
+131,Highlands,Southern Highlands,070,Nipa/Kutubu,0707,Nipa Rural,070725,Sond,Aid Post,-6.132738999999958,143.48408900000004
+152,Highlands,Southern Highlands,070,Mendi/Munihu,0706,Lai Valley Rural,070619,Injet,Aid Post,-6.043156999999951,143.532423
+152,Highlands,Southern Highlands,070,Mendi/Munihu,0706,Lai Valley Rural,070619,Nol,Aid Post,-6.00961099999995,143.538634
+143,Highlands,Southern Highlands,070,Komo/Margarima,0704,Hulia Rural,070411,Tamide,Health Centre,-6.058929999999918,143.03481900000008
+161,Highlands,Southern Highlands,070,Komo/Margarima,0704,Komo Rural,070412,Tani,Aid Post,-6.1119529999999145,142.8463220000001
+132,Highlands,Southern Highlands,070,Koroba/Kopiago,0705,South Koroba Rural,070517,Guala No2,Sub Centre,-5.726308999999958,142.756571
+148,Highlands,Southern Highlands,070,Koroba/Kopiago,0705,North Koroba Rural,070516,Kelebo  1,Sub Centre,-5.56510899999995,142.5649410000001
+132,Highlands,Southern Highlands,070,Koroba/Kopiago,0705,South Koroba Rural,070517,Maria,Aid Post,-5.730972999999949,142.80347200000006
+132,Highlands,Southern Highlands,070,Koroba/Kopiago,0705,South Koroba Rural,070517,Humburu No1,Aid Post,-5.729077999999959,142.80475
+151,Highlands,Southern Highlands,070,Komo/Margarima,0704,Magarima Rural,070413,Ugu,Aid Post,-5.930715999999961,143.3407420000001
+151,Highlands,Southern Highlands,070,Komo/Margarima,0704,Magarima Rural,070413,Tabala,Aid Post,-5.947869999999909,143.33295900000007
+151,Highlands,Southern Highlands,070,Komo/Margarima,0704,Magarima Rural,070413,Sda Miss.Stn,Health Centre,-5.960188999999957,143.350097
+152,Highlands,Southern Highlands,070,Mendi/Munihu,0706,Lai Valley Rural,070619,Tugup,Aid Post,-6.126880999999912,143.576368
+152,Highlands,Southern Highlands,070,Mendi/Munihu,0706,Lai Valley Rural,070619,Monta,Aid Post,-5.984423999999933,143.52199300000007
+161,Highlands,Southern Highlands,070,Komo/Margarima,0704,Komo Rural,070412,Tobo,Aid Post,-6.049872999999934,142.78822300000002
+161,Highlands,Southern Highlands,070,Komo/Margarima,0704,Komo Rural,070412,Malanda,Sub Centre,-6.0794049999999515,142.83558300000004
+161,Highlands,Southern Highlands,070,Komo/Margarima,0704,Komo Rural,070412,Mindirate,Sub Centre,-6.070931999999914,142.83719900000006
+161,Highlands,Southern Highlands,070,Komo/Margarima,0704,Komo Rural,070412,Komo Rural Station,Health Centre,-6.0635619999999335,142.856625
+161,Highlands,Southern Highlands,070,Komo/Margarima,0704,Komo Rural,070412,Eanda,Unknown,-6.078595999999948,142.87903900000003
+161,Highlands,Southern Highlands,070,Komo/Margarima,0704,Komo Rural,070412,Para 1,Aid Post,-6.006960999999933,142.80420800000002
+144,Highlands,Southern Highlands,070,Tari/Pori,0708,Hayapuga Rural,070827,Habono,Aid Post,-5.926654999999926,142.83449900000005
+144,Highlands,Southern Highlands,070,Tari/Pori,0708,Hayapuga Rural,070827,Idauwi,Health Centre,-5.926597999999956,142.8571740000001
+144,Highlands,Southern Highlands,070,Tari/Pori,0708,Hayapuga Rural,070827,Hiwanda,Health Centre,-5.861492999999939,142.86898500000007
+144,Highlands,Southern Highlands,070,Tari/Pori,0708,Hayapuga Rural,070827,Hiwanda No1 (Hiwanda,Aid Post,-5.8601339999999595,142.870676
+144,Highlands,Southern Highlands,070,Tari/Pori,0708,Hayapuga Rural,070827,Warolo,Aid Post,-5.843684999999937,142.90110700000002
+133,Highlands,Southern Highlands,070,Tari/Pori,0708,Tari Urban,070829,Piribu No1,Aid Post,-5.85828099999992,142.93677300000002
+144,Highlands,Southern Highlands,070,Tari/Pori,0708,Hayapuga Rural,070827,Indupi,Aid Post,-5.958303999999941,142.89703500000007
+144,Highlands,Southern Highlands,070,Tari/Pori,0708,Hayapuga Rural,070827,Tawanda,Health Centre,-5.821083999999928,142.8527630000001
+144,Highlands,Southern Highlands,070,Tari/Pori,0708,Hayapuga Rural,070827,Hare No1,Other,-5.807480999999939,142.84183300000007
+132,Highlands,Southern Highlands,070,Koroba/Kopiago,0705,South Koroba Rural,070517,Magara No2,Aid Post,-5.821261999999933,142.81824400000005
+143,Highlands,Southern Highlands,070,Komo/Margarima,0704,Hulia Rural,070411,Pau'a,Aid Post,-6.184822999999938,143.14879000000008
+133,Highlands,Southern Highlands,070,Tari/Pori,0708,Tari Urban,070829,Ea Miss.Hq,Health Centre,-5.8308119999999235,142.92695000000003
+133,Highlands,Southern Highlands,070,Tari/Pori,0708,Tari Urban,070829,Tari 03,District Hospital,-5.838370999999938,142.9413790000001
+143,Highlands,Southern Highlands,070,Komo/Margarima,0704,Hulia Rural,070411,Tigibi No2,Aid Post,-5.923321999999928,143.027649
+143,Highlands,Southern Highlands,070,Komo/Margarima,0704,Hulia Rural,070411,Iangome,Aid Post,-5.89338499999991,142.96438
+143,Highlands,Southern Highlands,070,Komo/Margarima,0704,Hulia Rural,070411,Uruma,Aid Post,-5.923464999999908,142.992794
+143,Highlands,Southern Highlands,070,Komo/Margarima,0704,Hulia Rural,070411,Page,Aid Post,-5.909751999999912,142.957177
+150,Highlands,Southern Highlands,070,Tari/Pori,0708,Tagali Rural,070828,Paijaka No1,Aid Post,-5.782527999999957,142.93869100000006
+150,Highlands,Southern Highlands,070,Tari/Pori,0708,Tagali Rural,070828,Ula,Aid Post,-5.807276999999942,142.920163
+150,Highlands,Southern Highlands,070,Tari/Pori,0708,Tagali Rural,070828,Halenguali,Aid Post,-5.826339999999959,142.927365
+143,Highlands,Southern Highlands,070,Komo/Margarima,0704,Hulia Rural,070411,Kanari,Aid Post,-5.964864999999918,143.038228
+131,Highlands,Southern Highlands,070,Nipa/Kutubu,0707,Nipa Rural,070725,Kembil,Aid Post,-6.1957329999999615,143.45845900000006
+130,Highlands,Southern Highlands,070,Nipa/Kutubu,0707,Nembi Plateau Rural,070724,Mengil,Aid Post,-6.228621999999916,143.49152200000003
+134,Highlands,Southern Highlands,070,Kagua/Erave,0703,Kagua Rural,070309,Sumbura,Sub Centre,-6.483508999999913,143.846633
+134,Highlands,Southern Highlands,070,Kagua/Erave,0703,Kagua Rural,070309,Kagua Station,Health Centre,-6.39893799999993,143.85768300000007
+134,Highlands,Southern Highlands,070,Kagua/Erave,0703,Kagua Rural,070309,Waluanda,Aid Post,-6.397115999999926,143.87933400000009
+134,Highlands,Southern Highlands,070,Kagua/Erave,0703,Kagua Rural,070309,Tumberere,Aid Post,-6.375766999999939,143.89772100000005
+134,Highlands,Southern Highlands,070,Kagua/Erave,0703,Kagua Rural,070309,Wapia,Aid Post,-6.459663999999918,143.90302700000007
+134,Highlands,Southern Highlands,070,Kagua/Erave,0703,Kagua Rural,070309,Wabi Stn,Aid Post,-6.377572999999927,143.790164
+134,Highlands,Southern Highlands,070,Kagua/Erave,0703,Kagua Rural,070309,Wadi Luth.Miss,Aid Post,-6.38030399999991,143.79055800000003
+134,Highlands,Southern Highlands,070,Kagua/Erave,0703,Kagua Rural,070309,Sumi (Station),Aid Post,-6.373643999999956,143.73880300000008
+134,Highlands,Southern Highlands,070,Kagua/Erave,0703,Kagua Rural,070309,Rongka,Aid Post,-6.4858019999999215,143.80073800000002
+134,Highlands,Southern Highlands,070,Kagua/Erave,0703,Kagua Rural,070309,Puti,Aid Post,-6.32694099999992,143.737033
+159,Highlands,Southern Highlands,070,Kagua/Erave,0703,Erave Rural,070308,Batri 2,Aid Post,-6.552009999999939,143.944746
+159,Highlands,Southern Highlands,070,Kagua/Erave,0703,Erave Rural,070308,Erave Station,Health Centre,-6.60604399999994,143.897696
+159,Highlands,Southern Highlands,070,Kagua/Erave,0703,Erave Rural,070308,Tiabili,Aid Post,-6.64175199999994,144.00466300000005
+159,Highlands,Southern Highlands,070,Kagua/Erave,0703,Erave Rural,070308,Waro,Sub Centre,-6.689963999999918,144.00678100000005
+159,Highlands,Southern Highlands,070,Kagua/Erave,0703,Erave Rural,070308,Besabaru No2,Aid Post,-6.719154999999944,144.0008160000001
+159,Highlands,Southern Highlands,070,Kagua/Erave,0703,Erave Rural,070308,Pawabi 2,Aid Post,-6.729889999999955,143.95612000000006
+159,Highlands,Southern Highlands,070,Kagua/Erave,0703,Erave Rural,070308,Tsimberigi,Unknown,-6.724929999999915,143.92778800000008
+159,Highlands,Southern Highlands,070,Kagua/Erave,0703,Erave Rural,070308,Pobu Worok No1,Sub Centre,-6.724851999999942,143.9271990000001
+159,Highlands,Southern Highlands,070,Kagua/Erave,0703,Erave Rural,070308,Kerabi,Aid Post,-6.667708999999945,144.079203
+159,Highlands,Southern Highlands,070,Kagua/Erave,0703,Erave Rural,070308,Balowei,Aid Post,-6.673164999999926,144.12439900000004
+159,Highlands,Southern Highlands,070,Kagua/Erave,0703,Erave Rural,070308,Tiri,Aid Post,-6.681545999999912,144.1819670000001
+159,Highlands,Southern Highlands,070,Kagua/Erave,0703,Erave Rural,070308,Pupitau (Puputao),Aid Post,-6.725941999999918,144.29686500000003
+159,Highlands,Southern Highlands,070,Kagua/Erave,0703,Erave Rural,070308,Warega,Unknown,-6.702940999999953,144.22324100000003
+159,Highlands,Southern Highlands,070,Kagua/Erave,0703,Erave Rural,070308,Waposali,Health Centre,-6.65802999999994,144.29331000000002
+142,Highlands,Southern Highlands,070,Kagua/Erave,0703,Kuare Rural,070310,Agu,Aid Post,-6.4212499999999295,143.9656020000001
+142,Highlands,Southern Highlands,070,Kagua/Erave,0703,Kuare Rural,070310,Kalawira,Aid Post,-6.501679999999908,144.06824500000005
+154,Highlands,Southern Highlands,070,Mendi/Munihu,0706,Upper Mendi Rural,070621,Ekari,Unknown,-6.016148999999928,143.696276
+154,Highlands,Southern Highlands,070,Mendi/Munihu,0706,Upper Mendi Rural,070621,Nene,Aid Post,-5.99950599999994,143.6453600000001
+153,Highlands,Southern Highlands,070,Mendi/Munihu,0706,Karints Rural,070618,Semp,Aid Post,-5.999309999999923,143.63749500000006
+153,Highlands,Southern Highlands,070,Mendi/Munihu,0706,Karints Rural,070618,Pingirip,Health Centre,-6.0049699999999575,143.61125300000003
+154,Highlands,Southern Highlands,070,Mendi/Munihu,0706,Upper Mendi Rural,070621,Mungura,Aid Post,-6.013495999999918,143.652376
+153,Highlands,Southern Highlands,070,Mendi/Munihu,0706,Karints Rural,070618,Pasurim,Aid Post,-6.042827999999929,143.61444300000005
+153,Highlands,Southern Highlands,070,Mendi/Munihu,0706,Karints Rural,070618,Wambip No1,Aid Post,-6.080077999999958,143.62027
+153,Highlands,Southern Highlands,070,Mendi/Munihu,0706,Karints Rural,070618,Wendia,Aid Post,-6.08523699999995,143.6314040000001
+165,Highlands,Southern Highlands,070,Mendi/Munihu,0706,Mendi Urban,070620,Tente Area No1,District Hospital,-6.119084999999927,143.65451600000006
+154,Highlands,Southern Highlands,070,Mendi/Munihu,0706,Upper Mendi Rural,070621,Dimafa (Dimifa),Aid Post,-6.083170999999936,143.6908840000001
+154,Highlands,Southern Highlands,070,Mendi/Munihu,0706,Upper Mendi Rural,070621,Kombal 1,Aid Post,-6.05871499999995,143.65438500000005
+153,Highlands,Southern Highlands,070,Mendi/Munihu,0706,Karints Rural,070618,Humbra,Aid Post,-6.056696999999929,143.642965
+153,Highlands,Southern Highlands,070,Mendi/Munihu,0706,Karints Rural,070618,Hum,Sub Centre,-6.07062899999994,143.5911890000001
+153,Highlands,Southern Highlands,070,Mendi/Munihu,0706,Karints Rural,070618,Topa,Sub Centre,-6.07680199999993,143.59169500000007
+153,Highlands,Southern Highlands,070,Mendi/Munihu,0706,Karints Rural,070618,Tulum No2,Aid Post,-6.0595109999999295,143.60616100000004
+166,Highlands,Southern Highlands,070,Imbonggu,0702,Lower Mendi Rural,070207,Yaken N0 No1,Aid Post,-6.20638299999996,143.66334100000006
+166,Highlands,Southern Highlands,070,Imbonggu,0702,Lower Mendi Rural,070207,Una,Aid Post,-6.184087999999917,143.62724500000002
+165,Highlands,Southern Highlands,070,Mendi/Munihu,0706,Mendi Urban,070620,Mendi Hospital,District Hospital,-6.128323999999907,143.65313200000003
+165,Highlands,Southern Highlands,070,Mendi/Munihu,0706,Mendi Urban,070620,Wakwak,Aid Post,-6.132091999999943,143.66266700000006
+165,Highlands,Southern Highlands,070,Mendi/Munihu,0706,Mendi Urban,070620,Mendi 3,District Hospital,-6.148450999999909,143.663185
+147,Highlands,Southern Highlands,070,Koroba/Kopiago,0705,Lake Kopiago Rural,070515,Aluni,Aid Post,-5.39021699999995,142.3806320000001
+125,Highlands,Enga,080,Kandep,0801,Kandep Rural,080101,Kandep H/C,Unknown,-5.839564999999936,143.5076180000001
+115,Highlands,Enga,080,Wabag,0804,Wabag Rural,080411,Sopas,Unknown,-5.466315999999949,143.6679620000001
+124,Highlands,Enga,080,Kandep,0801,Wage Rural,080102,Maru.Aid.Post,Unknown,-5.893426999999917,143.4515560000001
+127,Highlands,Enga,080,Wapenamanda,0805,Wapenamanda Rural,080513,Limanda,Unknown,-5.626513999999929,143.86921200000006
+126,Highlands,Enga,080,Wapenamanda,0805,Tsak Rural,080514,Yambiakam,Unknown,-5.657268999999928,143.882838
+114,Highlands,Enga,080,Kompiam,0802,Ambum Rural,080203,Yampu,Unknown,-5.462064999999939,143.74231900000007
+118,Highlands,Enga,080,Wabag,0804,Wabag Urban,080410,Wabag,Unknown,-5.495518999999945,143.725552
+106,Highlands,Western Highlands,090,North Waghi,0906,North Waghi Rural,090611,Talu,Aid Post,-5.82228699999996,144.6712950000001
+104,Highlands,Western Highlands,090,Dei,0902,Dei Rural,090203,Kenembo,Aid Post,-5.70846599999993,144.36285800000007
+110,Highlands,Western Highlands,090,Mul/Baiyer,0905,Lumusa Rural,090510,Lumusa,Health Centre,-5.535898999999915,144.06653500000004
+87,Highlands,Chimbu,100,Karimui/Nomane,1003,Karimui Rural,100307,Negabo.H/C,Health Centre,-6.567306999999914,144.703436
+88,Highlands,Chimbu,100,Chuave,1001,Elimbari Rural,100102,Giriu,Aid Post,-6.214486999999906,145.07814600000006
+94,Highlands,Chimbu,100,Kerowagi,1004,Gena/Waugla Rural,100410,Kunabau,Aid Post,-5.942590999999936,144.85773700000004
+98,Highlands,Chimbu,100,Kerowagi,1004,Kerowagi Rural,100411,Bogo,Health Centre,-5.857494999999915,144.90870000000007
+218,Islands,East New Britain,180,Pomio,1803,Central/Inland Pomio Rural,180310,Pakia,Aid Post,-5.3500779999999395,151.39631800000006
+254,Islands,East New Britain,180,Kokopo,1802,Duke of York Rural,180207,Palipal,Aid Post,-4.118245999999942,152.424354
+217,Islands,East New Britain,180,Pomio,1803,West Pomio/Mamusi Rural,180314,Palmalmal,Health Centre,-5.630329999999958,151.49322000000006
+216,Islands,East New Britain,180,Pomio,1803,Melkoi Rural,180312,Pilematana,Aid Post,-5.973903999999948,150.97207500000002
+221,Islands,East New Britain,180,Gazelle,1801,Lassul Baining Rural,180103,Puktas,Aid Post,-4.245547999999928,151.77649100000008
+227,Islands,East New Britain,180,Gazelle,1801,Livuan/Reimber Rural,180104,Rababat,Aid Post,-4.192679999999939,152.02794400000005
+215,Islands,East New Britain,180,Gazelle,1801,Vunadidir/Toma Rural,180105,Rabagi,Aid Post,-4.386861999999951,152.125221
+253,Islands,East New Britain,180,Rabaul,1804,Watom Island Rural,180418,Rakival,Aid Post,-4.09556699999996,152.076368
+224,Islands,East New Britain,180,Kokopo,1802,Kokopo/Vunamami Urban,180208,Gelagela,Sub Centre,-4.4028489999999465,152.23584000000005
+227,Islands,East New Britain,180,Gazelle,1801,Livuan/Reimber Rural,180104,Ramalmal,Aid Post,-4.224730999999906,152.10439900000006
+215,Islands,East New Britain,180,Gazelle,1801,Vunadidir/Toma Rural,180105,Rapitok,Aid Post,-4.363900999999942,152.11994000000004
+253,Islands,East New Britain,180,Rabaul,1804,Watom Island Rural,180418,Rau,Aid Post,-4.112917999999922,152.06962900000008
+222,Islands,East New Britain,180,Gazelle,1801,Inland Baining Rural,180102,Raunsepna,Sub Centre,-4.456155999999908,151.7844130000001
+220,Islands,East New Britain,180,Pomio,1803,Sinivit Rural,180313,Sanbam,Aid Post,-4.586967999999956,152.2297860000001
+217,Islands,East New Britain,180,Pomio,1803,West Pomio/Mamusi Rural,180314,Serenguna,Aid Post,-5.741848999999945,151.21975700000007
+220,Islands,East New Britain,180,Pomio,1803,Sinivit Rural,180313,Sikut 2,Aid Post,-4.521886999999936,152.2096630000001
+220,Islands,East New Britain,180,Pomio,1803,Sinivit Rural,180313,Sikut 1,Aid Post,-4.521961999999917,152.21008400000005
+217,Islands,East New Britain,180,Pomio,1803,West Pomio/Mamusi Rural,180314,Sivauna,Health Centre,-5.8610559999999055,151.09620400000006
+219,Islands,East New Britain,180,Pomio,1803,East Pomio Rural,180311,Spango,Aid Post,-5.031514999999956,151.95399700000007
+221,Islands,East New Britain,180,Gazelle,1801,Lassul Baining Rural,180103,Takis,Aid Post,-4.20768599999991,151.50173900000004
+215,Islands,East New Britain,180,Gazelle,1801,Vunadidir/Toma Rural,180105,Tamanairik No  1,Aid Post,-4.389011999999923,152.15889200000004
+215,Islands,East New Britain,180,Gazelle,1801,Vunadidir/Toma Rural,180105,Tapipipi Health Centre,Health Centre,-4.34955599999995,152.16726000000006
+223,Islands,East New Britain,180,Kokopo,1802,Bitapaka Rural,180206,Tapo,Sub Centre,-4.392724999999928,152.32246800000007
+218,Islands,East New Britain,180,Pomio,1803,Central/Inland Pomio Rural,180310,Tokai,Aid Post,-5.51160799999991,151.72081300000002
+226,Islands,East New Britain,180,Gazelle,1801,Central Gazelle Rural,180101,Tokiala,Aid Post,-4.308884999999918,152.03937400000007
+218,Islands,East New Britain,180,Pomio,1803,Central/Inland Pomio Rural,180310,Tuke,Aid Post,-5.237327999999934,151.47873100000004
+216,Islands,East New Britain,180,Pomio,1803,Melkoi Rural,180312,Uvol,Sub Centre,-6.015463999999952,151.002246
+223,Islands,East New Britain,180,Kokopo,1802,Bitapaka Rural,180206,Varana,Aid Post,-4.493941999999947,152.3058880000001
+217,Islands,East New Britain,180,Pomio,1803,West Pomio/Mamusi Rural,180314,Viosopuna,Health Centre,-5.704321999999934,151.12989700000003
+215,Islands,East New Britain,180,Gazelle,1801,Vunadidir/Toma Rural,180105,Viviran Private,Aid Post,-4.434937999999931,152.15141400000005
+227,Islands,East New Britain,180,Gazelle,1801,Livuan/Reimber Rural,180104,Vunairoto,Aid Post,-4.199254999999937,152.092709
+215,Islands,East New Britain,180,Gazelle,1801,Vunadidir/Toma Rural,180105,Vunakaur,Aid Post,-4.4054799999999545,152.14987300000007
+227,Islands,East New Britain,180,Gazelle,1801,Livuan/Reimber Rural,180104,Vunalaka,Aid Post,-4.2621279999999615,152.12449800000002
+227,Islands,East New Britain,180,Gazelle,1801,Livuan/Reimber Rural,180104,Vunalir,Aid Post,-4.20471699999996,152.05130000000008
+227,Islands,East New Britain,180,Gazelle,1801,Livuan/Reimber Rural,180104,Vunapaka,Health Centre,-4.246637999999962,152.08184000000006
+222,Islands,East New Britain,180,Gazelle,1801,Inland Baining Rural,180102,Vunapalading,Aid Post,-4.379390999999941,151.96968900000002
+224,Islands,East New Britain,180,Kokopo,1802,Kokopo/Vunamami Urban,180208,Vunapope,Health Centre,-4.344191999999907,152.28220900000008
+222,Islands,East New Britain,180,Gazelle,1801,Inland Baining Rural,180102,Vunga,Aid Post,-4.5091509999999175,152.062585
+215,Islands,East New Britain,180,Gazelle,1801,Vunadidir/Toma Rural,180105,Wairiki,Aid Post,-4.420064999999909,152.18315600000005
+229,Islands,East New Britain,180,Rabaul,1804,Rabaul Urban,180417,Rabaul,Urban Clinic,-4.198954999999955,152.179755
+223,Islands,East New Britain,180,Kokopo,1802,Bitapaka Rural,180206,Warena S'mnt,Aid Post,-4.494370999999944,152.3054820000001
+220,Islands,East New Britain,180,Pomio,1803,Sinivit Rural,180313,Warangoi,Health Centre,-4.494566999999961,152.1551780000001
+221,Islands,East New Britain,180,Gazelle,1801,Lassul Baining Rural,180103,Williambemaki,Aid Post,-4.522609999999929,151.629858
+221,Islands,East New Britain,180,Gazelle,1801,Lassul Baining Rural,180103,Yalam,Aid Post,-4.410181999999907,151.74754700000005
+217,Islands,East New Britain,180,Pomio,1803,West Pomio/Mamusi Rural,180314,Yauyau,Aid Post,-5.627283999999918,150.959744
+223,Islands,East New Britain,180,Kokopo,1802,Bitapaka Rural,180206,Malakuna,Aid Post,-4.386367999999948,152.3465040000001
+220,Islands,East New Britain,180,Pomio,1803,Sinivit Rural,180313,Sanbam,Aid Post,-4.600003999999956,152.24124800000004
+216,Islands,East New Britain,180,Pomio,1803,Melkoi Rural,180312,Tangolo,Aid Post,-6.000344999999925,150.81789100000003
+254,Islands,East New Britain,180,Kokopo,1802,Duke of York Rural,180207,Vatnabara,Sub Centre,-4.205947999999921,152.41181400000005
+222,Islands,East New Britain,180,Gazelle,1801,Inland Baining Rural,180102,Waliliai,Aid Post,-4.363997999999924,151.93883100000005
+224,Islands,East New Britain,180,Kokopo,1802,Kokopo/Vunamami Urban,180208,Takabur,Aid Post,-4.378401999999937,152.214383
+218,Islands,East New Britain,180,Pomio,1803,Central/Inland Pomio Rural,180310,Matong,Sub Centre,-5.545954999999935,151.75179100000003
+222,Islands,East New Britain,180,Gazelle,1801,Inland Baining Rural,180102,Kadaulung,Aid Post,-4.480599999999924,152.13632500000006
+216,Islands,East New Britain,180,Pomio,1803,Melkoi Rural,180312,Lopun,Aid Post,-5.945666999999958,150.7045760000001
+218,Islands,East New Britain,180,Pomio,1803,Central/Inland Pomio Rural,180310,Olaipun,Aid Post,-5.501451999999915,151.53673100000003
+217,Islands,East New Britain,180,Pomio,1803,West Pomio/Mamusi Rural,180314,Pulipuna,Aid Post,-5.742904999999951,150.99089200000003
+224,Islands,East New Britain,180,Kokopo,1802,Kokopo/Vunamami Urban,180208,Butuwin,Sub Centre,-4.325214999999957,152.24143200000003
+218,Islands,East New Britain,180,Pomio,1803,Central/Inland Pomio Rural,180310,Kawa,Aid Post,-5.509550999999931,151.672912
+221,Islands,East New Britain,180,Gazelle,1801,Lassul Baining Rural,180103,Komgi,Aid Post,-4.374210999999946,151.73593700000004
+226,Islands,East New Britain,180,Gazelle,1801,Central Gazelle Rural,180101,Laes Kerevat,Aid Post,-4.332154999999943,152.030075
+216,Islands,East New Britain,180,Pomio,1803,Melkoi Rural,180312,Maso,Aid Post,-5.990951999999936,151.057321
+221,Islands,East New Britain,180,Gazelle,1801,Lassul Baining Rural,180103,Walmetki,Aid Post,-4.370490999999959,151.55419600000005
+254,Islands,East New Britain,180,Kokopo,1802,Duke of York Rural,180207,Mioko,Aid Post,-4.225311999999917,152.45869100000004
+254,Islands,East New Britain,180,Kokopo,1802,Duke of York Rural,180207,Nakukur,Aid Post,-4.1615719999999214,152.415613
+226,Islands,East New Britain,180,Gazelle,1801,Central Gazelle Rural,180101,Tavuiliu,Aid Post,-4.285486999999932,152.13870200000008
+224,Islands,East New Britain,180,Kokopo,1802,Kokopo/Vunamami Urban,180208,Ulagunan,Aid Post,-4.373421999999948,152.2477120000001
+227,Islands,East New Britain,180,Gazelle,1801,Livuan/Reimber Rural,180104,Vunairima College,Aid Post,-4.264155999999957,152.03304500000002
+220,Islands,East New Britain,180,Pomio,1803,Sinivit Rural,180313,Nongia,Aid Post,-4.8511689999999135,152.3125100000001
+214,Islands,West New Britain,190,Talasea,1902,Bialla Rural,190206,Gigipuna,Unknown,-5.198368999999957,151.13295800000003
+214,Islands,West New Britain,190,Talasea,1902,Bialla Rural,190206,Noau,Unknown,-4.9624019999999405,151.32495500000005
+214,Islands,West New Britain,190,Talasea,1902,Bialla Rural,190206,Barema,Unknown,-5.220128999999929,151.119959
+214,Islands,West New Britain,190,Talasea,1902,Bialla Rural,190206,Hargy Compound,Unknown,-5.308727999999917,151.05196
+214,Islands,West New Britain,190,Talasea,1902,Bialla Rural,190206,Tiauru,Unknown,-5.371366999999907,151.04196000000002
+214,Islands,West New Britain,190,Talasea,1902,Bialla Rural,190206,Ulamona,Unknown,-5.002770999999939,151.24795600000004
+214,Islands,West New Britain,190,Talasea,1902,Bialla Rural,190206,Wilelo,Unknown,-5.26193799999993,151.08795900000007
+214,Islands,West New Britain,190,Talasea,1902,Bialla Rural,190206,Navo,Unknown,-5.094429999999932,151.234957
+214,Islands,West New Britain,190,Talasea,1902,Bialla Rural,190206,Kabaia 1,Unknown,-5.110369999999932,151.15995800000007
+214,Islands,West New Britain,190,Talasea,1902,Bialla Rural,190206,Soi 1,Unknown,-5.154289999999946,151.128958
+214,Islands,West New Britain,190,Talasea,1902,Bialla Rural,190206,Bibisi,Unknown,-5.643363999999906,150.907962
+214,Islands,West New Britain,190,Talasea,1902,Bialla Rural,190206,Kai,Unknown,-5.557744999999954,150.8029640000001
+214,Islands,West New Britain,190,Talasea,1902,Bialla Rural,190206,Marapu,Unknown,-5.586554999999919,150.76196400000003
+214,Islands,West New Britain,190,Talasea,1902,Bialla Rural,190206,Tarobi,Unknown,-5.455105999999944,150.801964
+214,Islands,West New Britain,190,Talasea,1902,Bialla Rural,190206,Uasilau 1,Unknown,-5.581434999999942,150.88496300000008
+214,Islands,West New Britain,190,Talasea,1902,Bialla Rural,190206,Ubae,Unknown,-5.645523999999909,150.6389660000001
+214,Islands,West New Britain,190,Talasea,1902,Bialla Rural,190206,Uasilau 2,Unknown,-5.54963499999991,150.8799630000001
+214,Islands,West New Britain,190,Talasea,1902,Bialla Rural,190206,Silanga,Unknown,-5.552974999999947,150.849963
+214,Islands,West New Britain,190,Talasea,1902,Bialla Rural,190206,Sale/Sege,Unknown,-5.517334999999946,150.94896200000005
+214,Islands,West New Britain,190,Talasea,1902,Bialla Rural,190206,Mamota,Unknown,-5.544084999999939,150.75996400000008
+216,Islands,East New Britain,180,Pomio,1803,Melkoi Rural,180312,Bereme,Unknown,-5.732482999999945,150.618967
+217,Islands,East New Britain,180,Pomio,1803,West Pomio/Mamusi Rural,180314,Lamaliu,Unknown,-5.632943999999952,150.96196200000009
+216,Islands,East New Britain,180,Pomio,1803,Melkoi Rural,180312,Umua,Unknown,-5.813731999999959,150.61196700000005
+212,Islands,West New Britain,190,Talasea,1902,Mosa Rural,190210,Gaongo,Unknown,-5.574065999999959,150.2629720000001
+212,Islands,West New Britain,190,Talasea,1902,Mosa Rural,190210,Lavege,Unknown,-5.644263999999907,150.5909670000001
+212,Islands,West New Britain,190,Talasea,1902,Mosa Rural,190210,Mosa,Unknown,-5.628574999999955,150.28097100000002
+212,Islands,West New Britain,190,Talasea,1902,Mosa Rural,190210,Mingai,Unknown,-5.703223999999921,150.19197300000008
+212,Islands,West New Britain,190,Talasea,1902,Mosa Rural,190210,Leim,Unknown,-5.76470299999994,150.3159710000001
+213,Islands,West New Britain,190,Talasea,1902,Hoskins Rural,190208,Malalia,Unknown,-5.4582869999999275,150.53096800000003
+213,Islands,West New Britain,190,Talasea,1902,Hoskins Rural,190208,Mai Mission,Unknown,-5.549545999999907,150.2969710000001
+212,Islands,West New Britain,190,Talasea,1902,Mosa Rural,190210,Ponini,Unknown,-5.5869259999999485,150.24597200000005
+212,Islands,West New Britain,190,Talasea,1902,Mosa Rural,190210,Buvussi,Unknown,-5.626034999999945,150.37797
+213,Islands,West New Britain,190,Talasea,1902,Hoskins Rural,190208,Dami Oil Palm,Unknown,-5.533615999999938,150.33297100000004
+212,Islands,West New Britain,190,Talasea,1902,Mosa Rural,190210,Galai 1,Unknown,-5.6628939999999375,150.3739700000001
+212,Islands,West New Britain,190,Talasea,1902,Mosa Rural,190210,Kapore,Unknown,-5.582735999999954,150.276971
+212,Islands,West New Britain,190,Talasea,1902,Mosa Rural,190210,Kavui,Unknown,-5.58885499999991,150.3069710000001
+212,Islands,West New Britain,190,Talasea,1902,Mosa Rural,190210,Lakiemata,Unknown,-5.658054999999933,150.20897300000001
+212,Islands,West New Britain,190,Talasea,1902,Mosa Rural,190210,Sarakolok,Unknown,-5.636934999999937,150.21797200000003
+212,Islands,West New Britain,190,Talasea,1902,Mosa Rural,190210,Tamba,Unknown,-5.647744999999929,150.25597200000004
+213,Islands,West New Britain,190,Talasea,1902,Hoskins Rural,190208,Siki,Unknown,-5.479136999999923,150.43996900000002
+212,Islands,West New Britain,190,Talasea,1902,Mosa Rural,190210,Malilimi 1,Unknown,-5.62613499999992,150.44196900000009
+212,Islands,West New Britain,190,Talasea,1902,Mosa Rural,190210,Galai 2,Unknown,-5.655194999999935,150.40697
+212,Islands,West New Britain,190,Talasea,1902,Mosa Rural,190210,Malilimi 2,Unknown,-5.6801439999999275,150.440969
+212,Islands,West New Britain,190,Talasea,1902,Mosa Rural,190210,Togulo,Unknown,-5.649614999999926,150.19397300000003
+209,Islands,West New Britain,190,Talasea,1902,Talasea Rural,190211,Bola,Unknown,-5.340438999999947,150.04497400000002
+209,Islands,West New Britain,190,Talasea,1902,Talasea Rural,190211,Buludava,Unknown,-5.075191999999959,150.02497400000004
+209,Islands,West New Britain,190,Talasea,1902,Talasea Rural,190211,Garu,Unknown,-5.412697999999921,149.97197600000004
+208,Islands,West New Britain,190,Kandrian/Gloucester,1901,Kove / Kaliai Rural,190105,Kandoka,Unknown,-5.503426999999931,149.8399780000001
+209,Islands,West New Britain,190,Talasea,1902,Talasea Rural,190211,Pangalu,Unknown,-5.258929999999907,150.04897400000004
+209,Islands,West New Britain,190,Talasea,1902,Talasea Rural,190211,Patanga,Unknown,-5.397737999999947,150.069974
+209,Islands,West New Britain,190,Talasea,1902,Talasea Rural,190211,Valupai,Unknown,-5.267599999999959,149.96697500000005
+209,Islands,West New Britain,190,Talasea,1902,Talasea Rural,190211,Navurai,Unknown,-5.36229899999995,150.03797500000007
+209,Islands,West New Britain,190,Talasea,1902,Talasea Rural,190211,Kavuhara,Unknown,-5.361968999999931,150.00497500000006
+209,Islands,West New Britain,190,Talasea,1902,Talasea Rural,190211,Numondo,Unknown,-5.511416999999938,150.08297400000004
+209,Islands,West New Britain,190,Talasea,1902,Talasea Rural,190211,Kumbango Mill,Unknown,-5.591465999999912,150.21297200000004
+209,Islands,West New Britain,190,Talasea,1902,Talasea Rural,190211,Garu Plantation,Unknown,-5.521206999999947,150.05397500000004
+209,Islands,West New Britain,190,Talasea,1902,Talasea Rural,190211,Kumbango Division 1,Unknown,-5.587815999999918,150.213972
+209,Islands,West New Britain,190,Talasea,1902,Talasea Rural,190211,Kumbango Division 2,Unknown,-5.605664999999931,150.20397300000002
+209,Islands,West New Britain,190,Talasea,1902,Talasea Rural,190211,Kumbango Division 3,Unknown,-5.650384999999915,150.175973
+208,Islands,West New Britain,190,Kandrian/Gloucester,1901,Kove / Kaliai Rural,190105,Nutanavua,Unknown,-5.557647999999915,149.294985
+208,Islands,West New Britain,190,Kandrian/Gloucester,1901,Kove / Kaliai Rural,190105,Silovuti,Unknown,-5.532596999999953,149.66798000000006
+208,Islands,West New Britain,190,Kandrian/Gloucester,1901,Kove / Kaliai Rural,190105,Isu,Unknown,-5.479577999999947,149.68198000000007
+208,Islands,West New Britain,190,Kandrian/Gloucester,1901,Kove / Kaliai Rural,190105,Sasavoru,Unknown,-5.503777999999954,149.62098100000003
+252,Islands,West New Britain,190,Talasea,1902,Bali/Witu Rural,190207,Kumburi 1,Unknown,-4.902985999999942,149.164986
+252,Islands,West New Britain,190,Talasea,1902,Bali/Witu Rural,190207,Lambe,Unknown,-4.641517999999905,149.491981
+252,Islands,West New Britain,190,Talasea,1902,Bali/Witu Rural,190207,Manopo,Unknown,-4.88318599999991,149.116987
+252,Islands,West New Britain,190,Talasea,1902,Bali/Witu Rural,190207,Nalagaro,Unknown,-4.904075999999918,149.13898700000004
+252,Islands,West New Britain,190,Talasea,1902,Bali/Witu Rural,190207,Rangu,Unknown,-4.629438999999934,149.3389830000001
+252,Islands,West New Britain,190,Talasea,1902,Bali/Witu Rural,190207,Saint Michael's,Unknown,-4.691007999999954,149.48998100000006
+208,Islands,West New Britain,190,Kandrian/Gloucester,1901,Kove / Kaliai Rural,190105,Popmu,Unknown,-5.653326999999933,149.06698900000004
+208,Islands,West New Britain,190,Kandrian/Gloucester,1901,Kove / Kaliai Rural,190105,Bolo,Unknown,-5.585446999999931,149.18298700000003
+208,Islands,West New Britain,190,Kandrian/Gloucester,1901,Kove / Kaliai Rural,190105,Bulawatne,Unknown,-5.748674999999935,149.2859860000001
+208,Islands,West New Britain,190,Kandrian/Gloucester,1901,Kove / Kaliai Rural,190105,Gigina,Unknown,-5.726245999999946,149.05598900000007
+207,Islands,West New Britain,190,Kandrian/Gloucester,1901,Kandrian Coastal Rural,190103,Mukurien,Unknown,-6.2692579999999225,149.76598
+207,Islands,West New Britain,190,Kandrian/Gloucester,1901,Kandrian Coastal Rural,190103,Poliaeng,Unknown,-6.053141999999923,149.303986
+211,Islands,West New Britain,190,Kandrian/Gloucester,1901,Gasmata Rural,190101,Ablingi,Unknown,-6.300936999999919,150.069976
+211,Islands,West New Britain,190,Kandrian/Gloucester,1901,Gasmata Rural,190101,Amio,Unknown,-6.106767999999931,150.74696600000004
+211,Islands,West New Britain,190,Kandrian/Gloucester,1901,Gasmata Rural,190101,Au,Unknown,-6.248527999999908,150.21797300000003
+211,Islands,West New Britain,190,Kandrian/Gloucester,1901,Gasmata Rural,190101,Amelei,Unknown,-6.108288999999957,150.62196700000004
+211,Islands,West New Britain,190,Kandrian/Gloucester,1901,Gasmata Rural,190101,Asirim,Unknown,-6.0092599999999265,150.3689710000001
+211,Islands,West New Britain,190,Kandrian/Gloucester,1901,Gasmata Rural,190101,Alevo,Unknown,-6.292047999999909,149.89797800000008
+211,Islands,West New Britain,190,Kandrian/Gloucester,1901,Gasmata Rural,190101,Awagli,Unknown,-6.273316999999906,150.22197300000005
+211,Islands,West New Britain,190,Kandrian/Gloucester,1901,Gasmata Rural,190101,Gailo,Unknown,-6.281897999999956,150.07697600000006
+211,Islands,West New Britain,190,Kandrian/Gloucester,1901,Gasmata Rural,190101,Gasmata,Unknown,-6.272366999999917,150.33197200000006
+211,Islands,West New Britain,190,Kandrian/Gloucester,1901,Gasmata Rural,190101,Amio Logging Camp,Unknown,-6.108197999999959,150.74196600000005
+211,Islands,West New Britain,190,Kandrian/Gloucester,1901,Gasmata Rural,190101,Amio Government Station,Unknown,-6.110037999999918,150.72796600000004
+141,Islands,West New Britain,190,Kandrian/Gloucester,1901,Kandrian Inland Rural,190104,Ipuk,Unknown,-5.974762999999939,149.32098600000006
+141,Islands,West New Britain,190,Kandrian/Gloucester,1901,Kandrian Inland Rural,190104,Mang,Unknown,-5.938692999999944,149.44298400000002
+141,Islands,West New Britain,190,Kandrian/Gloucester,1901,Kandrian Inland Rural,190104,Molo,Unknown,-6.02445199999994,149.46498400000007
+141,Islands,West New Britain,190,Kandrian/Gloucester,1901,Kandrian Inland Rural,190104,Tekerapna,Unknown,-5.97479299999992,149.226987
+141,Islands,West New Britain,190,Kandrian/Gloucester,1901,Kandrian Inland Rural,190104,Urin,Unknown,-6.0027019999999425,149.16298800000004
+141,Islands,West New Britain,190,Kandrian/Gloucester,1901,Kandrian Inland Rural,190104,Gergereng,Unknown,-5.959562999999946,149.30198600000006
+141,Islands,West New Britain,190,Kandrian/Gloucester,1901,Kandrian Inland Rural,190104,Miupak,Unknown,-5.983791999999937,149.539983
+141,Islands,West New Britain,190,Kandrian/Gloucester,1901,Kandrian Inland Rural,190104,Eseli,Unknown,-6.0115919999999505,149.40798500000005
+141,Islands,West New Britain,190,Kandrian/Gloucester,1901,Kandrian Inland Rural,190104,Aka,Unknown,-6.11611999999991,149.63798200000008
+141,Islands,West New Britain,190,Kandrian/Gloucester,1901,Kandrian Inland Rural,190104,Au,Unknown,-6.097960999999941,149.62598200000002
+141,Islands,West New Britain,190,Kandrian/Gloucester,1901,Kandrian Inland Rural,190104,Iombon,Unknown,-6.020550999999955,149.790979
+141,Islands,West New Britain,190,Kandrian/Gloucester,1901,Kandrian Inland Rural,190104,Pomalal,Unknown,-6.120789999999943,149.75198
+141,Islands,West New Britain,190,Kandrian/Gloucester,1901,Kandrian Inland Rural,190104,Senemsi,Unknown,-6.101940999999954,149.5699830000001
+211,Islands,West New Britain,190,Kandrian/Gloucester,1901,Gasmata Rural,190101,Honevio,Unknown,-6.175608999999952,149.87097800000004
+141,Islands,West New Britain,190,Kandrian/Gloucester,1901,Kandrian Inland Rural,190104,Pomalngin,Unknown,-6.107029999999952,149.833979
+207,Islands,West New Britain,190,Kandrian/Gloucester,1901,Kandrian Coastal Rural,190103,Kandrian Station,Unknown,-6.2075589999999465,149.54698300000007
+207,Islands,West New Britain,190,Kandrian/Gloucester,1901,Kandrian Coastal Rural,190103,Turuk,Unknown,-6.213758999999925,149.55198300000006
+214,Islands,West New Britain,190,Talasea,1902,Bialla Rural,190206,Bialla Hospital,Unknown,-5.325447999999938,151.03496000000007
+214,Islands,West New Britain,190,Talasea,1902,Bialla Rural,190206,Bilomi 1,Unknown,-5.635783999999944,150.67796600000008
+214,Islands,West New Britain,190,Talasea,1902,Bialla Rural,190206,Bilomi 2,Unknown,-5.608994999999936,150.65896600000008
+214,Islands,West New Britain,190,Talasea,1902,Bialla Rural,190206,Kapiura Mill,Unknown,-5.6240139999999315,150.68496600000003
+214,Islands,West New Britain,190,Talasea,1902,Bialla Rural,190206,Karausu,Unknown,-5.594864999999913,150.71696500000007
+214,Islands,West New Britain,190,Talasea,1902,Bialla Rural,190206,Kautu 1,Unknown,-5.585544999999911,150.67996600000004
+214,Islands,West New Britain,190,Talasea,1902,Bialla Rural,190206,Kautu 2,Unknown,-5.607544999999959,150.700965
+213,Islands,West New Britain,190,Talasea,1902,Hoskins Rural,190208,Hoskins Station,Unknown,-5.45674699999995,150.41096900000002
+213,Islands,West New Britain,190,Talasea,1902,Hoskins Rural,190208,Buluma Compound,Unknown,-5.530255999999952,150.31797100000006
+212,Islands,West New Britain,190,Talasea,1902,Mosa Rural,190210,Mosa Administration,Unknown,-5.622944999999959,150.237972
+213,Islands,West New Britain,190,Talasea,1902,Hoskins Rural,190208,Hoskins Station,Unknown,-5.45258999999993,150.408683
+295,Islands,North Solomons,200,North Bougainville,2001,Buka,200104,Eilelina,Health Centre,-5.136649999999918,154.665079
+235,Islands,North Solomons,200,South Bougainville,2003,Bana,200311,Sovele,Health Centre,-6.475615999999945,155.38741600000003
+294,Islands,North Solomons,200,North Bougainville,2001,Selau/Suir,200103,Ratswa,Aid Post,-5.534229999999923,154.79613400000005
+238,Islands,North Solomons,200,South Bougainville,2003,Buin,200309,Tokaino,Health Centre,-6.659565999999927,155.63582700000006
+237,Islands,North Solomons,200,Central Bougainville,2002,Wakunai,200207,Uratai,Aid Post,-5.8387259999999515,155.114196
+237,Islands,North Solomons,200,Central Bougainville,2002,Wakunai,200207,Wakunai,Health Centre,-5.869633999999905,155.20913900000005
+262,Islands,Manus,160,Manus,1601,Tetedu,160109,Ka,Unknown,-2.110354999999913,147.06726500000002
+194,Southern,Central,030,Abau,0301,Amazon Bay Rural,030101,Borebo,Aid Post,-10.334645999999907,149.449654
+194,Southern,Central,030,Abau,0301,Amazon Bay Rural,030101,Borebo,Aid Post,-10.334645999999907,149.449654
+193,Southern,Central,030,Abau,0301,Cloudy Bay Rural,030103,Tutubu,Aid Post,-10.191112999999916,148.43601
+193,Southern,Central,030,Abau,0301,Cloudy Bay Rural,030103,Tutubu,Aid Post,-10.191112999999916,148.43601
