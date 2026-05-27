@@ -68,6 +68,178 @@ const COVERAGE_STORAGE_KEY = "vaxplan_dashboard_coverage_filters";
 const isFacilityScopedRole = (role?: string) =>
   role === "facility_clerk" || role === "facility_in_charge";
 
+interface ZeroDoseSummary {
+  total: number;
+  denominator: number;
+  pct: number;
+  byDistrict: Array<{ districtId: number; districtName: string; zeroDose: number; denominator: number; pct: number }>;
+}
+interface DropoutSummary {
+  dtp1_dtp3: { num: number; denom: number; rate: number; byDistrict: Array<{ districtId: number; districtName: string; dtp1: number; dtp3: number; rate: number }> };
+  dtp1_mcv1: { num: number; denom: number; rate: number; byDistrict: Array<{ districtId: number; districtName: string; dtp1: number; mcv1: number; rate: number }> };
+}
+
+function dropoutBadgeClass(rate: number) {
+  if (rate > 10) return "border-rose-500 text-rose-600";
+  if (rate >= 5) return "border-amber-500 text-amber-600";
+  return "border-emerald-500 text-emerald-600";
+}
+
+function ImmunizationIndicatorCards() {
+  const { data: zd, isLoading: zdLoading } = useQuery<ZeroDoseSummary>({
+    queryKey: ["/api/indicators/zero-dose"],
+  });
+  const { data: dr, isLoading: drLoading } = useQuery<DropoutSummary>({
+    queryKey: ["/api/indicators/dropout"],
+  });
+
+  const topZeroDose = (zd?.byDistrict ?? []).slice(0, 5);
+  const maxZd = Math.max(1, ...topZeroDose.map((d) => d.zeroDose));
+
+  return (
+    <div className="grid md:grid-cols-2 gap-6">
+      <Card data-testid="card-zero-dose">
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between gap-2">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-rose-500" />
+              Zero-dose children
+            </CardTitle>
+            <Link
+              href="/clients/defaulters"
+              className="text-xs font-semibold text-primary hover:underline"
+              data-testid="link-zero-dose-details"
+            >
+              View details →
+            </Link>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-3 pt-2">
+          {zdLoading ? (
+            <Skeleton className="h-20 w-full" />
+          ) : !zd || zd.denominator === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No eligible children (≥12 months) registered yet.
+            </p>
+          ) : (
+            <>
+              <div className="flex items-baseline gap-2">
+                <span className="text-3xl font-bold text-rose-600" data-testid="text-zero-dose-total">
+                  {zd.total.toLocaleString()}
+                </span>
+                <span className="text-sm text-muted-foreground">
+                  of {zd.denominator.toLocaleString()} children ≥12 mo · {zd.pct}%
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Children ≥12 months with no DTP1 (Pentavalent-1) dose recorded. Excludes SIA / campaign doses.
+              </p>
+              <div className="space-y-1.5 pt-1">
+                {topZeroDose.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">All districts at 0%.</p>
+                ) : (
+                  topZeroDose.map((d) => (
+                    <div key={d.districtId} className="space-y-1">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-medium truncate text-foreground">{d.districtName}</span>
+                        <span className="font-mono text-muted-foreground">
+                          {d.zeroDose} ({d.pct}%)
+                        </span>
+                      </div>
+                      <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-rose-500 rounded-full"
+                          style={{ width: `${(d.zeroDose / maxZd) * 100}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card data-testid="card-dropout">
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between gap-2">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <TrendingUp className="h-5 w-5 text-primary" />
+              Dropout rates
+            </CardTitle>
+            <Link
+              href="/clients/defaulters"
+              className="text-xs font-semibold text-primary hover:underline"
+              data-testid="link-dropout-details"
+            >
+              View defaulters →
+            </Link>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4 pt-2">
+          {drLoading ? (
+            <Skeleton className="h-24 w-full" />
+          ) : !dr || dr.dtp1_dtp3.denom === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No DTP1 doses recorded yet — cannot compute dropout.
+            </p>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-xl border p-3 space-y-1">
+                  <div className="text-xs text-muted-foreground">DTP1 → DTP3</div>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-2xl font-bold" data-testid="text-dropout-dtp3">
+                      {dr.dtp1_dtp3.rate}%
+                    </span>
+                    <Badge variant="outline" className={dropoutBadgeClass(dr.dtp1_dtp3.rate)}>
+                      {dr.dtp1_dtp3.rate > 10 ? "High" : dr.dtp1_dtp3.rate >= 5 ? "Watch" : "OK"}
+                    </Badge>
+                  </div>
+                  <div className="text-[11px] text-muted-foreground">
+                    {dr.dtp1_dtp3.num.toLocaleString()} DTP3 of {dr.dtp1_dtp3.denom.toLocaleString()} DTP1
+                  </div>
+                </div>
+                <div className="rounded-xl border p-3 space-y-1">
+                  <div className="text-xs text-muted-foreground">DTP1 → MCV1</div>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-2xl font-bold" data-testid="text-dropout-mcv1">
+                      {dr.dtp1_mcv1.rate}%
+                    </span>
+                    <Badge variant="outline" className={dropoutBadgeClass(dr.dtp1_mcv1.rate)}>
+                      {dr.dtp1_mcv1.rate > 10 ? "High" : dr.dtp1_mcv1.rate >= 5 ? "Watch" : "OK"}
+                    </Badge>
+                  </div>
+                  <div className="text-[11px] text-muted-foreground">
+                    {dr.dtp1_mcv1.num.toLocaleString()} MCV1 of {dr.dtp1_mcv1.denom.toLocaleString()} DTP1
+                  </div>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                  Top districts by DTP1→DTP3 dropout
+                </p>
+                {dr.dtp1_dtp3.byDistrict.slice(0, 4).map((d) => (
+                  <div key={d.districtId} className="flex items-center justify-between text-xs">
+                    <span className="font-medium truncate text-foreground">{d.districtName}</span>
+                    <Badge variant="outline" className={dropoutBadgeClass(d.rate)}>
+                      {d.rate}%
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                WHO formula: (DTP1 − DTPn) / DTP1 × 100. Routine RI doses only (excludes campaign).
+              </p>
+            </>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const { user } = useAuth();
   const [, setLocation] = useLocation();
@@ -571,6 +743,8 @@ export default function Dashboard() {
           </>
         )}
       </div>
+
+      <ImmunizationIndicatorCards />
 
       <div className="grid lg:grid-cols-3 gap-6">
         <Card className="lg:col-span-2">

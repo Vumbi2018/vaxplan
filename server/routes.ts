@@ -46,6 +46,7 @@ import {
   candidateUnmappedSettlements,
   populationGrids,
   vaccineRequirements,
+  clients,
   clientVaccinations,
   monthlyReports,
 } from "@shared/schema";
@@ -5910,6 +5911,567 @@ export async function registerRoutes(
       res.status(500).json({ message: "Batch sync failed" });
     }
   });
+
+  // =====================================================================
+  // IMMUNIZATION INDICATORS — Zero-dose, DTP dropout, Defaulter List
+  // =====================================================================
+  // Routine RI antigens we recognise. The `clientVaccinations` table has no
+  // planType column, so we exclude SIA/campaign doses heuristically by name.
+  const isCampaignDose = (name: string | null | undefined) => {
+    if (!name) return false;
+    const u = name.toUpperCase();
+    return u.includes("SIA") || u.includes("CAMPAIGN");
+  };
+  const normAntigen = (name: string | null | undefined): string | null => {
+    if (!name) return null;
+    const u = name.toUpperCase().replace(/[\s\-_]/g, "");
+    if (u.startsWith("PENTA")) {
+      if (u.endsWith("1")) return "PENTA_1";
+      if (u.endsWith("2")) return "PENTA_2";
+      if (u.endsWith("3")) return "PENTA_3";
+    }
+    if (u.startsWith("DTP")) {
+      if (u.endsWith("1")) return "PENTA_1";
+      if (u.endsWith("2")) return "PENTA_2";
+      if (u.endsWith("3")) return "PENTA_3";
+    }
+    if (u.startsWith("MR") || u.startsWith("MEASLES")) {
+      if (u.endsWith("1")) return "MR_1";
+      if (u.endsWith("2")) return "MR_2";
+    }
+    if (u.startsWith("BCG")) return "BCG";
+    if (u.startsWith("OPV")) return "OPV_" + (u.match(/\d$/)?.[0] ?? "");
+    if (u.startsWith("PCV")) return "PCV_" + (u.match(/\d$/)?.[0] ?? "");
+    if (u.startsWith("ROTA")) return "ROTA_" + (u.match(/\d$/)?.[0] ?? "");
+    if (u.startsWith("IPV")) return "IPV_" + (u.match(/\d$/)?.[0] ?? "");
+    return null;
+  };
+
+  // WHO infant schedule (weeks from DOB) used for defaulter computation.
+  const RI_SCHEDULE: Array<{ code: string; weeks: number; series?: string }> = [
+    { code: "BCG", weeks: 0 },
+    { code: "OPV_0", weeks: 0 },
+    { code: "OPV_1", weeks: 6, series: "OPV" },
+    { code: "PENTA_1", weeks: 6, series: "PENTA" },
+    { code: "PCV_1", weeks: 6, series: "PCV" },
+    { code: "ROTA_1", weeks: 6, series: "ROTA" },
+    { code: "OPV_2", weeks: 10, series: "OPV" },
+    { code: "PENTA_2", weeks: 10, series: "PENTA" },
+    { code: "PCV_2", weeks: 10, series: "PCV" },
+    { code: "ROTA_2", weeks: 10, series: "ROTA" },
+    { code: "OPV_3", weeks: 14, series: "OPV" },
+    { code: "PENTA_3", weeks: 14, series: "PENTA" },
+    { code: "PCV_3", weeks: 14, series: "PCV" },
+    { code: "ROTA_3", weeks: 14, series: "ROTA" },
+    { code: "IPV_1", weeks: 14 },
+    { code: "MR_1", weeks: 39 },
+    { code: "IPV_2", weeks: 39 },
+    { code: "MR_2", weeks: 78 },
+  ];
+  const GRACE_WEEKS = 4; // days overdue counted past dueDate + grace
+
+  // Resolve allowed facility IDs for the current user (geo-scoped).
+  async function getScopedFacilityIds(
+    req: any,
+    dbUser: any,
+    explicitFacilityId?: number | null,
+    districtId?: number | null,
+    provinceId?: number | null,
+  ): Promise<number[] | null> {
+    // null => no scope restriction (national_admin tenant-wide)
+    const tenantId = req.tenantId as string;
+    const rows = await db
+      .select({ id: facilities.id, districtId: facilities.districtId })
+      .from(facilities)
+      .where(eq(facilities.tenantId, tenantId));
+    const districtRows = await db
+      .select({ id: districts.id, provinceId: districts.provinceId })
+      .from(districts)
+      .where(eq(districts.tenantId, tenantId));
+    const distProvince = new Map(districtRows.map((d) => [d.id, d.provinceId]));
+
+    let ids = rows.map((r) => r.id);
+    if (explicitFacilityId) ids = ids.filter((id) => id === explicitFacilityId);
+    if (districtId) {
+      const allowed = new Set(
+        rows.filter((r) => r.districtId === districtId).map((r) => r.id),
+      );
+      ids = ids.filter((id) => allowed.has(id));
+    }
+    if (provinceId) {
+      const allowed = new Set(
+        rows
+          .filter((r) => distProvince.get(r.districtId) === provinceId)
+          .map((r) => r.id),
+      );
+      ids = ids.filter((id) => allowed.has(id));
+    }
+
+    const isNational =
+      dbUser.role === "national_admin" ||
+      (Array.isArray(dbUser.roles) &&
+        (dbUser.roles as string[]).includes("national_admin"));
+    if (isNational) return ids;
+
+    // Filter against permission scope
+    const allowed: number[] = [];
+    for (const fid of ids) {
+      const row = rows.find((r) => r.id === fid);
+      const geo: { facilityId: number; districtId: number | null; provinceId: number | null } = {
+        facilityId: fid,
+        districtId: row?.districtId ?? null,
+        provinceId: row ? (distProvince.get(row.districtId) as number | undefined) ?? null : null,
+      };
+      if (hasPermission(dbUser, "view_clients", geo)) allowed.push(fid);
+    }
+    return allowed;
+  }
+
+  // GET /api/indicators/zero-dose
+  // Returns per-district count of children ≥12 months with no DTP1 (PENTA_1) dose.
+  app.get(
+    "/api/indicators/zero-dose",
+    isAuthenticated,
+    requireTenant,
+    async (req: any, res) => {
+      try {
+        const dbUser = await storage.getUser(req.user.id);
+        if (!dbUser) return res.status(401).json({ message: "Unauthorized" });
+        const tenantId = req.tenantId as string;
+        const provinceId = req.query.provinceId
+          ? parseInt(req.query.provinceId as string)
+          : undefined;
+        const districtId = req.query.districtId
+          ? parseInt(req.query.districtId as string)
+          : undefined;
+        const facilityId = req.query.facilityId
+          ? parseInt(req.query.facilityId as string)
+          : undefined;
+
+        const scopedFacilityIds = await getScopedFacilityIds(
+          req,
+          dbUser,
+          facilityId,
+          districtId,
+          provinceId,
+        );
+        if (scopedFacilityIds && scopedFacilityIds.length === 0) {
+          return res.json({ total: 0, denominator: 0, byDistrict: [] });
+        }
+
+        const twelveMonthsAgo = new Date();
+        twelveMonthsAgo.setFullYear(twelveMonthsAgo.getFullYear() - 1);
+
+        // Eligible denominator: children ≥12mo old, in scope
+        const eligible = await db
+          .select({
+            id: clients.id,
+            facilityId: clients.facilityId,
+            districtId: facilities.districtId,
+            districtName: districts.name,
+          })
+          .from(clients)
+          .innerJoin(facilities, eq(facilities.id, clients.facilityId))
+          .innerJoin(districts, eq(districts.id, facilities.districtId))
+          .where(
+            and(
+              eq(clients.tenantId, tenantId),
+              eq(clients.clientType, "child"),
+              lte(clients.dateOfBirth, twelveMonthsAgo),
+              scopedFacilityIds
+                ? inArray(clients.facilityId, scopedFacilityIds)
+                : undefined,
+            ),
+          );
+
+        if (eligible.length === 0) {
+          return res.json({ total: 0, denominator: 0, byDistrict: [] });
+        }
+
+        // Find which eligible children HAVE received any DTP1/PENTA_1 dose
+        const clientIds = eligible.map((c) => c.id);
+        const dosed = await db
+          .select({
+            clientId: clientVaccinations.clientId,
+            vaccineName: clientVaccinations.vaccineName,
+          })
+          .from(clientVaccinations)
+          .where(
+            and(
+              eq(clientVaccinations.tenantId, tenantId),
+              inArray(clientVaccinations.clientId, clientIds),
+            ),
+          );
+        const haveDtp1 = new Set<string>();
+        for (const d of dosed) {
+          if (isCampaignDose(d.vaccineName)) continue;
+          if (normAntigen(d.vaccineName) === "PENTA_1") haveDtp1.add(d.clientId);
+        }
+
+        const byDistMap = new Map<
+          number,
+          { districtId: number; districtName: string; zeroDose: number; denominator: number }
+        >();
+        let total = 0;
+        for (const c of eligible) {
+          const entry =
+            byDistMap.get(c.districtId) ??
+            { districtId: c.districtId, districtName: c.districtName, zeroDose: 0, denominator: 0 };
+          entry.denominator += 1;
+          if (!haveDtp1.has(c.id)) {
+            entry.zeroDose += 1;
+            total += 1;
+          }
+          byDistMap.set(c.districtId, entry);
+        }
+        const byDistrictRaw: Array<{ districtId: number; districtName: string; zeroDose: number; denominator: number }> = [];
+        byDistMap.forEach((v) => byDistrictRaw.push(v));
+        const byDistrict = byDistrictRaw
+          .map((d) => ({
+            ...d,
+            pct: d.denominator > 0 ? Math.round((d.zeroDose / d.denominator) * 1000) / 10 : 0,
+          }))
+          .sort((a, b) => b.zeroDose - a.zeroDose);
+
+        res.json({
+          total,
+          denominator: eligible.length,
+          pct: eligible.length > 0 ? Math.round((total / eligible.length) * 1000) / 10 : 0,
+          byDistrict,
+        });
+      } catch (err: any) {
+        console.error("GET /api/indicators/zero-dose failed:", err);
+        res.status(500).json({ message: "Failed to compute zero-dose indicator" });
+      }
+    },
+  );
+
+  // GET /api/indicators/dropout
+  // DTP1→DTP3 and DTP1→MCV1 dropout rates, per scope, with per-district breakdown.
+  app.get(
+    "/api/indicators/dropout",
+    isAuthenticated,
+    requireTenant,
+    async (req: any, res) => {
+      try {
+        const dbUser = await storage.getUser(req.user.id);
+        if (!dbUser) return res.status(401).json({ message: "Unauthorized" });
+        const tenantId = req.tenantId as string;
+        const provinceId = req.query.provinceId
+          ? parseInt(req.query.provinceId as string)
+          : undefined;
+        const districtId = req.query.districtId
+          ? parseInt(req.query.districtId as string)
+          : undefined;
+        const facilityId = req.query.facilityId
+          ? parseInt(req.query.facilityId as string)
+          : undefined;
+        const scopedFacilityIds = await getScopedFacilityIds(
+          req,
+          dbUser,
+          facilityId,
+          districtId,
+          provinceId,
+        );
+        if (scopedFacilityIds && scopedFacilityIds.length === 0) {
+          return res.json({
+            dtp1_dtp3: { num: 0, denom: 0, rate: 0, byDistrict: [] },
+            dtp1_mcv1: { num: 0, denom: 0, rate: 0, byDistrict: [] },
+          });
+        }
+
+        const rows = await db
+          .select({
+            clientId: clientVaccinations.clientId,
+            vaccineName: clientVaccinations.vaccineName,
+            facilityId: clients.facilityId,
+            districtId: facilities.districtId,
+            districtName: districts.name,
+          })
+          .from(clientVaccinations)
+          .innerJoin(clients, eq(clients.id, clientVaccinations.clientId))
+          .innerJoin(facilities, eq(facilities.id, clients.facilityId))
+          .innerJoin(districts, eq(districts.id, facilities.districtId))
+          .where(
+            and(
+              eq(clientVaccinations.tenantId, tenantId),
+              scopedFacilityIds
+                ? inArray(clients.facilityId, scopedFacilityIds)
+                : undefined,
+            ),
+          );
+
+        // Per-district per-client antigen presence
+        type DistrictAgg = {
+          districtId: number;
+          districtName: string;
+          dtp1: Set<string>;
+          dtp3: Set<string>;
+          mcv1: Set<string>;
+        };
+        const districtAgg = new Map<number, DistrictAgg>();
+        for (const r of rows) {
+          if (isCampaignDose(r.vaccineName)) continue;
+          const code = normAntigen(r.vaccineName);
+          if (code !== "PENTA_1" && code !== "PENTA_3" && code !== "MR_1") continue;
+          let entry = districtAgg.get(r.districtId);
+          if (!entry) {
+            entry = {
+              districtId: r.districtId,
+              districtName: r.districtName,
+              dtp1: new Set<string>(),
+              dtp3: new Set<string>(),
+              mcv1: new Set<string>(),
+            };
+            districtAgg.set(r.districtId, entry);
+          }
+          if (code === "PENTA_1") entry.dtp1.add(r.clientId);
+          else if (code === "PENTA_3") entry.dtp3.add(r.clientId);
+          else if (code === "MR_1") entry.mcv1.add(r.clientId);
+        }
+
+        // WHO formula: dropout = (DTP1_cohort − cohort_with_DTPn) / DTP1_cohort × 100
+        // Numerator is the intersection of children who got DTP1 AND the later dose,
+        // ensuring dropout >= 0 even when some children received DTPn without a
+        // recorded DTP1 (e.g. data migration / paper-based catch-up entries).
+        const compute = (numCompleted: number, denom: number) =>
+          denom > 0 ? Math.round(((denom - numCompleted) / denom) * 1000) / 10 : 0;
+
+        let totalDtp1 = 0;
+        let totalDtp3InCohort = 0;
+        let totalMcv1InCohort = 0;
+        const dtp3ByDistrict: Array<{ districtId: number; districtName: string; dtp1: number; dtp3: number; rate: number }> = [];
+        const mcv1ByDistrict: Array<{ districtId: number; districtName: string; dtp1: number; mcv1: number; rate: number }> = [];
+        const districtEntries: DistrictAgg[] = [];
+        districtAgg.forEach((v) => districtEntries.push(v));
+        for (const e of districtEntries) {
+          const d1 = e.dtp1.size;
+          let d3InCohort = 0;
+          let m1InCohort = 0;
+          e.dtp1.forEach((id) => {
+            if (e.dtp3.has(id)) d3InCohort += 1;
+            if (e.mcv1.has(id)) m1InCohort += 1;
+          });
+          totalDtp1 += d1;
+          totalDtp3InCohort += d3InCohort;
+          totalMcv1InCohort += m1InCohort;
+          dtp3ByDistrict.push({
+            districtId: e.districtId,
+            districtName: e.districtName,
+            dtp1: d1,
+            dtp3: d3InCohort,
+            rate: compute(d3InCohort, d1),
+          });
+          mcv1ByDistrict.push({
+            districtId: e.districtId,
+            districtName: e.districtName,
+            dtp1: d1,
+            mcv1: m1InCohort,
+            rate: compute(m1InCohort, d1),
+          });
+        }
+        dtp3ByDistrict.sort((a, b) => b.rate - a.rate);
+        mcv1ByDistrict.sort((a, b) => b.rate - a.rate);
+
+        res.json({
+          dtp1_dtp3: {
+            num: totalDtp3InCohort,
+            denom: totalDtp1,
+            rate: compute(totalDtp3InCohort, totalDtp1),
+            byDistrict: dtp3ByDistrict,
+          },
+          dtp1_mcv1: {
+            num: totalMcv1InCohort,
+            denom: totalDtp1,
+            rate: compute(totalMcv1InCohort, totalDtp1),
+            byDistrict: mcv1ByDistrict,
+          },
+        });
+      } catch (err: any) {
+        console.error("GET /api/indicators/dropout failed:", err);
+        res.status(500).json({ message: "Failed to compute dropout indicator" });
+      }
+    },
+  );
+
+  // GET /api/indicators/defaulters
+  // List of children whose next-due routine dose is overdue beyond GRACE_WEEKS.
+  // Filters: provinceId, districtId, facilityId, antigen (RI code).
+  app.get(
+    "/api/indicators/defaulters",
+    isAuthenticated,
+    requireTenant,
+    async (req: any, res) => {
+      try {
+        const dbUser = await storage.getUser(req.user.id);
+        if (!dbUser) return res.status(401).json({ message: "Unauthorized" });
+        const tenantId = req.tenantId as string;
+        const provinceId = req.query.provinceId
+          ? parseInt(req.query.provinceId as string)
+          : undefined;
+        const districtId = req.query.districtId
+          ? parseInt(req.query.districtId as string)
+          : undefined;
+        const facilityId = req.query.facilityId
+          ? parseInt(req.query.facilityId as string)
+          : undefined;
+        const antigen = (req.query.antigen as string | undefined)?.toUpperCase();
+
+        const scopedFacilityIds = await getScopedFacilityIds(
+          req,
+          dbUser,
+          facilityId,
+          districtId,
+          provinceId,
+        );
+        if (scopedFacilityIds && scopedFacilityIds.length === 0) {
+          return res.json([]);
+        }
+
+        const childRows = await db
+          .select({
+            id: clients.id,
+            name: clients.name,
+            dateOfBirth: clients.dateOfBirth,
+            parentName: clients.parentName,
+            contactPhone: clients.contactPhone,
+            isRefusal: clients.isRefusal,
+            facilityId: clients.facilityId,
+            facilityName: facilities.name,
+            villageId: clients.villageId,
+            villageName: villages.name,
+            districtId: facilities.districtId,
+            districtName: districts.name,
+            provinceId: districts.provinceId,
+          })
+          .from(clients)
+          .innerJoin(facilities, eq(facilities.id, clients.facilityId))
+          .innerJoin(districts, eq(districts.id, facilities.districtId))
+          .leftJoin(villages, eq(villages.id, clients.villageId))
+          .where(
+            and(
+              eq(clients.tenantId, tenantId),
+              eq(clients.clientType, "child"),
+              scopedFacilityIds
+                ? inArray(clients.facilityId, scopedFacilityIds)
+                : undefined,
+            ),
+          );
+
+        if (childRows.length === 0) return res.json([]);
+
+        const clientIds = childRows.map((c) => c.id);
+        const dosed = await db
+          .select({
+            clientId: clientVaccinations.clientId,
+            vaccineName: clientVaccinations.vaccineName,
+            administeredDate: clientVaccinations.administeredDate,
+          })
+          .from(clientVaccinations)
+          .where(
+            and(
+              eq(clientVaccinations.tenantId, tenantId),
+              inArray(clientVaccinations.clientId, clientIds),
+            ),
+          );
+
+        const dosesByClient = new Map<
+          string,
+          Map<string, Date>
+        >();
+        for (const d of dosed) {
+          if (isCampaignDose(d.vaccineName)) continue;
+          const code = normAntigen(d.vaccineName);
+          if (!code) continue;
+          const m = dosesByClient.get(d.clientId) ?? new Map<string, Date>();
+          const dt = new Date(d.administeredDate as any);
+          const existing = m.get(code);
+          if (!existing || dt > existing) m.set(code, dt);
+          dosesByClient.set(d.clientId, m);
+        }
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const WEEK_MS = 7 * 24 * 3600 * 1000;
+        const graceMs = GRACE_WEEKS * WEEK_MS;
+
+        const defaulters: any[] = [];
+        for (const c of childRows) {
+          if (c.isRefusal) continue;
+          const dob = new Date(c.dateOfBirth as any);
+          const taken = dosesByClient.get(c.id) ?? new Map<string, Date>();
+
+          // Find next due dose: first scheduled dose the child has NOT received.
+          let nextDose: { code: string; weeks: number; series?: string } | null = null;
+          for (const s of RI_SCHEDULE) {
+            if (taken.has(s.code)) continue;
+            // For 2nd/3rd doses in a series, require the prior dose first.
+            if (s.series && (s.code.endsWith("2") || s.code.endsWith("3"))) {
+              const prevNum = String(parseInt(s.code.slice(-1)) - 1);
+              const prevCode = s.code.slice(0, -1) + prevNum;
+              if (!taken.has(prevCode)) continue;
+            }
+            nextDose = s;
+            break;
+          }
+          if (!nextDose) continue;
+          if (antigen && nextDose.code !== antigen) continue;
+
+          const dueDate = new Date(dob.getTime() + nextDose.weeks * WEEK_MS);
+          // Apply minimum-gap rule when relevant
+          if (nextDose.series) {
+            const prevCode = nextDose.code.replace(/\d$/, (n) =>
+              String(Math.max(1, parseInt(n) - 1)),
+            );
+            const prev = taken.get(prevCode);
+            if (prev) {
+              const minGap = new Date(prev.getTime() + 4 * WEEK_MS);
+              if (minGap > dueDate) dueDate.setTime(minGap.getTime());
+            }
+          }
+          const cutoff = new Date(dueDate.getTime() + graceMs);
+          if (today <= cutoff) continue;
+          const daysOverdue = Math.floor((today.getTime() - dueDate.getTime()) / (24 * 3600 * 1000));
+
+          // Last dose taken (most recent administeredDate of any RI antigen)
+          let lastDoseCode: string | null = null;
+          let lastDoseDate: Date | null = null;
+          taken.forEach((dt, code) => {
+            if (!lastDoseDate || dt > lastDoseDate) {
+              lastDoseDate = dt;
+              lastDoseCode = code;
+            }
+          });
+          const lastDose = lastDoseCode && lastDoseDate ? { code: lastDoseCode, date: lastDoseDate } : null;
+
+          defaulters.push({
+            clientId: c.id,
+            name: c.name,
+            dateOfBirth: c.dateOfBirth,
+            parentName: c.parentName,
+            contactPhone: c.contactPhone,
+            facilityId: c.facilityId,
+            facilityName: c.facilityName,
+            villageId: c.villageId,
+            villageName: c.villageName,
+            districtId: c.districtId,
+            districtName: c.districtName,
+            provinceId: c.provinceId,
+            nextDoseAntigen: nextDose.code,
+            dueDate: dueDate.toISOString(),
+            daysOverdue,
+            lastDoseAntigen: lastDose?.code ?? null,
+            lastDoseDate: lastDose ? (lastDose.date as Date).toISOString() : null,
+          });
+        }
+        defaulters.sort((a, b) => b.daysOverdue - a.daysOverdue);
+        res.json(defaulters);
+      } catch (err: any) {
+        console.error("GET /api/indicators/defaulters failed:", err);
+        res.status(500).json({ message: "Failed to compute defaulter list" });
+      }
+    },
+  );
 
   /**
    * GET /api/sync/status

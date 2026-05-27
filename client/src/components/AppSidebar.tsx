@@ -50,6 +50,7 @@ const mainNavItems = [
   { title: "Facilities", path: "/facilities", icon: Building2 },
   { title: "Population Hub", path: "/population", icon: Users },
   { title: "Client Logbook", path: "/clients", icon: ClipboardList },
+  { title: "Defaulter List", path: "/clients/defaulters", icon: AlertTriangle },
 ];
 
 const planningNavItems = [

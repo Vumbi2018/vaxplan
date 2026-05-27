@@ -36,6 +36,7 @@ import { TenantSwitcher } from "@/components/TenantSwitcher";
 import { InstallPrompt } from "@/components/InstallPrompt";
 import NotFound from "@/pages/not-found";
 import ClientLogbook from "@/pages/ClientLogbook";
+import Defaulters from "@/pages/Defaulters";
 import StockLedger from "@/pages/StockLedger";
 import SessionDayPlans from "@/pages/SessionDayPlans";
 import HisIntegrations from "@/pages/HisIntegrations";
@@ -91,6 +92,7 @@ function AuthenticatedRouter() {
         <SessionPlanning planTypeFilter="routine" />
       </Route>
       <Route path="/sessions/:id/day-plans" component={SessionDayPlans} />
+      <Route path="/clients/defaulters" component={Defaulters} />
       <Route path="/clients" component={ClientLogbook} />
       <Route path="/stock">
         {modules.stock !== false ? <StockLedger /> : <NotFound />}
