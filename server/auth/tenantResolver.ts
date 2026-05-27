@@ -132,6 +132,19 @@ export const crossTenantWriteGuard: RequestHandler = async (req, res, next) => {
       return next();
     }
 
+    // Self-heal: if the session's viewTenantId override has drifted to equal
+    // the user's home tenant, clear it so future requests are unambiguous.
+    if (req.session.viewTenantId && req.session.viewTenantId === homeTenantId) {
+      delete (req.session as any).viewTenantId;
+    }
+
+    // Defensive equality: a user whose effective view tenant equals their
+    // home tenant must never be blocked, regardless of where req.tenantId
+    // was sourced from.
+    if (req.tenantId && req.tenantId === homeTenantId) {
+      return next();
+    }
+
     if (req.tenantId && req.tenantId !== homeTenantId) {
       return res.status(403).json({
         message:

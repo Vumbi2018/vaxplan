@@ -308,39 +308,42 @@ export async function apiRequest<T = unknown>(
     return await handleOfflineMutation(method, url, data) as T;
   }
 
+  // True network failures (fetch rejects — no response received) fall back to
+  // the offline outbox. HTTP responses (including 4xx/5xx) must be surfaced
+  // to the caller so the UI can show a real error toast, NOT silently queued.
+  let res: Response;
   try {
-    const res = await fetch(url, {
+    res = await fetch(url, {
       method,
       headers: data ? { "Content-Type": "application/json" } : {},
       body: data ? JSON.stringify(data) : undefined,
       credentials: "include",
     });
-
-    await throwIfResNotOk(res);
-    
-    if (res.status === 204) {
-      return undefined as T;
-    }
-    const resultData = await res.json();
-
-    // After success write on server, update local IndexedDB cache in background
-    try {
-      if (method !== "GET") {
-        await writeToIndexedDB(method, url, resultData || data);
-      }
-    } catch (e) {
-      console.warn("IndexedDB cache update failed:", e);
-    }
-
-    return resultData;
   } catch (err) {
-    // Graceful fallback to offline local write and queue if network request fails
     if (method !== "GET") {
       console.warn("Network request failed, falling back to local database write:", err);
       return await handleOfflineMutation(method, url, data) as T;
     }
     throw err;
   }
+
+  await throwIfResNotOk(res);
+
+  if (res.status === 204) {
+    return undefined as T;
+  }
+  const resultData = await res.json();
+
+  // After success write on server, update local IndexedDB cache in background
+  try {
+    if (method !== "GET") {
+      await writeToIndexedDB(method, url, resultData || data);
+    }
+  } catch (e) {
+    console.warn("IndexedDB cache update failed:", e);
+  }
+
+  return resultData;
 }
 
 // ─── Original TanStack React Query Configuration (Commented out to follow rule 2) ───

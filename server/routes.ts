@@ -1142,7 +1142,21 @@ export async function registerRoutes(
       if (!tenant || tenant.status !== "active") {
         return res.status(404).json({ message: "Country not found or inactive." });
       }
-      req.session.viewTenantId = tenantId;
+
+      // Resolve the caller's home tenant. If they're switching back to their
+      // home country, clear viewTenantId entirely so subsequent writes are
+      // not blocked by crossTenantWriteGuard on a stale override.
+      const userId = (req.user as any)?.claims?.sub;
+      const dbUser = userId ? await storage.getUser(userId) : null;
+      const homeTenantId = dbUser?.tenantId || null;
+      if (homeTenantId && homeTenantId === tenantId) {
+        delete (req.session as any).viewTenantId;
+      } else {
+        req.session.viewTenantId = tenantId;
+      }
+      await new Promise<void>((resolve, reject) =>
+        req.session.save((err: any) => (err ? reject(err) : resolve()))
+      );
       res.json({
         ok: true,
         tenant: {
