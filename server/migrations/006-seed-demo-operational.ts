@@ -12,6 +12,8 @@
  *     (tenant, facility, vaccine, quarter, year).
  *   - session_plans rows are skipped when one already exists for
  *     (tenant, facility, name, quarter, year).
+ *   - monthly_reports rows are skipped when one already exists for
+ *     (tenant, facility, month, year).
  *
  * Run with:  tsx server/migrations/006-seed-demo-operational.ts
  */
@@ -27,6 +29,7 @@ import {
   vaccineRequirements,
   sessionPlans,
   populationData,
+  monthlyReports,
 } from "../../shared/schema";
 
 type TenantCode = "ZMB" | "SSD";
@@ -353,6 +356,120 @@ async function seedVaccineRequirements(
   return inserted;
 }
 
+/**
+ * Coverage targets per vaccine for the demo. Coverage = administered ÷ target.
+ * Chosen so each dashboard color band (red <50, amber 50–80, green ≥80)
+ * is represented for every demo facility.
+ *
+ * The keys MUST match the vaccine names used in `VACCINES` above so the
+ * /api/coverage rollup matches administered doses to the matching
+ * vaccine_requirements row.
+ */
+const DEMO_COVERAGE_FRACTIONS: Record<string, number> = {
+  BCG: 0.88,   // green
+  OPV: 0.62,   // amber
+  Penta: 0.74, // amber
+  MR: 0.42,    // red
+  TT: 0.55,    // amber
+};
+
+/**
+ * Split a total count of doses across N months with a mild front/back skew
+ * so monthly figures look organic rather than uniform.
+ */
+function splitAcrossMonths(total: number, months: number, seed: number): number[] {
+  if (months <= 0) return [];
+  if (total <= 0) return Array(months).fill(0);
+  const weights: number[] = [];
+  for (let i = 0; i < months; i++) {
+    // deterministic pseudo-random weight in [0.7, 1.3]
+    const r = ((Math.sin(seed * 17 + i * 31) + 1) / 2) * 0.6 + 0.7;
+    weights.push(r);
+  }
+  const sum = weights.reduce((a, b) => a + b, 0);
+  const out = weights.map((w) => Math.round((w / sum) * total));
+  // Correct rounding drift on the last bucket.
+  const drift = total - out.reduce((a, b) => a + b, 0);
+  out[out.length - 1] += drift;
+  return out.map((v) => Math.max(0, v));
+}
+
+async function seedMonthlyReports(
+  tenantId: string,
+  picks: FacilityPick[],
+  demographics: { under1: number; pregnant: number; schoolEntry: number },
+  catchmentByFacility: Map<number, number>,
+): Promise<number> {
+  if (picks.length === 0) return 0;
+
+  const startMonth = (QUARTER - 1) * 3 + 1; // 1-indexed: Q1->1, Q2->4, Q3->7, Q4->10
+  const months = [startMonth, startMonth + 1, startMonth + 2];
+
+  const existing = await db
+    .select({
+      facilityId: monthlyReports.facilityId,
+      month: monthlyReports.month,
+      year: monthlyReports.year,
+    })
+    .from(monthlyReports)
+    .where(eq(monthlyReports.tenantId, tenantId));
+  const existingKeys = new Set(
+    existing.map((r) => `${r.facilityId}|${r.month}|${r.year}`),
+  );
+
+  let inserted = 0;
+  for (let pi = 0; pi < picks.length; pi++) {
+    const p = picks[pi];
+    const catchmentPop = catchmentByFacility.get(p.facilityId);
+    if (catchmentPop === undefined) continue;
+
+    // Per-vaccine total administered for the whole quarter (matches the
+    // /api/coverage formula: target = round(catchment * fraction / 4)).
+    const totalsByVaccine: Record<string, number> = {};
+    for (const v of VACCINES) {
+      const fraction = demographics[v.cohort];
+      const targetPopulation = Math.max(1, Math.round((catchmentPop * fraction) / 4));
+      const baseCoverage = DEMO_COVERAGE_FRACTIONS[v.name] ?? 0.5;
+      // Per-facility jitter in [-0.07, +0.07] so facilities differ slightly.
+      const jitter = (((Math.sin(p.facilityId * 13 + v.name.length) + 1) / 2) - 0.5) * 0.14;
+      const coverage = Math.max(0.05, Math.min(0.98, baseCoverage + jitter));
+      totalsByVaccine[v.name] = Math.round(targetPopulation * coverage);
+    }
+
+    const splits: Record<string, number[]> = {};
+    for (const [name, total] of Object.entries(totalsByVaccine)) {
+      splits[name] = splitAcrossMonths(total, months.length, p.facilityId + name.length);
+    }
+
+    for (let mi = 0; mi < months.length; mi++) {
+      const month = months[mi];
+      const key = `${p.facilityId}|${month}|${YEAR}`;
+      if (existingKeys.has(key)) continue;
+
+      const immunizations: Record<string, number> = {};
+      for (const v of VACCINES) {
+        const count = splits[v.name][mi] ?? 0;
+        if (count <= 0) continue;
+        immunizations[v.name] = count;
+      }
+
+      await db.insert(monthlyReports).values({
+        tenantId,
+        facilityId: p.facilityId,
+        month,
+        year: YEAR,
+        immunizations,
+        stockSummary: {},
+        surveillance: {},
+        approvalStatus: "approved",
+      });
+      existingKeys.add(key);
+      inserted++;
+    }
+  }
+  return inserted;
+}
+
 async function seedSessionPlans(
   tenantId: string,
   picks: FacilityPick[],
@@ -438,8 +555,9 @@ async function run() {
     );
     const vr = await seedVaccineRequirements(tenant.id, picks, demographics, catchmentByFacility);
     const sp = await seedSessionPlans(tenant.id, picks, demographics, catchmentByFacility);
+    const mr = await seedMonthlyReports(tenant.id, picks, demographics, catchmentByFacility);
     console.log(
-      `[${code}] picked ${picks.length} facilities • +${u} users • +${pop} population rows • +${vr} vaccine requirements • +${sp} session plans`,
+      `[${code}] picked ${picks.length} facilities • +${u} users • +${pop} population rows • +${vr} vaccine requirements • +${sp} session plans • +${mr} monthly reports`,
     );
   }
 
@@ -449,7 +567,8 @@ async function run() {
       (SELECT COUNT(*) FROM users               u WHERE u.tenant_id = t.id) AS users,
       (SELECT COUNT(*) FROM population_data     p WHERE p.tenant_id = t.id) AS population_rows,
       (SELECT COUNT(*) FROM vaccine_requirements v WHERE v.tenant_id = t.id) AS vaccine_requirements,
-      (SELECT COUNT(*) FROM session_plans       s WHERE s.tenant_id = t.id) AS session_plans
+      (SELECT COUNT(*) FROM session_plans       s WHERE s.tenant_id = t.id) AS session_plans,
+      (SELECT COUNT(*) FROM monthly_reports     m WHERE m.tenant_id = t.id) AS monthly_reports
     FROM tenants t
     WHERE t.code IN ('ZMB','SSD')
     ORDER BY t.code;
