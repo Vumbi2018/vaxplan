@@ -60,7 +60,11 @@ import {
   Plus,
 } from "lucide-react";
 import type { Facility, Village, FacilityCatchment } from "@shared/schema";
-import { distance, centroid as turfCentroid, booleanPointInPolygon as turfBooleanPointInPolygon, bbox as turfBbox } from "@turf/turf";
+import { distance } from "@turf/turf";
+// Vite worker import — runs centroid + point-in-polygon emphasis off the
+// main thread so Province / District / LLG changes never block the UI on
+// huge GRID3 datasets (tens of thousands of polygons).
+import Grid3InsideWorker from "@/workers/grid3Inside.worker.ts?worker";
 import {
   Dialog,
   DialogContent,
@@ -1842,6 +1846,12 @@ export function MapView({
     },
   });
 
+  // Shared canvas renderer for the GRID3 layer. SVG rendering creates one
+  // DOM node per feature, which is what made the map drag/zoom so heavy
+  // on the Zambia dataset (tens of thousands of polygons → tens of thousands
+  // of <path> elements). A single canvas paints them all in one element.
+  const grid3CanvasRenderer = useMemo(() => L.canvas({ padding: 0.5 }), []);
+
   // Imperative ref to the GRID3 Leaflet layer so we can re-style features when
   // the active Province / District / LLG selection changes WITHOUT remounting
   // the GeoJSON layer (remount would otherwise re-add it last in the SVG paint
@@ -2997,45 +3007,95 @@ export function MapView({
     llgLookup,
   ]);
 
-  // Pre-compute the bounding boxes of the selected admin polygon(s) for a
-  // cheap first-pass filter before running the more expensive point-in-polygon
-  // test. The GRID3 Zambia dataset has tens of thousands of features so we
-  // want to avoid running booleanPointInPolygon on every one of them.
-  const grid3InsideIds = useMemo<Set<any> | null>(() => {
-    if (!selectedAdminFeatures || !grid3GeoJSON?.features) return null;
+  // Ensure every GRID3 feature has a stable `id` so the worker and the
+  // canvas style function agree on which polygons to emphasize. This runs
+  // once per dataset (the query result is cached by tenant) and mutates the
+  // feature objects in place — cheap and avoids cloning the geometry.
+  const grid3DatasetKey = useMemo<string | null>(() => {
+    if (!grid3GeoJSON?.features) return null;
+    const feats = grid3GeoJSON.features as any[];
+    for (let i = 0; i < feats.length; i++) {
+      const f = feats[i];
+      if (f.id == null) f.id = f.properties?.OBJECTID ?? i;
+    }
+    return `${grid3CacheKey}:${feats.length}`;
+  }, [grid3GeoJSON, grid3CacheKey]);
+
+  // Long-lived worker that owns the centroid cache for the current dataset.
+  // We keep it across the lifetime of the component so centroids are computed
+  // exactly once per dataset, no matter how many times the user toggles
+  // Province / District / LLG.
+  const grid3WorkerRef = useRef<Worker | null>(null);
+  const grid3WorkerCachedKeyRef = useRef<string | null>(null);
+  const grid3RequestSeqRef = useRef(0);
+  const grid3LastAppliedReqRef = useRef(0);
+  useEffect(() => {
+    const w = new Grid3InsideWorker();
+    grid3WorkerRef.current = w;
+    return () => {
+      w.terminate();
+      grid3WorkerRef.current = null;
+      grid3WorkerCachedKeyRef.current = null;
+    };
+  }, []);
+
+  // When the dataset changes, invalidate the worker's centroid cache key so
+  // the next compute request re-ships the geometry.
+  useEffect(() => {
+    grid3WorkerCachedKeyRef.current = null;
+  }, [grid3DatasetKey]);
+
+  // Inside-ids set is now produced asynchronously by the worker. `null`
+  // means "no selection — render every footprint at full emphasis".
+  const [grid3InsideIds, setGrid3InsideIds] = useState<Set<any> | null>(null);
+
+  useEffect(() => {
+    const worker = grid3WorkerRef.current;
+    if (!worker) return;
+
+    // No selection or no data — clear emphasis (full opacity for all).
+    if (!selectedAdminFeatures || !grid3GeoJSON?.features || !grid3DatasetKey) {
+      setGrid3InsideIds(null);
+      return;
+    }
+
+    // Hard cap — bail out of emphasis on huge datasets to keep the UI fluid
+    // even if the worker would still finish in a reasonable time.
     const features = grid3GeoJSON.features as any[];
-    // Hard cap — bail out of emphasis on huge datasets to keep the UI fluid.
-    if (features.length > 80000) return null;
-    let admBboxes: number[][] = [];
-    try {
-      admBboxes = selectedAdminFeatures.features.map((f: any) => turfBbox(f));
-    } catch {
-      return null;
+    if (features.length > 200000) {
+      setGrid3InsideIds(null);
+      return;
     }
-    const ids = new Set<any>();
-    for (const feat of features) {
-      let c: number[] | null = null;
-      try {
-        c = (turfCentroid(feat) as any).geometry.coordinates as number[];
-      } catch {
-        continue;
+
+    const requestId = ++grid3RequestSeqRef.current;
+    const needData = grid3WorkerCachedKeyRef.current !== grid3DatasetKey;
+
+    const onMessage = (e: MessageEvent<any>) => {
+      const data = e.data;
+      if (!data || data.requestId !== requestId) return;
+      if (data.type === "result") {
+        // Drop stale results so an older selection can't overwrite a newer one.
+        if (requestId < grid3LastAppliedReqRef.current) return;
+        grid3LastAppliedReqRef.current = requestId;
+        grid3WorkerCachedKeyRef.current = data.datasetKey;
+        setGrid3InsideIds(new Set(data.ids));
+        worker.removeEventListener("message", onMessage);
       }
-      const [x, y] = c;
-      for (let i = 0; i < admBboxes.length; i++) {
-        const bb = admBboxes[i];
-        if (x < bb[0] || x > bb[2] || y < bb[1] || y > bb[3]) continue;
-        try {
-          if (turfBooleanPointInPolygon(c as any, selectedAdminFeatures.features[i])) {
-            ids.add(feat.id ?? feat.properties?.OBJECTID ?? feat);
-            break;
-          }
-        } catch {
-          // ignore malformed polygons
-        }
-      }
-    }
-    return ids;
-  }, [selectedAdminFeatures, grid3GeoJSON]);
+    };
+    worker.addEventListener("message", onMessage);
+
+    worker.postMessage({
+      type: "compute",
+      requestId,
+      datasetKey: grid3DatasetKey,
+      grid3: needData ? { features } : undefined,
+      selected: selectedAdminFeatures,
+    });
+
+    return () => {
+      worker.removeEventListener("message", onMessage);
+    };
+  }, [selectedAdminFeatures, grid3GeoJSON, grid3DatasetKey]);
 
   // GRID3 style function — closes over the latest insideIds set so we can
   // apply it imperatively via grid3LayerRef.setStyle without remounting the
@@ -3832,6 +3892,7 @@ export function MapView({
               ref={(r) => { grid3LayerRef.current = r as any; }}
               data={grid3GeoJSON}
               pane="grid3Pane"
+              {...({ renderer: grid3CanvasRenderer } as any)}
               style={grid3StyleFn as any}
               onEachFeature={(feature, layer) => {
               const props = feature.properties || {};
