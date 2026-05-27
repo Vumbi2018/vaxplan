@@ -26,6 +26,7 @@ import {
   provinces,
   vaccineRequirements,
   sessionPlans,
+  populationData,
 } from "../../shared/schema";
 
 type TenantCode = "ZMB" | "SSD";
@@ -64,7 +65,12 @@ interface DemoSessionTemplate {
   status: string;
   transportMode: "walking" | "road" | "boat" | "air";
   estimatedDuration: number;
-  targetPopulation: number;
+  /**
+   * Fraction of the facility's under-1 cohort this session targets.
+   * The actual target population is derived per-facility from
+   * population_data so dashboards stay consistent.
+   */
+  under1Fraction: number;
   notes: string;
   daysFromNow: number;
 }
@@ -77,7 +83,7 @@ const SESSION_TEMPLATES: DemoSessionTemplate[] = [
     status: "planned",
     transportMode: "walking",
     estimatedDuration: 240,
-    targetPopulation: 45,
+    under1Fraction: 0.25,
     notes: "Weekly routine immunization at the static post.",
     daysFromNow: 7,
   },
@@ -88,7 +94,7 @@ const SESSION_TEMPLATES: DemoSessionTemplate[] = [
     status: "planned",
     transportMode: "road",
     estimatedDuration: 360,
-    targetPopulation: 30,
+    under1Fraction: 0.15,
     notes: "Outreach to nearby village cluster; awaiting district sign-off.",
     daysFromNow: 14,
   },
@@ -99,11 +105,18 @@ const SESSION_TEMPLATES: DemoSessionTemplate[] = [
     status: "planned",
     transportMode: "road",
     estimatedDuration: 480,
-    targetPopulation: 60,
+    under1Fraction: 0.35,
     notes: "Draft mobile catch-up plan for unreached children.",
     daysFromNow: 21,
   },
 ];
+
+/**
+ * Demo catchment populations assigned per facility position so that each
+ * picked facility has a distinct, realistic head count. Used when no
+ * existing population_data row is present for the (tenant, facility, year).
+ */
+const DEMO_CATCHMENTS = [4200, 6800, 9500, 3100, 7400, 5200];
 
 async function pickFacilities(tenantId: string): Promise<FacilityPick[]> {
   const rows = await db
@@ -224,10 +237,76 @@ async function seedUsers(
   return inserted;
 }
 
+async function seedPopulationData(
+  tenantId: string,
+  picks: FacilityPick[],
+  demographics: { under1: number; pregnant: number; schoolEntry: number },
+): Promise<{ inserted: number; catchmentByFacility: Map<number, number> }> {
+  const catchmentByFacility = new Map<number, number>();
+  if (picks.length === 0) return { inserted: 0, catchmentByFacility };
+
+  const existing = await db
+    .select({
+      facilityId: populationData.facilityId,
+      source: populationData.source,
+      year: populationData.year,
+      totalPopulation: populationData.totalPopulation,
+    })
+    .from(populationData)
+    .where(eq(populationData.tenantId, tenantId));
+  const existingByFacility = new Map<number, number>();
+  const existingKeys = new Set<string>();
+  for (const r of existing) {
+    if (r.facilityId != null) {
+      existingKeys.add(`${r.facilityId}|${r.source}|${r.year}`);
+      // Prefer an `nso` row for the current year, otherwise fall back to any
+      // existing row so vaccine requirements still match real numbers.
+      if (r.year === YEAR && (r.source === "nso" || !existingByFacility.has(r.facilityId))) {
+        existingByFacility.set(r.facilityId, r.totalPopulation);
+      }
+    }
+  }
+
+  let inserted = 0;
+  for (let i = 0; i < picks.length; i++) {
+    const p = picks[i];
+    const reused = existingByFacility.get(p.facilityId);
+    if (reused !== undefined) {
+      catchmentByFacility.set(p.facilityId, reused);
+      continue;
+    }
+    const total = DEMO_CATCHMENTS[i % DEMO_CATCHMENTS.length];
+    catchmentByFacility.set(p.facilityId, total);
+    const key = `${p.facilityId}|nso|${YEAR}`;
+    if (existingKeys.has(key)) continue;
+    await db.insert(populationData).values({
+      tenantId,
+      facilityId: p.facilityId,
+      districtId: p.districtId,
+      provinceId: p.provinceId,
+      source: "nso",
+      year: YEAR,
+      totalPopulation: total,
+      malePopulation: Math.round(total * 0.51),
+      femalePopulation: Math.round(total * 0.49),
+      under1Population: Math.round(total * demographics.under1),
+      under5Population: Math.round(total * Math.max(demographics.under1 * 5, 0.16)),
+      pregnantWomen: Math.round(total * demographics.pregnant),
+      schoolEntry: Math.round(total * demographics.schoolEntry),
+      confidenceScore: "85.00",
+      approvalStatus: "approved",
+    });
+    existingKeys.add(key);
+    inserted++;
+  }
+  return { inserted, catchmentByFacility };
+}
+
 async function seedVaccineRequirements(
   tenantId: string,
   picks: FacilityPick[],
   demographics: { under1: number; pregnant: number; schoolEntry: number },
+  catchmentByFacility: Map<number, number>,
 ): Promise<number> {
   if (picks.length === 0) return 0;
 
@@ -244,9 +323,10 @@ async function seedVaccineRequirements(
     existing.map((r) => `${r.facilityId}|${r.vaccineName}|${r.quarter}|${r.year}`),
   );
 
-  const catchmentPop = 5000; // Demo head count when real population_data is absent.
   let inserted = 0;
   for (const p of picks) {
+    const catchmentPop = catchmentByFacility.get(p.facilityId);
+    if (catchmentPop === undefined) continue;
     for (const v of VACCINES) {
       const key = `${p.facilityId}|${v.name}|${QUARTER}|${YEAR}`;
       if (existingKeys.has(key)) continue;
@@ -276,6 +356,8 @@ async function seedVaccineRequirements(
 async function seedSessionPlans(
   tenantId: string,
   picks: FacilityPick[],
+  demographics: { under1: number; pregnant: number; schoolEntry: number },
+  catchmentByFacility: Map<number, number>,
 ): Promise<number> {
   if (picks.length === 0) return 0;
 
@@ -294,12 +376,17 @@ async function seedSessionPlans(
 
   let inserted = 0;
   for (const p of picks) {
+    const catchmentPop = catchmentByFacility.get(p.facilityId);
+    if (catchmentPop === undefined) continue;
+    // Per-quarter under-1 cohort served by this facility.
+    const quarterlyUnder1 = (catchmentPop * demographics.under1) / 4;
     for (const tpl of SESSION_TEMPLATES) {
       const name = `${p.facilityName} — ${tpl.suffix} Q${QUARTER} ${YEAR}`;
       const key = `${p.facilityId}|${name}|${QUARTER}|${YEAR}`;
       if (existingKeys.has(key)) continue;
       const scheduled = new Date();
       scheduled.setUTCDate(scheduled.getUTCDate() + tpl.daysFromNow);
+      const targetPopulation = Math.max(1, Math.round(quarterlyUnder1 * tpl.under1Fraction));
       await db.insert(sessionPlans).values({
         tenantId,
         facilityId: p.facilityId,
@@ -310,7 +397,7 @@ async function seedSessionPlans(
         scheduledDate: scheduled,
         transportMode: tpl.transportMode,
         estimatedDuration: tpl.estimatedDuration,
-        targetPopulation: tpl.targetPopulation,
+        targetPopulation,
         status: tpl.status,
         approvalStatus: tpl.approvalStatus,
         notes: tpl.notes,
@@ -344,10 +431,15 @@ async function run() {
     }
 
     const u = await seedUsers(code, tenant.id, picks);
-    const vr = await seedVaccineRequirements(tenant.id, picks, demographics);
-    const sp = await seedSessionPlans(tenant.id, picks);
+    const { inserted: pop, catchmentByFacility } = await seedPopulationData(
+      tenant.id,
+      picks,
+      demographics,
+    );
+    const vr = await seedVaccineRequirements(tenant.id, picks, demographics, catchmentByFacility);
+    const sp = await seedSessionPlans(tenant.id, picks, demographics, catchmentByFacility);
     console.log(
-      `[${code}] picked ${picks.length} facilities • +${u} users • +${vr} vaccine requirements • +${sp} session plans`,
+      `[${code}] picked ${picks.length} facilities • +${u} users • +${pop} population rows • +${vr} vaccine requirements • +${sp} session plans`,
     );
   }
 
@@ -355,6 +447,7 @@ async function run() {
     SELECT
       t.code,
       (SELECT COUNT(*) FROM users               u WHERE u.tenant_id = t.id) AS users,
+      (SELECT COUNT(*) FROM population_data     p WHERE p.tenant_id = t.id) AS population_rows,
       (SELECT COUNT(*) FROM vaccine_requirements v WHERE v.tenant_id = t.id) AS vaccine_requirements,
       (SELECT COUNT(*) FROM session_plans       s WHERE s.tenant_id = t.id) AS session_plans
     FROM tenants t
