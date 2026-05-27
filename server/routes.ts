@@ -3470,6 +3470,35 @@ export async function registerRoutes(
   });
 
   // ─── Sessions ─────────────────────────────────────────
+  // Read-time inheritance: overlay campaign* fields from the parent microplan
+  // so session responses always reflect the current parent values rather than
+  // a stale denormalised copy. The columns are kept on session_plans for
+  // offline-client back-compat but are no longer the source of truth.
+  async function overlayCampaignFromParent<T extends { microplanId: number | null }>(
+    tenantId: string,
+    sessions: T[],
+  ): Promise<T[]> {
+    if (!sessions.length) return sessions;
+    const ids = Array.from(new Set(sessions.map((s) => s.microplanId).filter((x): x is number => x != null)));
+    const parents = new Map<number, any>();
+    for (const id of ids) {
+      const p = await storage.getMicroplan(tenantId, id);
+      if (p) parents.set(id, p);
+    }
+    return sessions.map((s) => {
+      const p = s.microplanId ? parents.get(s.microplanId) : null;
+      if (!p) return s;
+      const isCampaign = p.planType === "sia_campaign";
+      return {
+        ...s,
+        planType: isCampaign ? "campaign" : "routine",
+        campaignAntigen: isCampaign ? p.campaignAntigen ?? null : null,
+        campaignTargetAge: isCampaign ? p.campaignTargetAge ?? null : null,
+        campaignScope: isCampaign ? p.campaignScope ?? null : null,
+      } as T;
+    });
+  }
+
   app.get("/api/sessions", ...auth, async (req: any, res) => {
     try {
       const user = req.user as any;
@@ -3506,7 +3535,8 @@ export async function registerRoutes(
         list = filteredList;
       }
 
-      res.json(list);
+      const overlaid = await overlayCampaignFromParent(req.tenantId, list);
+      res.json(overlaid);
     } catch (error) {
       console.error("Error fetching sessions:", error);
       res.status(500).json({ message: "Failed to fetch sessions" });
@@ -3538,7 +3568,8 @@ export async function registerRoutes(
     try {
       const session = await storage.getSessionPlan(req.tenantId, parseInt(req.params.id));
       if (!session) return res.status(404).json({ message: "Session not found" });
-      res.json(session);
+      const [overlaid] = await overlayCampaignFromParent(req.tenantId, [session]);
+      res.json(overlaid);
     } catch (error) {
       console.error("Error fetching session:", error);
       res.status(500).json({ message: "Failed to fetch session" });
@@ -3635,10 +3666,37 @@ export async function registerRoutes(
         }
       }
 
-      // Inherit planType + campaign fields from the parent microplan. Client cannot
-      // override these — they were stripped by insertSessionPlanSchema.
+      // The session's facility, year, and quarter MUST match the parent microplan.
+      // We never trust the client for these when microplanId is provided — they are
+      // derived/forced from the parent so a session can't drift from its parent's
+      // scope (or be re-scoped to an unauthorised facility via a crafted payload).
+      const parentFacilityId = parentCheck.parent.facilityId;
+      const parentYear = parentCheck.parent.year;
+      const parentQuarter = parentCheck.parent.quarter;
+      if (data.facilityId !== parentFacilityId) {
+        return res.status(400).json({
+          message: `facilityId ${data.facilityId} does not match parent microplan facilityId ${parentFacilityId}.`,
+        });
+      }
+      if (data.year !== parentYear) {
+        return res.status(400).json({
+          message: `year ${data.year} does not match parent microplan year ${parentYear}.`,
+        });
+      }
+      if (data.quarter !== parentQuarter) {
+        return res.status(400).json({
+          message: `quarter ${data.quarter} does not match parent microplan quarter ${parentQuarter}.`,
+        });
+      }
+
+      // Inherit planType + campaign fields from the parent microplan. We still
+      // store them on the row for offline-client back-compat, but read-time
+      // responses overlay parent values so the source of truth stays the parent.
       const inherited: any = {
         ...data,
+        facilityId: parentFacilityId,
+        year: parentYear,
+        quarter: parentQuarter,
         planType: parentCheck.sessionPlanType,
         campaignAntigen: parentCheck.sessionPlanType === "campaign" ? parentCheck.parent.campaignAntigen ?? null : null,
         campaignTargetAge: parentCheck.sessionPlanType === "campaign" ? parentCheck.parent.campaignTargetAge ?? null : null,
@@ -3691,11 +3749,23 @@ export async function registerRoutes(
           return res.status(400).json({ message: `${f} is inherited from the parent microplan and cannot be changed on a session.` });
         }
       }
+      // Forbid changing the parent-derived scope (facilityId/year/quarter).
+      // These are fixed by the parent microplan; reparenting requires delete+recreate.
+      for (const f of ["facilityId", "year", "quarter"] as const) {
+        if (body[f] !== undefined && body[f] !== (oldSession as any)[f]) {
+          return res.status(400).json({
+            message: `${f} is derived from the parent microplan and cannot be changed on a session.`,
+          });
+        }
+      }
       delete body.microplanId;
       delete body.planType;
       delete body.campaignAntigen;
       delete body.campaignTargetAge;
       delete body.campaignScope;
+      delete body.facilityId;
+      delete body.year;
+      delete body.quarter;
       delete body.tenantId;
 
       // Reject the write if the parent microplan is locked.
