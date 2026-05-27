@@ -161,7 +161,7 @@ async function seed() {
     //    nationally-meaningful unmapped clusters.
     console.log('\n--- TRIGGERING SPATIAL DETECTION ENGINE (PNG) ---');
     const result = await runMissingSettlementDetection(PNG_TENANT_ID, {
-      populationThreshold: 300,
+      populationThreshold: 50,
       buildingThreshold: 5,
       radiusKm: 1.5,
     });

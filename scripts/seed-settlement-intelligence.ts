@@ -122,7 +122,7 @@ async function seed() {
     // 5. Run the Missing Settlement Detection Engine on the seeded data!
     console.log('\n--- TRIGGERING SPATIAL DETECTION ENGINE ---');
     const result = await runMissingSettlementDetection(ZMB_TENANT_ID, {
-      populationThreshold: 300,
+      populationThreshold: 50,
       buildingThreshold: 5,
       radiusKm: 1.5
     });
