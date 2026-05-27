@@ -1,0 +1,70 @@
+VaxPlan Replit Deployment Data & Sources Manifest
+This manifest documents all source code, database seeds, and external spatial assets required to deploy, seed, and fully run the VaxPlan GIS-Microplanning Application on Replit for multi-tenant, offline-capable country contexts (Zambia, South Sudan, and Papua New Guinea).
+
+1. Core Source Code Package
+The entire Express + React multi-tenant source code, build scripts, configuration, and migrations are packaged into a single lightweight ZIP archive.
+
+Package Name: vaxplan-replit-package.zip
+Local Disk Location: c:\Projects\GIS-Microplanning\vaxplan-replit-package.zip
+Size: 3.39 MB (highly compressed, pre-stripped of node_modules, .git, .local, android, and out directories)
+Replit Upload Method: Upload this zip directly into the Replit file panel, then extract it in the Replit Shell using:
+bash
+
+unzip vaxplan-replit-package.zip
+2. Database Seeding Files (CSV Lists)
+These files contain the official health facility lists for seeding the database tables. They are located inside the data directory of the source code package.
+
+A. Zambia Health Facility List
+File Path: data/zambia/facilities.csv
+Size: 492 KB
+Description: Zambian Ministry of Health master facility list containing 2,827 operational facilities mapped to 10 provinces and 116 districts, including HMIS codes, DHIS2 UIDs, SmartCare GUIDs, and latitude/longitude coordinates.
+B. South Sudan Health Facility List
+File Path: data/south_sudan/facilities.csv
+Size: 241 KB
+Description: South Sudan Ministry of Health master facility list containing 1,983 facilities mapped to 10 States and 80 Counties, including HMIS codes, coordinates, and operational status.
+3. High-Resolution Spatial & Population Assets
+These files represent the high-performance gridded population rasters (GeoTIFFs) and settlement footprint boundaries (GeoJSONs) required for interactive map layers and vaccine forecasting.
+
+IMPORTANT
+
+Because these spatial assets are large (ranging from 13 MB to 63 MB), they are excluded from vaxplan-replit-package.zip to keep the code upload fast. You must upload them separately into the Resources directory in your Replit workspace root!
+
+Asset Name	Target Replit File Path	Size	Description
+Zambia Population Grid	Resources/zmb_pop_2026_CN_100m_R2025A_v1.tif	63.70 MB	Authentic WorldPop 2026 gridded spatial population raster at 100m resolution.
+South Sudan Population Grid	Resources/ssd_pop_2026_CN_100m_R2025A_v1.tif	20.57 MB	Authentic WorldPop 2026 gridded spatial population raster at 100m resolution.
+PNG Population Grid	Resources/png_pop_2026_CN_100m_R2025A_v1.tif	13.97 MB	WorldPop 2026 gridded spatial population raster at 100m resolution for Papua New Guinea fallback.
+Zambia Settlement Footprints	Resources/grid3_settlements_zmb.geojson	18.48 MB	High-performance GRID3 vector GeoJSON containing physical building footprints for cluster intelligence.
+4. Execution Commands (Replit Shell)
+Once the source code ZIP is extracted and all Resources rasters/geojson files are uploaded, execute the following commands in the Replit Shell to boot the app, push the schema, and seed the active multi-country datasets:
+
+Step 1: Install Dependencies
+bash
+
+npm install
+Step 2: Push Database Schema
+bash
+
+npx drizzle-kit push
+Step 3: Run Multi-Tenant Backfill & Country Bootstraps (Database Migration)
+bash
+
+# 1. Backfill core multitenant structure and seed PNG tenant
+npx tsx server/migrations/001-multitenant-backfill.ts
+# 2. Seed Zambia facilities, administrative boundaries, and CSO population data
+npx tsx server/migrations/003-seed-zambia.ts
+# 3. Seed South Sudan facilities, administrative states, and counties
+npx tsx server/migrations/004-seed-south-sudan.ts
+Step 4: Run High-Performance GIS Settlement Intelligence Seeder
+bash
+
+# Seed master settlements registry, population grids, and candidate unmapped clusters
+npx tsx scripts/seed-settlement-intelligence.ts
+Step 5: Seed Core Mock Data & User Profiles
+bash
+
+# Seed mock users, default vaccine requirements, stock configurations, and session plans
+npx tsx scripts/seed-data.ts
+Step 6: Start Production Dev Server
+bash
+
+npm run dev
