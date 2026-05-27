@@ -10,8 +10,15 @@ export default defineConfig({
     runtimeErrorOverlay(),
     // ─── Progressive Web App / Service Worker ─────────────────────────────
     VitePWA({
+      // We ship a hand-written Service Worker (client/public/sw.js) that
+      // implements Background Sync for the offline outbox. Disable
+      // VitePWA's generated SW so it does not overwrite ours; keep the
+      // manifest for installability.
+      strategies: "generateSW",
       registerType: "autoUpdate",
-      injectRegister: "auto",
+      injectRegister: false,
+      srcDir: undefined,
+      filename: "_vite-pwa-sw.js",
       workbox: {
         maximumFileSizeToCacheInBytes: 12 * 1024 * 1024, // 12 MB to support large Leaflet/GIS modules
         // Cache the app shell (JS/CSS/fonts/HTML)

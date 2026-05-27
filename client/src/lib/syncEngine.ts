@@ -16,6 +16,8 @@ import {
   getLastSyncAt,
   setLastSyncAt,
   bulkSyncEntities,
+  acquireOutboxLease,
+  releaseOutboxLease,
   type OutboxItem,
 } from "./offlineDb";
 import { onNetworkChange, isOnline } from "./platformNetwork";
@@ -157,6 +159,22 @@ class SyncEngine {
   // ── Core: flush outbox → server ───────────────────────────────────────────
 
   async flush(tenantId: string): Promise<void> {
+    // Acquire a cross-context lease so the Service Worker's Background
+    // Sync drain and this in-page flush can never POST the same outbox
+    // rows concurrently. If the SW currently holds it, we no-op — the
+    // SW will finish and broadcast OUTBOX_SYNC_FINISHED, which refreshes
+    // pendingCount in the UI.
+    const leaseOwner = `page-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const lease = await acquireOutboxLease(leaseOwner);
+    if (!lease) {
+      this.setState({
+        currentStage: "Background sync already running — waiting...",
+        progressPercent: 30,
+      });
+      return;
+    }
+
+    try {
     const pending = await offlineDb.outbox
       .where("tenantId")
       .equals(tenantId)
@@ -225,6 +243,9 @@ class SyncEngine {
         ),
       );
       throw err;
+    }
+    } finally {
+      await releaseOutboxLease(leaseOwner);
     }
   }
 
@@ -375,6 +396,60 @@ class SyncEngine {
       .equals(tenantId)
       .count();
     this.setState({ pendingCount });
+  }
+
+  /** Tenant-less refresh used by SyncStatus when a SW Background Sync
+   *  message arrives (works for the most recently initialized tenant). */
+  async refreshPending(): Promise<void> {
+    if (this._initializedTenantId) {
+      await this.refreshPendingCount(this._initializedTenantId);
+    } else {
+      const pendingCount = await offlineDb.outbox.count();
+      this.setState({ pendingCount });
+    }
+  }
+
+  /** Reflect SW-driven Background Sync activity in the shared SyncState
+   *  so UI shows "Syncing" while the Service Worker is draining the
+   *  outbox, then transitions back to success/idle when it finishes. */
+  reportBackgroundSync(phase: "started" | "finished", info?: { ok?: boolean; reason?: string }): void {
+    if (phase === "started") {
+      // Don't trample an in-page sync that's already running.
+      if (this._state.status === "syncing") return;
+      this.setState({
+        status: "syncing",
+        currentStage: "Background sync in progress...",
+        progressPercent: 25,
+        errorMessage: null,
+      });
+    } else {
+      // finished
+      if (info?.ok) {
+        this.setState({
+          status: "success",
+          currentStage: "Background sync completed.",
+          progressPercent: 100,
+        });
+        setTimeout(() => {
+          if (this._state.status === "success") {
+            this.setState({ currentStage: "", progressPercent: 0 });
+          }
+        }, 3000);
+      } else if (info?.reason === "auth") {
+        this.setState({ status: "error", errorMessage: "Sign in to resume sync", currentStage: "" });
+      } else if (info?.reason !== "network") {
+        this.setState({ status: "error", errorMessage: info?.reason ?? "Background sync failed", currentStage: "" });
+      } else {
+        // network drop — stay idle/offline; periodic + 'online' event will retry
+        this.setState({ status: navigator.onLine ? "idle" : "offline", currentStage: "" });
+      }
+      void this.refreshPending();
+    }
+  }
+
+  /** Plain accessor for components that don't want the getter syntax. */
+  getState(): SyncState {
+    return this._state;
   }
 
   dispose() {

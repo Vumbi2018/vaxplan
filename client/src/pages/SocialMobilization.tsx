@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { offlineDb } from "../lib/offlineDb";
+import { offlineDb, enqueueOutbox } from "../lib/offlineDb";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -199,16 +199,14 @@ export default function SocialMobilization() {
 
         await offlineDb.mobilizationActivities.add(localItem);
 
-        // Queue in outbox
-        await offlineDb.outbox.add({
+        // Queue in outbox (also registers Background Sync if supported)
+        await enqueueOutbox({
           tenantId: data.tenantId || "default",
           entityType: "mobilization_activity",
           method: "POST",
           url: "/api/mobilization",
           body: JSON.stringify(data),
           localId: String(localId),
-          retries: 0,
-          createdAt: Date.now(),
         });
 
         return localItem;

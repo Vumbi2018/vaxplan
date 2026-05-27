@@ -38,7 +38,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { offlineDb } from "../lib/offlineDb";
+import { offlineDb, enqueueOutbox } from "../lib/offlineDb";
 // Original icons (commented out to preserve working code):
 // import {
 //   Plus,
@@ -263,15 +263,13 @@ export default function BudgetPlanning() {
         await offlineDb.budgetItems.add(localItem);
 
         // Queue in outbox
-        await offlineDb.outbox.add({
+        await enqueueOutbox({
           tenantId: data.tenantId || "default",
           entityType: "budget_item",
           method: "POST",
           url: "/api/budget-items",
           body: JSON.stringify({ ...data, totalCost }),
           localId: String(localId),
-          retries: 0,
-          createdAt: Date.now(),
         });
 
         return localItem;
@@ -324,14 +322,12 @@ export default function BudgetPlanning() {
           await offlineDb.budgetItems.delete(itemId);
         } else {
           await offlineDb.budgetItems.delete(itemId);
-          await offlineDb.outbox.add({
+          await enqueueOutbox({
             tenantId: user?.tenantId || "default",
             entityType: "budget_item",
             method: "DELETE",
             url: `/api/budget-items/${itemId}`,
             localId: String(itemId),
-            retries: 0,
-            createdAt: Date.now(),
           });
         }
         return itemId;

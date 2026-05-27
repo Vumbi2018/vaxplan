@@ -497,13 +497,73 @@ export async function setLastSyncAt(iso: string): Promise<void> {
   await offlineDb.syncMeta.put({ key: "lastSyncAt", value: iso });
 }
 
+// ─── Outbox flush lease (prevents SW + page from double-flushing) ────────────
+
+const OUTBOX_LEASE_KEY = "outbox-flush-lease";
+const OUTBOX_LEASE_TTL_MS = 30_000;
+
+/** Try to acquire an exclusive lease to flush the outbox. Returns the
+ *  ownerId we hold (pass it back to releaseOutboxLease) or null if
+ *  another context already holds an unexpired lease. */
+function parseLease(raw: string | undefined | null): { ownerId: string; expiresAt: number } | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed.ownerId === "string" && typeof parsed.expiresAt === "number") {
+      return parsed;
+    }
+  } catch {
+    /* not JSON — treat as no lease */
+  }
+  return null;
+}
+
+export async function acquireOutboxLease(owner: string): Promise<string | null> {
+  const now = Date.now();
+  return await offlineDb.transaction("rw", offlineDb.syncMeta, async () => {
+    const existing = await offlineDb.syncMeta.get(OUTBOX_LEASE_KEY);
+    const lease = parseLease(existing?.value);
+    if (lease && lease.expiresAt > now) return null;
+    const next = JSON.stringify({ ownerId: owner, expiresAt: now + OUTBOX_LEASE_TTL_MS });
+    await offlineDb.syncMeta.put({ key: OUTBOX_LEASE_KEY, value: next });
+    return owner;
+  });
+}
+
+/** Release a lease only if we still hold it (no-op otherwise). */
+export async function releaseOutboxLease(owner: string): Promise<void> {
+  await offlineDb.transaction("rw", offlineDb.syncMeta, async () => {
+    const existing = await offlineDb.syncMeta.get(OUTBOX_LEASE_KEY);
+    const lease = parseLease(existing?.value);
+    if (lease && lease.ownerId === owner) {
+      await offlineDb.syncMeta.delete(OUTBOX_LEASE_KEY);
+    }
+  });
+}
+
 /** Queue a mutation to replay when online */
 export async function enqueueOutbox(item: Omit<OutboxItem, "id" | "retries" | "createdAt">): Promise<number> {
-  return offlineDb.outbox.add({
+  const id = await offlineDb.outbox.add({
     ...item,
     retries: 0,
     createdAt: Date.now(),
   });
+  // Ask the Service Worker to flush as soon as connectivity returns,
+  // even if the tab is closed. Falls back to the in-page periodic
+  // flush in syncEngine on browsers without Background Sync — and we
+  // surface a one-time hint on browsers that lack the API.
+  try {
+    const [{ registerBackgroundOutboxFlush, maybeShowUnsupportedHint }, { toast }] =
+      await Promise.all([
+        import("./backgroundSync"),
+        import("../hooks/use-toast"),
+      ]);
+    const registered = await registerBackgroundOutboxFlush();
+    if (!registered) maybeShowUnsupportedHint(toast);
+  } catch {
+    /* ignore — best effort */
+  }
+  return id;
 }
 
 /** Count pending outbox items for a tenant */

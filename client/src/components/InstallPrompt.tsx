@@ -10,7 +10,7 @@
 
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Download, X, Smartphone, Monitor } from "lucide-react";
+import { Download, X, Smartphone, Monitor, RefreshCw } from "lucide-react";
 
 interface BeforeInstallPromptEvent extends Event {
   prompt(): Promise<void>;
@@ -23,6 +23,30 @@ export function InstallPrompt() {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [isIOS, setIsIOS] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
+  const [updateReg, setUpdateReg] = useState<ServiceWorkerRegistration | null>(null);
+
+  // Listen for SW lifecycle events emitted from main.tsx — when a new
+  // SW has installed and is waiting, surface a "Reload to update" banner.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as
+        | { registration?: ServiceWorkerRegistration }
+        | undefined;
+      if (detail?.registration) setUpdateReg(detail.registration);
+    };
+    window.addEventListener("vaxplan:sw-update-ready", handler as EventListener);
+    return () =>
+      window.removeEventListener("vaxplan:sw-update-ready", handler as EventListener);
+  }, []);
+
+  const handleApplyUpdate = () => {
+    const waiting = updateReg?.waiting;
+    if (waiting) {
+      waiting.postMessage({ type: "SKIP_WAITING" });
+    } else {
+      window.location.reload();
+    }
+  };
 
   useEffect(() => {
     // Check if user already dismissed the prompt
@@ -72,7 +96,47 @@ export function InstallPrompt() {
     setIsVisible(false);
   };
 
-  if (!isVisible) return null;
+  if (!isVisible && !updateReg) return null;
+
+  if (updateReg && !isVisible) {
+    return (
+      <div
+        className="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-4 sm:w-96 z-[9999] animate-in slide-in-from-bottom-4 duration-300"
+        role="status"
+        aria-label="VaxPlan update available"
+        data-testid="pwa-update-prompt"
+      >
+        <div className="bg-card border border-border shadow-2xl rounded-xl p-4 flex gap-3">
+          <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+            <RefreshCw className="h-5 w-5 text-primary" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="font-semibold text-sm leading-tight">Update available</p>
+            <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+              A newer version of VaxPlan is ready. Reload to apply the update.
+            </p>
+            <Button
+              size="sm"
+              className="mt-2 h-7 text-xs gap-1.5 font-semibold"
+              onClick={handleApplyUpdate}
+              data-testid="button-pwa-update-reload"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              Reload
+            </Button>
+          </div>
+          <button
+            onClick={() => setUpdateReg(null)}
+            className="h-6 w-6 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors shrink-0"
+            aria-label="Dismiss update prompt"
+            data-testid="button-pwa-update-dismiss"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div

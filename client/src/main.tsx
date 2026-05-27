@@ -42,24 +42,44 @@ window.fetch = async (input, init) => {
 createRoot(document.getElementById("root")!).render(<App />);
 
 // ─── Register PWA Service Worker (production + staging only) ─────────────────
+// Surface SW lifecycle to the rest of the app via window events so
+// components like InstallPrompt can offer a "Reload to update" action,
+// and the Background Sync handler can find a ready registration.
 if ("serviceWorker" in navigator && import.meta.env.PROD) {
   window.addEventListener("load", () => {
     navigator.serviceWorker
       .register("/sw.js", { scope: "/" })
       .then((reg) => {
         console.info("[VaxPlan SW] Registered:", reg.scope);
+
+        // If there is already a waiting worker on first load, surface it.
+        if (reg.waiting && navigator.serviceWorker.controller) {
+          window.dispatchEvent(
+            new CustomEvent("vaxplan:sw-update-ready", { detail: { registration: reg } }),
+          );
+        }
+
         reg.addEventListener("updatefound", () => {
           const newWorker = reg.installing;
-          if (newWorker) {
-            newWorker.addEventListener("statechange", () => {
-              if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
-                // New version available — page will use new SW on next reload
-                console.info("[VaxPlan SW] Update available — reload to apply");
-              }
-            });
-          }
+          if (!newWorker) return;
+          newWorker.addEventListener("statechange", () => {
+            if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
+              console.info("[VaxPlan SW] Update installed — reload to apply");
+              window.dispatchEvent(
+                new CustomEvent("vaxplan:sw-update-ready", { detail: { registration: reg } }),
+              );
+            }
+          });
         });
       })
       .catch((err) => console.warn("[VaxPlan SW] Registration failed:", err));
+
+    // Reload once the new SW takes control after a SKIP_WAITING message.
+    let reloading = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (reloading) return;
+      reloading = true;
+      window.location.reload();
+    });
   });
 }
