@@ -77,6 +77,13 @@ import {
 } from "./services/hisInteropService";
 // Offline sync service
 import { pullChanges, batchMutate, getSyncStats, type OutboxMutation } from "./services/syncService";
+// Scheduled population data refresh
+import {
+  refreshTenantPopulation,
+  runScheduledPopulationRefresh,
+  listRefreshJobs,
+  resolveTenantRasterPath,
+} from "./jobs/populationRefresh";
 
 async function logAudit(
   req: any,
@@ -1303,6 +1310,115 @@ export async function registerRoutes(
       res.status(500).json({ message: "Failed to update country configuration" });
     }
   });
+
+  // ── Population data refresh (admin-only, tenant-scoped) ────────────────
+  // A national admin can trigger and review WorldPop ETL refreshes for their
+  // *own* tenant only. Cross-tenant refresh (every active tenant) is not
+  // exposed over HTTP — the recurring scheduler in
+  // server/jobs/populationRefresh.ts covers that case, gated by
+  // POPULATION_REFRESH_INTERVAL_HOURS at the platform level.
+  app.get(
+    "/api/admin/population-refresh-jobs",
+    isAuthenticated,
+    requireTenant,
+    loadRole,
+    requireAdmin,
+    async (req: any, res) => {
+      try {
+        // Always scope by the authenticated user's tenant — ignore any
+        // caller-supplied tenantId to prevent cross-tenant data exposure.
+        const tenantId = req.tenantId as string;
+        const limit = req.query.limit ? parseInt(String(req.query.limit), 10) : undefined;
+        const jobs = await listRefreshJobs({ tenantId, limit });
+        res.json(jobs);
+      } catch (err) {
+        console.error("GET /api/admin/population-refresh-jobs failed:", err);
+        res.status(500).json({ message: "Failed to list population refresh jobs" });
+      }
+    },
+  );
+
+  app.post(
+    "/api/admin/population-refresh-jobs",
+    isAuthenticated,
+    requireTenant,
+    loadRole,
+    requireAdmin,
+    async (req: any, res) => {
+      try {
+        const schema = z.object({
+          tenantId: z.string().optional(),
+          rasterPath: z.string().optional(),
+          minPopulation: z.number().int().positive().optional(),
+        });
+        const body = schema.parse(req.body ?? {});
+
+        // Refresh is always against the caller's own tenant. If a body
+        // tenantId is supplied, it must match the authenticated tenant —
+        // otherwise reject as cross-tenant write.
+        const callerTenantId = req.tenantId as string;
+        if (body.tenantId && body.tenantId !== callerTenantId) {
+          return res.status(403).json({
+            message: "Forbidden: cannot trigger population refresh for another tenant",
+          });
+        }
+
+        const tenant = await storage.getTenant(callerTenantId);
+        if (!tenant) {
+          return res.status(404).json({ message: "Tenant not found" });
+        }
+
+        const userId = req.user?.claims?.sub ?? null;
+        const job = await refreshTenantPopulation(callerTenantId, {
+          triggeredBy: "manual",
+          triggeredByUserId: userId,
+          rasterPath: body.rasterPath,
+          minPopulation: body.minPopulation,
+        });
+
+        await logAudit(req, "trigger_population_refresh", "population_refresh", null, null, {
+          tenantId: callerTenantId,
+          jobId: job.id,
+          status: job.status,
+          rowsInserted: job.rowsInserted,
+        });
+
+        res.status(202).json(job);
+      } catch (err: any) {
+        if (err?.name === "ZodError") {
+          return res.status(400).json({ message: "Invalid payload", errors: err.errors });
+        }
+        console.error("POST /api/admin/population-refresh-jobs failed:", err);
+        res.status(500).json({
+          message: "Failed to start population refresh",
+          error: err?.message ?? String(err),
+        });
+      }
+    },
+  );
+
+  app.get(
+    "/api/admin/population-refresh-jobs/expected-raster",
+    isAuthenticated,
+    requireTenant,
+    loadRole,
+    requireAdmin,
+    async (req: any, res) => {
+      try {
+        const tenantId = req.tenantId as string;
+        const tenant = await storage.getTenant(tenantId);
+        if (!tenant) {
+          return res.status(404).json({ message: "Tenant not found" });
+        }
+        const rasterPath = resolveTenantRasterPath(tenant);
+        const exists = existsSync(rasterPath);
+        res.json({ tenantId, rasterPath, exists });
+      } catch (err) {
+        console.error("GET /api/admin/population-refresh-jobs/expected-raster failed:", err);
+        res.status(500).json({ message: "Failed to resolve raster path" });
+      }
+    },
+  );
 
   app.post("/api/admin/tenants", isAuthenticated, loadRole, requireAdmin, async (req: any, res) => {
     try {

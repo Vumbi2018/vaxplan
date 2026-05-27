@@ -35,6 +35,18 @@ export const signupStatusEnum = pgEnum("signup_status", [
   "expired",
 ]);
 
+export const populationRefreshStatusEnum = pgEnum("population_refresh_status", [
+  "pending",
+  "running",
+  "succeeded",
+  "failed",
+]);
+
+export const populationRefreshTriggerEnum = pgEnum("population_refresh_trigger", [
+  "manual",
+  "scheduled",
+]);
+
 // Tenants — one per country / Ministry of Health
 export const tenants = pgTable("tenants", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -532,6 +544,36 @@ export const approvalRequests = pgTable("approval_requests", {
   resolvedAt: timestamp("resolved_at"),
   resolvedById: varchar("resolved_by_id").references(() => users.id),
 }, (table) => [index("idx_approval_req_tenant").on(table.tenantId)]);
+
+// Population refresh jobs — one row per WorldPop ETL run (scheduled or admin-triggered).
+// Visible to national admins so they can confirm a refresh ran, see how many cells
+// were inserted, and read the error message when one fails.
+export const populationRefreshJobs = pgTable(
+  "population_refresh_jobs",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    tenantId: varchar("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    triggeredBy: populationRefreshTriggerEnum("triggered_by").notNull(),
+    triggeredByUserId: varchar("triggered_by_user_id"),
+    rasterPath: varchar("raster_path", { length: 500 }).notNull(),
+    minPopulation: integer("min_population").notNull(),
+    status: populationRefreshStatusEnum("status").notNull().default("pending"),
+    startedAt: timestamp("started_at").defaultNow(),
+    completedAt: timestamp("completed_at"),
+    rowsInserted: integer("rows_inserted"),
+    cellsScanned: integer("cells_scanned"),
+    cellsAboveThreshold: integer("cells_above_threshold"),
+    durationMs: integer("duration_ms"),
+    errorMessage: text("error_message"),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => [
+    index("idx_pop_refresh_tenant_started").on(table.tenantId, table.startedAt),
+    index("idx_pop_refresh_status").on(table.status),
+  ]
+);
 
 // Audit Log
 export const auditLogs = pgTable("audit_logs", {
@@ -1428,6 +1470,8 @@ export type MobilizationActivity = typeof mobilizationActivities.$inferSelect;
 export type InsertApprovalRequest = z.infer<typeof insertApprovalRequestSchema>;
 export type ApprovalRequest = typeof approvalRequests.$inferSelect;
 export type AuditLog = typeof auditLogs.$inferSelect;
+export type PopulationRefreshJob = typeof populationRefreshJobs.$inferSelect;
+export type InsertPopulationRefreshJob = typeof populationRefreshJobs.$inferInsert;
 export type HtrScore = typeof htrScores.$inferSelect;
 
 // New boundary and catchment types
