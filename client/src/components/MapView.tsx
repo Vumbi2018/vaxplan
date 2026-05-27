@@ -61,6 +61,7 @@ import {
 } from "lucide-react";
 import type { Facility, Village, FacilityCatchment } from "@shared/schema";
 import { distance } from "@turf/turf";
+import RBush from "rbush";
 // Vite worker import — runs centroid + point-in-polygon emphasis off the
 // main thread so Province / District / LLG changes never block the UI on
 // huge GRID3 datasets (tens of thousands of polygons).
@@ -3340,110 +3341,150 @@ export function MapView({
     return null;
   }, [sessionVillages, villages, facilities]);
 
+  // Spatial index over village centroids — built once per `villages` list and
+  // queried with a bbox prefilter so the polygon / route inside-test only runs
+  // against candidates that already fall within the drawing's bounding box,
+  // instead of every village on the main thread. This is what keeps the live
+  // target-population preview smooth on Zambia-sized tenants.
+  type VillageIdxItem = {
+    minX: number; minY: number; maxX: number; maxY: number;
+    lat: number; lng: number; population: number;
+  };
+  const villageSpatialIndex = useMemo(() => {
+    const tree = new RBush<VillageIdxItem>();
+    const items: VillageIdxItem[] = [];
+    for (const v of villages) {
+      if (v.latitude == null || v.longitude == null) continue;
+      const lat = Number(v.latitude);
+      const lng = Number(v.longitude);
+      if (!isFinite(lat) || !isFinite(lng)) continue;
+      items.push({
+        minX: lng, minY: lat, maxX: lng, maxY: lat,
+        lat, lng,
+        population: Number((v as any).population) || 0,
+      });
+    }
+    tree.load(items);
+    return tree;
+  }, [villages]);
+
+  // Sparse representation of the loaded population raster: a flat Float64Array
+  // of [lng, lat, value] for every non-zero cell plus an RBush over those
+  // cells. Built once when a georaster is first attached so subsequent draws
+  // skip the full width*height scan and just query a bbox.
+  type RasterCellItem = { minX: number; minY: number; maxX: number; maxY: number; idx: number };
+  const rasterSparseRef = useRef<{ gr: any; cells: Float64Array; tree: RBush<RasterCellItem> } | null>(null);
+  const getRasterSparse = () => {
+    const gr = georasterRef.current;
+    if (!gr) return null;
+    if (rasterSparseRef.current?.gr === gr) return rasterSparseRef.current;
+
+    const dx = (gr.xmax - gr.xmin) / gr.width;
+    const dy = (gr.ymax - gr.ymin) / gr.height;
+    const buf: number[] = [];
+    const items: RasterCellItem[] = [];
+    for (let r = 0; r < gr.height; r++) {
+      const row = gr.values[0][r];
+      if (!row) continue;
+      const cellLat = gr.ymax - (r + 0.5) * dy;
+      for (let c = 0; c < gr.width; c++) {
+        const val = row[c];
+        if (val === undefined || isNaN(val) || val === gr.noDataValue || val <= 0) continue;
+        const cellLng = gr.xmin + (c + 0.5) * dx;
+        const idx = buf.length / 3;
+        buf.push(cellLng, cellLat, val);
+        items.push({ minX: cellLng, minY: cellLat, maxX: cellLng, maxY: cellLat, idx });
+      }
+    }
+    const tree = new RBush<RasterCellItem>();
+    tree.load(items);
+    const sparse = { gr, cells: Float64Array.from(buf), tree };
+    rasterSparseRef.current = sparse;
+    return sparse;
+  };
+
+  // Compute drawing bbox, padded for mobile polyline corridors (~1km in degrees).
+  const drawingBBox = (points: L.LatLng[], type: "outreach" | "mobile") => {
+    let minLat = Infinity, maxLat = -Infinity;
+    let minLng = Infinity, maxLng = -Infinity;
+    for (const p of points) {
+      if (p.lat < minLat) minLat = p.lat;
+      if (p.lat > maxLat) maxLat = p.lat;
+      if (p.lng < minLng) minLng = p.lng;
+      if (p.lng > maxLng) maxLng = p.lng;
+    }
+    if (type === "mobile") {
+      const pad = 0.01;
+      minLat -= pad; maxLat += pad; minLng -= pad; maxLng += pad;
+    }
+    return { minX: minLng, minY: minLat, maxX: maxLng, maxY: maxLat };
+  };
+
   // Sums local database villages census population inside geofence
   const calculateLocalRegistryPopulation = (points: L.LatLng[], type: "outreach" | "mobile") => {
     if (points.length < 2) return 0;
+    const bbox = drawingBBox(points, type);
+    const candidates = villageSpatialIndex.search(bbox);
     let total = 0;
-    villages.forEach((v) => {
-      if (v.latitude && v.longitude) {
-        const lat = Number(v.latitude);
-        const lng = Number(v.longitude);
-        let inside = false;
-        if (type === "outreach") {
-          inside = isPointInPolygon(lat, lng, points);
-        } else {
-          const latLngPoints = points.map(p => L.latLng(p.lat, p.lng));
-          inside = isPointNearLine(lat, lng, latLngPoints, 0.5);
-        }
-        if (inside) {
-          total += (v as any).population || 0;
-        }
-      }
-    });
+    for (const v of candidates) {
+      const inside = type === "outreach"
+        ? isPointInPolygon(v.lat, v.lng, points)
+        : isPointNearLine(v.lat, v.lng, points, 0.5);
+      if (inside) total += v.population;
+    }
     return total;
   };
 
   // Sums GRID3 settlements building count & population inside geofence
   const calculateGRID3SettlementPopulation = (points: L.LatLng[], type: "outreach" | "mobile") => {
     if (points.length < 2) return 0;
+    const bbox = drawingBBox(points, type);
+    const candidates = villageSpatialIndex.search(bbox);
     let structureCount = 0;
-    villages.forEach((v) => {
-      if (v.latitude && v.longitude) {
-        const lat = Number(v.latitude);
-        const lng = Number(v.longitude);
-        let inside = false;
-        if (type === "outreach") {
-          inside = isPointInPolygon(lat, lng, points);
-        } else {
-          const latLngPoints = points.map(p => L.latLng(p.lat, p.lng));
-          inside = isPointNearLine(lat, lng, latLngPoints, 0.5);
-        }
-        if (inside) {
-          structureCount++;
-        }
-      }
-    });
+    for (const v of candidates) {
+      const inside = type === "outreach"
+        ? isPointInPolygon(v.lat, v.lng, points)
+        : isPointNearLine(v.lat, v.lng, points, 0.5);
+      if (inside) structureCount++;
+    }
     return Math.round(structureCount * 5.2);
   };
 
   const calculateGeofencePopulation = (points: L.LatLng[], type: "outreach" | "mobile") => {
-    if (!georasterRef.current || points.length < 2) return 0;
-    const gr = georasterRef.current;
+    if (points.length < 2) return 0;
+    const sparse = getRasterSparse();
+    if (!sparse) return 0;
 
-    let minLat = Infinity, maxLat = -Infinity;
-    let minLng = Infinity, maxLng = -Infinity;
-    points.forEach((p) => {
-      if (p.lat < minLat) minLat = p.lat;
-      if (p.lat > maxLat) maxLat = p.lat;
-      if (p.lng < minLng) minLng = p.lng;
-      if (p.lng > maxLng) maxLng = p.lng;
-    });
-
-    // Expand bounding box slightly for mobile polyline corridor buffers (~1km buffer degrees)
-    if (type === "mobile") {
-      const bufferPadding = 0.01;
-      minLat -= bufferPadding;
-      maxLat += bufferPadding;
-      minLng -= bufferPadding;
-      maxLng += bufferPadding;
-    }
-
-    const minCol = Math.floor(((minLng - gr.xmin) / (gr.xmax - gr.xmin)) * gr.width);
-    const maxCol = Math.floor(((maxLng - gr.xmin) / (gr.xmax - gr.xmin)) * gr.width);
-    const minRow = Math.floor(((gr.ymax - maxLat) / (gr.ymax - gr.ymin)) * gr.height);
-    const maxRow = Math.floor(((gr.ymax - minLat) / (gr.ymax - gr.ymin)) * gr.height);
-
+    const bbox = drawingBBox(points, type);
+    const candidates = sparse.tree.search(bbox);
+    const cells = sparse.cells;
     let totalPopulation = 0;
-    const startCol = Math.max(0, Math.min(gr.width - 1, minCol));
-    const endCol = Math.max(0, Math.min(gr.width - 1, maxCol));
-    const startRow = Math.max(0, Math.min(gr.height - 1, minRow));
-    const endRow = Math.max(0, Math.min(gr.height - 1, maxRow));
-
-    for (let r = startRow; r <= endRow; r++) {
-      for (let c = startCol; c <= endCol; c++) {
-        const rawVal = gr.values[0][r][c];
-        if (rawVal === undefined || isNaN(rawVal) || rawVal === gr.noDataValue || rawVal <= 0) {
-          continue;
-        }
-
-        const cellLng = gr.xmin + (c + 0.5) * ((gr.xmax - gr.xmin) / gr.width);
-        const cellLat = gr.ymax - (r + 0.5) * ((gr.ymax - gr.ymin) / gr.height);
-
-        let inside = false;
-        if (type === "outreach") {
-          inside = isPointInPolygon(cellLat, cellLng, points);
-        } else {
-          inside = isPointNearLine(cellLat, cellLng, points, 0.5); // 500m buffer
-        }
-
-        if (inside) {
-          totalPopulation += rawVal;
-        }
-      }
+    for (let i = 0; i < candidates.length; i++) {
+      const idx = candidates[i].idx * 3;
+      const cellLng = cells[idx];
+      const cellLat = cells[idx + 1];
+      const rawVal = cells[idx + 2];
+      const inside = type === "outreach"
+        ? isPointInPolygon(cellLat, cellLng, points)
+        : isPointNearLine(cellLat, cellLng, points, 0.5); // 500m buffer
+      if (inside) totalPopulation += rawVal;
     }
-
     return Math.round(totalPopulation);
   };
+
+  // Memoize the three live-preview pop estimates so the dialog/JSX doesn't
+  // re-run the bbox + inside-test sweep on every unrelated re-render. Recompute
+  // only when the drawn polygon/route, draw type, village set, or loaded
+  // raster actually changes.
+  const consensusPopulations = useMemo(() => {
+    const mode: "outreach" | "mobile" = newSessionType === "mobile" ? "mobile" : "outreach";
+    return {
+      worldPopGrid: calculateGeofencePopulation(sessionPolygonPoints, mode),
+      localRegistry: calculateLocalRegistryPopulation(sessionPolygonPoints, mode),
+      grid3Structures: calculateGRID3SettlementPopulation(sessionPolygonPoints, mode),
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionPolygonPoints, newSessionType, villageSpatialIndex, georasterRef.current]);
 
   // Measurement & Catchment Drawing handlers
   const handleMapClick = (e: L.LeafletMouseEvent) => {
@@ -5948,36 +5989,36 @@ export function MapView({
                 <div className="grid grid-cols-3 gap-2 text-center text-[10px]">
                   <button
                     type="button"
-                    onClick={() => setNewSessionTargetPop(calculateGeofencePopulation(sessionPolygonPoints, newSessionType === "mobile" ? "mobile" : "outreach"))}
+                    onClick={() => setNewSessionTargetPop(consensusPopulations.worldPopGrid)}
                     className="p-2 bg-background border border-border/60 hover:border-primary/50 rounded-lg flex flex-col items-center justify-center transition-all group focus:outline-none cursor-pointer"
                   >
                     <span className="text-muted-foreground font-semibold group-hover:text-primary">WorldPop Grid</span>
                     <strong className="text-xs text-foreground font-mono mt-0.5">
-                      {calculateGeofencePopulation(sessionPolygonPoints, newSessionType === "mobile" ? "mobile" : "outreach")}
+                      {consensusPopulations.worldPopGrid}
                     </strong>
                     <span className="text-[8px] text-indigo-500 font-medium mt-0.5 group-hover:underline">Use Estimate</span>
                   </button>
 
                   <button
                     type="button"
-                    onClick={() => setNewSessionTargetPop(calculateLocalRegistryPopulation(sessionPolygonPoints, newSessionType === "mobile" ? "mobile" : "outreach"))}
+                    onClick={() => setNewSessionTargetPop(consensusPopulations.localRegistry)}
                     className="p-2 bg-background border border-border/60 hover:border-primary/50 rounded-lg flex flex-col items-center justify-center transition-all group focus:outline-none cursor-pointer"
                   >
                     <span className="text-muted-foreground font-semibold group-hover:text-primary">Registry Census</span>
                     <strong className="text-xs text-foreground font-mono mt-0.5">
-                      {calculateLocalRegistryPopulation(sessionPolygonPoints, newSessionType === "mobile" ? "mobile" : "outreach")}
+                      {consensusPopulations.localRegistry}
                     </strong>
                     <span className="text-[8px] text-indigo-500 font-medium mt-0.5 group-hover:underline">Use Estimate</span>
                   </button>
 
                   <button
                     type="button"
-                    onClick={() => setNewSessionTargetPop(calculateGRID3SettlementPopulation(sessionPolygonPoints, newSessionType === "mobile" ? "mobile" : "outreach"))}
+                    onClick={() => setNewSessionTargetPop(consensusPopulations.grid3Structures)}
                     className="p-2 bg-background border border-border/60 hover:border-primary/50 rounded-lg flex flex-col items-center justify-center transition-all group focus:outline-none cursor-pointer"
                   >
                     <span className="text-muted-foreground font-semibold group-hover:text-primary">GRID3 Structures</span>
                     <strong className="text-xs text-foreground font-mono mt-0.5">
-                      {calculateGRID3SettlementPopulation(sessionPolygonPoints, newSessionType === "mobile" ? "mobile" : "outreach")}
+                      {consensusPopulations.grid3Structures}
                     </strong>
                     <span className="text-[8px] text-indigo-500 font-medium mt-0.5 group-hover:underline">Use Estimate</span>
                   </button>
