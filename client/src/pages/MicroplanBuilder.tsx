@@ -377,8 +377,39 @@ export default function MicroplanBuilder() {
 
   // Mutations
   const createSessionMutation = useMutation({
-    mutationFn: async (data: any) => apiRequest("POST", "/api/sessions", data),
+    mutationFn: async (data: any) => {
+      // Sessions must belong to a parent microplan. Find an open one for this
+      // (facility, year, quarter, planType); if none exists, create one. The server
+      // hard-rejects client-supplied planType/campaign* — those are inherited from
+      // the parent microplan, so strip them before posting the session.
+      const desiredMicroplanType = data.planType === "campaign" ? "sia_campaign" : "facility_routine";
+      const allPlans = await apiRequest<any[]>("GET", "/api/microplans");
+      let parent = (Array.isArray(allPlans) ? allPlans : []).find(
+        (p) =>
+          p.facilityId === data.facilityId &&
+          p.year === data.year &&
+          p.quarter === data.quarter &&
+          p.planType === desiredMicroplanType &&
+          p.status !== "locked",
+      );
+      if (!parent) {
+        parent = await apiRequest<any>("POST", "/api/microplans", {
+          facilityId: data.facilityId,
+          name: `Q${data.quarter} ${data.year} ${desiredMicroplanType === "sia_campaign" ? "SIA" : "Routine"} microplan`,
+          year: data.year,
+          quarter: data.quarter,
+          planType: desiredMicroplanType,
+          status: "draft",
+          campaignAntigen: data.campaignAntigen ?? null,
+          campaignTargetAge: data.campaignTargetAge ?? null,
+          campaignScope: data.campaignScope ?? null,
+        });
+      }
+      const { planType, campaignAntigen, campaignTargetAge, campaignScope, ...sessionPayload } = data;
+      return apiRequest<any>("POST", "/api/sessions", { ...sessionPayload, microplanId: parent.id });
+    },
     onSuccess: (res: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/microplans"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sessions"] });
       setActiveSessionId(res.id);
       toast({

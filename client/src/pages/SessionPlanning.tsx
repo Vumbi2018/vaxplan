@@ -732,6 +732,14 @@ export default function SessionPlanning({
         </div>
 
         {isCreator && (
+          <Link href="/develop-microplan">
+            <Button variant="outline" data-testid="button-open-microplan-builder">
+              <Plus className="h-4 w-4 mr-1" />
+              Add sessions in the Builder
+            </Button>
+          </Link>
+        )}
+        {isCreator && false && (
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
               <Button

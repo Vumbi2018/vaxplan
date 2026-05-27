@@ -3566,7 +3566,7 @@ export async function registerRoutes(
       return { ok: false, status: 400, message: `Parent microplan ${microplanId} not found in this tenant.` };
     }
     if (parent.status === "locked") {
-      return { ok: false, status: 409, message: `Parent microplan "${parent.name}" is locked; its sessions cannot be modified.` };
+      return { ok: false, status: 400, message: `Parent microplan "${parent.name}" is locked; its sessions cannot be modified.` };
     }
     const parentSessionPlanType: "routine" | "campaign" =
       parent.planType === "sia_campaign" ? "campaign" : "routine";
@@ -3586,6 +3586,15 @@ export async function registerRoutes(
       const dbUser = await storage.getUser(user.id);
       if (!dbUser) {
         return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      // Hard-reject any client attempt to dictate planType / campaign* — they're inherited.
+      for (const f of ["planType", "campaignAntigen", "campaignTargetAge", "campaignScope"] as const) {
+        if ((req.body as any)?.[f] !== undefined) {
+          return res.status(400).json({
+            message: `${f} is inherited from the parent microplan and must not be set on the session payload.`,
+          });
+        }
       }
 
       const data = insertSessionPlanSchema.parse(req.body);
@@ -3661,10 +3670,26 @@ export async function registerRoutes(
       const oldSession = await storage.getSessionPlan(req.tenantId, entityId);
       if (!oldSession) return res.status(404).json({ message: "Session not found" });
 
-      // Disallow reparenting and disallow changing the inherited planType / campaign fields.
+      // Row-level geographic permission for the *target* session, not just role.
+      const geoContext = await getFacilityHierarchy(oldSession.facilityId, req.tenantId);
+      if (!hasPermission(dbUser, "manage_session_plans", geoContext)) {
+        return res.status(403).json({
+          message: "Forbidden: You do not have permission to manage session plans for this geographic scope.",
+        });
+      }
+
+      // Reject (don't silently strip) any attempt to change inherited or immutable fields.
       const body = { ...req.body };
       if (body.microplanId !== undefined && Number(body.microplanId) !== Number(oldSession.microplanId)) {
         return res.status(400).json({ message: "Cannot reparent a session to a different microplan; delete and recreate it instead." });
+      }
+      if (body.planType !== undefined && body.planType !== oldSession.planType) {
+        return res.status(400).json({ message: "planType is inherited from the parent microplan and cannot be changed on a session." });
+      }
+      for (const f of ["campaignAntigen", "campaignTargetAge", "campaignScope"] as const) {
+        if (body[f] !== undefined && body[f] !== (oldSession as any)[f]) {
+          return res.status(400).json({ message: `${f} is inherited from the parent microplan and cannot be changed on a session.` });
+        }
       }
       delete body.microplanId;
       delete body.planType;
@@ -3717,6 +3742,14 @@ export async function registerRoutes(
       const entityId = parseInt(req.params.id);
       const oldSession = await storage.getSessionPlan(req.tenantId, entityId);
       if (!oldSession) return res.status(404).json({ message: "Session not found" });
+
+      // Row-level geographic permission for the *target* session, not just role.
+      const geoContext = await getFacilityHierarchy(oldSession.facilityId, req.tenantId);
+      if (!hasPermission(dbUser, "manage_session_plans", geoContext)) {
+        return res.status(403).json({
+          message: "Forbidden: You do not have permission to manage session plans for this geographic scope.",
+        });
+      }
 
       // Reject the delete if the parent microplan is locked.
       const parentCheck = await validateParentMicroplan(req.tenantId, oldSession.microplanId);
