@@ -85,6 +85,7 @@ export async function estimateCatchmentPopulation(opts: {
   radiusKm: number;
   signal?: AbortSignal;
   onProgress?: (done: number, total: number) => void;
+  onCell?: (cell: CatchmentCell, index: number) => void;
 }): Promise<CatchmentEstimateResult> {
   const { lat, lng, radiusKm } = opts;
   if (!isFinite(lat) || !isFinite(lng) || !isFinite(radiusKm) || radiusKm <= 0) {
@@ -164,6 +165,7 @@ export async function estimateCatchmentPopulation(opts: {
         }
       }
       done++;
+      opts.onCell?.(c, idx);
       opts.onProgress?.(done, cells.length);
     }
   }

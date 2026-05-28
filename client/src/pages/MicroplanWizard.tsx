@@ -70,6 +70,7 @@ import { getCachedPopulation, setCachedPopulation } from "@/lib/populationCache"
 import {
   estimateCatchmentPopulation,
   type CatchmentEstimateResult,
+  type CatchmentCell,
 } from "@/lib/worldpopCatchment";
 import type {
   Microplan,
@@ -2567,11 +2568,13 @@ function Step2({
         radiusKm: number;
         status: "loading" | "done";
         progress: { done: number; total: number };
+        streamingCells: CatchmentCell[];
         result?: CatchmentEstimateResult;
       }
     | null
   >(null);
   const estimateAbortRef = useRef<AbortController | null>(null);
+  const estimateFlushTimerRef = useRef<number | null>(null);
 
   type BulkRowStatus =
     | { state: "pending" }
@@ -2605,6 +2608,10 @@ function Step2({
     estimateAbortRef.current?.abort();
     const ctrl = new AbortController();
     estimateAbortRef.current = ctrl;
+    if (estimateFlushTimerRef.current != null) {
+      clearTimeout(estimateFlushTimerRef.current);
+      estimateFlushTimerRef.current = null;
+    }
     setEstimate({
       index,
       lat,
@@ -2612,7 +2619,25 @@ function Step2({
       radiusKm,
       status: "loading",
       progress: { done: 0, total: 0 },
+      streamingCells: [],
     });
+    // Buffer streaming cells and flush at most every ~100ms so a large
+    // catchment doesn't trigger thousands of React renders.
+    const cellBuffer: CatchmentCell[] = [];
+    const flush = () => {
+      estimateFlushTimerRef.current = null;
+      if (ctrl.signal.aborted || cellBuffer.length === 0) return;
+      const snapshot = cellBuffer.slice();
+      setEstimate((prev) =>
+        prev && prev.index === index && prev.radiusKm === radiusKm && prev.status === "loading"
+          ? { ...prev, streamingCells: snapshot }
+          : prev,
+      );
+    };
+    const scheduleFlush = () => {
+      if (estimateFlushTimerRef.current != null) return;
+      estimateFlushTimerRef.current = window.setTimeout(flush, 100);
+    };
     const result = await estimateCatchmentPopulation({
       lat,
       lng,
@@ -2625,11 +2650,19 @@ function Step2({
             : prev,
         );
       },
+      onCell: (cell) => {
+        cellBuffer.push({ ...cell });
+        scheduleFlush();
+      },
     });
+    if (estimateFlushTimerRef.current != null) {
+      clearTimeout(estimateFlushTimerRef.current);
+      estimateFlushTimerRef.current = null;
+    }
     if (ctrl.signal.aborted) return;
     setEstimate((prev) =>
       prev && prev.index === index && prev.radiusKm === radiusKm
-        ? { ...prev, status: "done", result }
+        ? { ...prev, status: "done", result, streamingCells: [] }
         : prev,
     );
   };
@@ -2640,6 +2673,10 @@ function Step2({
   const closeEstimate = () => {
     estimateAbortRef.current?.abort();
     estimateAbortRef.current = null;
+    if (estimateFlushTimerRef.current != null) {
+      clearTimeout(estimateFlushTimerRef.current);
+      estimateFlushTimerRef.current = null;
+    }
     setEstimate(null);
   };
   const acceptEstimate = () => {
@@ -2847,7 +2884,9 @@ function Step2({
                 cells:
                   estimate.status === "done" && estimate.result
                     ? (estimate.result as any).cells ?? null
-                    : null,
+                    : estimate.streamingCells.length > 0
+                      ? estimate.streamingCells
+                      : null,
               }
             : null
         }
@@ -3731,16 +3770,17 @@ function Step2Map({
         )}
 
         {catchmentPreview?.cells && catchmentPreview.cells.length > 0 && (() => {
-          const okValues = catchmentPreview.cells
-            .filter((c) => c.status === "ok" && typeof c.value === "number")
-            .map((c) => c.value as number);
-          const maxV = okValues.length > 0 ? Math.max(...okValues, 1) : 1;
+          // Fixed people/km² buckets (WorldPop 1km grid). Using absolute
+          // thresholds keeps streamed cells stable as new samples arrive —
+          // a cell never gets recoloured just because a higher-valued cell
+          // showed up later in the run.
           const ramp = ["#fee5d9", "#fcae91", "#fb6a4a", "#de2d26", "#a50f15"];
+          const thresholds = [10, 50, 200, 750];
           const colorFor = (v: number) => {
-            if (maxV <= 0) return ramp[0];
-            const t = Math.min(1, v / maxV);
-            const idx = Math.min(ramp.length - 1, Math.floor(t * ramp.length));
-            return ramp[idx];
+            for (let i = 0; i < thresholds.length; i++) {
+              if (v < thresholds[i]) return ramp[i];
+            }
+            return ramp[ramp.length - 1];
           };
           return catchmentPreview.cells.map((c, i) => {
             const bounds: [[number, number], [number, number]] = [
