@@ -141,6 +141,13 @@ export default defineConfig({
       "@shared": path.resolve(import.meta.dirname, "shared"),
       "@assets": path.resolve(import.meta.dirname, "attached_assets"),
     },
+    // Force a single React instance — react-leaflet (and other React-consuming
+    // libs in optimizeDeps) must share the app's React or you get "Invalid
+    // hook call" / "more than one copy of React" at runtime in dev.
+    dedupe: ["react", "react-dom"],
+  },
+  optimizeDeps: {
+    include: ["react-leaflet", "@react-leaflet/core", "leaflet"],
   },
   root: path.resolve(import.meta.dirname, "client"),
   build: {
