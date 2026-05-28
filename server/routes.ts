@@ -54,6 +54,7 @@ import {
   insertUserRoleSchema,
   stockAlertDigestSettingsSchema,
   DEFAULT_STOCK_ALERT_DIGEST,
+  tenantEmailSettingsSchema,
   settlementsMaster,
   candidateUnmappedSettlements,
   populationGrids,
@@ -9726,6 +9727,76 @@ export async function registerRoutes(
         }
         console.error("PATCH /api/me/tenant/stock-alert-digest failed:", err);
         res.status(500).json({ message: "Failed to update digest settings" });
+      }
+    },
+  );
+
+  // GET — current tenant's email sender settings (merged with empty defaults).
+  app.get(
+    "/api/me/tenant/email-sender",
+    isAuthenticated,
+    requireTenant,
+    async (req: any, res) => {
+      try {
+        const tenant = await storage.getTenant(req.tenantId!);
+        if (!tenant) return res.status(404).json({ message: "Tenant not found" });
+        const raw = ((tenant.settings as any)?.email ?? {}) as Record<string, any>;
+        res.json({
+          fromAddress: typeof raw.fromAddress === "string" ? raw.fromAddress : "",
+          fromName: typeof raw.fromName === "string" ? raw.fromName : "",
+          replyTo: typeof raw.replyTo === "string" ? raw.replyTo : "",
+        });
+      } catch (err: any) {
+        console.error("GET /api/me/tenant/email-sender failed:", err);
+        res.status(500).json({ message: "Failed to fetch email sender settings" });
+      }
+    },
+  );
+
+  // PATCH — national admins update the per-tenant email sender; others get 403.
+  // Mirrors the stock-alert digest pattern: validate, merge into tenants.settings.email,
+  // and audit. Empty strings clear a field so the mailer falls back to env defaults.
+  app.patch(
+    "/api/me/tenant/email-sender",
+    isAuthenticated,
+    requireTenant,
+    async (req: any, res) => {
+      try {
+        const userId = getCurrentUserId(req);
+        const user = userId ? await storage.getUser(userId) : null;
+        if (!user || user.role !== "national_admin") {
+          return res.status(403).json({ message: "Forbidden" });
+        }
+        const data = tenantEmailSettingsSchema.parse(req.body);
+        const current = await storage.getTenant(req.tenantId!);
+        if (!current) return res.status(404).json({ message: "Tenant not found" });
+        const prevEmail = (((current.settings as any)?.email) ?? {}) as Record<string, any>;
+        const nextEmail: Record<string, string> = { ...prevEmail };
+        for (const key of ["fromAddress", "fromName", "replyTo"] as const) {
+          if (data[key] === undefined) continue;
+          const v = (data[key] ?? "").trim();
+          if (v === "") delete nextEmail[key];
+          else nextEmail[key] = v;
+        }
+        const newSettings = {
+          ...((current.settings as Record<string, any>) ?? {}),
+          email: nextEmail,
+        };
+        await storage.updateTenant(req.tenantId!, { settings: newSettings });
+        await logAudit(req, "update_tenant_email_sender", "tenant", req.tenantId!, null, {
+          fields: Object.keys(data),
+        });
+        res.json({
+          fromAddress: nextEmail.fromAddress ?? "",
+          fromName: nextEmail.fromName ?? "",
+          replyTo: nextEmail.replyTo ?? "",
+        });
+      } catch (err: any) {
+        if (err?.name === "ZodError") {
+          return res.status(400).json({ message: "Invalid payload", errors: err.errors });
+        }
+        console.error("PATCH /api/me/tenant/email-sender failed:", err);
+        res.status(500).json({ message: "Failed to update email sender settings" });
       }
     },
   );

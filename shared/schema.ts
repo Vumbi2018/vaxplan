@@ -1835,3 +1835,24 @@ export const stockAlertDigestSettingsSchema = z.object({
   thresholdMonths: z.number().positive(),
   recipientRoles: z.array(z.string()).optional(),
 });
+
+// Per-tenant email sender settings (lives inside tenants.settings.email).
+// Read by server/services/mailer.ts to send notifications from the tenant's
+// own verified domain. See docs/email-setup.md for the SPF/DKIM setup.
+export interface TenantEmailSettings {
+  fromAddress?: string;
+  fromName?: string;
+  replyTo?: string;
+}
+const emailOrEmpty = z
+  .string()
+  .trim()
+  .max(254)
+  .refine((v) => v === "" || z.string().email().safeParse(v).success, {
+    message: "Must be a valid email address",
+  });
+export const tenantEmailSettingsSchema = z.object({
+  fromAddress: emailOrEmpty.optional(),
+  fromName: z.string().trim().max(120).optional(),
+  replyTo: emailOrEmpty.optional(),
+});

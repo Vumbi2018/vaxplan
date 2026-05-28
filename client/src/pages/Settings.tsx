@@ -54,6 +54,7 @@ import {
   Users,
   UserPlus
 } from "lucide-react";
+import { TenantEmailSenderCard } from "@/components/TenantEmailSenderCard";
 import UserManagement from "./UserManagement";
 import SignupRequests from "./SignupRequests";
 import CountryOnboarding from "./CountryOnboarding";
@@ -1074,6 +1075,8 @@ export default function Settings() {
                 </div>
               </CardContent>
             </Card>
+
+            {isNationalAdmin && <TenantEmailSenderCard />}
 
             <Card>
               <CardHeader>
