@@ -92,15 +92,41 @@ export default function Supervision() {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const searchString = useSearch();
+  const urlProvinceId = useMemo(() => {
+    const p = new URLSearchParams(searchString);
+    const raw = p.get("provinceId");
+    return raw ? Number(raw) : null;
+  }, [searchString]);
   const urlDistrictId = useMemo(() => {
     const p = new URLSearchParams(searchString);
     const raw = p.get("districtId");
     return raw ? Number(raw) : null;
   }, [searchString]);
+  const urlFacilityId = useMemo(() => {
+    const p = new URLSearchParams(searchString);
+    const raw = p.get("facilityId");
+    return raw ? Number(raw) : null;
+  }, [searchString]);
+  const [provinceFilter, setProvinceFilter] = useState<number | null>(urlProvinceId);
   const [districtFilter, setDistrictFilter] = useState<number | null>(urlDistrictId);
+  const [facilityFilter, setFacilityFilter] = useState<number | null>(urlFacilityId);
+  useEffect(() => { setProvinceFilter(urlProvinceId); }, [urlProvinceId]);
   useEffect(() => { setDistrictFilter(urlDistrictId); }, [urlDistrictId]);
+  useEffect(() => { setFacilityFilter(urlFacilityId); }, [urlFacilityId]);
+
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (provinceFilter !== null) params.set("provinceId", String(provinceFilter));
+    if (districtFilter !== null) params.set("districtId", String(districtFilter));
+    if (facilityFilter !== null) params.set("facilityId", String(facilityFilter));
+    const qs = params.toString();
+    const next = qs ? `/supervision?${qs}` : `/supervision`;
+    const current = `/supervision${searchString ? `?${searchString.replace(/^\?/, "")}` : ""}`;
+    if (next !== current) setLocation(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [provinceFilter, districtFilter, facilityFilter]);
+
   const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [facilityFilter, setFacilityFilter] = useState<string>("all");
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [presetFacilityId, setPresetFacilityId] = useState<number | null>(null);
   const [conductingVisit, setConductingVisit] = useState<SupervisionVisit | null>(null);
@@ -112,7 +138,7 @@ export default function Supervision() {
     queryKey: ["/api/supervision-visits", { facilityId: facilityFilter, status: statusFilter }],
     queryFn: async () => {
       const params = new URLSearchParams();
-      if (facilityFilter !== "all") params.set("facilityId", facilityFilter);
+      if (facilityFilter !== null) params.set("facilityId", String(facilityFilter));
       if (statusFilter !== "all") params.set("status", statusFilter);
       const r = await fetch(`/api/supervision-visits${params.toString() ? "?" + params.toString() : ""}`, { credentials: "include" });
       if (!r.ok) throw new Error("Failed to load visits");
@@ -148,9 +174,17 @@ export default function Supervision() {
       status: "overdue" | "due_soon" | "current" | "never";
     };
     const now = Date.now();
-    const scoped = districtFilter
-      ? facilities.filter((f: any) => Number(f.districtId) === districtFilter)
-      : facilities;
+    const districtById = new Map<number, any>();
+    districts.forEach((d: any) => districtById.set(Number(d.id), d));
+    const scoped = facilities.filter((f: any) => {
+      if (facilityFilter !== null && Number(f.id) !== facilityFilter) return false;
+      if (districtFilter !== null && Number(f.districtId) !== districtFilter) return false;
+      if (provinceFilter !== null) {
+        const d = districtById.get(Number(f.districtId));
+        if (!d || Number(d.provinceId) !== provinceFilter) return false;
+      }
+      return true;
+    });
     const rows: Row[] = scoped.map((f: any) => {
       const visitsForFac = allVisits.filter((v) => v.facilityId === f.id);
       const conducted = visitsForFac
@@ -171,12 +205,7 @@ export default function Supervision() {
       return { facility: f, lastConducted, lastScheduled, daysSinceLast, lastScore, status };
     });
     return rows;
-  }, [facilities, allVisits, districtFilter]);
-
-  const activeDistrict = useMemo(
-    () => (districtFilter ? districts.find((d: any) => Number(d.id) === districtFilter) : null),
-    [districts, districtFilter],
-  );
+  }, [facilities, districts, allVisits, provinceFilter, districtFilter, facilityFilter]);
 
   const filteredFacilityStatus = useMemo(() => {
     let rows = facilityStatus;
@@ -316,22 +345,6 @@ export default function Supervision() {
               <p className="text-xs text-muted-foreground mt-1">
                 Overdue = no visit in the last 90 days, or last score &lt; 60%. Due soon = last visit 61–90 days ago. Click a row to schedule the next visit.
               </p>
-              {activeDistrict && (
-                <div className="mt-2 inline-flex items-center gap-2 rounded-md border border-indigo-500/30 bg-indigo-500/10 px-2 py-1 text-xs text-indigo-700 dark:text-indigo-300">
-                  <span>Filtered to district: <strong>{activeDistrict.name}</strong></span>
-                  <button
-                    type="button"
-                    className="underline hover:no-underline"
-                    onClick={() => {
-                      setDistrictFilter(null);
-                      setLocation(`/supervision`, { replace: true });
-                    }}
-                    data-testid="clear-supervision-district"
-                  >
-                    Clear
-                  </button>
-                </div>
-              )}
               <div className="flex gap-2 mt-2 text-xs">
                 <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-rose-500" /> {statusCounts.overdue} overdue</span>
                 <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-amber-500" /> {statusCounts.due_soon} due soon</span>
@@ -339,24 +352,6 @@ export default function Supervision() {
               </div>
             </div>
             <div className="flex gap-2 flex-wrap">
-              <Select
-                value={districtFilter ? String(districtFilter) : "all"}
-                onValueChange={(v) => {
-                  const next = v === "all" ? null : Number(v);
-                  setDistrictFilter(next);
-                  setLocation(next ? `/supervision?districtId=${next}` : `/supervision`, { replace: true });
-                }}
-              >
-                <SelectTrigger className="w-48" data-testid="filter-supervision-district">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All districts</SelectItem>
-                  {districts.map((d: any) => (
-                    <SelectItem key={d.id} value={String(d.id)}>{d.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
               <Select value={statusBadgeFilter} onValueChange={(v) => setStatusBadgeFilter(v as any)}>
                 <SelectTrigger className="w-40" data-testid="filter-supervision-status"><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -375,6 +370,27 @@ export default function Supervision() {
                 </SelectContent>
               </Select>
             </div>
+          </div>
+          <div className="mt-3 pt-3 border-t">
+            <GeoCascadeFilter
+              provinceId={provinceFilter}
+              districtId={districtFilter}
+              facilityId={facilityFilter}
+              showFacility
+              onProvinceChange={(id) => {
+                setProvinceFilter(id);
+                setDistrictFilter(null);
+                setFacilityFilter(null);
+              }}
+              onDistrictChange={(id) => {
+                setDistrictFilter(id);
+                setFacilityFilter(null);
+              }}
+              onFacilityChange={(id) => {
+                setFacilityFilter(id);
+              }}
+              testIdPrefix="supervision-status"
+            />
           </div>
         </CardHeader>
         <CardContent>
@@ -461,16 +477,28 @@ export default function Supervision() {
                   <SelectItem value="cancelled">Cancelled</SelectItem>
                 </SelectContent>
               </Select>
-              <Select value={facilityFilter} onValueChange={setFacilityFilter}>
-                <SelectTrigger className="w-56" data-testid="filter-facility"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All facilities</SelectItem>
-                  {facilities.map((f) => (
-                    <SelectItem key={f.id} value={String(f.id)}>{f.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
             </div>
+          </div>
+          <div className="mt-3 pt-3 border-t">
+            <GeoCascadeFilter
+              provinceId={provinceFilter}
+              districtId={districtFilter}
+              facilityId={facilityFilter}
+              showFacility
+              onProvinceChange={(id) => {
+                setProvinceFilter(id);
+                setDistrictFilter(null);
+                setFacilityFilter(null);
+              }}
+              onDistrictChange={(id) => {
+                setDistrictFilter(id);
+                setFacilityFilter(null);
+              }}
+              onFacilityChange={(id) => {
+                setFacilityFilter(id);
+              }}
+              testIdPrefix="supervision-visits"
+            />
           </div>
         </CardHeader>
         <CardContent>
