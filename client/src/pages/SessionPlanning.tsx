@@ -336,10 +336,36 @@ export default function SessionPlanning({
   const { data: allSessionVillages } = useQuery<Array<{ sessionId: number; villageId: number }>>({
     queryKey: ["/api/sessions/villages"],
     queryFn: async () => {
-      if (!navigator.onLine) return [];
+      // Task #163 — Offline-first read: serve the Dexie mirror when offline
+      // so village chips survive dialog close/reopen and refreshes. When
+      // online, fetch fresh and rewrite the Dexie mirror in the background.
+      if (!navigator.onLine) {
+        const rows = await offlineDb.sessionVillageLinks.toArray();
+        return rows.map((r) => ({ sessionId: r.sessionId, villageId: r.villageId }));
+      }
       const res = await fetch("/api/sessions/villages");
       if (!res.ok) throw new Error("Failed to load session-village links");
-      return res.json();
+      const data = (await res.json()) as Array<{ sessionId: number; villageId: number }>;
+      try {
+        const tenantId = user?.tenantId ?? "SSD";
+        const now = Date.now();
+        await offlineDb.transaction("rw", offlineDb.sessionVillageLinks, async () => {
+          await offlineDb.sessionVillageLinks.clear();
+          if (data.length > 0) {
+            await offlineDb.sessionVillageLinks.bulkPut(
+              data.map((sv) => ({
+                sessionId: Number(sv.sessionId),
+                villageId: Number(sv.villageId),
+                tenantId,
+                _syncedAt: now,
+              })),
+            );
+          }
+        });
+      } catch {
+        /* best-effort cache refresh */
+      }
+      return data;
     },
   });
 
@@ -658,16 +684,100 @@ export default function SessionPlanning({
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: number; data: any }) => {
+      // Task #163 — Offline-aware PATCH. When the device is offline:
+      //   1. Apply the column edits to the local Dexie sessionPlans row so
+      //      the dialog/list reflects the change immediately.
+      //   2. Patch the cached /api/sessions/villages snapshot so the village
+      //      chips don't blink back to the old set on close.
+      //   3. Enqueue the PATCH to the outbox INCLUDING villageIds, so the
+      //      sync service can replay the village reconciliation once online.
+      if (!navigator.onLine) {
+        const incomingVillageIds: number[] | undefined = Array.isArray(data?.villageIds)
+          ? data.villageIds.map((v: any) => Number(v)).filter((n: number) => Number.isFinite(n))
+          : undefined;
+
+        try {
+          const existing = await offlineDb.sessionPlans.get(id);
+          if (existing) {
+            const merged: any = { ...existing };
+            for (const k of Object.keys(data)) {
+              if (k === "villageIds") continue;
+              merged[k] = (data as any)[k];
+            }
+            merged._syncedAt = 0;
+            merged._localOnly = true;
+            await offlineDb.sessionPlans.put(merged);
+          }
+        } catch {
+          /* best-effort local mirror */
+        }
+
+        if (incomingVillageIds) {
+          const tenantId = user?.tenantId ?? "SSD";
+          // Durable Dexie mirror — survives dialog close/reopen and refresh.
+          try {
+            await offlineDb.transaction("rw", offlineDb.sessionVillageLinks, async () => {
+              const stale = await offlineDb.sessionVillageLinks
+                .where("sessionId").equals(id).primaryKeys();
+              if (stale.length > 0) {
+                await offlineDb.sessionVillageLinks.bulkDelete(stale);
+              }
+              if (incomingVillageIds.length > 0) {
+                await offlineDb.sessionVillageLinks.bulkPut(
+                  incomingVillageIds.map((vid) => ({
+                    sessionId: id,
+                    villageId: vid,
+                    tenantId,
+                    _syncedAt: 0,
+                    _localOnly: true,
+                  })),
+                );
+              }
+            });
+          } catch {
+            /* best-effort local mirror */
+          }
+          // Keep the in-memory React Query cache aligned for the current page.
+          queryClient.setQueryData<Array<{ sessionId: number; villageId: number }>>(
+            ["/api/sessions/villages"],
+            (prev) => {
+              const others = (prev ?? []).filter((sv) => Number(sv.sessionId) !== Number(id));
+              const next = incomingVillageIds.map((vid) => ({ sessionId: id, villageId: vid }));
+              return [...others, ...next];
+            },
+          );
+        }
+
+        await enqueueOutbox({
+          tenantId: user?.tenantId ?? "SSD",
+          entityType: "sessionPlan",
+          method: "PATCH",
+          url: `/api/sessions/${id}`,
+          body: JSON.stringify(data),
+          serverId: id,
+        });
+
+        return { id, ...data };
+      }
       return apiRequest("PATCH", `/api/sessions/${id}`, data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/sessions"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/sessions/villages"] });
+      // Task #163 — Skip invalidation while offline. The villages queryFn
+      // would refetch from the Dexie mirror we just wrote, but invalidating
+      // the in-memory cache can still cause a one-frame flash of the old
+      // set in the dialog. Once back online, the next sync flush + manual
+      // refresh will repopulate naturally.
+      if (navigator.onLine) {
+        queryClient.invalidateQueries({ queryKey: ["/api/sessions"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/sessions/villages"] });
+      }
       setIsEditOpen(false);
       setEditingPlan(null);
       toast({
-        title: "Microplan updated",
-        description: "Your session plan changes have been saved successfully.",
+        title: navigator.onLine ? "Microplan updated" : "Microplan changes queued offline",
+        description: navigator.onLine
+          ? "Your session plan changes have been saved successfully."
+          : "Saved locally. Your changes (including village edits) will sync once internet is restored.",
       });
     },
     onError: (error: Error) => {

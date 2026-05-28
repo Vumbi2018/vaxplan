@@ -75,6 +75,18 @@ export interface LocalVillage {
   _syncedAt: number;
 }
 
+// Task #163 — Durable offline mirror of the session ↔ village link list
+// served by GET /api/sessions/villages. Stored here so offline edits to
+// the village set survive dialog close/reopen without depending solely on
+// the React Query in-memory cache.
+export interface LocalSessionVillageLink {
+  sessionId: number;
+  villageId: number;
+  tenantId: string;
+  _syncedAt: number;
+  _localOnly?: boolean;
+}
+
 export interface LocalClient {
   id: string;
   tenantId: string;
@@ -390,6 +402,7 @@ export class VaxPlanOfflineDb extends Dexie {
   // Planning
   sessionPlans!: Table<LocalSessionPlan>;
   sessionDayPlans!: Table<LocalSessionDayPlan>;
+  sessionVillageLinks!: Table<LocalSessionVillageLink>;
   budgetItems!: Table<LocalBudgetItem>;
   mobilizationActivities!: Table<LocalMobilizationActivity>;
   stockTransactions!: Table<LocalStockTransaction>;
@@ -476,6 +489,34 @@ export class VaxPlanOfflineDb extends Dexie {
       vaccineConfigs:  "id, tenantId",
       // gisCache schema is unchanged — IndexedDB natively stores ArrayBuffer blobs
       // (rasterBuffer field) without any schema change, as IndexedDB is schema-flexible.
+      gisCache:        "[key+tenantId], tenantId",
+    });
+
+    // Version 4 (Task #163): Add durable offline mirror of session ↔ village
+    // link rows so offline edits to the village set survive dialog close/
+    // reopen and a full app refresh. Composite primary key prevents
+    // duplicate links per (session, village). All previous tables retained.
+    this.version(4).stores({
+      outbox:       "++id, tenantId, entityType, createdAt",
+      conflictLog:  "++id, tenantId, entityType, entityId",
+      syncMeta:     "key",
+      regions:      "id, tenantId, name",
+      provinces:    "id, tenantId, regionId",
+      districts:    "id, tenantId, provinceId",
+      llgs:         "id, tenantId, districtId",
+      facilities:   "id, tenantId, districtId, provinceId",
+      villages:     "id, tenantId, facilityId, districtId",
+      clients:      "id, tenantId, facilityId, villageId, clientType",
+      clientVaccinations: "id, tenantId, clientId, facilityId",
+      sessionPlans:           "id, tenantId, facilityId, status",
+      sessionDayPlans:        "id, tenantId, sessionPlanId",
+      sessionVillageLinks:    "[sessionId+villageId], sessionId, tenantId",
+      budgetItems:            "id, tenantId, facilityId, quarter, year",
+      mobilizationActivities: "id, tenantId, facilityId",
+      stockTransactions:      "id, tenantId, facilityId",
+      monthlyReports:         "id, tenantId, facilityId, year, month",
+      populationData:  "id, tenantId, provinceId, districtId, year",
+      vaccineConfigs:  "id, tenantId",
       gisCache:        "[key+tenantId], tenantId",
     });
   }

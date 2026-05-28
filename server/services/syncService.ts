@@ -33,9 +33,10 @@ import {
   auditLogs,
   llgs,
   sessionDayPlans,
+  sessionVillages,
   mobilizationActivities, // COMMENT: Added mobilizationActivities import for social mobilization offline sync
 } from "@shared/schema";
-import { eq, and, gt, sql } from "drizzle-orm";
+import { eq, and, gt, sql, inArray } from "drizzle-orm";
 import { canonicalizePerAntigen } from "@shared/vaccineSchedule";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -370,8 +371,65 @@ export async function batchMutate(
           const plan = await storage.createSessionPlan(tenantId, payload);
           serverId = plan.id;
         } else if ((mutation.method === "PATCH" || mutation.method === "PUT") && mutation.serverId) {
-          await storage.updateSessionPlan(tenantId, Number(mutation.serverId), payload);
+          // Task #163 — Offline-aware PATCH replay must also reconcile
+          // session_villages when the queued payload carries a villageIds
+          // array. Without this, a clerk who added/removed villages while
+          // offline would silently lose those edits after sync, because
+          // updateSessionPlan only touches the session_plans row.
+          const incomingVillageIds = (payload as any)?.villageIds;
+          const planPayload: any = { ...payload };
+          delete planPayload.villageIds;
+          delete planPayload.override;
+          const sessionId = Number(mutation.serverId);
+          await storage.updateSessionPlan(tenantId, sessionId, planPayload);
           serverId = mutation.serverId;
+          if (Array.isArray(incomingVillageIds)) {
+            const sanitized = Array.from(new Set(
+              incomingVillageIds
+                .map((x: any) => Number(x))
+                .filter((n: number) => Number.isFinite(n) && n > 0),
+            )) as number[];
+            let validIds: number[] = [];
+            if (sanitized.length > 0) {
+              const tenantVillages = await db
+                .select({ id: villages.id })
+                .from(villages)
+                .where(and(eq(villages.tenantId, tenantId), inArray(villages.id, sanitized)));
+              validIds = tenantVillages.map((v) => v.id);
+            }
+            const existingRows = await db
+              .select({ villageId: sessionVillages.villageId })
+              .from(sessionVillages)
+              .where(and(
+                eq(sessionVillages.tenantId, String(tenantId)),
+                eq(sessionVillages.sessionId, sessionId),
+              ));
+            const before = existingRows.map((r) => r.villageId);
+            const beforeSet = new Set(before);
+            const afterSet = new Set(validIds);
+            const toAdd = validIds.filter((id) => !beforeSet.has(id));
+            const toRemove = before.filter((id) => !afterSet.has(id));
+            if (toRemove.length > 0) {
+              await db
+                .delete(sessionVillages)
+                .where(and(
+                  eq(sessionVillages.tenantId, String(tenantId)),
+                  eq(sessionVillages.sessionId, sessionId),
+                  inArray(sessionVillages.villageId, toRemove),
+                ));
+            }
+            if (toAdd.length > 0) {
+              const baseIdx = before.length;
+              await db.insert(sessionVillages).values(
+                toAdd.map((vid, idx) => ({
+                  tenantId,
+                  sessionId,
+                  villageId: vid,
+                  orderIndex: baseIdx + idx,
+                })),
+              );
+            }
+          }
         }
 
       } else if (mutation.url.includes("/api/session-day-plans") || mutation.url.includes("/api/sessionDayPlans")) {
