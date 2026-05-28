@@ -384,6 +384,58 @@ async function seedQuarterlySupervisionVisits(
   return created;
 }
 
+// When a microplan transitions out of "approved" (un-approved or deleted), the
+// supervisory visits that were auto-seeded by seedQuarterlySupervisionVisits no
+// longer have an endorsing parent plan. Walk those still-scheduled, never-touched
+// visits and either delete them (if a supervisor hasn't touched them at all) or
+// move them to status="cancelled" with a note. Visits that were already conducted
+// are left alone — they happened, the data stays.
+async function cancelSeededSupervisionVisitsForMicroplan(
+  tenantId: string,
+  microplanId: number,
+  reason: string,
+): Promise<{ deletedIds: number[]; cancelledIds: number[] }> {
+  const candidates = await db
+    .select()
+    .from(supervisionVisits)
+    .where(
+      and(
+        eq(supervisionVisits.tenantId, tenantId),
+        eq(supervisionVisits.microplanId, microplanId),
+        eq(supervisionVisits.status, "scheduled"),
+        eq(supervisionVisits.visitType, "routine"),
+      ),
+    );
+
+  const deletedIds: number[] = [];
+  const cancelledIds: number[] = [];
+  for (const v of candidates) {
+    const untouched =
+      v.conductedDate == null &&
+      v.supervisorUserId == null &&
+      (v.supervisorName == null || v.supervisorName === "") &&
+      (v.findings == null || v.findings === "") &&
+      (v.followUpActions == null || v.followUpActions === "") &&
+      v.score == null &&
+      v.nextVisitDate == null;
+    if (untouched) {
+      await db
+        .delete(supervisionVisits)
+        .where(and(eq(supervisionVisits.id, v.id), eq(supervisionVisits.tenantId, tenantId)));
+      deletedIds.push(v.id);
+    } else {
+      const noteLine = `[Auto-cancelled] ${reason}`;
+      const newFindings = v.findings && v.findings.length > 0 ? `${v.findings}\n\n${noteLine}` : noteLine;
+      await db
+        .update(supervisionVisits)
+        .set({ status: "cancelled", findings: newFindings, updatedAt: new Date() })
+        .where(and(eq(supervisionVisits.id, v.id), eq(supervisionVisits.tenantId, tenantId)));
+      cancelledIds.push(v.id);
+    }
+  }
+  return { deletedIds, cancelledIds };
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -3688,6 +3740,29 @@ export async function registerRoutes(
         }
       }
 
+      // Inverse of the auto-seed above: if the microplan transitions out of
+      // "approved" (back to draft/pending/etc), the supervisory visits we
+      // pre-populated for it no longer have an endorsing parent plan. Cancel
+      // (or delete if untouched) the still-scheduled ones so supervisors don't
+      // see ghost visits on the calendar.
+      if (oldPlan.status === "approved" && plan.status !== "approved") {
+        try {
+          const reason = `Parent microplan #${planId} moved from "approved" to "${plan.status}".`;
+          const result = await cancelSeededSupervisionVisitsForMicroplan(req.tenantId, planId, reason);
+          if (result.deletedIds.length > 0 || result.cancelledIds.length > 0) {
+            await logAudit(req, "auto_cancel_supervision_visits", "microplan", planId, null, {
+              microplanId: planId,
+              reason: "microplan_unapproved",
+              newStatus: plan.status,
+              deletedVisitIds: result.deletedIds,
+              cancelledVisitIds: result.cancelledIds,
+            });
+          }
+        } catch (cancelErr) {
+          console.error("Failed to auto-cancel supervision visits for microplan", planId, cancelErr);
+        }
+      }
+
       res.json(plan);
     } catch (error) {
       console.error("Error updating master microplan:", error);
@@ -3699,9 +3774,34 @@ export async function registerRoutes(
     try {
       const planId = parseInt(req.params.id);
       const oldPlan = await storage.getMicroplan(req.tenantId, planId);
+
+      // Cancel/clean up auto-seeded supervisory visits BEFORE deleting the
+      // microplan. Once the parent is gone, supervision_visits.microplan_id is
+      // set to null by the FK cascade and we can no longer match them back.
+      let cancelResult: { deletedIds: number[]; cancelledIds: number[] } | null = null;
+      if (oldPlan) {
+        try {
+          cancelResult = await cancelSeededSupervisionVisitsForMicroplan(
+            req.tenantId,
+            planId,
+            `Parent microplan #${planId} was deleted.`,
+          );
+        } catch (cancelErr) {
+          console.error("Failed to auto-cancel supervision visits before microplan delete", planId, cancelErr);
+        }
+      }
+
       const ok = await storage.deleteMicroplan(req.tenantId, planId);
       if (!ok) return res.status(404).json({ message: "Master microplan not found" });
       await logAudit(req, "delete", "microplan", planId, oldPlan, null);
+      if (cancelResult && (cancelResult.deletedIds.length > 0 || cancelResult.cancelledIds.length > 0)) {
+        await logAudit(req, "auto_cancel_supervision_visits", "microplan", planId, null, {
+          microplanId: planId,
+          reason: "microplan_deleted",
+          deletedVisitIds: cancelResult.deletedIds,
+          cancelledVisitIds: cancelResult.cancelledIds,
+        });
+      }
       res.status(204).send();
     } catch (error) {
       console.error("Error deleting master microplan:", error);
