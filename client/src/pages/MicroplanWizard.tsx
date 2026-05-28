@@ -2573,6 +2573,23 @@ function Step2({
   >(null);
   const estimateAbortRef = useRef<AbortController | null>(null);
 
+  type BulkRowStatus =
+    | { state: "pending" }
+    | { state: "running" }
+    | { state: "ok"; total: number }
+    | { state: "nodata" }
+    | { state: "error"; message: string }
+    | { state: "skipped" };
+  const [bulkEstimate, setBulkEstimate] = useState<
+    | {
+        radiusKm: number;
+        phase: "confirm" | "running" | "done";
+        rows: Array<{ index: number; name: string; status: BulkRowStatus }>;
+      }
+    | null
+  >(null);
+  const bulkAbortRef = useRef<AbortController | null>(null);
+
   const update = (i: number, patch: any) => {
     const next = [...communities];
     next[i] = { ...next[i], ...patch };
@@ -2637,6 +2654,126 @@ function Step2({
     });
     closeEstimate();
   };
+  const openBulkEstimate = () => {
+    const rows = communities
+      .map((c, index) => {
+        const lat = parseFloat(c.latitude);
+        const lng = parseFloat(c.longitude);
+        const hasCoords = !isNaN(lat) && !isNaN(lng);
+        return {
+          index,
+          name: c.name || `Community ${index + 1}`,
+          status: hasCoords
+            ? ({ state: "pending" } as BulkRowStatus)
+            : ({ state: "skipped" } as BulkRowStatus),
+        };
+      });
+    setBulkEstimate({ radiusKm: 2, phase: "confirm", rows });
+  };
+  const closeBulkEstimate = () => {
+    bulkAbortRef.current?.abort();
+    bulkAbortRef.current = null;
+    setBulkEstimate(null);
+  };
+  const runBulkEstimate = async () => {
+    if (!bulkEstimate) return;
+    const radiusKm = bulkEstimate.radiusKm;
+    const eligible = bulkEstimate.rows.filter((r) => r.status.state !== "skipped");
+    if (eligible.length === 0) {
+      setBulkEstimate({ ...bulkEstimate, phase: "done" });
+      return;
+    }
+    estimateAbortRef.current?.abort();
+    estimateAbortRef.current = null;
+    setEstimate(null);
+    bulkAbortRef.current?.abort();
+    const ctrl = new AbortController();
+    bulkAbortRef.current = ctrl;
+
+    setBulkEstimate({
+      ...bulkEstimate,
+      phase: "running",
+      rows: bulkEstimate.rows.map((r) =>
+        r.status.state === "skipped" ? r : { ...r, status: { state: "pending" } },
+      ),
+    });
+
+    const updateRow = (index: number, status: BulkRowStatus) => {
+      setBulkEstimate((prev) =>
+        prev
+          ? {
+              ...prev,
+              rows: prev.rows.map((r) => (r.index === index ? { ...r, status } : r)),
+            }
+          : prev,
+      );
+    };
+    const successes = new Map<number, number>();
+
+    const queue = [...eligible];
+    const concurrency = Math.min(2, queue.length);
+    let okCount = 0;
+    let nodataCount = 0;
+    let errorCount = 0;
+    const worker = async () => {
+      while (queue.length > 0) {
+        if (ctrl.signal.aborted) return;
+        const row = queue.shift()!;
+        const c = communities[row.index];
+        if (!c) continue;
+        const lat = parseFloat(c.latitude);
+        const lng = parseFloat(c.longitude);
+        if (isNaN(lat) || isNaN(lng)) {
+          updateRow(row.index, { state: "skipped" });
+          continue;
+        }
+        updateRow(row.index, { state: "running" });
+        try {
+          const result = await estimateCatchmentPopulation({
+            lat,
+            lng,
+            radiusKm,
+            signal: ctrl.signal,
+          });
+          if (ctrl.signal.aborted) return;
+          if (result.status === "ok") {
+            successes.set(row.index, result.total);
+            updateRow(row.index, { state: "ok", total: result.total });
+            okCount++;
+          } else if (result.status === "nodata") {
+            updateRow(row.index, { state: "nodata" });
+            nodataCount++;
+          } else {
+            updateRow(row.index, { state: "error", message: result.message });
+            errorCount++;
+          }
+        } catch (err: any) {
+          if (ctrl.signal.aborted) return;
+          updateRow(row.index, {
+            state: "error",
+            message: err?.message || "Failed",
+          });
+          errorCount++;
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: concurrency }, () => worker()));
+    if (ctrl.signal.aborted) return;
+    if (successes.size > 0) {
+      const next = communities.map((c, i) => {
+        const total = successes.get(i);
+        if (total == null) return c;
+        return { ...c, targetPopulation: String(total), source: "worldpop" };
+      });
+      setCommunities(next);
+    }
+    setBulkEstimate((prev) => (prev ? { ...prev, phase: "done" } : prev));
+    toast({
+      title: "Bulk estimate complete",
+      description: `${okCount} updated · ${nodataCount} no-data · ${errorCount} failed`,
+    });
+  };
+
   const add = (lat?: number, lng?: number) => {
     const newRow: any = {
       name: "",
@@ -2663,9 +2800,29 @@ function Step2({
           Click anywhere on the map to drop a new community. Drag pins to fine-tune coordinates.
           Pin numbers match the rows below.
         </p>
-        <Button size="sm" variant="outline" onClick={() => add()} data-testid="button-add-community">
-          <Plus className="mr-1 h-4 w-4" /> Add community
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={openBulkEstimate}
+            disabled={
+              communities.filter(
+                (c) =>
+                  c.latitude &&
+                  c.longitude &&
+                  !isNaN(parseFloat(c.latitude)) &&
+                  !isNaN(parseFloat(c.longitude)),
+              ).length === 0
+            }
+            title="Estimate population from WorldPop for every pinned community"
+            data-testid="button-estimate-all-from-map"
+          >
+            <MapIcon className="mr-1 h-4 w-4" /> Estimate all from map
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => add()} data-testid="button-add-community">
+            <Plus className="mr-1 h-4 w-4" /> Add community
+          </Button>
+        </div>
       </div>
 
       <Step2Map
@@ -3045,6 +3202,178 @@ function Step2({
             >
               Use this estimate
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={bulkEstimate !== null}
+        onOpenChange={(open) => {
+          if (!open) closeBulkEstimate();
+        }}
+      >
+        <DialogContent data-testid="dialog-bulk-estimate-catchment">
+          <DialogHeader>
+            <DialogTitle>Estimate all from map</DialogTitle>
+            <DialogDescription>
+              {bulkEstimate && bulkEstimate.phase === "confirm" && (
+                <>
+                  This will overwrite the target population on every community
+                  that has a pin with a fresh WorldPop estimate. Communities
+                  without coordinates will be skipped.
+                </>
+              )}
+              {bulkEstimate && bulkEstimate.phase === "running" && (
+                <>Sampling WorldPop cells for each community…</>
+              )}
+              {bulkEstimate && bulkEstimate.phase === "done" && (
+                <>Done. Successful rows now use WorldPop as their source.</>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          {bulkEstimate && (
+            <div className="space-y-3">
+              <div>
+                <Label className="text-xs uppercase text-muted-foreground">
+                  Shared catchment radius
+                </Label>
+                <div className="mt-1 flex gap-2">
+                  {[1, 2, 3].map((r) => (
+                    <Button
+                      key={r}
+                      type="button"
+                      size="sm"
+                      variant={bulkEstimate.radiusKm === r ? "default" : "outline"}
+                      onClick={() =>
+                        setBulkEstimate((prev) =>
+                          prev ? { ...prev, radiusKm: r } : prev,
+                        )
+                      }
+                      disabled={bulkEstimate.phase === "running"}
+                      data-testid={`button-bulk-catchment-radius-${r}`}
+                    >
+                      {r} km
+                    </Button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="max-h-60 overflow-y-auto rounded-md border bg-muted/30 text-sm">
+                <table className="w-full">
+                  <thead className="sticky top-0 border-b bg-muted/60 text-left text-xs uppercase text-muted-foreground">
+                    <tr>
+                      <th className="p-2">Community</th>
+                      <th className="p-2">Result</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {bulkEstimate.rows.map((r) => (
+                      <tr
+                        key={r.index}
+                        className="border-b last:border-0"
+                        data-testid={`row-bulk-estimate-${r.index}`}
+                      >
+                        <td className="p-2">
+                          <span className="font-mono text-xs text-muted-foreground">
+                            #{r.index + 1}
+                          </span>{" "}
+                          {r.name}
+                        </td>
+                        <td className="p-2 text-xs">
+                          {r.status.state === "skipped" && (
+                            <span className="text-muted-foreground">
+                              No pin — skipped
+                            </span>
+                          )}
+                          {r.status.state === "pending" && (
+                            <span className="text-muted-foreground">
+                              {bulkEstimate.phase === "running"
+                                ? "Waiting…"
+                                : "Ready"}
+                            </span>
+                          )}
+                          {r.status.state === "running" && (
+                            <span className="flex items-center gap-1 text-muted-foreground">
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                              Sampling…
+                            </span>
+                          )}
+                          {r.status.state === "ok" && (
+                            <span className="text-foreground" data-testid={`text-bulk-ok-${r.index}`}>
+                              ≈ {r.status.total.toLocaleString()} people
+                            </span>
+                          )}
+                          {r.status.state === "nodata" && (
+                            <span className="text-muted-foreground">
+                              No data in this area
+                            </span>
+                          )}
+                          {r.status.state === "error" && (
+                            <span className="text-destructive">
+                              {r.status.message}
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {bulkEstimate.phase === "done" && (
+                <div className="text-xs text-muted-foreground">
+                  {bulkEstimate.rows.filter((r) => r.status.state === "ok").length}{" "}
+                  updated ·{" "}
+                  {
+                    bulkEstimate.rows.filter((r) => r.status.state === "nodata")
+                      .length
+                  }{" "}
+                  no-data ·{" "}
+                  {
+                    bulkEstimate.rows.filter((r) => r.status.state === "error")
+                      .length
+                  }{" "}
+                  failed ·{" "}
+                  {
+                    bulkEstimate.rows.filter((r) => r.status.state === "skipped")
+                      .length
+                  }{" "}
+                  skipped
+                </div>
+              )}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={closeBulkEstimate}
+              data-testid="button-bulk-catchment-cancel"
+            >
+              {bulkEstimate?.phase === "running" ? "Stop" : "Close"}
+            </Button>
+            {bulkEstimate?.phase !== "done" && (
+              <Button
+                type="button"
+                onClick={runBulkEstimate}
+                disabled={
+                  !bulkEstimate ||
+                  bulkEstimate.phase === "running" ||
+                  bulkEstimate.rows.every((r) => r.status.state === "skipped")
+                }
+                data-testid="button-bulk-catchment-run"
+              >
+                {bulkEstimate?.phase === "confirm"
+                  ? `Overwrite ${
+                      bulkEstimate.rows.filter(
+                        (r) => r.status.state !== "skipped",
+                      ).length
+                    } row(s)`
+                  : "Running…"}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
