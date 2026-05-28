@@ -8760,6 +8760,122 @@ export async function registerRoutes(
     },
   );
 
+  // GET /api/indicators/quarterly-review-coverage?year=&quarter=&provinceId=&districtId=
+  // Returns, for the given period and (optional) geographic scope, every
+  // facility in scope together with whether it has a saved quarterly review
+  // note for that period. Drives the "Quarterly review coverage" tile that
+  // district/national reviewers use to answer the RED-4 supervisory question:
+  // "which facilities have documented a plan this quarter, and which have not?"
+  app.get(
+    "/api/indicators/quarterly-review-coverage",
+    isAuthenticated,
+    requireTenant,
+    async (req: any, res) => {
+      try {
+        const tenantId = req.tenantId as string;
+        const now = new Date();
+        const year = req.query.year
+          ? parseInt(String(req.query.year), 10)
+          : now.getUTCFullYear();
+        const quarter = req.query.quarter
+          ? parseInt(String(req.query.quarter), 10)
+          : Math.floor(now.getUTCMonth() / 3) + 1;
+        if (
+          !Number.isFinite(year) ||
+          !Number.isFinite(quarter) ||
+          quarter < 1 ||
+          quarter > 4
+        ) {
+          return res
+            .status(400)
+            .json({ message: "Invalid year/quarter" });
+        }
+        const provinceId = req.query.provinceId
+          ? parseInt(String(req.query.provinceId), 10)
+          : undefined;
+        const districtId = req.query.districtId
+          ? parseInt(String(req.query.districtId), 10)
+          : undefined;
+
+        const facilityRows = await db
+          .select({
+            facilityId: facilities.id,
+            facilityName: facilities.name,
+            districtId: facilities.districtId,
+            districtName: districts.name,
+            provinceId: districts.provinceId,
+            provinceName: provinces.name,
+            isActive: facilities.isActive,
+          })
+          .from(facilities)
+          .innerJoin(districts, eq(districts.id, facilities.districtId))
+          .innerJoin(provinces, eq(provinces.id, districts.provinceId))
+          .where(eq(facilities.tenantId, tenantId));
+
+        const reviewRows = await storage.listQuarterlyReviews(tenantId, {
+          year,
+          quarter,
+        });
+        const reviewByFacility = new Map<number, (typeof reviewRows)[number]>();
+        for (const r of reviewRows) reviewByFacility.set(r.facilityId, r);
+
+        const scoped = facilityRows
+          .filter((f) => f.isActive !== false)
+          .filter((f) =>
+            Number.isFinite(provinceId as number)
+              ? f.provinceId === provinceId
+              : true,
+          )
+          .filter((f) =>
+            Number.isFinite(districtId as number)
+              ? f.districtId === districtId
+              : true,
+          );
+
+        const facilitiesOut = scoped
+          .map((f) => {
+            const r = reviewByFacility.get(f.facilityId);
+            return {
+              facilityId: f.facilityId,
+              facilityName: f.facilityName,
+              districtId: f.districtId,
+              districtName: f.districtName,
+              provinceId: f.provinceId,
+              provinceName: f.provinceName,
+              hasReview: !!r,
+              reviewId: r?.id ?? null,
+              updatedAt: r?.updatedAt ?? null,
+              nextSurveyDate: r?.nextSurveyDate ?? null,
+            };
+          })
+          .sort((a, b) => {
+            if (a.hasReview !== b.hasReview) return a.hasReview ? 1 : -1;
+            return (a.facilityName || "").localeCompare(b.facilityName || "");
+          });
+
+        const total = facilitiesOut.length;
+        const withReview = facilitiesOut.filter((f) => f.hasReview).length;
+        res.json({
+          year,
+          quarter,
+          totalFacilities: total,
+          facilitiesWithReview: withReview,
+          facilitiesWithoutReview: total - withReview,
+          coveragePct: total > 0 ? Math.round((withReview / total) * 100) : 0,
+          facilities: facilitiesOut,
+        });
+      } catch (err: any) {
+        console.error(
+          "GET /api/indicators/quarterly-review-coverage failed:",
+          err,
+        );
+        res
+          .status(500)
+          .json({ message: "Failed to compute quarterly review coverage" });
+      }
+    },
+  );
+
   // GET /api/quarterly-reviews?facilityId=&year=&quarter=
   // Returns saved quarterly review notes for the tenant, optionally scoped to
   // a facility / year / quarter. Used by the Defaulter List page to show the

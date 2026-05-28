@@ -18,8 +18,9 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { useToast } from "@/hooks/use-toast";
 import {
   ClipboardCheck, Calendar, Plus, CheckCircle2, AlertCircle, XCircle, MinusCircle,
-  Building2, User, FileText, ListChecks, Trash2, Pencil, Activity, Mail,
+  Building2, User, FileText, ListChecks, Trash2, Pencil, Activity, Mail, NotebookPen,
 } from "lucide-react";
+import { GeoCascadeFilter } from "@/components/GeoCascadeFilter";
 
 type SupervisionVisit = {
   id: number;
@@ -286,6 +287,8 @@ export default function Supervision() {
         <StatCard label="Missed / cancelled" value={counts.missed + counts.cancelled} icon={AlertCircle} tone="rose" />
         <StatCard label="Avg checklist score" value={`${counts.avgScore}%`} icon={ListChecks} tone="amber" />
       </div>
+
+      <QuarterlyReviewCoverage />
 
       <Card>
         <CardHeader className="pb-3">
@@ -772,6 +775,337 @@ function ConductDialog({ visit, facility, onClose, onSave, isSaving }: { visit: 
             data-testid="btn-save-visit"
           >
             {isSaving ? "Saving…" : "Save visit"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+type QuarterlyReviewCoverageRow = {
+  facilityId: number;
+  facilityName: string;
+  districtId: number | null;
+  districtName: string | null;
+  provinceId: number | null;
+  provinceName: string | null;
+  hasReview: boolean;
+  reviewId: number | null;
+  updatedAt: string | null;
+  nextSurveyDate: string | null;
+};
+
+type QuarterlyReviewCoverageResponse = {
+  year: number;
+  quarter: number;
+  totalFacilities: number;
+  facilitiesWithReview: number;
+  facilitiesWithoutReview: number;
+  coveragePct: number;
+  facilities: QuarterlyReviewCoverageRow[];
+};
+
+type QuarterlyReviewNote = {
+  id: number;
+  facilityId: number;
+  year: number;
+  quarter: number;
+  topDrivers: Array<{ key?: string; label?: string; count?: number } | string> | unknown;
+  correctiveActions: string;
+  nextSurveyDate: string | null;
+  updatedAt: string;
+};
+
+const NOW = new Date();
+const CURRENT_YEAR = NOW.getUTCFullYear();
+const CURRENT_QUARTER = Math.floor(NOW.getUTCMonth() / 3) + 1;
+const QUARTER_YEAR_OPTIONS: Array<{ year: number; quarter: number }> = (() => {
+  const list: Array<{ year: number; quarter: number }> = [];
+  let y = CURRENT_YEAR;
+  let q = CURRENT_QUARTER;
+  for (let i = 0; i < 6; i++) {
+    list.push({ year: y, quarter: q });
+    q -= 1;
+    if (q < 1) { q = 4; y -= 1; }
+  }
+  return list;
+})();
+
+function QuarterlyReviewCoverage() {
+  const [year, setYear] = useState<number>(CURRENT_YEAR);
+  const [quarter, setQuarter] = useState<number>(CURRENT_QUARTER);
+  const [provinceId, setProvinceId] = useState<number | null>(null);
+  const [districtId, setDistrictId] = useState<number | null>(null);
+  const [statusFilter, setStatusFilter] = useState<"all" | "missing" | "done">("all");
+  const [openFacilityId, setOpenFacilityId] = useState<number | null>(null);
+
+  const queryParams = new URLSearchParams();
+  queryParams.set("year", String(year));
+  queryParams.set("quarter", String(quarter));
+  if (provinceId) queryParams.set("provinceId", String(provinceId));
+  if (districtId) queryParams.set("districtId", String(districtId));
+  const queryStr = queryParams.toString();
+
+  const { data, isLoading } = useQuery<QuarterlyReviewCoverageResponse>({
+    queryKey: ["/api/indicators/quarterly-review-coverage", year, quarter, provinceId, districtId],
+    queryFn: async () => {
+      const r = await fetch(`/api/indicators/quarterly-review-coverage?${queryStr}`, { credentials: "include" });
+      if (!r.ok) throw new Error("Failed to load quarterly review coverage");
+      return r.json();
+    },
+  });
+
+  const rows = data?.facilities ?? [];
+  const filteredRows = rows.filter((r) => {
+    if (statusFilter === "missing") return !r.hasReview;
+    if (statusFilter === "done") return r.hasReview;
+    return true;
+  });
+
+  const coveragePct = data?.coveragePct ?? 0;
+  const coverageTone =
+    coveragePct >= 80
+      ? "bg-emerald-500"
+      : coveragePct >= 50
+      ? "bg-amber-500"
+      : "bg-rose-500";
+
+  return (
+    <Card data-testid="card-quarterly-review-coverage">
+      <CardHeader className="pb-3">
+        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
+          <div>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <NotebookPen className="h-5 w-5 text-indigo-500" />
+              Quarterly review coverage
+            </CardTitle>
+            <p className="text-xs text-muted-foreground mt-1 max-w-2xl">
+              WHO RED step 12 — which facilities have documented this quarter's review of coverage, dropouts and corrective actions, and which still owe one.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2 items-center">
+            <Select
+              value={`${year}-${quarter}`}
+              onValueChange={(v) => {
+                const [y, q] = v.split("-").map(Number);
+                setYear(y);
+                setQuarter(q);
+              }}
+            >
+              <SelectTrigger className="w-40" data-testid="select-quarterly-period"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {QUARTER_YEAR_OPTIONS.map((o) => (
+                  <SelectItem key={`${o.year}-${o.quarter}`} value={`${o.year}-${o.quarter}`}>
+                    Q{o.quarter} {o.year}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as any)}>
+              <SelectTrigger className="w-40" data-testid="select-quarterly-status"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All facilities</SelectItem>
+                <SelectItem value="missing">Missing note</SelectItem>
+                <SelectItem value="done">Has note</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <div className="mt-3">
+          <GeoCascadeFilter
+            provinceId={provinceId}
+            districtId={districtId}
+            onProvinceChange={(id) => { setProvinceId(id); setDistrictId(null); }}
+            onDistrictChange={setDistrictId}
+            testIdPrefix="qrc-geo"
+          />
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+          <SummaryTile label="Facilities in scope" value={data?.totalFacilities ?? 0} tone="indigo" />
+          <SummaryTile label="With review note" value={data?.facilitiesWithReview ?? 0} tone="emerald" />
+          <SummaryTile label="Missing note" value={data?.facilitiesWithoutReview ?? 0} tone="rose" />
+          <div className="rounded-lg border bg-card p-3">
+            <div className="text-xs text-muted-foreground">Coverage</div>
+            <div className="text-2xl font-bold font-mono mt-1" data-testid="qrc-coverage-pct">{coveragePct}%</div>
+            <div className="h-1.5 bg-muted rounded-full mt-2 overflow-hidden">
+              <div
+                className={`h-full ${coverageTone} rounded-full transition-all duration-500`}
+                style={{ width: `${Math.min(coveragePct, 100)}%` }}
+              />
+            </div>
+          </div>
+        </div>
+
+        {isLoading ? (
+          <div className="space-y-2">
+            {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-12 w-full" />)}
+          </div>
+        ) : filteredRows.length === 0 ? (
+          <div className="text-center py-8 text-sm text-muted-foreground border border-dashed rounded-md">
+            {rows.length === 0
+              ? "No facilities in this scope yet."
+              : "No facilities match this filter."}
+          </div>
+        ) : (
+          <div className="divide-y border rounded-md">
+            {filteredRows.map((row) => (
+              <button
+                type="button"
+                key={row.facilityId}
+                onClick={() => row.hasReview && setOpenFacilityId(row.facilityId)}
+                disabled={!row.hasReview}
+                className={`w-full text-left px-3 py-2.5 flex items-center gap-3 flex-wrap ${row.hasReview ? "hover-elevate cursor-pointer" : "cursor-default opacity-90"}`}
+                data-testid={`qrc-row-${row.facilityId}`}
+              >
+                <Badge
+                  variant="outline"
+                  className={`min-w-[5.5rem] justify-center ${row.hasReview
+                    ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/40"
+                    : "bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/40"}`}
+                >
+                  {row.hasReview ? "Documented" : "Missing"}
+                </Badge>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium flex items-center gap-2">
+                    <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+                    {row.facilityName}
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-3 flex-wrap">
+                    {row.provinceName && <span>{row.provinceName}</span>}
+                    {row.districtName && <span>· {row.districtName}</span>}
+                    {row.hasReview && row.updatedAt && (
+                      <span>· Saved {new Date(row.updatedAt).toLocaleDateString()}</span>
+                    )}
+                  </div>
+                </div>
+                {row.hasReview && <span className="text-xs text-muted-foreground">View note →</span>}
+              </button>
+            ))}
+          </div>
+        )}
+      </CardContent>
+
+      <QuarterlyReviewNoteDialog
+        facility={
+          openFacilityId
+            ? rows.find((r) => r.facilityId === openFacilityId) ?? null
+            : null
+        }
+        year={year}
+        quarter={quarter}
+        onClose={() => setOpenFacilityId(null)}
+      />
+    </Card>
+  );
+}
+
+function SummaryTile({ label, value, tone }: { label: string; value: number; tone: "indigo" | "emerald" | "rose" }) {
+  const toneClass: Record<string, string> = {
+    indigo: "text-indigo-700 dark:text-indigo-300",
+    emerald: "text-emerald-700 dark:text-emerald-300",
+    rose: "text-rose-700 dark:text-rose-300",
+  };
+  return (
+    <div className="rounded-lg border bg-card p-3">
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className={`text-2xl font-bold font-mono mt-1 ${toneClass[tone]}`}>{value}</div>
+    </div>
+  );
+}
+
+function QuarterlyReviewNoteDialog({
+  facility,
+  year,
+  quarter,
+  onClose,
+}: {
+  facility: QuarterlyReviewCoverageRow | null;
+  year: number;
+  quarter: number;
+  onClose: () => void;
+}) {
+  const open = !!facility;
+  const { data: notes, isLoading } = useQuery<QuarterlyReviewNote[]>({
+    queryKey: ["/api/quarterly-reviews", facility?.facilityId, year, quarter],
+    enabled: open && !!facility?.facilityId,
+    queryFn: async () => {
+      const r = await fetch(
+        `/api/quarterly-reviews?facilityId=${facility!.facilityId}&year=${year}&quarter=${quarter}`,
+        { credentials: "include" },
+      );
+      if (!r.ok) throw new Error("Failed to load review note");
+      return r.json();
+    },
+  });
+  const note = notes?.[0] ?? null;
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="max-w-2xl" data-testid="dialog-quarterly-review-note">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <NotebookPen className="h-5 w-5 text-indigo-500" />
+            Q{quarter} {year} review — {facility?.facilityName}
+          </DialogTitle>
+          <DialogDescription>
+            Read-only view of the quarterly review note documented by facility staff.
+          </DialogDescription>
+        </DialogHeader>
+
+        {isLoading ? (
+          <div className="space-y-2">
+            <Skeleton className="h-4 w-40" />
+            <Skeleton className="h-24 w-full" />
+          </div>
+        ) : !note ? (
+          <div className="text-sm text-muted-foreground py-4">
+            No saved review note for this quarter.
+          </div>
+        ) : (
+          <div className="space-y-4 text-sm">
+            <div className="text-xs text-muted-foreground">
+              Last updated {new Date(note.updatedAt).toLocaleString()}
+              {note.nextSurveyDate && (
+                <> · Next survey {new Date(note.nextSurveyDate).toLocaleDateString()}</>
+              )}
+            </div>
+
+            {Array.isArray(note.topDrivers) && note.topDrivers.length > 0 && (
+              <div>
+                <div className="text-xs font-semibold uppercase text-muted-foreground mb-2">
+                  Top drivers
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {(note.topDrivers as any[]).map((d, i) => {
+                    const label = typeof d === "string" ? d : (d?.label || d?.key || "");
+                    const count = typeof d === "object" && d?.count != null ? d.count : null;
+                    if (!label) return null;
+                    return (
+                      <Badge key={i} variant="secondary" className="text-xs">
+                        {label}{count != null ? ` · ${count}` : ""}
+                      </Badge>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            <div>
+              <div className="text-xs font-semibold uppercase text-muted-foreground mb-2">
+                Corrective actions
+              </div>
+              <div className="whitespace-pre-wrap rounded-md border bg-muted/30 p-3 text-sm">
+                {note.correctiveActions || "—"}
+              </div>
+            </div>
+          </div>
+        )}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} data-testid="btn-close-quarterly-review">
+            Close
           </Button>
         </DialogFooter>
       </DialogContent>
