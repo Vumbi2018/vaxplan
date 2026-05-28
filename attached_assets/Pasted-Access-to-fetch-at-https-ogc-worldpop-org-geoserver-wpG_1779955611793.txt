@@ -1,0 +1,457 @@
+Access to fetch at 'https://ogc.worldpop.org/geoserver/wpGlobal/ows?service=WMS&version=1.3.0&request=GetFeatureInfo&layers=wpGlobal%3Appp_2020_1km_Aggregated&query_layers=wpGlobal%3Appp_2020_1km_Aggregated&crs=EPSG%3A3857&bbox=3310530.206099923%2C746647.1894251824%2C3310630.206099923%2C746747.1894251824&width=1&height=1&i=0&j=0&info_format=application%2Fjson&feature_count=1' from origin 'https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit.dev' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.Understand this error
+injected.js:214  GET https://ogc.worldpop.org/geoserver/wpGlobal/ows?service=WMS&version=1.3.0&request=GetFeatureInfo&layers=wpGlobal%3Appp_2020_1km_Aggregated&query_layers=wpGlobal%3Appp_2020_1km_Aggregated&crs=EPSG%3A3857&bbox=3310530.206099923%2C746647.1894251824%2C3310630.206099923%2C746747.1894251824&width=1&height=1&i=0&j=0&info_format=application%2Fjson&feature_count=1 net::ERR_FAILED
+apply @ injected.js:214
+(anonymous) @ main.tsx:39
+fetchCellValue @ worldpopCatchment.ts:40
+(anonymous) @ worldpopCatchment.ts:151
+(anonymous) @ worldpopCatchment.ts:173
+(anonymous) @ worldpopCatchment.ts:173
+(anonymous) @ MicroplanWizard.tsx:2769
+(anonymous) @ MicroplanWizard.tsx:2797
+(anonymous) @ MicroplanWizard.tsx:2797
+callCallback2 @ chunk-276SZO74.js?v=3078931f:3674
+invokeGuardedCallbackDev @ chunk-276SZO74.js?v=3078931f:3699
+invokeGuardedCallback @ chunk-276SZO74.js?v=3078931f:3733
+invokeGuardedCallbackAndCatchFirstError @ chunk-276SZO74.js?v=3078931f:3736
+executeDispatch @ chunk-276SZO74.js?v=3078931f:7014
+processDispatchQueueItemsInOrder @ chunk-276SZO74.js?v=3078931f:7034
+processDispatchQueue @ chunk-276SZO74.js?v=3078931f:7043
+dispatchEventsForPlugins @ chunk-276SZO74.js?v=3078931f:7051
+(anonymous) @ chunk-276SZO74.js?v=3078931f:7174
+batchedUpdates$1 @ chunk-276SZO74.js?v=3078931f:18913
+batchedUpdates @ chunk-276SZO74.js?v=3078931f:3579
+dispatchEventForPluginEventSystem @ chunk-276SZO74.js?v=3078931f:7173
+dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-276SZO74.js?v=3078931f:5478
+dispatchEvent @ chunk-276SZO74.js?v=3078931f:5472
+dispatchDiscreteEvent @ chunk-276SZO74.js?v=3078931f:5449Understand this error
+flow:1 Access to fetch at 'https://ogc.worldpop.org/geoserver/wpGlobal/ows?service=WMS&version=1.3.0&request=GetFeatureInfo&layers=wpGlobal%3Appp_2020_1km_Aggregated&query_layers=wpGlobal%3Appp_2020_1km_Aggregated&crs=EPSG%3A3857&bbox=3309520.428732053%2C745637.4400109543%2C3309620.428732053%2C745737.4400109543&width=1&height=1&i=0&j=0&info_format=application%2Fjson&feature_count=1' from origin 'https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit.dev' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.Understand this error
+injected.js:214  GET https://ogc.worldpop.org/geoserver/wpGlobal/ows?service=WMS&version=1.3.0&request=GetFeatureInfo&layers=wpGlobal%3Appp_2020_1km_Aggregated&query_layers=wpGlobal%3Appp_2020_1km_Aggregated&crs=EPSG%3A3857&bbox=3309520.428732053%2C745637.4400109543%2C3309620.428732053%2C745737.4400109543&width=1&height=1&i=0&j=0&info_format=application%2Fjson&feature_count=1 net::ERR_FAILED
+apply @ injected.js:214
+(anonymous) @ main.tsx:39
+fetchCellValue @ worldpopCatchment.ts:40
+(anonymous) @ worldpopCatchment.ts:151
+(anonymous) @ worldpopCatchment.ts:173
+(anonymous) @ worldpopCatchment.ts:173
+(anonymous) @ MicroplanWizard.tsx:2769
+(anonymous) @ MicroplanWizard.tsx:2797
+(anonymous) @ MicroplanWizard.tsx:2797
+callCallback2 @ chunk-276SZO74.js?v=3078931f:3674
+invokeGuardedCallbackDev @ chunk-276SZO74.js?v=3078931f:3699
+invokeGuardedCallback @ chunk-276SZO74.js?v=3078931f:3733
+invokeGuardedCallbackAndCatchFirstError @ chunk-276SZO74.js?v=3078931f:3736
+executeDispatch @ chunk-276SZO74.js?v=3078931f:7014
+processDispatchQueueItemsInOrder @ chunk-276SZO74.js?v=3078931f:7034
+processDispatchQueue @ chunk-276SZO74.js?v=3078931f:7043
+dispatchEventsForPlugins @ chunk-276SZO74.js?v=3078931f:7051
+(anonymous) @ chunk-276SZO74.js?v=3078931f:7174
+batchedUpdates$1 @ chunk-276SZO74.js?v=3078931f:18913
+batchedUpdates @ chunk-276SZO74.js?v=3078931f:3579
+dispatchEventForPluginEventSystem @ chunk-276SZO74.js?v=3078931f:7173
+dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-276SZO74.js?v=3078931f:5478
+dispatchEvent @ chunk-276SZO74.js?v=3078931f:5472
+dispatchDiscreteEvent @ chunk-276SZO74.js?v=3078931f:5449Understand this error
+flow:1 Access to fetch at 'https://ogc.worldpop.org/geoserver/wpGlobal/ows?service=WMS&version=1.3.0&request=GetFeatureInfo&layers=wpGlobal%3Appp_2020_1km_Aggregated&query_layers=wpGlobal%3Appp_2020_1km_Aggregated&crs=EPSG%3A3857&bbox=3308510.651364182%2C747656.9574694707%2C3308610.651364182%2C747756.9574694707&width=1&height=1&i=0&j=0&info_format=application%2Fjson&feature_count=1' from origin 'https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit.dev' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.Understand this error
+injected.js:214  GET https://ogc.worldpop.org/geoserver/wpGlobal/ows?service=WMS&version=1.3.0&request=GetFeatureInfo&layers=wpGlobal%3Appp_2020_1km_Aggregated&query_layers=wpGlobal%3Appp_2020_1km_Aggregated&crs=EPSG%3A3857&bbox=3308510.651364182%2C747656.9574694707%2C3308610.651364182%2C747756.9574694707&width=1&height=1&i=0&j=0&info_format=application%2Fjson&feature_count=1 net::ERR_FAILED
+apply @ injected.js:214
+(anonymous) @ main.tsx:39
+fetchCellValue @ worldpopCatchment.ts:40
+(anonymous) @ worldpopCatchment.ts:151
+(anonymous) @ worldpopCatchment.ts:173
+(anonymous) @ worldpopCatchment.ts:173
+(anonymous) @ MicroplanWizard.tsx:2769
+(anonymous) @ MicroplanWizard.tsx:2797
+(anonymous) @ MicroplanWizard.tsx:2797
+callCallback2 @ chunk-276SZO74.js?v=3078931f:3674
+invokeGuardedCallbackDev @ chunk-276SZO74.js?v=3078931f:3699
+invokeGuardedCallback @ chunk-276SZO74.js?v=3078931f:3733
+invokeGuardedCallbackAndCatchFirstError @ chunk-276SZO74.js?v=3078931f:3736
+executeDispatch @ chunk-276SZO74.js?v=3078931f:7014
+processDispatchQueueItemsInOrder @ chunk-276SZO74.js?v=3078931f:7034
+processDispatchQueue @ chunk-276SZO74.js?v=3078931f:7043
+dispatchEventsForPlugins @ chunk-276SZO74.js?v=3078931f:7051
+(anonymous) @ chunk-276SZO74.js?v=3078931f:7174
+batchedUpdates$1 @ chunk-276SZO74.js?v=3078931f:18913
+batchedUpdates @ chunk-276SZO74.js?v=3078931f:3579
+dispatchEventForPluginEventSystem @ chunk-276SZO74.js?v=3078931f:7173
+dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-276SZO74.js?v=3078931f:5478
+dispatchEvent @ chunk-276SZO74.js?v=3078931f:5472
+dispatchDiscreteEvent @ chunk-276SZO74.js?v=3078931f:5449Understand this error
+flow:1 Access to fetch at 'https://ogc.worldpop.org/geoserver/wpGlobal/ows?service=WMS&version=1.3.0&request=GetFeatureInfo&layers=wpGlobal%3Appp_2020_1km_Aggregated&query_layers=wpGlobal%3Appp_2020_1km_Aggregated&crs=EPSG%3A3857&bbox=3307500.8739963123%2C747656.9574694707%2C3307600.8739963123%2C747756.9574694707&width=1&height=1&i=0&j=0&info_format=application%2Fjson&feature_count=1' from origin 'https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit.dev' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.Understand this error
+injected.js:214  GET https://ogc.worldpop.org/geoserver/wpGlobal/ows?service=WMS&version=1.3.0&request=GetFeatureInfo&layers=wpGlobal%3Appp_2020_1km_Aggregated&query_layers=wpGlobal%3Appp_2020_1km_Aggregated&crs=EPSG%3A3857&bbox=3307500.8739963123%2C747656.9574694707%2C3307600.8739963123%2C747756.9574694707&width=1&height=1&i=0&j=0&info_format=application%2Fjson&feature_count=1 net::ERR_FAILED
+apply @ injected.js:214
+(anonymous) @ main.tsx:39
+fetchCellValue @ worldpopCatchment.ts:40
+(anonymous) @ worldpopCatchment.ts:151
+(anonymous) @ worldpopCatchment.ts:173
+(anonymous) @ worldpopCatchment.ts:173
+(anonymous) @ MicroplanWizard.tsx:2769
+(anonymous) @ MicroplanWizard.tsx:2797
+(anonymous) @ MicroplanWizard.tsx:2797
+callCallback2 @ chunk-276SZO74.js?v=3078931f:3674
+invokeGuardedCallbackDev @ chunk-276SZO74.js?v=3078931f:3699
+invokeGuardedCallback @ chunk-276SZO74.js?v=3078931f:3733
+invokeGuardedCallbackAndCatchFirstError @ chunk-276SZO74.js?v=3078931f:3736
+executeDispatch @ chunk-276SZO74.js?v=3078931f:7014
+processDispatchQueueItemsInOrder @ chunk-276SZO74.js?v=3078931f:7034
+processDispatchQueue @ chunk-276SZO74.js?v=3078931f:7043
+dispatchEventsForPlugins @ chunk-276SZO74.js?v=3078931f:7051
+(anonymous) @ chunk-276SZO74.js?v=3078931f:7174
+batchedUpdates$1 @ chunk-276SZO74.js?v=3078931f:18913
+batchedUpdates @ chunk-276SZO74.js?v=3078931f:3579
+dispatchEventForPluginEventSystem @ chunk-276SZO74.js?v=3078931f:7173
+dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-276SZO74.js?v=3078931f:5478
+dispatchEvent @ chunk-276SZO74.js?v=3078931f:5472
+dispatchDiscreteEvent @ chunk-276SZO74.js?v=3078931f:5449Understand this error
+flow:1 Access to fetch at 'https://ogc.worldpop.org/geoserver/wpGlobal/ows?service=WMS&version=1.3.0&request=GetFeatureInfo&layers=wpGlobal%3Appp_2020_1km_Aggregated&query_layers=wpGlobal%3Appp_2020_1km_Aggregated&crs=EPSG%3A3857&bbox=3293659.7390033174%2C754918.5504973929%2C3293759.7390033174%2C755018.5504973929&width=1&height=1&i=0&j=0&info_format=application%2Fjson&feature_count=1' from origin 'https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit.dev' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.Understand this error
+injected.js:214  GET https://ogc.worldpop.org/geoserver/wpGlobal/ows?service=WMS&version=1.3.0&request=GetFeatureInfo&layers=wpGlobal%3Appp_2020_1km_Aggregated&query_layers=wpGlobal%3Appp_2020_1km_Aggregated&crs=EPSG%3A3857&bbox=3293659.7390033174%2C754918.5504973929%2C3293759.7390033174%2C755018.5504973929&width=1&height=1&i=0&j=0&info_format=application%2Fjson&feature_count=1 net::ERR_FAILED
+apply @ injected.js:214
+(anonymous) @ main.tsx:39
+fetchCellValue @ worldpopCatchment.ts:40
+(anonymous) @ worldpopCatchment.ts:151
+await in (anonymous)
+(anonymous) @ worldpopCatchment.ts:173
+(anonymous) @ worldpopCatchment.ts:173
+(anonymous) @ MicroplanWizard.tsx:2769
+(anonymous) @ MicroplanWizard.tsx:2797
+(anonymous) @ MicroplanWizard.tsx:2797
+callCallback2 @ chunk-276SZO74.js?v=3078931f:3674
+invokeGuardedCallbackDev @ chunk-276SZO74.js?v=3078931f:3699
+invokeGuardedCallback @ chunk-276SZO74.js?v=3078931f:3733
+invokeGuardedCallbackAndCatchFirstError @ chunk-276SZO74.js?v=3078931f:3736
+executeDispatch @ chunk-276SZO74.js?v=3078931f:7014
+processDispatchQueueItemsInOrder @ chunk-276SZO74.js?v=3078931f:7034
+processDispatchQueue @ chunk-276SZO74.js?v=3078931f:7043
+dispatchEventsForPlugins @ chunk-276SZO74.js?v=3078931f:7051
+(anonymous) @ chunk-276SZO74.js?v=3078931f:7174
+batchedUpdates$1 @ chunk-276SZO74.js?v=3078931f:18913
+batchedUpdates @ chunk-276SZO74.js?v=3078931f:3579
+dispatchEventForPluginEventSystem @ chunk-276SZO74.js?v=3078931f:7173
+dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-276SZO74.js?v=3078931f:5478
+dispatchEvent @ chunk-276SZO74.js?v=3078931f:5472
+dispatchDiscreteEvent @ chunk-276SZO74.js?v=3078931f:5449Understand this error
+flow:1 Access to fetch at 'https://ogc.worldpop.org/geoserver/wpGlobal/ows?service=WMS&version=1.3.0&request=GetFeatureInfo&layers=wpGlobal%3Appp_2020_1km_Aggregated&query_layers=wpGlobal%3Appp_2020_1km_Aggregated&crs=EPSG%3A3857&bbox=3292649.8268224876%2C755928.4721026275%2C3292749.8268224876%2C756028.4721026275&width=1&height=1&i=0&j=0&info_format=application%2Fjson&feature_count=1' from origin 'https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit.dev' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.Understand this error
+injected.js:214  GET https://ogc.worldpop.org/geoserver/wpGlobal/ows?service=WMS&version=1.3.0&request=GetFeatureInfo&layers=wpGlobal%3Appp_2020_1km_Aggregated&query_layers=wpGlobal%3Appp_2020_1km_Aggregated&crs=EPSG%3A3857&bbox=3292649.8268224876%2C755928.4721026275%2C3292749.8268224876%2C756028.4721026275&width=1&height=1&i=0&j=0&info_format=application%2Fjson&feature_count=1 net::ERR_FAILED
+apply @ injected.js:214
+(anonymous) @ main.tsx:39
+fetchCellValue @ worldpopCatchment.ts:40
+(anonymous) @ worldpopCatchment.ts:151
+await in (anonymous)
+(anonymous) @ worldpopCatchment.ts:173
+(anonymous) @ worldpopCatchment.ts:173
+(anonymous) @ MicroplanWizard.tsx:2769
+(anonymous) @ MicroplanWizard.tsx:2797
+(anonymous) @ MicroplanWizard.tsx:2797
+callCallback2 @ chunk-276SZO74.js?v=3078931f:3674
+invokeGuardedCallbackDev @ chunk-276SZO74.js?v=3078931f:3699
+invokeGuardedCallback @ chunk-276SZO74.js?v=3078931f:3733
+invokeGuardedCallbackAndCatchFirstError @ chunk-276SZO74.js?v=3078931f:3736
+executeDispatch @ chunk-276SZO74.js?v=3078931f:7014
+processDispatchQueueItemsInOrder @ chunk-276SZO74.js?v=3078931f:7034
+processDispatchQueue @ chunk-276SZO74.js?v=3078931f:7043
+dispatchEventsForPlugins @ chunk-276SZO74.js?v=3078931f:7051
+(anonymous) @ chunk-276SZO74.js?v=3078931f:7174
+batchedUpdates$1 @ chunk-276SZO74.js?v=3078931f:18913
+batchedUpdates @ chunk-276SZO74.js?v=3078931f:3579
+dispatchEventForPluginEventSystem @ chunk-276SZO74.js?v=3078931f:7173
+dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-276SZO74.js?v=3078931f:5478
+dispatchEvent @ chunk-276SZO74.js?v=3078931f:5472
+dispatchDiscreteEvent @ chunk-276SZO74.js?v=3078931f:5449Understand this error
+flow:1 Access to fetch at 'https://ogc.worldpop.org/geoserver/wpGlobal/ows?service=WMS&version=1.3.0&request=GetFeatureInfo&layers=wpGlobal%3Appp_2020_1km_Aggregated&query_layers=wpGlobal%3Appp_2020_1km_Aggregated&crs=EPSG%3A3857&bbox=3309520.428732053%2C747656.9574694707%2C3309620.428732053%2C747756.9574694707&width=1&height=1&i=0&j=0&info_format=application%2Fjson&feature_count=1' from origin 'https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit.dev' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.Understand this error
+injected.js:214  GET https://ogc.worldpop.org/geoserver/wpGlobal/ows?service=WMS&version=1.3.0&request=GetFeatureInfo&layers=wpGlobal%3Appp_2020_1km_Aggregated&query_layers=wpGlobal%3Appp_2020_1km_Aggregated&crs=EPSG%3A3857&bbox=3309520.428732053%2C747656.9574694707%2C3309620.428732053%2C747756.9574694707&width=1&height=1&i=0&j=0&info_format=application%2Fjson&feature_count=1 net::ERR_FAILED
+apply @ injected.js:214
+(anonymous) @ main.tsx:39
+fetchCellValue @ worldpopCatchment.ts:40
+(anonymous) @ worldpopCatchment.ts:151
+await in (anonymous)
+(anonymous) @ worldpopCatchment.ts:173
+(anonymous) @ worldpopCatchment.ts:173
+(anonymous) @ MicroplanWizard.tsx:2769
+(anonymous) @ MicroplanWizard.tsx:2797
+(anonymous) @ MicroplanWizard.tsx:2797
+callCallback2 @ chunk-276SZO74.js?v=3078931f:3674
+invokeGuardedCallbackDev @ chunk-276SZO74.js?v=3078931f:3699
+invokeGuardedCallback @ chunk-276SZO74.js?v=3078931f:3733
+invokeGuardedCallbackAndCatchFirstError @ chunk-276SZO74.js?v=3078931f:3736
+executeDispatch @ chunk-276SZO74.js?v=3078931f:7014
+processDispatchQueueItemsInOrder @ chunk-276SZO74.js?v=3078931f:7034
+processDispatchQueue @ chunk-276SZO74.js?v=3078931f:7043
+dispatchEventsForPlugins @ chunk-276SZO74.js?v=3078931f:7051
+(anonymous) @ chunk-276SZO74.js?v=3078931f:7174
+batchedUpdates$1 @ chunk-276SZO74.js?v=3078931f:18913
+batchedUpdates @ chunk-276SZO74.js?v=3078931f:3579
+dispatchEventForPluginEventSystem @ chunk-276SZO74.js?v=3078931f:7173
+dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-276SZO74.js?v=3078931f:5478
+dispatchEvent @ chunk-276SZO74.js?v=3078931f:5472
+dispatchDiscreteEvent @ chunk-276SZO74.js?v=3078931f:5449Understand this error
+flow:1 Access to fetch at 'https://ogc.worldpop.org/geoserver/wpGlobal/ows?service=WMS&version=1.3.0&request=GetFeatureInfo&layers=wpGlobal%3Appp_2020_1km_Aggregated&query_layers=wpGlobal%3Appp_2020_1km_Aggregated&crs=EPSG%3A3857&bbox=3295679.563364977%2C754918.5504973929%2C3295779.563364977%2C755018.5504973929&width=1&height=1&i=0&j=0&info_format=application%2Fjson&feature_count=1' from origin 'https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit.dev' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.Understand this error
+injected.js:214  GET https://ogc.worldpop.org/geoserver/wpGlobal/ows?service=WMS&version=1.3.0&request=GetFeatureInfo&layers=wpGlobal%3Appp_2020_1km_Aggregated&query_layers=wpGlobal%3Appp_2020_1km_Aggregated&crs=EPSG%3A3857&bbox=3295679.563364977%2C754918.5504973929%2C3295779.563364977%2C755018.5504973929&width=1&height=1&i=0&j=0&info_format=application%2Fjson&feature_count=1 net::ERR_FAILED
+apply @ injected.js:214
+(anonymous) @ main.tsx:39
+fetchCellValue @ worldpopCatchment.ts:40
+(anonymous) @ worldpopCatchment.ts:151
+await in (anonymous)
+(anonymous) @ worldpopCatchment.ts:173
+(anonymous) @ worldpopCatchment.ts:173
+(anonymous) @ MicroplanWizard.tsx:2769
+(anonymous) @ MicroplanWizard.tsx:2797
+(anonymous) @ MicroplanWizard.tsx:2797
+callCallback2 @ chunk-276SZO74.js?v=3078931f:3674
+invokeGuardedCallbackDev @ chunk-276SZO74.js?v=3078931f:3699
+invokeGuardedCallback @ chunk-276SZO74.js?v=3078931f:3733
+invokeGuardedCallbackAndCatchFirstError @ chunk-276SZO74.js?v=3078931f:3736
+executeDispatch @ chunk-276SZO74.js?v=3078931f:7014
+processDispatchQueueItemsInOrder @ chunk-276SZO74.js?v=3078931f:7034
+processDispatchQueue @ chunk-276SZO74.js?v=3078931f:7043
+dispatchEventsForPlugins @ chunk-276SZO74.js?v=3078931f:7051
+(anonymous) @ chunk-276SZO74.js?v=3078931f:7174
+batchedUpdates$1 @ chunk-276SZO74.js?v=3078931f:18913
+batchedUpdates @ chunk-276SZO74.js?v=3078931f:3579
+dispatchEventForPluginEventSystem @ chunk-276SZO74.js?v=3078931f:7173
+dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-276SZO74.js?v=3078931f:5478
+dispatchEvent @ chunk-276SZO74.js?v=3078931f:5472
+dispatchDiscreteEvent @ chunk-276SZO74.js?v=3078931f:5449Understand this error
+flow:1 Access to fetch at 'https://ogc.worldpop.org/geoserver/wpGlobal/ows?service=WMS&version=1.3.0&request=GetFeatureInfo&layers=wpGlobal%3Appp_2020_1km_Aggregated&query_layers=wpGlobal%3Appp_2020_1km_Aggregated&crs=EPSG%3A3857&bbox=3294669.651184147%2C754918.5504973929%2C3294769.651184147%2C755018.5504973929&width=1&height=1&i=0&j=0&info_format=application%2Fjson&feature_count=1' from origin 'https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit.dev' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.Understand this error
+injected.js:214  GET https://ogc.worldpop.org/geoserver/wpGlobal/ows?service=WMS&version=1.3.0&request=GetFeatureInfo&layers=wpGlobal%3Appp_2020_1km_Aggregated&query_layers=wpGlobal%3Appp_2020_1km_Aggregated&crs=EPSG%3A3857&bbox=3294669.651184147%2C754918.5504973929%2C3294769.651184147%2C755018.5504973929&width=1&height=1&i=0&j=0&info_format=application%2Fjson&feature_count=1 net::ERR_FAILED
+apply @ injected.js:214
+(anonymous) @ main.tsx:39
+fetchCellValue @ worldpopCatchment.ts:40
+(anonymous) @ worldpopCatchment.ts:151
+await in (anonymous)
+(anonymous) @ worldpopCatchment.ts:173
+(anonymous) @ worldpopCatchment.ts:173
+(anonymous) @ MicroplanWizard.tsx:2769
+(anonymous) @ MicroplanWizard.tsx:2797
+(anonymous) @ MicroplanWizard.tsx:2797
+callCallback2 @ chunk-276SZO74.js?v=3078931f:3674
+invokeGuardedCallbackDev @ chunk-276SZO74.js?v=3078931f:3699
+invokeGuardedCallback @ chunk-276SZO74.js?v=3078931f:3733
+invokeGuardedCallbackAndCatchFirstError @ chunk-276SZO74.js?v=3078931f:3736
+executeDispatch @ chunk-276SZO74.js?v=3078931f:7014
+processDispatchQueueItemsInOrder @ chunk-276SZO74.js?v=3078931f:7034
+processDispatchQueue @ chunk-276SZO74.js?v=3078931f:7043
+dispatchEventsForPlugins @ chunk-276SZO74.js?v=3078931f:7051
+(anonymous) @ chunk-276SZO74.js?v=3078931f:7174
+batchedUpdates$1 @ chunk-276SZO74.js?v=3078931f:18913
+batchedUpdates @ chunk-276SZO74.js?v=3078931f:3579
+dispatchEventForPluginEventSystem @ chunk-276SZO74.js?v=3078931f:7173
+dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-276SZO74.js?v=3078931f:5478
+dispatchEvent @ chunk-276SZO74.js?v=3078931f:5472
+dispatchDiscreteEvent @ chunk-276SZO74.js?v=3078931f:5449Understand this error
+flow:1 Access to fetch at 'https://ogc.worldpop.org/geoserver/wpGlobal/ows?service=WMS&version=1.3.0&request=GetFeatureInfo&layers=wpGlobal%3Appp_2020_1km_Aggregated&query_layers=wpGlobal%3Appp_2020_1km_Aggregated&crs=EPSG%3A3857&bbox=3310530.206099923%2C747656.9574694707%2C3310630.206099923%2C747756.9574694707&width=1&height=1&i=0&j=0&info_format=application%2Fjson&feature_count=1' from origin 'https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit.dev' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.Understand this error
+injected.js:214  GET https://ogc.worldpop.org/geoserver/wpGlobal/ows?service=WMS&version=1.3.0&request=GetFeatureInfo&layers=wpGlobal%3Appp_2020_1km_Aggregated&query_layers=wpGlobal%3Appp_2020_1km_Aggregated&crs=EPSG%3A3857&bbox=3310530.206099923%2C747656.9574694707%2C3310630.206099923%2C747756.9574694707&width=1&height=1&i=0&j=0&info_format=application%2Fjson&feature_count=1 net::ERR_FAILED
+apply @ injected.js:214
+(anonymous) @ main.tsx:39
+fetchCellValue @ worldpopCatchment.ts:40
+(anonymous) @ worldpopCatchment.ts:151
+await in (anonymous)
+(anonymous) @ worldpopCatchment.ts:173
+(anonymous) @ worldpopCatchment.ts:173
+(anonymous) @ MicroplanWizard.tsx:2769
+(anonymous) @ MicroplanWizard.tsx:2797
+(anonymous) @ MicroplanWizard.tsx:2797
+callCallback2 @ chunk-276SZO74.js?v=3078931f:3674
+invokeGuardedCallbackDev @ chunk-276SZO74.js?v=3078931f:3699
+invokeGuardedCallback @ chunk-276SZO74.js?v=3078931f:3733
+invokeGuardedCallbackAndCatchFirstError @ chunk-276SZO74.js?v=3078931f:3736
+executeDispatch @ chunk-276SZO74.js?v=3078931f:7014
+processDispatchQueueItemsInOrder @ chunk-276SZO74.js?v=3078931f:7034
+processDispatchQueue @ chunk-276SZO74.js?v=3078931f:7043
+dispatchEventsForPlugins @ chunk-276SZO74.js?v=3078931f:7051
+(anonymous) @ chunk-276SZO74.js?v=3078931f:7174
+batchedUpdates$1 @ chunk-276SZO74.js?v=3078931f:18913
+batchedUpdates @ chunk-276SZO74.js?v=3078931f:3579
+dispatchEventForPluginEventSystem @ chunk-276SZO74.js?v=3078931f:7173
+dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-276SZO74.js?v=3078931f:5478
+dispatchEvent @ chunk-276SZO74.js?v=3078931f:5472
+dispatchDiscreteEvent @ chunk-276SZO74.js?v=3078931f:5449Understand this error
+flow:1 Access to fetch at 'https://ogc.worldpop.org/geoserver/wpGlobal/ows?service=WMS&version=1.3.0&request=GetFeatureInfo&layers=wpGlobal%3Appp_2020_1km_Aggregated&query_layers=wpGlobal%3Appp_2020_1km_Aggregated&crs=EPSG%3A3857&bbox=3293659.7390033174%2C755928.4721026275%2C3293759.7390033174%2C756028.4721026275&width=1&height=1&i=0&j=0&info_format=application%2Fjson&feature_count=1' from origin 'https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit.dev' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.Understand this error
+injected.js:214  GET https://ogc.worldpop.org/geoserver/wpGlobal/ows?service=WMS&version=1.3.0&request=GetFeatureInfo&layers=wpGlobal%3Appp_2020_1km_Aggregated&query_layers=wpGlobal%3Appp_2020_1km_Aggregated&crs=EPSG%3A3857&bbox=3293659.7390033174%2C755928.4721026275%2C3293759.7390033174%2C756028.4721026275&width=1&height=1&i=0&j=0&info_format=application%2Fjson&feature_count=1 net::ERR_FAILED
+apply @ injected.js:214
+(anonymous) @ main.tsx:39
+fetchCellValue @ worldpopCatchment.ts:40
+(anonymous) @ worldpopCatchment.ts:151
+await in (anonymous)
+(anonymous) @ worldpopCatchment.ts:173
+(anonymous) @ worldpopCatchment.ts:173
+(anonymous) @ MicroplanWizard.tsx:2769
+(anonymous) @ MicroplanWizard.tsx:2797
+(anonymous) @ MicroplanWizard.tsx:2797
+callCallback2 @ chunk-276SZO74.js?v=3078931f:3674
+invokeGuardedCallbackDev @ chunk-276SZO74.js?v=3078931f:3699
+invokeGuardedCallback @ chunk-276SZO74.js?v=3078931f:3733
+invokeGuardedCallbackAndCatchFirstError @ chunk-276SZO74.js?v=3078931f:3736
+executeDispatch @ chunk-276SZO74.js?v=3078931f:7014
+processDispatchQueueItemsInOrder @ chunk-276SZO74.js?v=3078931f:7034
+processDispatchQueue @ chunk-276SZO74.js?v=3078931f:7043
+dispatchEventsForPlugins @ chunk-276SZO74.js?v=3078931f:7051
+(anonymous) @ chunk-276SZO74.js?v=3078931f:7174
+batchedUpdates$1 @ chunk-276SZO74.js?v=3078931f:18913
+batchedUpdates @ chunk-276SZO74.js?v=3078931f:3579
+dispatchEventForPluginEventSystem @ chunk-276SZO74.js?v=3078931f:7173
+dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-276SZO74.js?v=3078931f:5478
+dispatchEvent @ chunk-276SZO74.js?v=3078931f:5472
+dispatchDiscreteEvent @ chunk-276SZO74.js?v=3078931f:5449Understand this error
+flow:1 Access to fetch at 'https://ogc.worldpop.org/geoserver/wpGlobal/ows?service=WMS&version=1.3.0&request=GetFeatureInfo&layers=wpGlobal%3Appp_2020_1km_Aggregated&query_layers=wpGlobal%3Appp_2020_1km_Aggregated&crs=EPSG%3A3857&bbox=3294669.651184147%2C755928.4721026275%2C3294769.651184147%2C756028.4721026275&width=1&height=1&i=0&j=0&info_format=application%2Fjson&feature_count=1' from origin 'https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit.dev' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.Understand this error
+injected.js:214  GET https://ogc.worldpop.org/geoserver/wpGlobal/ows?service=WMS&version=1.3.0&request=GetFeatureInfo&layers=wpGlobal%3Appp_2020_1km_Aggregated&query_layers=wpGlobal%3Appp_2020_1km_Aggregated&crs=EPSG%3A3857&bbox=3294669.651184147%2C755928.4721026275%2C3294769.651184147%2C756028.4721026275&width=1&height=1&i=0&j=0&info_format=application%2Fjson&feature_count=1 net::ERR_FAILED
+apply @ injected.js:214
+(anonymous) @ main.tsx:39
+fetchCellValue @ worldpopCatchment.ts:40
+(anonymous) @ worldpopCatchment.ts:151
+await in (anonymous)
+(anonymous) @ worldpopCatchment.ts:173
+(anonymous) @ worldpopCatchment.ts:173
+(anonymous) @ MicroplanWizard.tsx:2769
+(anonymous) @ MicroplanWizard.tsx:2797
+(anonymous) @ MicroplanWizard.tsx:2797
+callCallback2 @ chunk-276SZO74.js?v=3078931f:3674
+invokeGuardedCallbackDev @ chunk-276SZO74.js?v=3078931f:3699
+invokeGuardedCallback @ chunk-276SZO74.js?v=3078931f:3733
+invokeGuardedCallbackAndCatchFirstError @ chunk-276SZO74.js?v=3078931f:3736
+executeDispatch @ chunk-276SZO74.js?v=3078931f:7014
+processDispatchQueueItemsInOrder @ chunk-276SZO74.js?v=3078931f:7034
+processDispatchQueue @ chunk-276SZO74.js?v=3078931f:7043
+dispatchEventsForPlugins @ chunk-276SZO74.js?v=3078931f:7051
+(anonymous) @ chunk-276SZO74.js?v=3078931f:7174
+batchedUpdates$1 @ chunk-276SZO74.js?v=3078931f:18913
+batchedUpdates @ chunk-276SZO74.js?v=3078931f:3579
+dispatchEventForPluginEventSystem @ chunk-276SZO74.js?v=3078931f:7173
+dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-276SZO74.js?v=3078931f:5478
+dispatchEvent @ chunk-276SZO74.js?v=3078931f:5472
+dispatchDiscreteEvent @ chunk-276SZO74.js?v=3078931f:5449Understand this error
+flow:1 Access to fetch at 'https://ogc.worldpop.org/geoserver/wpGlobal/ows?service=WMS&version=1.3.0&request=GetFeatureInfo&layers=wpGlobal%3Appp_2020_1km_Aggregated&query_layers=wpGlobal%3Appp_2020_1km_Aggregated&crs=EPSG%3A3857&bbox=3309520.428732053%2C748666.7441694747%2C3309620.428732053%2C748766.7441694747&width=1&height=1&i=0&j=0&info_format=application%2Fjson&feature_count=1' from origin 'https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit.dev' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.Understand this error
+injected.js:214  GET https://ogc.worldpop.org/geoserver/wpGlobal/ows?service=WMS&version=1.3.0&request=GetFeatureInfo&layers=wpGlobal%3Appp_2020_1km_Aggregated&query_layers=wpGlobal%3Appp_2020_1km_Aggregated&crs=EPSG%3A3857&bbox=3309520.428732053%2C748666.7441694747%2C3309620.428732053%2C748766.7441694747&width=1&height=1&i=0&j=0&info_format=application%2Fjson&feature_count=1 net::ERR_FAILED
+apply @ injected.js:214
+(anonymous) @ main.tsx:39
+fetchCellValue @ worldpopCatchment.ts:40
+(anonymous) @ worldpopCatchment.ts:151
+await in (anonymous)
+(anonymous) @ worldpopCatchment.ts:173
+(anonymous) @ worldpopCatchment.ts:173
+(anonymous) @ MicroplanWizard.tsx:2769
+(anonymous) @ MicroplanWizard.tsx:2797
+(anonymous) @ MicroplanWizard.tsx:2797
+callCallback2 @ chunk-276SZO74.js?v=3078931f:3674
+invokeGuardedCallbackDev @ chunk-276SZO74.js?v=3078931f:3699
+invokeGuardedCallback @ chunk-276SZO74.js?v=3078931f:3733
+invokeGuardedCallbackAndCatchFirstError @ chunk-276SZO74.js?v=3078931f:3736
+executeDispatch @ chunk-276SZO74.js?v=3078931f:7014
+processDispatchQueueItemsInOrder @ chunk-276SZO74.js?v=3078931f:7034
+processDispatchQueue @ chunk-276SZO74.js?v=3078931f:7043
+dispatchEventsForPlugins @ chunk-276SZO74.js?v=3078931f:7051
+(anonymous) @ chunk-276SZO74.js?v=3078931f:7174
+batchedUpdates$1 @ chunk-276SZO74.js?v=3078931f:18913
+batchedUpdates @ chunk-276SZO74.js?v=3078931f:3579
+dispatchEventForPluginEventSystem @ chunk-276SZO74.js?v=3078931f:7173
+dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-276SZO74.js?v=3078931f:5478
+dispatchEvent @ chunk-276SZO74.js?v=3078931f:5472
+dispatchDiscreteEvent @ chunk-276SZO74.js?v=3078931f:5449Understand this error
+flow:1 Access to fetch at 'https://ogc.worldpop.org/geoserver/wpGlobal/ows?service=WMS&version=1.3.0&request=GetFeatureInfo&layers=wpGlobal%3Appp_2020_1km_Aggregated&query_layers=wpGlobal%3Appp_2020_1km_Aggregated&crs=EPSG%3A3857&bbox=3311539.9834677926%2C747656.9574694707%2C3311639.9834677926%2C747756.9574694707&width=1&height=1&i=0&j=0&info_format=application%2Fjson&feature_count=1' from origin 'https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit.dev' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.Understand this error
+injected.js:214  GET https://ogc.worldpop.org/geoserver/wpGlobal/ows?service=WMS&version=1.3.0&request=GetFeatureInfo&layers=wpGlobal%3Appp_2020_1km_Aggregated&query_layers=wpGlobal%3Appp_2020_1km_Aggregated&crs=EPSG%3A3857&bbox=3311539.9834677926%2C747656.9574694707%2C3311639.9834677926%2C747756.9574694707&width=1&height=1&i=0&j=0&info_format=application%2Fjson&feature_count=1 net::ERR_FAILED
+apply @ injected.js:214
+(anonymous) @ main.tsx:39
+fetchCellValue @ worldpopCatchment.ts:40
+(anonymous) @ worldpopCatchment.ts:151
+await in (anonymous)
+(anonymous) @ worldpopCatchment.ts:173
+(anonymous) @ worldpopCatchment.ts:173
+(anonymous) @ MicroplanWizard.tsx:2769
+(anonymous) @ MicroplanWizard.tsx:2797
+(anonymous) @ MicroplanWizard.tsx:2797
+callCallback2 @ chunk-276SZO74.js?v=3078931f:3674
+invokeGuardedCallbackDev @ chunk-276SZO74.js?v=3078931f:3699
+invokeGuardedCallback @ chunk-276SZO74.js?v=3078931f:3733
+invokeGuardedCallbackAndCatchFirstError @ chunk-276SZO74.js?v=3078931f:3736
+executeDispatch @ chunk-276SZO74.js?v=3078931f:7014
+processDispatchQueueItemsInOrder @ chunk-276SZO74.js?v=3078931f:7034
+processDispatchQueue @ chunk-276SZO74.js?v=3078931f:7043
+dispatchEventsForPlugins @ chunk-276SZO74.js?v=3078931f:7051
+(anonymous) @ chunk-276SZO74.js?v=3078931f:7174
+batchedUpdates$1 @ chunk-276SZO74.js?v=3078931f:18913
+batchedUpdates @ chunk-276SZO74.js?v=3078931f:3579
+dispatchEventForPluginEventSystem @ chunk-276SZO74.js?v=3078931f:7173
+dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-276SZO74.js?v=3078931f:5478
+dispatchEvent @ chunk-276SZO74.js?v=3078931f:5472
+dispatchDiscreteEvent @ chunk-276SZO74.js?v=3078931f:5449Understand this error
+flow:1 Access to fetch at 'https://ogc.worldpop.org/geoserver/wpGlobal/ows?service=WMS&version=1.3.0&request=GetFeatureInfo&layers=wpGlobal%3Appp_2020_1km_Aggregated&query_layers=wpGlobal%3Appp_2020_1km_Aggregated&crs=EPSG%3A3857&bbox=3308510.651364182%2C748666.7441694747%2C3308610.651364182%2C748766.7441694747&width=1&height=1&i=0&j=0&info_format=application%2Fjson&feature_count=1' from origin 'https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit.dev' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.Understand this error
+injected.js:214  GET https://ogc.worldpop.org/geoserver/wpGlobal/ows?service=WMS&version=1.3.0&request=GetFeatureInfo&layers=wpGlobal%3Appp_2020_1km_Aggregated&query_layers=wpGlobal%3Appp_2020_1km_Aggregated&crs=EPSG%3A3857&bbox=3308510.651364182%2C748666.7441694747%2C3308610.651364182%2C748766.7441694747&width=1&height=1&i=0&j=0&info_format=application%2Fjson&feature_count=1 net::ERR_FAILED
+apply @ injected.js:214
+(anonymous) @ main.tsx:39
+fetchCellValue @ worldpopCatchment.ts:40
+(anonymous) @ worldpopCatchment.ts:151
+await in (anonymous)
+(anonymous) @ worldpopCatchment.ts:173
+(anonymous) @ worldpopCatchment.ts:173
+(anonymous) @ MicroplanWizard.tsx:2769
+(anonymous) @ MicroplanWizard.tsx:2797
+(anonymous) @ MicroplanWizard.tsx:2797
+callCallback2 @ chunk-276SZO74.js?v=3078931f:3674
+invokeGuardedCallbackDev @ chunk-276SZO74.js?v=3078931f:3699
+invokeGuardedCallback @ chunk-276SZO74.js?v=3078931f:3733
+invokeGuardedCallbackAndCatchFirstError @ chunk-276SZO74.js?v=3078931f:3736
+executeDispatch @ chunk-276SZO74.js?v=3078931f:7014
+processDispatchQueueItemsInOrder @ chunk-276SZO74.js?v=3078931f:7034
+processDispatchQueue @ chunk-276SZO74.js?v=3078931f:7043
+dispatchEventsForPlugins @ chunk-276SZO74.js?v=3078931f:7051
+(anonymous) @ chunk-276SZO74.js?v=3078931f:7174
+batchedUpdates$1 @ chunk-276SZO74.js?v=3078931f:18913
+batchedUpdates @ chunk-276SZO74.js?v=3078931f:3579
+dispatchEventForPluginEventSystem @ chunk-276SZO74.js?v=3078931f:7173
+dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-276SZO74.js?v=3078931f:5478
+dispatchEvent @ chunk-276SZO74.js?v=3078931f:5472
+dispatchDiscreteEvent @ chunk-276SZO74.js?v=3078931f:5449Understand this error
+flow:1 Access to fetch at 'https://ogc.worldpop.org/geoserver/wpGlobal/ows?service=WMS&version=1.3.0&request=GetFeatureInfo&layers=wpGlobal%3Appp_2020_1km_Aggregated&query_layers=wpGlobal%3Appp_2020_1km_Aggregated&crs=EPSG%3A3857&bbox=3310530.206099923%2C748666.7441694747%2C3310630.206099923%2C748766.7441694747&width=1&height=1&i=0&j=0&info_format=application%2Fjson&feature_count=1' from origin 'https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit.dev' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.Understand this error
+injected.js:214  GET https://ogc.worldpop.org/geoserver/wpGlobal/ows?service=WMS&version=1.3.0&request=GetFeatureInfo&layers=wpGlobal%3Appp_2020_1km_Aggregated&query_layers=wpGlobal%3Appp_2020_1km_Aggregated&crs=EPSG%3A3857&bbox=3310530.206099923%2C748666.7441694747%2C3310630.206099923%2C748766.7441694747&width=1&height=1&i=0&j=0&info_format=application%2Fjson&feature_count=1 net::ERR_FAILED
+apply @ injected.js:214
+(anonymous) @ main.tsx:39
+fetchCellValue @ worldpopCatchment.ts:40
+(anonymous) @ worldpopCatchment.ts:151
+await in (anonymous)
+(anonymous) @ worldpopCatchment.ts:173
+(anonymous) @ worldpopCatchment.ts:173
+(anonymous) @ MicroplanWizard.tsx:2769
+(anonymous) @ MicroplanWizard.tsx:2797
+(anonymous) @ MicroplanWizard.tsx:2797
+callCallback2 @ chunk-276SZO74.js?v=3078931f:3674
+invokeGuardedCallbackDev @ chunk-276SZO74.js?v=3078931f:3699
+invokeGuardedCallback @ chunk-276SZO74.js?v=3078931f:3733
+invokeGuardedCallbackAndCatchFirstError @ chunk-276SZO74.js?v=3078931f:3736
+executeDispatch @ chunk-276SZO74.js?v=3078931f:7014
+processDispatchQueueItemsInOrder @ chunk-276SZO74.js?v=3078931f:7034
+processDispatchQueue @ chunk-276SZO74.js?v=3078931f:7043
+dispatchEventsForPlugins @ chunk-276SZO74.js?v=3078931f:7051
+(anonymous) @ chunk-276SZO74.js?v=3078931f:7174
+batchedUpdates$1 @ chunk-276SZO74.js?v=3078931f:18913
+batchedUpdates @ chunk-276SZO74.js?v=3078931f:3579
+dispatchEventForPluginEventSystem @ chunk-276SZO74.js?v=3078931f:7173
+dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-276SZO74.js?v=3078931f:5478
+dispatchEvent @ chunk-276SZO74.js?v=3078931f:5472
+dispatchDiscreteEvent @ chunk-276SZO74.js?v=3078931f:5449Understand this error
+flow:1 Access to fetch at 'https://ogc.worldpop.org/geoserver/wpGlobal/ows?service=WMS&version=1.3.0&request=GetFeatureInfo&layers=wpGlobal%3Appp_2020_1km_Aggregated&query_layers=wpGlobal%3Appp_2020_1km_Aggregated&crs=EPSG%3A3857&bbox=3293659.7390033174%2C756938.4125737859%2C3293759.7390033174%2C757038.4125737859&width=1&height=1&i=0&j=0&info_format=application%2Fjson&feature_count=1' from origin 'https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit.dev' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.Understand this error
+injected.js:214  GET https://ogc.worldpop.org/geoserver/wpGlobal/ows?service=WMS&version=1.3.0&request=GetFeatureInfo&layers=wpGlobal%3Appp_2020_1km_Aggregated&query_layers=wpGlobal%3Appp_2020_1km_Aggregated&crs=EPSG%3A3857&bbox=3293659.7390033174%2C756938.4125737859%2C3293759.7390033174%2C757038.4125737859&width=1&height=1&i=0&j=0&info_format=application%2Fjson&feature_count=1 net::ERR_FAILED
+apply @ injected.js:214
+(anonymous) @ main.tsx:39
+fetchCellValue @ worldpopCatchment.ts:40
+(anonymous) @ worldpopCatchment.ts:151
+await in (anonymous)
+(anonymous) @ worldpopCatchment.ts:173
+(anonymous) @ worldpopCatchment.ts:173
+(anonymous) @ MicroplanWizard.tsx:2769
+(anonymous) @ MicroplanWizard.tsx:2797
+(anonymous) @ MicroplanWizard.tsx:2797
+callCallback2 @ chunk-276SZO74.js?v=3078931f:3674
+invokeGuardedCallbackDev @ chunk-276SZO74.js?v=3078931f:3699
+invokeGuardedCallback @ chunk-276SZO74.js?v=3078931f:3733
+invokeGuardedCallbackAndCatchFirstError @ chunk-276SZO74.js?v=3078931f:3736
+executeDispatch @ chunk-276SZO74.js?v=3078931f:7014
+processDispatchQueueItemsInOrder @ chunk-276SZO74.js?v=3078931f:7034
+processDispatchQueue @ chunk-276SZO74.js?v=3078931f:7043
+dispatchEventsForPlugins @ chunk-276SZO74.js?v=3078931f:7051
+(anonymous) @ chunk-276SZO74.js?v=3078931f:7174
+batchedUpdates$1 @ chunk-276SZO74.js?v=3078931f:18913
+batchedUpdates @ chunk-276SZO74.js?v=3078931f:3579
+dispatchEventForPluginEventSystem @ chunk-276SZO74.js?v=3078931f:7173
+dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-276SZO74.js?v=3078931f:5478
+dispatchEvent @ chunk-276SZO74.js?v=3078931f:5472
+dispatchDiscreteEvent @ chunk-276SZO74.js?v=3078931f:5449Understand this error
+flow:1 Access to fetch at 'https://ogc.worldpop.org/geoserver/wpGlobal/ows?service=WMS&version=1.3.0&request=GetFeatureInfo&layers=wpGlobal%3Appp_2020_1km_Aggregated&query_layers=wpGlobal%3Appp_2020_1km_Aggregated&crs=EPSG%3A3857&bbox=3309520.428732053%2C749676.5495508484%2C3309620.428732053%2C749776.5495508484&width=1&height=1&i=0&j=0&info_format=application%2Fjson&feature_count=1' from origin 'https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit.dev' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.Understand this error
+injected.js:214  GET https://ogc.worldpop.org/geoserver/wpGlobal/ows?service=WMS&version=1.3.0&request=GetFeatureInfo&layers=wpGlobal%3Appp_2020_1km_Aggregated&query_layers=wpGlobal%3Appp_2020_1km_Aggregated&crs=EPSG%3A3857&bbox=3309520.428732053%2C749676.5495508484%2C3309620.428732053%2C749776.5495508484&width=1&height=1&i=0&j=0&info_format=application%2Fjson&feature_count=1 net::ERR_FAILED
