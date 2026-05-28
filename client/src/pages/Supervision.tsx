@@ -928,10 +928,12 @@ function QuarterlyCoverageTrend({
   trend,
   currentYear,
   currentQuarter,
+  onSelectPeriod,
 }: {
   trend: QuarterlyReviewCoverageTrendPoint[] | undefined;
   currentYear: number;
   currentQuarter: number;
+  onSelectPeriod: (year: number, quarter: number) => void;
 }) {
   const points: Array<QuarterlyReviewCoverageTrendPoint | null> =
     trend && trend.length > 0
@@ -960,12 +962,19 @@ function QuarterlyCoverageTrend({
           ? `Q${p.quarter} ${p.year}: ${p.coveragePct}% (${p.facilitiesWithReview}/${p.totalFacilities})`
           : "No data";
         const heightPct = p ? Math.max(6, Math.min(pct, 100)) : 6;
+        const ariaLabel = p
+          ? `Jump to Q${p.quarter} ${p.year} — ${p.coveragePct}% coverage (${p.facilitiesWithReview} of ${p.totalFacilities} facilities)`
+          : "No data for this quarter";
         return (
-          <div
+          <button
             key={p ? `${p.year}-${p.quarter}` : `empty-${i}`}
+            type="button"
             title={title}
-            aria-label={title}
-            className={`w-2 rounded-sm ${tone} ${isCurrent ? "ring-1 ring-offset-1 ring-foreground/40" : ""} ${!p ? "opacity-40" : ""}`}
+            aria-label={ariaLabel}
+            aria-pressed={isCurrent}
+            disabled={!p}
+            onClick={() => { if (p) onSelectPeriod(p.year, p.quarter); }}
+            className={`w-2 rounded-sm ${tone} ${isCurrent ? "ring-1 ring-offset-1 ring-foreground/40" : ""} ${!p ? "opacity-40 cursor-not-allowed" : "cursor-pointer hover:opacity-80 focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground/60"}`}
             style={{ height: `${heightPct}%` }}
             data-testid={`qrc-trend-bar-${barCount - 1 - i}`}
           />
@@ -1078,7 +1087,12 @@ function QuarterlyReviewCoverage() {
                 <div className="text-xs text-muted-foreground">Coverage</div>
                 <div className="text-2xl font-bold font-mono mt-1" data-testid="qrc-coverage-pct">{coveragePct}%</div>
               </div>
-              <QuarterlyCoverageTrend trend={data?.trend} currentYear={year} currentQuarter={quarter} />
+              <QuarterlyCoverageTrend
+                trend={data?.trend}
+                currentYear={year}
+                currentQuarter={quarter}
+                onSelectPeriod={(y, q) => { setYear(y); setQuarter(q); }}
+              />
             </div>
             <div className="h-1.5 bg-muted rounded-full mt-2 overflow-hidden">
               <div
