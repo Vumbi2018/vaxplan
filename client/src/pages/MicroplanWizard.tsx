@@ -52,6 +52,7 @@ import { canApproveSessionPlan } from "@/lib/permissions";
 import { FacilityCascadePicker } from "@/components/FacilityCascadePicker";
 import { DeleteConfirmDialog } from "@/components/DeleteConfirmDialog";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { getCachedPopulation, setCachedPopulation } from "@/lib/populationCache";
 import type {
   Microplan,
   Facility,
@@ -2578,7 +2579,15 @@ function Step2Map({
   const [populationUnavailable, setPopulationUnavailable] = useState(false);
   const [infoMode, setInfoMode] = useState(false);
   const [infoPopup, setInfoPopup] = useState<
-    | { lat: number; lng: number; status: "loading" | "ok" | "nodata" | "error"; value?: number; message?: string }
+    | {
+        lat: number;
+        lng: number;
+        status: "loading" | "ok" | "nodata" | "error";
+        value?: number;
+        message?: string;
+        cached?: boolean;
+        cachedAt?: number;
+      }
     | null
   >(null);
   const popErrorToastedRef = useRef(false);
@@ -2686,6 +2695,18 @@ function Step2Map({
   const pinAmber = createFilledPinIcon("amber");
 
   async function fetchPopulationAt(map: any, latlng: any) {
+    const lat = latlng.lat;
+    const lng = latlng.lng;
+    const offline = typeof navigator !== "undefined" && navigator.onLine === false;
+
+    if (offline) {
+      const hit = getCachedPopulation(lat, lng);
+      if (hit) {
+        return { status: "ok" as const, value: hit.value, cached: true, cachedAt: hit.cachedAt };
+      }
+      return { status: "error" as const, message: "Offline and no cached estimate for this spot." };
+    }
+
     const size = map.getSize();
     const point = map.latLngToContainerPoint(latlng);
     const bounds = map.getBounds();
@@ -2721,8 +2742,13 @@ function Step2Map({
       if (num == null || !isFinite(num) || num < 0) {
         return { status: "nodata" as const };
       }
+      setCachedPopulation(lat, lng, num);
       return { status: "ok" as const, value: num };
     } catch (err: any) {
+      const hit = getCachedPopulation(lat, lng);
+      if (hit) {
+        return { status: "ok" as const, value: hit.value, cached: true, cachedAt: hit.cachedAt };
+      }
       return {
         status: "error" as const,
         message: err?.name === "AbortError" ? "Request timed out." : "Couldn't reach WorldPop.",
@@ -2834,6 +2860,14 @@ function Step2Map({
                   <div className="text-muted-foreground">
                     WorldPop 2020, 1&nbsp;km grid
                   </div>
+                  {infoPopup.cached && (
+                    <div className="text-muted-foreground italic" data-testid="text-population-cached">
+                      cached
+                      {infoPopup.cachedAt
+                        ? ` · ${new Date(infoPopup.cachedAt).toLocaleDateString()}`
+                        : ""}
+                    </div>
+                  )}
                 </div>
               )}
               {infoPopup.status === "nodata" && (
