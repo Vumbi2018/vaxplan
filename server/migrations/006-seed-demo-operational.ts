@@ -736,31 +736,51 @@ const MIN_VILLAGES_PER_FACILITY = 5;
 
 /**
  * Realistic-sounding catchment village names rotated across demo facilities so
- * the Client Logbook's "village" column shows visibly varied, plausible
- * names instead of "Demo Catchment Village 1/2/3…". Names are intentionally
- * suffixed with "(Demo)" so they cannot collide with real catchment villages
- * imported from country data, and so anyone browsing the DB can see at a
- * glance that the row is demo seed data.
+ * the Client Logbook's "village" column and Missed Communities map show
+ * visibly varied, plausible names instead of "Demo Catchment Village 1/2/3…".
+ * Names are intentionally suffixed with "(Demo)" so they cannot collide with
+ * real catchment villages imported from country data, and so anyone browsing
+ * the DB can see at a glance that the row is demo seed data.
  *
- * The pool covers names that read naturally in both ZMB (Bemba / Nyanja /
- * Tonga roots) and SSD (Dinka / Nuer / Bari roots) contexts.
+ * Pools are per-tenant so each country's demo map shows names that sound
+ * local: Bemba / Nyanja / Tonga for ZMB, Dinka / Nuer / Bari for SSD,
+ * Tok Pisin / Melanesian for PNG.
  */
-const DEMO_VILLAGE_NAME_POOL = [
-  "Kabuyu", "Mwansa", "Chibwe", "Kanyama", "Lilanda",
-  "Mtenge", "Nkana", "Pemba", "Sikongo", "Tembwe",
-  "Chongwe", "Mazabuka", "Mpika", "Lundazi", "Petauke",
-  "Kasama", "Senanga", "Mufumbwe", "Kalulushi", "Itezhi",
-  "Bor Payam", "Yei Boma", "Torit Hills", "Aweil Plain", "Rumbek East",
-  "Wau Ridge", "Yambio Springs", "Maridi Crossing", "Kapoeta South", "Tonj Bend",
-  "Nimule Gate", "Mundri West", "Renk North", "Malakal East", "Pibor Flats",
-];
+const DEMO_VILLAGE_NAME_POOLS: Record<TenantCode, string[]> = {
+  ZMB: [
+    "Kabuyu", "Mwansa", "Chibwe", "Kanyama", "Lilanda",
+    "Mtenge", "Nkana", "Pemba", "Sikongo", "Tembwe",
+    "Chongwe", "Mazabuka", "Mpika", "Lundazi", "Petauke",
+    "Kasama", "Senanga", "Mufumbwe", "Kalulushi", "Itezhi",
+    "Chipata", "Chinsali", "Solwezi", "Mongu", "Choma",
+  ],
+  SSD: [
+    "Bor Payam", "Yei Boma", "Torit Hills", "Aweil Plain", "Rumbek East",
+    "Wau Ridge", "Yambio Springs", "Maridi Crossing", "Kapoeta South", "Tonj Bend",
+    "Nimule Gate", "Mundri West", "Renk North", "Malakal East", "Pibor Flats",
+    "Akobo River", "Kajo Keji", "Magwi Ridge", "Mvolo Bend", "Raja Plain",
+    "Terekeka", "Lainya", "Ezo Hills", "Tambura Crossing", "Awerial Bay",
+  ],
+  PNG: [
+    "Wewak Bend", "Mendi Ridge", "Goroka Hills", "Kundiawa Pass", "Tari Valley",
+    "Aitape Coast", "Vanimo Bay", "Lae Plain", "Madang Reef", "Kavieng Point",
+    "Buka Crossing", "Arawa Ridge", "Popondetta", "Kerema Bend", "Daru Inlet",
+    "Mount Hagen", "Wabag Spur", "Kokopo Bay", "Rabaul Slope", "Kimbe Reef",
+    "Alotau Cove", "Kiunga River", "Vanapa Bend", "Sogeri Ridge", "Bulolo Pass",
+  ],
+};
 
-function demoVillageName(facilityIndex: number, slot: number): string {
+function demoVillageName(
+  tenantCode: TenantCode,
+  facilityIndex: number,
+  slot: number,
+): string {
+  const pool = DEMO_VILLAGE_NAME_POOLS[tenantCode] ?? DEMO_VILLAGE_NAME_POOLS.ZMB;
   // Window the names so the 5 slots for the same facility are always distinct
   // AND so adjacent facilities don't reuse the same names — keeping the
   // Client Logbook visibly varied across facilities in the same district.
-  const idx = (facilityIndex * MIN_VILLAGES_PER_FACILITY + slot) % DEMO_VILLAGE_NAME_POOL.length;
-  return `${DEMO_VILLAGE_NAME_POOL[idx]} (Demo)`;
+  const idx = (facilityIndex * MIN_VILLAGES_PER_FACILITY + slot) % pool.length;
+  return `${pool[idx]} (Demo)`;
 }
 
 /**
@@ -782,6 +802,7 @@ function offsetCoord(
 }
 
 async function pickVillagesPerFacility(
+  tenantCode: TenantCode,
   tenantId: string,
   picks: FacilityPick[],
 ): Promise<Map<number, number[]>> {
@@ -849,7 +870,7 @@ async function pickVillagesPerFacility(
     while (pool.length < MIN_VILLAGES_PER_FACILITY) {
       const slot = topUpIndex;
       const demoCode = `DEMO-${p.facilityId}-${slot}`;
-      const demoName = demoVillageName(pi, slot - 1);
+      const demoName = demoVillageName(tenantCode, pi, slot - 1);
       const coord = base ? offsetCoord(base.lat, base.lng, slot) : null;
       // The last village in each facility's cluster is flagged hard-to-reach
       // so the missed-community score gets an HTR boost and the demo
@@ -1765,7 +1786,7 @@ export async function seedDemoOperational(): Promise<void> {
       catchmentByFacility,
     );
     const vaccineConfigByName = await ensureVaccineConfigs(tenant.id);
-    const villagesByFacility = await pickVillagesPerFacility(tenant.id, picks);
+    const villagesByFacility = await pickVillagesPerFacility(code, tenant.id, picks);
     const vp = await seedVillagePopulation(tenant.id, villagesByFacility, picks);
     const ic = await seedImportedCoverage(tenant.id, picks, villagesByFacility);
     const { clientsInserted, vaccinationsInserted } = await seedDemoClients(
