@@ -308,29 +308,12 @@ export default function MicroplanWizard() {
     queryClient.invalidateQueries({ queryKey: ["/api/microplans", id] });
   };
 
-  // Hydrate session-id map from server when resuming an existing microplan,
-  // so Step 5/8 day-plan writes work across page reloads and don't create dupes.
   const [sessionIdMap, setSessionIdMap] = useState<Record<string, number>>({});
   const [dayPlansWritten, setDayPlansWritten] = useState<Set<string>>(new Set());
   const { data: existingSessions } = useQuery<SessionPlan[]>({
     queryKey: ["/api/sessions"],
     enabled: !!microplanId,
   });
-  useEffect(() => {
-    if (!existingSessions || !microplanId || !calendar.length) return;
-    const mine = existingSessions.filter((s) => s.microplanId === microplanId);
-    const next: Record<string, number> = {};
-    for (const row of calendar) {
-      const hit = mine.find(
-        (s) =>
-          s.scheduledDate &&
-          new Date(s.scheduledDate).toISOString().slice(0, 10) === row.scheduledDate &&
-          s.name?.startsWith(row.name),
-      );
-      if (hit) next[row.rowId] = hit.id;
-    }
-    setSessionIdMap((prev) => ({ ...prev, ...next }));
-  }, [existingSessions, microplanId, calendar]);
 
   // ─── Save draft ────────────────────────────────────────────────────────
   const saveDraft = async () => {
@@ -442,6 +425,24 @@ export default function MicroplanWizard() {
     catchUp?: boolean;
   };
   const [calendar, setCalendar] = useState<CalendarRow[]>([]);
+
+  // Hydrate session-id map from server when resuming an existing microplan,
+  // so Step 5/8 day-plan writes work across page reloads and don't create dupes.
+  useEffect(() => {
+    if (!existingSessions || !microplanId || !calendar.length) return;
+    const mine = existingSessions.filter((s) => s.microplanId === microplanId);
+    const next: Record<string, number> = {};
+    for (const row of calendar) {
+      const hit = mine.find(
+        (s) =>
+          s.scheduledDate &&
+          new Date(s.scheduledDate).toISOString().slice(0, 10) === row.scheduledDate &&
+          s.name?.startsWith(row.name),
+      );
+      if (hit) next[row.rowId] = hit.id;
+    }
+    setSessionIdMap((prev) => ({ ...prev, ...next }));
+  }, [existingSessions, microplanId, calendar]);
 
   function generateCalendar() {
     if (!communities.length) return;
