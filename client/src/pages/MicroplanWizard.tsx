@@ -42,6 +42,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { canApproveSessionPlan } from "@/lib/permissions";
 import { FacilityCascadePicker } from "@/components/FacilityCascadePicker";
+import { DeleteConfirmDialog } from "@/components/DeleteConfirmDialog";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type {
   Microplan,
@@ -1093,8 +1094,18 @@ export default function MicroplanWizard() {
   // ─── Per-row deletion helpers ──────────────────────────────────────────
   // Each helper removes the row from local state and, when the row has
   // already been saved to the server, deletes the matching backend row so it
-  // doesn't reappear when the microplan is reopened.
-  async function deleteCommunity(index: number) {
+  // doesn't reappear when the microplan is reopened. Saved rows (those with a
+  // server `id`) require a confirm dialog before any DELETE is sent so a
+  // misclick on the trash icon can't silently destroy server data.
+  type PendingDelete =
+    | { kind: "community"; index: number; label: string }
+    | { kind: "mobilization"; index: number; label: string }
+    | { kind: "budget"; index: number; label: string }
+    | { kind: "supervision"; index: number; label: string };
+  const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+
+  async function performDeleteCommunity(index: number) {
     const row = communities[index];
     if (!row) return;
     if (row.id) {
@@ -1113,7 +1124,7 @@ export default function MicroplanWizard() {
     setCommunities(communities.filter((_, i) => i !== index));
   }
 
-  async function deleteMobilizationRow(index: number) {
+  async function performDeleteMobilizationRow(index: number) {
     const row = mobilization[index];
     if (!row) return;
     if (row.id) {
@@ -1132,7 +1143,7 @@ export default function MicroplanWizard() {
     setMobilization(mobilization.filter((_, i) => i !== index));
   }
 
-  async function deleteBudgetRow(index: number) {
+  async function performDeleteBudgetRow(index: number) {
     const row = budget[index];
     if (!row) return;
     if (row.id) {
@@ -1151,7 +1162,7 @@ export default function MicroplanWizard() {
     setBudget(budget.filter((_, i) => i !== index));
   }
 
-  async function deleteSupervisionRow(index: number) {
+  async function performDeleteSupervisionRow(index: number) {
     const row = supervision[index];
     if (!row) return;
     if (row.id) {
@@ -1168,6 +1179,83 @@ export default function MicroplanWizard() {
       }
     }
     setSupervision(supervision.filter((_, i) => i !== index));
+  }
+
+  function deleteCommunity(index: number) {
+    const row = communities[index];
+    if (!row) return;
+    if (row.id) {
+      setPendingDelete({
+        kind: "community",
+        index,
+        label: row.name?.trim() || "this community",
+      });
+      return;
+    }
+    void performDeleteCommunity(index);
+  }
+
+  function deleteMobilizationRow(index: number) {
+    const row = mobilization[index];
+    if (!row) return;
+    if (row.id) {
+      setPendingDelete({
+        kind: "mobilization",
+        index,
+        label: row.sessionLabel?.trim() || "this mobilization activity",
+      });
+      return;
+    }
+    void performDeleteMobilizationRow(index);
+  }
+
+  function deleteBudgetRow(index: number) {
+    const row = budget[index];
+    if (!row) return;
+    if (row.id) {
+      setPendingDelete({
+        kind: "budget",
+        index,
+        label: row.description?.trim() || "this budget line",
+      });
+      return;
+    }
+    void performDeleteBudgetRow(index);
+  }
+
+  function deleteSupervisionRow(index: number) {
+    const row = supervision[index];
+    if (!row) return;
+    if (row.id) {
+      setPendingDelete({
+        kind: "supervision",
+        index,
+        label: row.supervisorName?.trim()
+          ? `the supervision visit by ${row.supervisorName.trim()}`
+          : "this supervision visit",
+      });
+      return;
+    }
+    void performDeleteSupervisionRow(index);
+  }
+
+  async function confirmPendingDelete() {
+    if (!pendingDelete) return;
+    setDeleteBusy(true);
+    try {
+      if (pendingDelete.kind === "community") {
+        await performDeleteCommunity(pendingDelete.index);
+      } else if (pendingDelete.kind === "mobilization") {
+        await performDeleteMobilizationRow(pendingDelete.index);
+      } else if (pendingDelete.kind === "budget") {
+        await performDeleteBudgetRow(pendingDelete.index);
+      } else if (pendingDelete.kind === "supervision") {
+        await performDeleteSupervisionRow(pendingDelete.index);
+      }
+      setPendingDelete(null);
+    } finally {
+      setDeleteBusy(false);
+    }
   }
 
   async function persistStep(step: number): Promise<boolean> {
@@ -1816,6 +1904,20 @@ export default function MicroplanWizard() {
           </Card>
         </div>
       </div>
+      <DeleteConfirmDialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => {
+          if (!open && !deleteBusy) setPendingDelete(null);
+        }}
+        title="Delete saved row?"
+        description={
+          pendingDelete
+            ? `This will permanently delete ${pendingDelete.label} from this microplan. This cannot be undone.`
+            : ""
+        }
+        onConfirm={() => void confirmPendingDelete()}
+        isPending={deleteBusy}
+      />
     </div>
   );
 }
