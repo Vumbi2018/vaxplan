@@ -90,8 +90,7 @@ const trustPoints = [
   "Audit log on every change",
 ];
 
-function PasswordLoginButton() {
-  const [open, setOpen] = useState(false);
+function PasswordLoginDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -122,51 +121,52 @@ function PasswordLoginButton() {
   }
 
   return (
-    <>
-      <Button variant="ghost" size="sm" onClick={() => setOpen(true)} data-testid="button-email-login">
-        Email login
-      </Button>
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Sign in with email</DialogTitle>
-            <DialogDescription>
-              For colleagues without a Replit account. Your admin gives you the password.
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={submit} className="space-y-3">
-            <div className="space-y-1">
-              <Label htmlFor="pw-email">Email</Label>
-              <Input
-                id="pw-email"
-                type="email"
-                autoComplete="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                data-testid="input-email"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="pw-password">Password</Label>
-              <Input
-                id="pw-password"
-                type="password"
-                autoComplete="current-password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                data-testid="input-password"
-              />
-            </div>
-            {error && <div className="text-sm text-destructive" data-testid="text-login-error">{error}</div>}
-            <Button type="submit" className="w-full" disabled={busy} data-testid="button-submit-login">
-              {busy ? "Signing in…" : "Sign in"}
-            </Button>
-          </form>
-        </DialogContent>
-      </Dialog>
-    </>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Sign in</DialogTitle>
+          <DialogDescription>
+            Use the email and password your VaxPlan admin gave you.
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={submit} className="space-y-3">
+          <div className="space-y-1">
+            <Label htmlFor="pw-email">Email</Label>
+            <Input
+              id="pw-email"
+              type="email"
+              autoComplete="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              data-testid="input-email"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="pw-password">Password</Label>
+            <Input
+              id="pw-password"
+              type="password"
+              autoComplete="current-password"
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              data-testid="input-password"
+            />
+          </div>
+          {error && <div className="text-sm text-destructive" data-testid="text-login-error">{error}</div>}
+          <Button type="submit" className="w-full" disabled={busy} data-testid="button-submit-login">
+            {busy ? "Signing in…" : "Sign in"}
+          </Button>
+          <div className="text-center text-xs text-muted-foreground pt-2">
+            Replit team member?{" "}
+            <a href="/api/login" className="underline hover:text-foreground" data-testid="link-replit-login">
+              Sign in with Replit
+            </a>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -199,9 +199,11 @@ export default function Landing() {
     queryKey: ["/api/public/tenants"],
   });
   const tenantCount = tenants?.length ?? 0;
+  const [loginOpen, setLoginOpen] = useState(false);
 
   return (
     <div className="min-h-screen bg-background">
+      <PasswordLoginDialog open={loginOpen} onOpenChange={setLoginOpen} />
       <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3" data-testid="brand-header">
@@ -221,9 +223,8 @@ export default function Landing() {
             <Button variant="outline" asChild data-testid="button-request-access">
               <a href="/signup">Request access</a>
             </Button>
-            <PasswordLoginButton />
-            <Button asChild data-testid="button-login">
-              <a href="/api/login">Sign In</a>
+            <Button onClick={() => setLoginOpen(true)} data-testid="button-login">
+              Sign In
             </Button>
           </div>
         </div>
@@ -274,8 +275,8 @@ export default function Landing() {
                     <ArrowRight className="ml-2 h-4 w-4" />
                   </a>
                 </Button>
-                <Button size="lg" variant="outline" asChild data-testid="button-login-hero">
-                  <a href="/api/login">Sign in</a>
+                <Button size="lg" variant="outline" onClick={() => setLoginOpen(true)} data-testid="button-login-hero">
+                  Sign in
                 </Button>
               </div>
 
@@ -537,8 +538,8 @@ export default function Landing() {
               <Button size="lg" asChild data-testid="button-cta-signup">
                 <a href="/signup">Request access</a>
               </Button>
-              <Button size="lg" variant="outline" asChild data-testid="button-cta-signin">
-                <a href="/api/login">Sign in</a>
+              <Button size="lg" variant="outline" onClick={() => setLoginOpen(true)} data-testid="button-cta-signin">
+                Sign in
               </Button>
             </div>
           </div>
