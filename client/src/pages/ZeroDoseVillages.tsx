@@ -8,11 +8,14 @@
  * Planners can multi-select villages (via row checkboxes or map-pin clicks)
  * and click "Create outreach microplan" to draft a routine microplan via
  * `POST /api/missed-communities/create-outreach`, mirroring the flow on
- * `client/src/pages/MissedCommunities.tsx`. Antigen is chosen automatically
- * based on the current indicator mode (PENTA1 for zero-dose catch-up,
- * PENTA3 for under-immunized defaulter follow-up).
+ * `client/src/pages/MissedCommunities.tsx`. The sticky action bar exposes
+ * antigen and year/quarter pickers — they default to the current mode's
+ * antigen (PENTA1 for zero-dose catch-up, PENTA3 for under-immunized
+ * defaulter follow-up) and the current calendar quarter, so the one-click
+ * flow still works, while planners can retarget a future quarter or a
+ * different antigen (e.g. MEASLES1 catch-up) without leaving this page.
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { MapContainer, TileLayer, CircleMarker, Popup } from "react-leaflet";
@@ -61,6 +64,14 @@ interface ZeroDoseSummary {
 
 type Mode = "zero" | "under";
 
+const OUTREACH_ANTIGENS = ["BCG", "PENTA1", "PENTA3", "MEASLES1", "MEASLES2", "OPV1", "OPV3"];
+const defaultAntigenFor = (m: Mode) => (m === "zero" ? "PENTA1" : "PENTA3");
+
+const now = new Date();
+const CURRENT_YEAR = now.getFullYear();
+const CURRENT_QUARTER = Math.floor(now.getMonth() / 3) + 1;
+const YEAR_OPTIONS = [CURRENT_YEAR, CURRENT_YEAR + 1];
+
 export default function ZeroDoseVillages() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -70,6 +81,17 @@ export default function ZeroDoseVillages() {
   const [districtFilter, setDistrictFilter] = useState<string>("");
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<number>>(new Set());
+
+  const [antigen, setAntigen] = useState<string>(defaultAntigenFor("zero"));
+  const [antigenTouched, setAntigenTouched] = useState(false);
+  const [year, setYear] = useState<number>(CURRENT_YEAR);
+  const [quarter, setQuarter] = useState<number>(CURRENT_QUARTER);
+
+  // Keep antigen in sync with the indicator mode unless the planner has
+  // explicitly picked one, so the one-click default flow still works.
+  useEffect(() => {
+    if (!antigenTouched) setAntigen(defaultAntigenFor(mode));
+  }, [mode, antigenTouched]);
 
   const { data, isLoading } = useQuery<ZeroDoseSummary>({
     queryKey: ["/api/indicators/zero-dose"],
@@ -146,10 +168,6 @@ export default function ZeroDoseVillages() {
 
   const createOutreach = useMutation({
     mutationFn: async () => {
-      const d = new Date();
-      const year = d.getFullYear();
-      const quarter = Math.floor(d.getMonth() / 3) + 1;
-      const antigen = mode === "zero" ? "PENTA1" : "PENTA3";
       return await apiRequest<any>("POST", "/api/missed-communities/create-outreach", {
         villageIds: Array.from(selected),
         antigen,
@@ -472,10 +490,52 @@ export default function ZeroDoseVillages() {
       {/* Sticky action bar — mirrors MissedCommunities.tsx */}
       <div className="sticky bottom-4 z-10 flex justify-end">
         <Card className={`shadow-2xl ${accentBorder}`}>
-          <CardContent className="p-3 flex items-center gap-3">
+          <CardContent className="p-3 flex items-center gap-3 flex-wrap">
             <span className="text-sm font-medium" data-testid="text-selected-count">
               {selected.size} village{selected.size === 1 ? "" : "s"} selected
             </span>
+            <div className="flex items-center gap-1.5">
+              <Label className="text-[10px] uppercase text-muted-foreground">Antigen</Label>
+              <Select
+                value={antigen}
+                onValueChange={(v) => { setAntigen(v); setAntigenTouched(true); }}
+              >
+                <SelectTrigger className="h-8 w-[110px] text-xs" data-testid="select-outreach-antigen">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {OUTREACH_ANTIGENS.map((a) => (
+                    <SelectItem key={a} value={a}>{a}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Label className="text-[10px] uppercase text-muted-foreground">Year</Label>
+              <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
+                <SelectTrigger className="h-8 w-[90px] text-xs" data-testid="select-outreach-year">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {YEAR_OPTIONS.map((y) => (
+                    <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Label className="text-[10px] uppercase text-muted-foreground">Quarter</Label>
+              <Select value={String(quarter)} onValueChange={(v) => setQuarter(Number(v))}>
+                <SelectTrigger className="h-8 w-[80px] text-xs" data-testid="select-outreach-quarter">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {[1, 2, 3, 4].map((q) => (
+                    <SelectItem key={q} value={String(q)}>Q{q}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <Button
               size="sm"
               disabled={selected.size === 0 || createOutreach.isPending}
