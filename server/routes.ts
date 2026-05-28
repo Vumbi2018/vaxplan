@@ -48,6 +48,7 @@ import {
   candidateUnmappedSettlements,
   populationGrids,
   vaccineRequirements,
+  budgetItems,
   clients,
   clientVaccinations,
   monthlyReports,
@@ -4477,6 +4478,61 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error updating budget item:", error);
       res.status(400).json({ message: "Failed to update budget item" });
+    }
+  });
+
+  // Bulk-classify legacy budget lines whose funding_source is still 'unspecified'.
+  // Used by the "needs classification" banner on the Budget Planning page so an
+  // admin can clear the backlog in one click instead of editing rows one at a time.
+  // Scope: tenant-scoped (storage.updateBudgetItem already gates by req.tenantId)
+  // and only touches rows currently flagged 'unspecified' — never overwrites a
+  // funder that someone has already set.
+  app.post("/api/budget-items/bulk-classify", ...auth, async (req: any, res) => {
+    try {
+      const { fundingSource, fundingSourceOther, ids } = req.body ?? {};
+      const allowed = ["government", "gavi", "who", "unicef", "other"] as const;
+      if (!allowed.includes(fundingSource)) {
+        return res.status(400).json({ message: "Pick a funding source (Govt / Gavi / WHO / UNICEF / Other)." });
+      }
+      const otherText =
+        fundingSource === "other" ? (fundingSourceOther ?? "").toString().trim() : null;
+      if (fundingSource === "other" && !otherText) {
+        return res.status(400).json({
+          message: "Specify the funding source when 'Other' is selected.",
+          path: ["fundingSourceOther"],
+        });
+      }
+
+      const conditions = [
+        eq(budgetItems.tenantId, req.tenantId),
+        eq(budgetItems.fundingSource, "unspecified"),
+      ];
+      if (Array.isArray(ids) && ids.length > 0) {
+        const numericIds = ids
+          .map((v: unknown) => Number(v))
+          .filter((n: number) => Number.isInteger(n));
+        if (numericIds.length === 0) {
+          return res.status(400).json({ message: "ids must be a non-empty list of integers" });
+        }
+        conditions.push(inArray(budgetItems.id, numericIds));
+      }
+
+      const updated = await db
+        .update(budgetItems)
+        .set({ fundingSource, fundingSourceOther: otherText })
+        .where(and(...conditions))
+        .returning({ id: budgetItems.id });
+
+      await logAudit(req, "update", "budget_item", 0, null, {
+        bulkClassify: true,
+        fundingSource,
+        fundingSourceOther: otherText,
+        count: updated.length,
+      });
+      res.json({ updated: updated.length });
+    } catch (error) {
+      console.error("Error bulk-classifying budget items:", error);
+      res.status(500).json({ message: "Failed to bulk-classify budget items" });
     }
   });
 

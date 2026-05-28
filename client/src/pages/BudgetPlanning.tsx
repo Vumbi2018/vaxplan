@@ -120,6 +120,10 @@ export default function BudgetPlanning() {
   const { user } = useAuth();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<BudgetItem | null>(null);
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkFunder, setBulkFunder] = useState<string>("government");
+  const [bulkOther, setBulkOther] = useState<string>("");
+  const [bulkScope, setBulkScope] = useState<"filtered" | "all">("filtered");
   const [selectedQuarter, setSelectedQuarter] = useState(
     Math.ceil((new Date().getMonth() + 1) / 3)
   );
@@ -320,6 +324,25 @@ export default function BudgetPlanning() {
     },
   });
 
+  const bulkClassifyMutation = useMutation({
+    mutationFn: async (payload: { fundingSource: string; fundingSourceOther: string | null; ids?: number[] }) => {
+      return apiRequest("POST", "/api/budget-items/bulk-classify", payload);
+    },
+    onSuccess: (res: any) => {
+      const count = res?.updated ?? 0;
+      queryClient.invalidateQueries({ queryKey: ["/api/budget-items"] });
+      setBulkOpen(false);
+      setBulkOther("");
+      toast({
+        title: "Funding source applied",
+        description: `${count} budget line${count === 1 ? "" : "s"} reclassified.`,
+      });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
   const deleteMutation = useMutation({
     mutationFn: async (itemId: number) => {
       if (!navigator.onLine) {
@@ -400,12 +423,23 @@ export default function BudgetPlanning() {
     return groups;
   }, [quarterItems]);
 
+  // Count in the currently visible slice (drives the "filtered" bulk scope).
   const unspecifiedCount = useMemo(
     () =>
       quarterItems.filter(
         (i) => !(i as any).fundingSource || (i as any).fundingSource === "unspecified",
       ).length,
     [quarterItems],
+  );
+
+  // Tenant-wide count — drives banner visibility so legacy rows in other
+  // quarters/years/geos still surface for cleanup even when filters hide them.
+  const tenantUnspecifiedCount = useMemo(
+    () =>
+      (budgetItems ?? []).filter(
+        (i: any) => !i.fundingSource || i.fundingSource === "unspecified",
+      ).length,
+    [budgetItems],
   );
 
   const fundingGrandTotal = Object.values(fundingTotals).reduce((s, n) => s + n, 0);
@@ -610,6 +644,39 @@ export default function BudgetPlanning() {
   return (
     <div className="p-6 space-y-6">
       <MicroplanStepper currentStep={9} facilityId={geoFacilityId} />
+      {tenantUnspecifiedCount > 0 && (
+        <div
+          className="flex items-start gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-4"
+          data-testid="banner-needs-classification"
+        >
+          <div className="flex-1">
+            <p className="font-medium text-amber-900 dark:text-amber-200">
+              {tenantUnspecifiedCount} budget line{tenantUnspecifiedCount === 1 ? "" : "s"} need a funding source
+            </p>
+            <p className="text-xs text-amber-800/80 dark:text-amber-200/80 mt-0.5">
+              Legacy rows default to "Unspecified" and are excluded from the Gavi HSS / by-funder rollup.
+              {unspecifiedCount < tenantUnspecifiedCount
+                ? ` ${unspecifiedCount} are visible under the current filters; the rest sit in other quarters or facilities.`
+                : ""} Tag them in bulk to clear the backlog.
+            </p>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            className="border-amber-500/50 bg-white/60 dark:bg-transparent"
+            onClick={() => {
+              setBulkScope(unspecifiedCount > 0 ? "filtered" : "all");
+              setBulkFunder("government");
+              setBulkOther("");
+              setBulkOpen(true);
+            }}
+            data-testid="button-open-bulk-classify"
+          >
+            Bulk classify
+          </Button>
+        </div>
+      )}
+
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold">Budget Planning</h1>
@@ -1099,6 +1166,95 @@ export default function BudgetPlanning() {
           </Card>
         </div>
       </div>
+
+      <Dialog open={bulkOpen} onOpenChange={setBulkOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Bulk classify funding source</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Apply one funding source to every budget line still flagged as
+              "Unspecified". Lines that already have a funder are never overwritten.
+            </p>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Apply to</label>
+              <Select value={bulkScope} onValueChange={(v) => setBulkScope(v as "filtered" | "all")}>
+                <SelectTrigger data-testid="select-bulk-scope">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="filtered" disabled={unspecifiedCount === 0}>
+                    Currently visible rows ({unspecifiedCount})
+                  </SelectItem>
+                  <SelectItem value="all">
+                    All unspecified rows in this tenant ({tenantUnspecifiedCount})
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Funding source</label>
+              <Select value={bulkFunder} onValueChange={setBulkFunder}>
+                <SelectTrigger data-testid="select-bulk-funder">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {fundingSourceOptions.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {bulkFunder === "other" && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Specify funder</label>
+                <Input
+                  value={bulkOther}
+                  onChange={(e) => setBulkOther(e.target.value)}
+                  placeholder="e.g. Rotary International"
+                  data-testid="input-bulk-other"
+                />
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="ghost" onClick={() => setBulkOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={() => {
+                  const ids =
+                    bulkScope === "filtered"
+                      ? quarterItems
+                          .filter(
+                            (i: any) => !i.fundingSource || i.fundingSource === "unspecified",
+                          )
+                          .map((i: any) => i.id)
+                      : undefined;
+                  bulkClassifyMutation.mutate({
+                    fundingSource: bulkFunder,
+                    fundingSourceOther: bulkFunder === "other" ? bulkOther.trim() : null,
+                    ids,
+                  });
+                }}
+                disabled={
+                  bulkClassifyMutation.isPending ||
+                  (bulkFunder === "other" && !bulkOther.trim())
+                }
+                data-testid="button-confirm-bulk-classify"
+              >
+                {bulkClassifyMutation.isPending ? "Applying…" : "Apply"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
