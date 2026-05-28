@@ -47,6 +47,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
+import { usePersistedBasemap } from "@/hooks/usePersistedBasemap";
 import { canApproveSessionPlan } from "@/lib/permissions";
 import { FacilityCascadePicker } from "@/components/FacilityCascadePicker";
 import { DeleteConfirmDialog } from "@/components/DeleteConfirmDialog";
@@ -2550,7 +2551,7 @@ function Step2Map({
     return [-13.13, 27.85]; // Zambia fallback
   }, [facilityLat, facilityLng, communities]);
 
-  const [basemap, setBasemap] = useState<"osm" | "satellite">("osm");
+  const [basemap, setBasemap] = usePersistedBasemap("osm");
   const mapRef = useRef<any>(null);
 
   if (!leaflet) {

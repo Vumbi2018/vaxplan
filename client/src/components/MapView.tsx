@@ -22,6 +22,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { offlineDb } from "@/lib/offlineDb";
 import { useAuth } from "@/hooks/useAuth";
+import { usePersistedBasemap } from "@/hooks/usePersistedBasemap";
 import { canCreateSessionPlan } from "@/lib/permissions";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -1255,7 +1256,7 @@ export function MapView({
 }: MapViewProps) {
   const mapRef = useRef<L.Map>(null);
   const [layerPanelOpen, setLayerPanelOpen] = useState(true);
-  const [basemap, setBasemap] = useState<"osm" | "satellite">("osm");
+  const [basemap, setBasemap] = usePersistedBasemap("osm");
   const [layers, setLayers] = useState({
     facilities: true,
     villages: true,
@@ -2024,7 +2025,7 @@ export function MapView({
   */
 
   const [layerPanelOpen, setLayerPanelOpen] = useState(showFacilityList);
-  const [basemap, setBasemap] = useState<"osm" | "satellite">("osm");
+  const [basemap, setBasemap] = usePersistedBasemap("osm");
   // Original Code: Administrative boundaries were disabled by default, hindering instant user visualization.
   /*
   const [layers, setLayers] = useState<MapOverlayLayers>({
