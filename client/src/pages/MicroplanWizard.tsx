@@ -1398,13 +1398,16 @@ export default function MicroplanWizard() {
         }
         queryClient.invalidateQueries({ queryKey: ["/api/htr-scores"] });
       } else if (step === 4) {
-        // PATCH existing sessions so user edits to name / type / date on
-        // resume actually persist; POST only truly new rows.
+        // Bulk upsert: one request for the whole calendar instead of one PATCH
+        // /POST per row. Server returns per-row results so a single bad row
+        // (lead-time conflict, etc.) is reported alongside the saved siblings
+        // rather than aborting the batch.
         const persisted: Record<string, number> = { ...sessionIdMap };
-        for (const row of calendar) {
-          if (!row.scheduledDate) continue;
-          const existingId = persisted[row.rowId];
-          const payload = {
+        const items = calendar
+          .filter((row) => !!row.scheduledDate)
+          .map((row) => ({
+            clientId: row.rowId,
+            id: persisted[row.rowId] ?? null,
             facilityId,
             microplanId: mpId,
             name: `${row.name} ${row.scheduledDate}`,
@@ -1414,35 +1417,57 @@ export default function MicroplanWizard() {
             scheduledDate: row.scheduledDate,
             status: "planned",
             approvalStatus: "draft",
+          }));
+        if (items.length > 0) {
+          type SessionBulkResult = {
+            clientId?: string;
+            ok: boolean;
+            id?: number;
+            error?: string;
           };
-          try {
-            if (existingId) {
-              await apiRequest("PATCH", `/api/sessions/${existingId}`, payload);
-            } else {
-              const created = await apiRequest<SessionPlan>(
-                "POST",
-                "/api/sessions",
-                payload,
-              );
-              persisted[row.rowId] = created.id;
+          const resp = await apiRequest<{ results: SessionBulkResult[] }>(
+            "POST",
+            "/api/sessions/bulk",
+            { items },
+          );
+          const failures: string[] = [];
+          for (const r of resp.results ?? []) {
+            if (r.ok && r.id != null && typeof r.clientId === "string") {
+              persisted[r.clientId] = r.id;
+            } else if (!r.ok) {
+              failures.push(r.error || "unknown error");
             }
-          } catch (e) {
-            // Skip duplicates / lead-time conflicts silently per-row.
-            console.warn("Session save skipped:", e);
+          }
+          if (failures.length > 0) {
+            // Match the pre-existing per-row "skipped silently" behavior — the
+            // wizard didn't fail the whole save when one row 4xx'd. We still
+            // surface the count so the user knows something didn't land.
+            console.warn(`Session bulk save: ${failures.length} row(s) skipped:`, failures);
+            toast({
+              title: `${failures.length} session row(s) skipped`,
+              description: failures[0],
+              variant: "destructive",
+            });
           }
         }
         setSessionIdMap(persisted);
         queryClient.invalidateQueries({ queryKey: ["/api/sessions"] });
       } else if (step === 8) {
-        // Single day-plan row per session: PATCH when we already know its id
-        // (resume case), POST and capture the id otherwise.
+        // Bulk upsert day plans in a single request. Each item is either an
+        // update (id) or a create (sessionPlanId) — the server picks the
+        // right path per item.
         const nextIdMap: Record<string, number> = { ...dayPlanIdMap };
+        const items: any[] = [];
         for (let i = 0; i < staffing.length; i++) {
           const s = staffing[i];
           const sid = sessionIdMap[s.rowId];
           if (!sid) continue;
           const t = transport[i];
-          const payload = {
+          const existingId = nextIdMap[s.rowId];
+          items.push({
+            clientId: s.rowId,
+            id: existingId ?? null,
+            sessionPlanId: sid,
             dayNumber: 1,
             sessionDate: calendar[i].scheduledDate,
             communitiesVisited: [calendar[i].name],
@@ -1465,17 +1490,35 @@ export default function MicroplanWizard() {
             ]
               .filter(Boolean)
               .join("; "),
+          });
+        }
+        if (items.length > 0) {
+          type DayBulkResult = {
+            clientId?: string;
+            ok: boolean;
+            id?: number;
+            error?: string;
           };
-          const existingId = nextIdMap[s.rowId];
-          if (existingId) {
-            await apiRequest("PATCH", `/api/sessions/days/${existingId}`, payload);
-          } else {
-            const created = await apiRequest<SessionDayPlan>(
-              "POST",
-              `/api/sessions/${sid}/days`,
-              payload,
-            );
-            nextIdMap[s.rowId] = created.id;
+          const resp = await apiRequest<{ results: DayBulkResult[] }>(
+            "POST",
+            "/api/sessions/days/bulk",
+            { items },
+          );
+          const failures: string[] = [];
+          for (const r of resp.results ?? []) {
+            if (r.ok && r.id != null && typeof r.clientId === "string") {
+              nextIdMap[r.clientId] = r.id;
+            } else if (!r.ok) {
+              failures.push(r.error || "unknown error");
+            }
+          }
+          if (failures.length > 0) {
+            console.warn(`Day plan bulk save: ${failures.length} row(s) skipped:`, failures);
+            toast({
+              title: `${failures.length} day plan row(s) skipped`,
+              description: failures[0],
+              variant: "destructive",
+            });
           }
         }
         setDayPlanIdMap(nextIdMap);
@@ -1484,7 +1527,10 @@ export default function MicroplanWizard() {
         // happens in step 8 along with transport, so each session_day_plan
         // row is created exactly once.
       } else if (step === 6) {
+        // Bulk upsert vaccine requirements in a single request.
         const nextVaccines = [...vaccines];
+        const indexByClientId = new Map<string, number>();
+        const items: any[] = [];
         for (let i = 0; i < nextVaccines.length; i++) {
           const v = nextVaccines[i];
           const target = parseInt(v.target || "0", 10);
@@ -1493,7 +1539,11 @@ export default function MicroplanWizard() {
           const dosesReq = target * v.doses;
           const dosesWithWastage = Math.ceil(dosesReq * (1 + wast / 100));
           const vials = Math.ceil(dosesWithWastage / 10);
-          const payload = {
+          const clientId = `vr-${i}`;
+          indexByClientId.set(clientId, i);
+          items.push({
+            clientId,
+            id: v.id ?? null,
             facilityId,
             vaccineName: v.name,
             targetPopulation: target,
@@ -1503,54 +1553,94 @@ export default function MicroplanWizard() {
             vialsRequired: vials,
             quarter,
             year,
-          };
-          if (v.id) {
-            await apiRequest("PATCH", `/api/vaccine-requirements/${v.id}`, payload);
-          } else {
-            const created = await apiRequest<VaccineRequirement>(
-              "POST",
-              "/api/vaccine-requirements",
-              payload,
-            );
-            nextVaccines[i] = { ...v, id: created.id };
+          });
+        }
+        if (items.length > 0) {
+          const resp = await apiRequest<{ results: Array<{ clientId?: string; ok: boolean; id?: number; error?: string }> }>(
+            "POST",
+            "/api/vaccine-requirements/bulk",
+            { items },
+          );
+          const failures: string[] = [];
+          for (const r of resp.results ?? []) {
+            if (r.ok && r.id != null && typeof r.clientId === "string") {
+              const idx = indexByClientId.get(r.clientId);
+              if (idx != null) nextVaccines[idx] = { ...nextVaccines[idx], id: r.id };
+            } else if (!r.ok) {
+              failures.push(r.error || "unknown error");
+            }
+          }
+          if (failures.length > 0) {
+            console.warn(`Vaccine req bulk save: ${failures.length} row(s) skipped:`, failures);
+            toast({
+              title: `${failures.length} vaccine row(s) skipped`,
+              description: failures[0],
+              variant: "destructive",
+            });
           }
         }
         setVaccines(nextVaccines);
         queryClient.invalidateQueries({ queryKey: ["/api/vaccine-requirements"] });
       } else if (step === 7) {
         const nextMob = [...mobilization];
+        const indexByClientId = new Map<string, number>();
+        const items: any[] = [];
         for (let i = 0; i < nextMob.length; i++) {
           const m = nextMob[i];
           if (!m.focalPoint && m.channels.length === 0) continue;
-          const payload = {
+          const clientId = `mob-${i}`;
+          indexByClientId.set(clientId, i);
+          items.push({
+            clientId,
+            id: m.id ?? null,
             facilityId,
             activityType: m.channels.join(",") || "announcement",
             description: `${m.sessionLabel} — focal: ${m.focalPoint} ${m.focalPhone}; IEC: ${m.iec.join(", ")}`,
             targetAudience: "community",
             status: "planned",
-          };
-          if (m.id) {
-            await apiRequest("PATCH", `/api/mobilization/${m.id}`, payload);
-          } else {
-            const created = await apiRequest<MobilizationActivity>(
-              "POST",
-              "/api/mobilization",
-              payload,
-            );
-            nextMob[i] = { ...m, id: created.id };
+          });
+        }
+        if (items.length > 0) {
+          const resp = await apiRequest<{ results: Array<{ clientId?: string; ok: boolean; id?: number; error?: string }> }>(
+            "POST",
+            "/api/mobilization/bulk",
+            { items },
+          );
+          const failures: string[] = [];
+          for (const r of resp.results ?? []) {
+            if (r.ok && r.id != null && typeof r.clientId === "string") {
+              const idx = indexByClientId.get(r.clientId);
+              if (idx != null) nextMob[idx] = { ...nextMob[idx], id: r.id };
+            } else if (!r.ok) {
+              failures.push(r.error || "unknown error");
+            }
+          }
+          if (failures.length > 0) {
+            console.warn(`Mobilization bulk save: ${failures.length} row(s) skipped:`, failures);
+            toast({
+              title: `${failures.length} mobilization row(s) skipped`,
+              description: failures[0],
+              variant: "destructive",
+            });
           }
         }
         setMobilization(nextMob);
         queryClient.invalidateQueries({ queryKey: ["/api/mobilization"] });
       } else if (step === 9) {
         const nextBudget = [...budget];
+        const indexByClientId = new Map<string, number>();
+        const items: any[] = [];
         for (let i = 0; i < nextBudget.length; i++) {
           const b = nextBudget[i];
           if (!b.description.trim()) continue;
           const qty = parseInt(b.quantity || "0", 10);
           const unit = parseFloat(b.unitCost || "0");
           const total = qty * unit;
-          const payload = {
+          const clientId = `bud-${i}`;
+          indexByClientId.set(clientId, i);
+          items.push({
+            clientId,
+            id: b.id ?? null,
             facilityId,
             category: b.category,
             description: b.description,
@@ -1561,26 +1651,46 @@ export default function MicroplanWizard() {
             year,
             fundingSource: b.fundingSource,
             approvalStatus: "draft",
-          };
-          if (b.id) {
-            await apiRequest("PATCH", `/api/budget-items/${b.id}`, payload);
-          } else {
-            const created = await apiRequest<BudgetItem>(
-              "POST",
-              "/api/budget-items",
-              payload,
-            );
-            nextBudget[i] = { ...b, id: created.id };
+          });
+        }
+        if (items.length > 0) {
+          const resp = await apiRequest<{ results: Array<{ clientId?: string; ok: boolean; id?: number; error?: string }> }>(
+            "POST",
+            "/api/budget-items/bulk",
+            { items },
+          );
+          const failures: string[] = [];
+          for (const r of resp.results ?? []) {
+            if (r.ok && r.id != null && typeof r.clientId === "string") {
+              const idx = indexByClientId.get(r.clientId);
+              if (idx != null) nextBudget[idx] = { ...nextBudget[idx], id: r.id };
+            } else if (!r.ok) {
+              failures.push(r.error || "unknown error");
+            }
+          }
+          if (failures.length > 0) {
+            console.warn(`Budget bulk save: ${failures.length} row(s) skipped:`, failures);
+            toast({
+              title: `${failures.length} budget row(s) skipped`,
+              description: failures[0],
+              variant: "destructive",
+            });
           }
         }
         setBudget(nextBudget);
         queryClient.invalidateQueries({ queryKey: ["/api/budget-items"] });
       } else if (step === 10) {
         const nextSup = [...supervision];
+        const indexByClientId = new Map<string, number>();
+        const items: any[] = [];
         for (let i = 0; i < nextSup.length; i++) {
           const v = nextSup[i];
           if (!v.supervisorName.trim()) continue;
-          const payload = {
+          const clientId = `sup-${i}`;
+          indexByClientId.set(clientId, i);
+          items.push({
+            clientId,
+            id: v.id ?? null,
             facilityId,
             microplanId: mpId,
             scheduledDate: v.scheduledDate,
@@ -1589,16 +1699,30 @@ export default function MicroplanWizard() {
             status: "scheduled",
             checklist: [{ key: "type", label: v.checklist, response: "na" }],
             followUpActions: v.followUp || null,
-          };
-          if (v.id) {
-            await apiRequest("PATCH", `/api/supervision-visits/${v.id}`, payload);
-          } else {
-            const created = await apiRequest<SupervisionVisit>(
-              "POST",
-              "/api/supervision-visits",
-              payload,
-            );
-            nextSup[i] = { ...v, id: created.id };
+          });
+        }
+        if (items.length > 0) {
+          const resp = await apiRequest<{ results: Array<{ clientId?: string; ok: boolean; id?: number; error?: string }> }>(
+            "POST",
+            "/api/supervision-visits/bulk",
+            { items },
+          );
+          const failures: string[] = [];
+          for (const r of resp.results ?? []) {
+            if (r.ok && r.id != null && typeof r.clientId === "string") {
+              const idx = indexByClientId.get(r.clientId);
+              if (idx != null) nextSup[idx] = { ...nextSup[idx], id: r.id };
+            } else if (!r.ok) {
+              failures.push(r.error || "unknown error");
+            }
+          }
+          if (failures.length > 0) {
+            console.warn(`Supervision bulk save: ${failures.length} row(s) skipped:`, failures);
+            toast({
+              title: `${failures.length} supervision row(s) skipped`,
+              description: failures[0],
+              variant: "destructive",
+            });
           }
         }
         setSupervision(nextSup);

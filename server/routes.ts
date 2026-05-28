@@ -9740,5 +9740,452 @@ export async function registerRoutes(
     }
   });
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // BULK SAVE ENDPOINTS — Microplan wizard "Save & Next" used to issue one
+  // POST/PATCH per row. On microplans with dozens of sessions that meant a
+  // long string of sequential HTTP round trips and a partial-failure mode
+  // where some rows persisted while others 4xx'd. These bulk endpoints take
+  // an `items: [{ clientId?, id?, ...payload }]` array and return per-item
+  // results `[{ clientId, ok, id?, data?, error? }]` so the client can map
+  // server-assigned ids back to its in-memory rows in one call.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  type BulkItem = { clientId?: string | number; id?: number | null; [k: string]: any };
+  type BulkResult = {
+    clientId?: string | number;
+    ok: boolean;
+    id?: number;
+    data?: any;
+    error?: string;
+  };
+
+  function parseBulkItems(body: any): { items: BulkItem[] } | null {
+    if (!body || !Array.isArray(body.items)) return null;
+    return { items: body.items as BulkItem[] };
+  }
+
+  // POST /api/sessions/bulk — Step 4. Upsert many session plans in one call.
+  // Each item is either a create (no id) or an update (id present). The
+  // payload mirrors what /api/sessions accepts; validation/inheritance is
+  // applied per item so a bad row doesn't fail the rest of the batch.
+  app.post("/api/sessions/bulk", ...auth, async (req: any, res) => {
+    try {
+      const dbUser = req.dbUser;
+      if (!dbUser) return res.status(401).json({ message: "Unauthorized" });
+      const authorRoles = new Set(["facility_clerk", "facility_in_charge", "national_admin"]);
+      if (!authorRoles.has(dbUser.role)) {
+        return res.status(403).json({
+          message: "Forbidden: only facility staff may author session plans. District/provincial/national roles are reviewers only.",
+        });
+      }
+      const parsed = parseBulkItems(req.body);
+      if (!parsed) return res.status(400).json({ message: "Body must be { items: [...] }" });
+
+      const results: BulkResult[] = [];
+      // Cache parent microplan lookups so a batch of 30 sessions sharing one
+      // parent doesn't issue 30 storage.getMicroplan calls.
+      const parentCache = new Map<number, Awaited<ReturnType<typeof validateParentMicroplan>>>();
+      const geoCache = new Map<number, any>();
+
+      for (const item of parsed.items) {
+        const clientId = item.clientId;
+        try {
+          const body = { ...item };
+          delete body.clientId;
+          const incomingId = body.id;
+          delete body.id;
+
+          // Reject inherited fields on the create path; allow them through (but
+          // ignore mismatches) on update — mirrors single-item handlers.
+          if (incomingId == null) {
+            let blocked = false;
+            for (const f of ["planType", "campaignAntigen", "campaignTargetAge", "campaignScope"] as const) {
+              if (body[f] !== undefined) {
+                results.push({ clientId, ok: false, error: `${f} is inherited from the parent microplan and must not be set on the session payload.` });
+                blocked = true;
+                break;
+              }
+            }
+            if (blocked) continue;
+          }
+
+          if (body.scheduledDate && typeof body.scheduledDate === "string") {
+            const d = new Date(body.scheduledDate);
+            if (!isNaN(d.getTime())) body.scheduledDate = d;
+          }
+
+          if (incomingId != null) {
+            // ─── UPDATE PATH ─────────────────────────────────────────────
+            const entityId = Number(incomingId);
+            const old = await storage.getSessionPlan(req.tenantId, entityId);
+            if (!old) {
+              results.push({ clientId, ok: false, error: "Session not found" });
+              continue;
+            }
+            let geo = geoCache.get(old.facilityId);
+            if (!geo) {
+              geo = await getFacilityHierarchy(old.facilityId, req.tenantId);
+              geoCache.set(old.facilityId, geo);
+            }
+            if (!hasPermission(dbUser, "manage_session_plans", geo)) {
+              results.push({ clientId, ok: false, error: "Forbidden: insufficient geographic scope." });
+              continue;
+            }
+            // Strip immutable / inherited fields silently (bulk save is
+            // idempotent re-sends from the wizard, not user-driven edits).
+            for (const f of ["microplanId", "planType", "campaignAntigen", "campaignTargetAge", "campaignScope", "facilityId", "year", "quarter", "tenantId"] as const) {
+              delete (body as any)[f];
+            }
+            if (body.scheduledDate) {
+              const dv = await validatePlanningLeadTimeAndNoConflict(
+                req.tenantId, old.facilityId, body.scheduledDate, entityId,
+              );
+              if (!dv.isValid) {
+                results.push({ clientId, ok: false, error: dv.message });
+                continue;
+              }
+            }
+            delete (body as any).override;
+            delete (body as any).villageIds;
+            const updated = await storage.updateSessionPlan(req.tenantId, entityId, body as any);
+            if (!updated) {
+              results.push({ clientId, ok: false, error: "Session not found" });
+              continue;
+            }
+            await logAudit(req, "update", "session_plan", entityId, old, updated);
+            results.push({ clientId, ok: true, id: updated.id, data: updated });
+          } else {
+            // ─── CREATE PATH ─────────────────────────────────────────────
+            const data = insertSessionPlanSchema.parse(body);
+            const mpId = Number((data as any).microplanId);
+            let parentCheck = parentCache.get(mpId);
+            if (!parentCheck) {
+              parentCheck = await validateParentMicroplan(req.tenantId, mpId);
+              parentCache.set(mpId, parentCheck);
+            }
+            if (!parentCheck.ok) {
+              results.push({ clientId, ok: false, error: parentCheck.message });
+              continue;
+            }
+            let geo = geoCache.get(data.facilityId);
+            if (!geo) {
+              geo = await getFacilityHierarchy(data.facilityId, req.tenantId);
+              geoCache.set(data.facilityId, geo);
+            }
+            if (!hasPermission(dbUser, "manage_session_plans", geo)) {
+              results.push({ clientId, ok: false, error: "Forbidden: insufficient geographic scope." });
+              continue;
+            }
+            if (data.scheduledDate) {
+              const dv = await validatePlanningLeadTimeAndNoConflict(
+                req.tenantId, data.facilityId, data.scheduledDate,
+              );
+              if (!dv.isValid) {
+                results.push({ clientId, ok: false, error: dv.message });
+                continue;
+              }
+            }
+            const parentFacilityId = parentCheck.parent.facilityId;
+            if (data.facilityId !== parentFacilityId) {
+              results.push({ clientId, ok: false, error: `facilityId ${data.facilityId} does not match parent microplan facilityId ${parentFacilityId}.` });
+              continue;
+            }
+            if (data.year !== parentCheck.parent.year || data.quarter !== parentCheck.parent.quarter) {
+              results.push({ clientId, ok: false, error: "year/quarter must match parent microplan." });
+              continue;
+            }
+            const inherited: any = {
+              ...data,
+              facilityId: parentFacilityId,
+              year: parentCheck.parent.year,
+              quarter: parentCheck.parent.quarter,
+              planType: parentCheck.sessionPlanType,
+              campaignAntigen: parentCheck.sessionPlanType === "campaign" ? parentCheck.parent.campaignAntigen ?? null : null,
+              campaignTargetAge: parentCheck.sessionPlanType === "campaign" ? parentCheck.parent.campaignTargetAge ?? null : null,
+              campaignScope: parentCheck.sessionPlanType === "campaign" ? parentCheck.parent.campaignScope ?? null : null,
+            };
+            const created = await storage.createSessionPlan(req.tenantId, inherited);
+            await logAudit(req, "create", "session_plan", created.id, null, created);
+            results.push({ clientId, ok: true, id: created.id, data: created });
+          }
+        } catch (err: any) {
+          results.push({
+            clientId,
+            ok: false,
+            error: err?.message || "Failed to save session",
+          });
+        }
+      }
+      res.json({ results });
+    } catch (err: any) {
+      console.error("POST /api/sessions/bulk failed:", err);
+      res.status(500).json({ message: err?.message || "Bulk save failed" });
+    }
+  });
+
+  // POST /api/sessions/days/bulk — Step 8. Upsert many session day plans.
+  // CREATE items must carry `sessionPlanId`; UPDATE items carry `id`.
+  app.post("/api/sessions/days/bulk", ...auth, async (req: any, res) => {
+    try {
+      const parsed = parseBulkItems(req.body);
+      if (!parsed) return res.status(400).json({ message: "Body must be { items: [...] }" });
+      const results: BulkResult[] = [];
+      const sessionCache = new Map<number, any>();
+      for (const item of parsed.items) {
+        const clientId = item.clientId;
+        try {
+          const body = { ...item };
+          delete body.clientId;
+          const id = body.id;
+          delete body.id;
+          if (body.sessionDate && typeof body.sessionDate === "string") {
+            const d = new Date(body.sessionDate);
+            if (!isNaN(d.getTime())) body.sessionDate = d;
+          }
+          if (id != null) {
+            const parsedBody = insertSessionDayPlanSchema.partial().parse(body);
+            const updated = await storage.updateSessionDayPlan(req.tenantId, Number(id), parsedBody);
+            if (!updated) {
+              results.push({ clientId, ok: false, error: "Day plan not found" });
+              continue;
+            }
+            results.push({ clientId, ok: true, id: updated.id, data: updated });
+          } else {
+            const sessionPlanId = Number(body.sessionPlanId);
+            if (!Number.isFinite(sessionPlanId)) {
+              results.push({ clientId, ok: false, error: "sessionPlanId is required" });
+              continue;
+            }
+            delete body.sessionPlanId;
+            let session = sessionCache.get(sessionPlanId);
+            if (session === undefined) {
+              session = await storage.getSessionPlan(req.tenantId, sessionPlanId);
+              sessionCache.set(sessionPlanId, session);
+            }
+            if (!session) {
+              results.push({ clientId, ok: false, error: "Session plan not found" });
+              continue;
+            }
+            const schema = insertSessionDayPlanSchema.omit({ sessionPlanId: true });
+            const parsedBody = schema.parse(body);
+            const dv = await validatePlanningLeadTimeAndNoConflict(
+              req.tenantId, session.facilityId, parsedBody.sessionDate,
+            );
+            if (!dv.isValid) {
+              results.push({ clientId, ok: false, error: dv.message });
+              continue;
+            }
+            const created = await storage.createSessionDayPlan(req.tenantId, {
+              ...parsedBody,
+              sessionPlanId,
+            });
+            results.push({ clientId, ok: true, id: created.id, data: created });
+          }
+        } catch (err: any) {
+          results.push({ clientId, ok: false, error: err?.message || "Failed to save day plan" });
+        }
+      }
+      res.json({ results });
+    } catch (err: any) {
+      console.error("POST /api/sessions/days/bulk failed:", err);
+      res.status(500).json({ message: err?.message || "Bulk save failed" });
+    }
+  });
+
+  // POST /api/vaccine-requirements/bulk — Step 6
+  app.post("/api/vaccine-requirements/bulk", ...auth, async (req: any, res) => {
+    try {
+      const parsed = parseBulkItems(req.body);
+      if (!parsed) return res.status(400).json({ message: "Body must be { items: [...] }" });
+      const results: BulkResult[] = [];
+      for (const item of parsed.items) {
+        const clientId = item.clientId;
+        try {
+          const body = { ...item };
+          delete body.clientId;
+          const id = body.id;
+          delete body.id;
+          if (id != null) {
+            const updated = await storage.updateVaccineRequirement(req.tenantId, Number(id), body as any);
+            if (!updated) {
+              results.push({ clientId, ok: false, error: "Vaccine requirement not found" });
+              continue;
+            }
+            await logAudit(req, "update", "vaccine_requirement", updated.id, null, updated);
+            results.push({ clientId, ok: true, id: updated.id, data: updated });
+          } else {
+            const data = insertVaccineRequirementSchema.parse(body);
+            const created = await storage.createVaccineRequirement(req.tenantId, data);
+            await logAudit(req, "create", "vaccine_requirement", created.id, null, created);
+            results.push({ clientId, ok: true, id: created.id, data: created });
+          }
+        } catch (err: any) {
+          results.push({ clientId, ok: false, error: err?.message || "Failed to save vaccine requirement" });
+        }
+      }
+      res.json({ results });
+    } catch (err: any) {
+      console.error("POST /api/vaccine-requirements/bulk failed:", err);
+      res.status(500).json({ message: err?.message || "Bulk save failed" });
+    }
+  });
+
+  // POST /api/mobilization/bulk — Step 7
+  app.post("/api/mobilization/bulk", ...auth, async (req: any, res) => {
+    try {
+      const parsed = parseBulkItems(req.body);
+      if (!parsed) return res.status(400).json({ message: "Body must be { items: [...] }" });
+      const results: BulkResult[] = [];
+      for (const item of parsed.items) {
+        const clientId = item.clientId;
+        try {
+          const body = { ...item };
+          delete body.clientId;
+          const id = body.id;
+          delete body.id;
+          if (id != null) {
+            const updated = await storage.updateMobilizationActivity(req.tenantId, Number(id), body as any);
+            if (!updated) {
+              results.push({ clientId, ok: false, error: "Mobilization activity not found" });
+              continue;
+            }
+            await logAudit(req, "update", "mobilization_activity", updated.id, null, updated);
+            results.push({ clientId, ok: true, id: updated.id, data: updated });
+          } else {
+            const data = insertMobilizationActivitySchema.parse(body);
+            const created = await storage.createMobilizationActivity(req.tenantId, data);
+            await logAudit(req, "create", "mobilization_activity", created.id, null, created);
+            results.push({ clientId, ok: true, id: created.id, data: created });
+          }
+        } catch (err: any) {
+          results.push({ clientId, ok: false, error: err?.message || "Failed to save mobilization activity" });
+        }
+      }
+      res.json({ results });
+    } catch (err: any) {
+      console.error("POST /api/mobilization/bulk failed:", err);
+      res.status(500).json({ message: err?.message || "Bulk save failed" });
+    }
+  });
+
+  // POST /api/budget-items/bulk — Step 9
+  app.post("/api/budget-items/bulk", ...auth, async (req: any, res) => {
+    try {
+      const parsed = parseBulkItems(req.body);
+      if (!parsed) return res.status(400).json({ message: "Body must be { items: [...] }" });
+      const results: BulkResult[] = [];
+      for (const item of parsed.items) {
+        const clientId = item.clientId;
+        try {
+          const body = { ...item };
+          delete body.clientId;
+          const id = body.id;
+          delete body.id;
+          // Same "other → must specify" rule as the single-item PATCH/POST.
+          if (body.fundingSource === "other") {
+            const v = (body.fundingSourceOther ?? "").toString().trim();
+            if (!v) {
+              results.push({ clientId, ok: false, error: "Specify the funding source when 'Other' is selected." });
+              continue;
+            }
+          } else if (body.fundingSource !== undefined) {
+            body.fundingSourceOther = null;
+          }
+          if (id != null) {
+            const updated = await storage.updateBudgetItem(req.tenantId, Number(id), body as any);
+            if (!updated) {
+              results.push({ clientId, ok: false, error: "Budget item not found" });
+              continue;
+            }
+            await logAudit(req, "update", "budget_item", updated.id, null, updated);
+            results.push({ clientId, ok: true, id: updated.id, data: updated });
+          } else {
+            const data = insertBudgetItemSchema.parse(body);
+            const created = await storage.createBudgetItem(req.tenantId, data);
+            await logAudit(req, "create", "budget_item", created.id, null, created);
+            results.push({ clientId, ok: true, id: created.id, data: created });
+          }
+        } catch (err: any) {
+          results.push({ clientId, ok: false, error: err?.message || "Failed to save budget item" });
+        }
+      }
+      res.json({ results });
+    } catch (err: any) {
+      console.error("POST /api/budget-items/bulk failed:", err);
+      res.status(500).json({ message: err?.message || "Bulk save failed" });
+    }
+  });
+
+  // POST /api/supervision-visits/bulk — Step 10
+  app.post("/api/supervision-visits/bulk", ...auth, async (req: any, res) => {
+    try {
+      const parsed = parseBulkItems(req.body);
+      if (!parsed) return res.status(400).json({ message: "Body must be { items: [...] }" });
+      const results: BulkResult[] = [];
+      const facilityCache = new Map<number, any>();
+      const microplanCache = new Map<number, any>();
+      for (const item of parsed.items) {
+        const clientId = item.clientId;
+        try {
+          const body = { ...item };
+          delete body.clientId;
+          const id = body.id;
+          delete body.id;
+          if (body.scheduledDate && typeof body.scheduledDate === "string") body.scheduledDate = new Date(body.scheduledDate);
+          if (body.conductedDate && typeof body.conductedDate === "string") body.conductedDate = new Date(body.conductedDate);
+          if (body.nextVisitDate && typeof body.nextVisitDate === "string") body.nextVisitDate = new Date(body.nextVisitDate);
+
+          // Validate tenant-scoped FKs once per id (cached).
+          const checkFacility = async (fid: number) => {
+            if (!facilityCache.has(fid)) facilityCache.set(fid, await storage.getFacility(req.tenantId, fid));
+            return facilityCache.get(fid);
+          };
+          const checkMicroplan = async (mid: number) => {
+            if (!microplanCache.has(mid)) microplanCache.set(mid, await storage.getMicroplan(req.tenantId, mid));
+            return microplanCache.get(mid);
+          };
+
+          if (id != null) {
+            if (body.facilityId && !(await checkFacility(body.facilityId))) {
+              results.push({ clientId, ok: false, error: "Facility does not belong to this tenant" });
+              continue;
+            }
+            if (body.microplanId && !(await checkMicroplan(body.microplanId))) {
+              results.push({ clientId, ok: false, error: "Microplan does not belong to this tenant" });
+              continue;
+            }
+            const old = await storage.getSupervisionVisit(req.tenantId, Number(id));
+            const updated = await storage.updateSupervisionVisit(req.tenantId, Number(id), body);
+            if (!updated) {
+              results.push({ clientId, ok: false, error: "Supervision visit not found" });
+              continue;
+            }
+            await logAudit(req, "update", "supervision_visit", updated.id, old, updated);
+            results.push({ clientId, ok: true, id: updated.id, data: updated });
+          } else {
+            const data = insertSupervisionVisitSchema.parse({ ...body, createdByUserId: req.user?.claims?.sub }) as any;
+            if (data.facilityId && !(await checkFacility(data.facilityId))) {
+              results.push({ clientId, ok: false, error: "Facility does not belong to this tenant" });
+              continue;
+            }
+            if (data.microplanId && !(await checkMicroplan(data.microplanId))) {
+              results.push({ clientId, ok: false, error: "Microplan does not belong to this tenant" });
+              continue;
+            }
+            const created = await storage.createSupervisionVisit(req.tenantId, data);
+            await logAudit(req, "create", "supervision_visit", created.id, null, created);
+            results.push({ clientId, ok: true, id: created.id, data: created });
+          }
+        } catch (err: any) {
+          results.push({ clientId, ok: false, error: err?.message || "Failed to save supervision visit" });
+        }
+      }
+      res.json({ results });
+    } catch (err: any) {
+      console.error("POST /api/supervision-visits/bulk failed:", err);
+      res.status(500).json({ message: err?.message || "Bulk save failed" });
+    }
+  });
+
   return httpServer;
 }
