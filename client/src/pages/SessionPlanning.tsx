@@ -210,7 +210,7 @@ export default function SessionPlanning({
       lat: Number.isFinite(lat) ? lat : null,
       lng: Number.isFinite(lng) ? lng : null,
       isHardToReach: sp.get("unservedHtr") === "1",
-      kind: (sp.get("prefillKind") as "village" | "followup" | "unserved" | null) ?? "unserved",
+      kind: (sp.get("prefillKind") as "village" | "followup" | "unserved" | "defaulter" | null) ?? "unserved",
     };
   }, []);
   const preserveUnservedQs = useMemo(() => {
@@ -562,7 +562,9 @@ export default function SessionPlanning({
     if (!lockedParentForPrefill) return;
     autoPrefillRanRef.current = true;
     const prefix =
-      unservedPrefill.kind === "followup"
+      unservedPrefill.kind === "defaulter"
+        ? "Defaulter follow-up"
+        : unservedPrefill.kind === "followup"
         ? "Follow-up"
         : "Outreach";
     form.setValue("name", `${prefix} — ${unservedPrefill.name}`);
@@ -1351,7 +1353,11 @@ export default function SessionPlanning({
         {unservedPrefill && (
           <Alert data-testid="alert-unserved-prefill">
             <MapPin className="h-4 w-4" />
-            <AlertTitle>Plan a session for {unservedPrefill.name}</AlertTitle>
+            <AlertTitle>
+              {unservedPrefill.kind === "defaulter"
+                ? `Plan defaulter follow-up for ${unservedPrefill.name}`
+                : `Plan a session for ${unservedPrefill.name}`}
+            </AlertTitle>
             <AlertDescription>
               Pick the microplan that will host this session. The new-session form will
               open pre-filled and the proximity check will run automatically.

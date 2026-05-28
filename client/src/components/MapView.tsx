@@ -22,6 +22,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { offlineDb } from "@/lib/offlineDb";
 import { useAuth } from "@/hooks/useAuth";
+import { canCreateSessionPlan } from "@/lib/permissions";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
@@ -5138,6 +5139,36 @@ export function MapView({
                     {v.isHardToReach && (
                       <Badge className="bg-amber-500/10 text-amber-700">Hard-to-reach</Badge>
                     )}
+                    {canCreateSessionPlan(user) && v.facilityId != null && (
+                      <Button
+                        size="sm"
+                        className="w-full h-7 text-[11px] font-semibold mt-1 bg-red-600 hover:bg-red-700 text-white"
+                        onClick={() => {
+                          const mp = (masterMicroplans ?? []).find(
+                            (m: any) =>
+                              Number(m.facilityId) === Number(v.facilityId) &&
+                              m.planType === "facility_routine",
+                          );
+                          const qs = new URLSearchParams({
+                            unservedVillageId: String(v.villageId ?? ""),
+                            unservedName: v.villageName ?? "",
+                            unservedLat: String(v.latitude),
+                            unservedLng: String(v.longitude),
+                            unservedHtr: v.isHardToReach ? "1" : "0",
+                            prefillKind: "defaulter",
+                            autoOpen: "1",
+                          });
+                          const path = mp
+                            ? `/sessions/microplan/${mp.id}`
+                            : "/sessions";
+                          window.location.assign(`${path}?${qs.toString()}`);
+                        }}
+                        data-testid={`button-plan-defaulter-zerodose-${v.villageId ?? v.facilityId}`}
+                      >
+                        <Plus className="h-3 w-3 mr-1" />
+                        Plan defaulter follow-up here
+                      </Button>
+                    )}
                   </div>
                 </Popup>
               </CircleMarker>
@@ -5197,6 +5228,36 @@ export function MapView({
                     <div>of {v.denominator} eligible children</div>
                     {v.isHardToReach && (
                       <Badge className="bg-amber-500/10 text-amber-700">Hard-to-reach</Badge>
+                    )}
+                    {canCreateSessionPlan(user) && v.facilityId != null && (
+                      <Button
+                        size="sm"
+                        className="w-full h-7 text-[11px] font-semibold mt-1 bg-amber-600 hover:bg-amber-700 text-white"
+                        onClick={() => {
+                          const mp = (masterMicroplans ?? []).find(
+                            (m: any) =>
+                              Number(m.facilityId) === Number(v.facilityId) &&
+                              m.planType === "facility_routine",
+                          );
+                          const qs = new URLSearchParams({
+                            unservedVillageId: String(v.villageId ?? ""),
+                            unservedName: v.villageName ?? "",
+                            unservedLat: String(v.latitude),
+                            unservedLng: String(v.longitude),
+                            unservedHtr: v.isHardToReach ? "1" : "0",
+                            prefillKind: "defaulter",
+                            autoOpen: "1",
+                          });
+                          const path = mp
+                            ? `/sessions/microplan/${mp.id}`
+                            : "/sessions";
+                          window.location.assign(`${path}?${qs.toString()}`);
+                        }}
+                        data-testid={`button-plan-defaulter-underimm-${v.villageId ?? v.facilityId}`}
+                      >
+                        <Plus className="h-3 w-3 mr-1" />
+                        Plan defaulter follow-up here
+                      </Button>
                     )}
                   </div>
                 </Popup>
