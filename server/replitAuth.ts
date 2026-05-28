@@ -395,6 +395,25 @@ export function getCurrentUserId(req: any): string {
   return (req?.user?.claims?.sub ?? req?.user?.id ?? "") as string;
 }
 
+/**
+ * Returns the caller's DB user row, auto-recovering it from session claims
+ * when `storage.getUser` returns null. This protects authenticated write
+ * endpoints from returning a spurious 401 when the user has a valid session
+ * (verified by `isAuthenticated`) but the `users` row has not been
+ * upserted yet — for example on a fresh OIDC sign-in immediately followed
+ * by a POST.
+ */
+export async function ensureDbUserFromSession(req: any) {
+  const userId = getCurrentUserId(req);
+  if (!userId) return null;
+  const existing = await storage.getUser(userId);
+  if (existing) return existing;
+  const claims = req?.user?.claims;
+  if (!claims?.sub) return null;
+  await upsertUser(claims);
+  return (await storage.getUser(userId)) ?? null;
+}
+
 export const isAuthenticated: RequestHandler = async (req, res, next) => {
   const user = req.user as any;
 
