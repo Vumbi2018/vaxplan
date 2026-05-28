@@ -5261,6 +5261,45 @@ export function MapView({
         <MapController center={effectiveCenter} zoom={effectiveZoom} onZoomChange={setCurrentZoom} onBoundsChange={setMapBounds} />
       </MapContainer>
 
+      {/* Zero-dose / under-immunized graduated-pin legend.
+          Renders when either overlay is on, anchored bottom-right above the
+          basemap toggle area (MapControls sit at right-4 bottom-20). */}
+      {(layers.zeroDoseVillages || layers.underImmunizedVillages) && !isPrinting && (
+        <div
+          className="absolute right-4 bottom-4 z-[1000] pointer-events-none"
+          ref={disableLeafletPropagation}
+          data-testid="map-legend-zerodose"
+        >
+          <div className="bg-background/90 backdrop-blur-md border border-border shadow-lg rounded-lg p-2.5 text-[10px] space-y-2 pointer-events-auto max-w-[180px]">
+            {layers.zeroDoseVillages && (
+              <div className="space-y-1">
+                <div className="font-bold text-[10px] uppercase tracking-wider text-primary">Zero-dose Villages</div>
+                <div className="flex items-center gap-1.5">
+                  <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: "#f59e0b" }} />
+                  <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: "#ea580c" }} />
+                  <span className="inline-block w-3.5 h-3.5 rounded-full" style={{ backgroundColor: "#dc2626" }} />
+                  <span className="text-muted-foreground ml-1">Low → High</span>
+                </div>
+              </div>
+            )}
+            {layers.underImmunizedVillages && (
+              <div className="space-y-1">
+                <div className="font-bold text-[10px] uppercase tracking-wider text-primary">Under-immunized</div>
+                <div className="flex items-center gap-1.5">
+                  <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: "#fbbf24" }} />
+                  <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: "#f59e0b" }} />
+                  <span className="inline-block w-3.5 h-3.5 rounded-full" style={{ backgroundColor: "#d97706" }} />
+                  <span className="text-muted-foreground ml-1">Low → High</span>
+                </div>
+              </div>
+            )}
+            <div className="text-muted-foreground text-[9px] pt-1 border-t border-border/40">
+              Pin size = missed-child count
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Floating glassmorphic zoom warning HUD sibling to MapContainer */}
       {!showVillageMarkers && layers.villages && !isPrinting && (
         <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-[1000] pointer-events-none">
