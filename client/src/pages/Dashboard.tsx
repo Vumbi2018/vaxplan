@@ -20,6 +20,7 @@ import {
   DollarSign,
   Activity,
   Syringe,
+  ClipboardCheck,
 } from "lucide-react";
 import { Link, useLocation, useSearch } from "wouter";
 import {
@@ -326,6 +327,251 @@ function ImmunizationIndicatorCards() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+type SupervisionVisitLite = {
+  id: number;
+  facilityId: number;
+  scheduledDate: string;
+  conductedDate: string | null;
+  status: string;
+  score: number | null;
+};
+
+function quarterStart(year: number, quarter: number) {
+  return new Date(Date.UTC(year, (quarter - 1) * 3, 1));
+}
+function quarterEnd(year: number, quarter: number) {
+  return new Date(Date.UTC(year, quarter * 3, 1));
+}
+
+function SupervisionCoverageByDistrictCard() {
+  const [, setLocation] = useLocation();
+  const { data: visits, isLoading: loadingVisits } = useQuery<SupervisionVisitLite[]>({
+    queryKey: ["/api/supervision-visits"],
+  });
+  const { data: facilities } = useQuery<Facility[]>({
+    queryKey: ["/api/facilities"],
+  });
+  const { data: districts } = useQuery<any[]>({
+    queryKey: ["/api/districts"],
+  });
+
+  const qStart = quarterStart(CURRENT_YEAR, CURRENT_QUARTER);
+  const qEnd = quarterEnd(CURRENT_YEAR, CURRENT_QUARTER);
+  const overdueThresholdMs = 90 * 86_400_000;
+  const now = Date.now();
+
+  const rows = useMemo(() => {
+    if (!facilities || !districts) return [];
+    const facByDistrict = new Map<number, Facility[]>();
+    facilities.forEach((f) => {
+      const did = Number((f as any).districtId);
+      if (!did) return;
+      const list = facByDistrict.get(did) || [];
+      list.push(f);
+      facByDistrict.set(did, list);
+    });
+
+    const visitsByFacility = new Map<number, SupervisionVisitLite[]>();
+    (visits || []).forEach((v) => {
+      const list = visitsByFacility.get(v.facilityId) || [];
+      list.push(v);
+      visitsByFacility.set(v.facilityId, list);
+    });
+
+    return districts
+      .map((d: any) => {
+        const facs = facByDistrict.get(Number(d.id)) || [];
+        const total = facs.length;
+        let visitedThisQuarter = 0;
+        let overdue = 0;
+        let scoreSum = 0;
+        let scoreN = 0;
+        facs.forEach((f) => {
+          const fv = visitsByFacility.get(Number(f.id)) || [];
+          const conducted = fv
+            .filter((v) => v.status === "conducted")
+            .map((v) => ({ ...v, when: new Date(v.conductedDate || v.scheduledDate) }))
+            .sort((a, b) => +b.when - +a.when);
+          const inQuarter = conducted.some(
+            (v) => v.when >= qStart && v.when < qEnd,
+          );
+          if (inQuarter) visitedThisQuarter++;
+          const last = conducted[0];
+          if (!last || now - +last.when > overdueThresholdMs) overdue++;
+          if (last && typeof last.score === "number") {
+            scoreSum += last.score;
+            scoreN++;
+          }
+        });
+        return {
+          districtId: Number(d.id),
+          districtName: d.name as string,
+          total,
+          visitedThisQuarter,
+          overdue,
+          avgScore: scoreN ? Math.round(scoreSum / scoreN) : null,
+          visitedPct: total ? Math.round((visitedThisQuarter / total) * 100) : 0,
+          overduePct: total ? Math.round((overdue / total) * 100) : 0,
+        };
+      })
+      .filter((r) => r.total > 0)
+      .sort((a, b) => a.visitedPct - b.visitedPct || b.overduePct - a.overduePct);
+  }, [facilities, districts, visits, qStart.getTime(), qEnd.getTime()]);
+
+  const totals = useMemo(() => {
+    const totalFac = rows.reduce((s, r) => s + r.total, 0);
+    const visited = rows.reduce((s, r) => s + r.visitedThisQuarter, 0);
+    const overdue = rows.reduce((s, r) => s + r.overdue, 0);
+    const scored = rows.filter((r) => r.avgScore !== null);
+    const avg = scored.length
+      ? Math.round(scored.reduce((s, r) => s + (r.avgScore || 0), 0) / scored.length)
+      : null;
+    return {
+      totalFac,
+      visited,
+      overdue,
+      visitedPct: totalFac ? Math.round((visited / totalFac) * 100) : 0,
+      overduePct: totalFac ? Math.round((overdue / totalFac) * 100) : 0,
+      avg,
+    };
+  }, [rows]);
+
+  return (
+    <Card data-testid="card-supervision-by-district">
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between gap-2">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <ClipboardCheck className="h-5 w-5 text-indigo-500" />
+            Supervision coverage by district
+            <span className="text-xs font-normal text-muted-foreground ml-1">
+              · Q{CURRENT_QUARTER} {CURRENT_YEAR}
+            </span>
+          </CardTitle>
+          <Link
+            href="/supervision"
+            className="text-xs font-semibold text-primary hover:underline"
+            data-testid="link-supervision-all"
+          >
+            Open supervision →
+          </Link>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-3 pt-2">
+        {loadingVisits ? (
+          <Skeleton className="h-32 w-full" />
+        ) : rows.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            No districts with facilities yet, or no visits scheduled.
+          </p>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+              <div className="rounded-md border p-2">
+                <div className="text-muted-foreground">Facilities</div>
+                <div className="text-lg font-semibold">{totals.totalFac}</div>
+              </div>
+              <div className="rounded-md border p-2">
+                <div className="text-muted-foreground">Visited this quarter</div>
+                <div className="text-lg font-semibold text-emerald-600">{totals.visitedPct}%</div>
+              </div>
+              <div className="rounded-md border p-2">
+                <div className="text-muted-foreground">Overdue (&gt;90d)</div>
+                <div className="text-lg font-semibold text-rose-600">{totals.overduePct}%</div>
+              </div>
+              <div className="rounded-md border p-2">
+                <div className="text-muted-foreground">Avg last score</div>
+                <div className="text-lg font-semibold">
+                  {totals.avg === null ? "—" : `${totals.avg}%`}
+                </div>
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs text-muted-foreground border-b">
+                    <th className="py-2 px-2 font-medium">District</th>
+                    <th className="py-2 px-2 font-medium text-right">Facilities</th>
+                    <th className="py-2 px-2 font-medium text-right">Visited Q{CURRENT_QUARTER}</th>
+                    <th className="py-2 px-2 font-medium text-right">Overdue</th>
+                    <th className="py-2 px-2 font-medium text-right">Avg score</th>
+                    <th className="py-2 px-2" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r) => (
+                    <tr
+                      key={r.districtId}
+                      className="border-b last:border-0 hover:bg-muted/40 cursor-pointer"
+                      onClick={() => setLocation(`/supervision?districtId=${r.districtId}`)}
+                      data-testid={`row-supervision-district-${r.districtId}`}
+                    >
+                      <td className="py-2 px-2 font-medium">{r.districtName}</td>
+                      <td className="py-2 px-2 text-right">{r.total}</td>
+                      <td className="py-2 px-2 text-right">
+                        <Badge
+                          variant="outline"
+                          className={
+                            r.visitedPct >= 80
+                              ? "border-emerald-500 text-emerald-600"
+                              : r.visitedPct >= 50
+                              ? "border-amber-500 text-amber-600"
+                              : "border-rose-500 text-rose-600"
+                          }
+                        >
+                          {r.visitedThisQuarter}/{r.total} · {r.visitedPct}%
+                        </Badge>
+                      </td>
+                      <td className="py-2 px-2 text-right">
+                        <Badge
+                          variant="outline"
+                          className={
+                            r.overduePct === 0
+                              ? "border-emerald-500 text-emerald-600"
+                              : r.overduePct <= 25
+                              ? "border-amber-500 text-amber-600"
+                              : "border-rose-500 text-rose-600"
+                          }
+                        >
+                          {r.overdue} ({r.overduePct}%)
+                        </Badge>
+                      </td>
+                      <td className="py-2 px-2 text-right">
+                        {r.avgScore === null ? (
+                          <span className="text-muted-foreground">—</span>
+                        ) : (
+                          <span
+                            className={
+                              r.avgScore >= 80
+                                ? "text-emerald-600 font-medium"
+                                : r.avgScore >= 60
+                                ? "text-amber-600 font-medium"
+                                : "text-rose-600 font-medium"
+                            }
+                          >
+                            {r.avgScore}%
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-2 px-2 text-right text-xs text-muted-foreground">
+                        View →
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              "Visited this quarter" counts facilities with at least one conducted visit between{" "}
+              {qStart.toISOString().slice(0, 10)} and {qEnd.toISOString().slice(0, 10)}. "Overdue" =
+              no conducted visit in the last 90 days. Click a district to see its facilities.
+            </p>
+          </>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -1045,6 +1291,8 @@ export default function Dashboard() {
       )}
 
       <ImmunizationIndicatorCards />
+
+      <SupervisionCoverageByDistrictCard />
 
       <div className="grid lg:grid-cols-3 gap-6">
         <Card className="lg:col-span-2">

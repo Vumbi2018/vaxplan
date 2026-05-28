@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useLocation, useSearch } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { FacilityCascadePicker } from "@/components/FacilityCascadePicker";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -72,6 +73,15 @@ function computeScore(checklist: ChecklistItem[]): number {
 
 export default function Supervision() {
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
+  const searchString = useSearch();
+  const urlDistrictId = useMemo(() => {
+    const p = new URLSearchParams(searchString);
+    const raw = p.get("districtId");
+    return raw ? Number(raw) : null;
+  }, [searchString]);
+  const [districtFilter, setDistrictFilter] = useState<number | null>(urlDistrictId);
+  useEffect(() => { setDistrictFilter(urlDistrictId); }, [urlDistrictId]);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [facilityFilter, setFacilityFilter] = useState<string>("all");
   const [scheduleOpen, setScheduleOpen] = useState(false);
@@ -93,6 +103,7 @@ export default function Supervision() {
   });
 
   const { data: facilities = [] } = useQuery<any[]>({ queryKey: ["/api/facilities"] });
+  const { data: districts = [] } = useQuery<any[]>({ queryKey: ["/api/districts"] });
   const { data: allVisits = [] } = useQuery<SupervisionVisit[]>({
     queryKey: ["/api/supervision-visits", "all"],
     queryFn: async () => {
@@ -119,7 +130,10 @@ export default function Supervision() {
       status: "overdue" | "due_soon" | "current" | "never";
     };
     const now = Date.now();
-    const rows: Row[] = facilities.map((f: any) => {
+    const scoped = districtFilter
+      ? facilities.filter((f: any) => Number(f.districtId) === districtFilter)
+      : facilities;
+    const rows: Row[] = scoped.map((f: any) => {
       const visitsForFac = allVisits.filter((v) => v.facilityId === f.id);
       const conducted = visitsForFac
         .filter((v) => v.status === "conducted" && (v.conductedDate || v.scheduledDate))
@@ -139,7 +153,12 @@ export default function Supervision() {
       return { facility: f, lastConducted, lastScheduled, daysSinceLast, lastScore, status };
     });
     return rows;
-  }, [facilities, allVisits]);
+  }, [facilities, allVisits, districtFilter]);
+
+  const activeDistrict = useMemo(
+    () => (districtFilter ? districts.find((d: any) => Number(d.id) === districtFilter) : null),
+    [districts, districtFilter],
+  );
 
   const filteredFacilityStatus = useMemo(() => {
     let rows = facilityStatus;
@@ -274,13 +293,47 @@ export default function Supervision() {
               <p className="text-xs text-muted-foreground mt-1">
                 Overdue = no visit in the last 90 days, or last score &lt; 60%. Due soon = last visit 61–90 days ago. Click a row to schedule the next visit.
               </p>
+              {activeDistrict && (
+                <div className="mt-2 inline-flex items-center gap-2 rounded-md border border-indigo-500/30 bg-indigo-500/10 px-2 py-1 text-xs text-indigo-700 dark:text-indigo-300">
+                  <span>Filtered to district: <strong>{activeDistrict.name}</strong></span>
+                  <button
+                    type="button"
+                    className="underline hover:no-underline"
+                    onClick={() => {
+                      setDistrictFilter(null);
+                      setLocation(`/supervision`, { replace: true });
+                    }}
+                    data-testid="clear-supervision-district"
+                  >
+                    Clear
+                  </button>
+                </div>
+              )}
               <div className="flex gap-2 mt-2 text-xs">
                 <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-rose-500" /> {statusCounts.overdue} overdue</span>
                 <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-amber-500" /> {statusCounts.due_soon} due soon</span>
                 <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-500" /> {statusCounts.current} current</span>
               </div>
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
+              <Select
+                value={districtFilter ? String(districtFilter) : "all"}
+                onValueChange={(v) => {
+                  const next = v === "all" ? null : Number(v);
+                  setDistrictFilter(next);
+                  setLocation(next ? `/supervision?districtId=${next}` : `/supervision`, { replace: true });
+                }}
+              >
+                <SelectTrigger className="w-48" data-testid="filter-supervision-district">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All districts</SelectItem>
+                  {districts.map((d: any) => (
+                    <SelectItem key={d.id} value={String(d.id)}>{d.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <Select value={statusBadgeFilter} onValueChange={(v) => setStatusBadgeFilter(v as any)}>
                 <SelectTrigger className="w-40" data-testid="filter-supervision-status"><SelectValue /></SelectTrigger>
                 <SelectContent>
