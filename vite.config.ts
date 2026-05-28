@@ -152,11 +152,11 @@ export default defineConfig({
         manualChunks(id) {
           if (!id.includes("node_modules")) return undefined;
 
-          // Heavy mapping / geospatial libs
+          // Heavy mapping / geospatial libs (pure leaflet only — react-leaflet
+          // must stay with React to avoid cross-chunk CJS interop breaking
+          // `React.createContext` at load time).
           if (
             id.includes("/leaflet/") ||
-            id.includes("/react-leaflet/") ||
-            id.includes("/@react-leaflet/") ||
             id.includes("/leaflet.markercluster/") ||
             id.includes("/leaflet-defaulticon-compatibility/")
           ) {
@@ -209,13 +209,18 @@ export default defineConfig({
             return "vendor-forms";
           }
 
-          // React core & router / query
+          // React core & router / query. react-leaflet wrappers live here too
+          // — splitting them into a separate chunk causes
+          // `React.createContext` to be undefined at runtime due to CJS↔ESM
+          // interop across chunk boundaries.
           if (
             id.includes("/react/") ||
             id.includes("/react-dom/") ||
             id.includes("/scheduler/") ||
             id.includes("/wouter/") ||
-            id.includes("/@tanstack/react-query/")
+            id.includes("/@tanstack/react-query/") ||
+            id.includes("/react-leaflet/") ||
+            id.includes("/@react-leaflet/")
           ) {
             return "vendor-react";
           }
