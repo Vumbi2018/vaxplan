@@ -797,6 +797,8 @@ async function pickVillagesPerFacility(
       assignedFacilityId: villages.assignedFacilityId,
       latitude: villages.latitude,
       longitude: villages.longitude,
+      transportMode: villages.transportMode,
+      seasonalAccessibility: villages.seasonalAccessibility,
     })
     .from(villages)
     .where(eq(villages.tenantId, tenantId));
@@ -853,6 +855,13 @@ async function pickVillagesPerFacility(
       // so the missed-community score gets an HTR boost and the demo
       // surfaces a realistic mix on the map.
       const isHardToReach = slot === MIN_VILLAGES_PER_FACILITY;
+      // Assign a realistic transport mode + seasonal accessibility based on
+      // how far the village sits from the facility. Closest villages are
+      // walkable year-round; the farthest (HTR) needs road access and is
+      // only reachable in the dry season.
+      const transportMode: "walking" | "road" | "boat" =
+        slot <= 2 ? "walking" : "road";
+      const seasonalAccessibility = isHardToReach ? "wet_season_only" : "year_round";
       // Match by code first (stable across name changes); fall back to the
       // legacy "Demo Catchment Village" naming so previously-seeded rows
       // are picked up and renamed in place instead of being duplicated.
@@ -867,9 +876,11 @@ async function pickVillagesPerFacility(
       if (reused) {
         if (!pool.includes(reused.id)) pool.push(reused.id);
         // Backfill / rename: bring legacy demo rows in line with the new
-        // realistic name + code, and fill in lat/lng if they were created
-        // before coordinates were tracked. Idempotent: a no-op once the
-        // row already matches.
+        // realistic name + code, fill in lat/lng if they were created
+        // before coordinates were tracked, and populate transport mode +
+        // seasonal accessibility for rows from earlier seed runs that
+        // didn't track them. Idempotent: a no-op once the row already
+        // matches.
         const updates: Record<string, unknown> = {};
         if (reused.name !== demoName) updates.name = demoName;
         if (reused.code !== demoCode) updates.code = demoCode;
@@ -879,6 +890,9 @@ async function pickVillagesPerFacility(
           updates.distanceToFacility = String(coord.distanceKm.toFixed(2));
           updates.isHardToReach = isHardToReach;
         }
+        if (reused.transportMode == null) updates.transportMode = transportMode;
+        if (reused.seasonalAccessibility == null)
+          updates.seasonalAccessibility = seasonalAccessibility;
         if (Object.keys(updates).length > 0) {
           await db.update(villages).set(updates).where(eq(villages.id, reused.id));
           reused.name = demoName;
@@ -897,6 +911,8 @@ async function pickVillagesPerFacility(
             longitude: coord ? String(coord.lng.toFixed(7)) : null,
             distanceToFacility: coord ? String(coord.distanceKm.toFixed(2)) : null,
             isHardToReach,
+            transportMode,
+            seasonalAccessibility,
           })
           .returning({ id: villages.id });
         pool.push(created.id);
@@ -908,6 +924,8 @@ async function pickVillagesPerFacility(
           assignedFacilityId: p.facilityId,
           latitude: coord ? String(coord.lat.toFixed(7)) : null,
           longitude: coord ? String(coord.lng.toFixed(7)) : null,
+          transportMode,
+          seasonalAccessibility,
         });
       }
       topUpIndex += 1;
