@@ -9301,6 +9301,18 @@ export async function registerRoutes(
         const districtId = req.query.districtId
           ? parseInt(String(req.query.districtId), 10)
           : undefined;
+        const includeTrend =
+          req.query.includeTrend === "1" ||
+          req.query.includeTrend === "true";
+        const trendQuartersRaw = req.query.trendQuarters
+          ? parseInt(String(req.query.trendQuarters), 10)
+          : 4;
+        const trendQuarters =
+          Number.isFinite(trendQuartersRaw) &&
+          trendQuartersRaw >= 1 &&
+          trendQuartersRaw <= 12
+            ? trendQuartersRaw
+            : 4;
 
         const facilityRows = await db
           .select({
@@ -9360,6 +9372,51 @@ export async function registerRoutes(
 
         const total = facilitiesOut.length;
         const withReview = facilitiesOut.filter((f) => f.hasReview).length;
+
+        let trend:
+          | Array<{
+              year: number;
+              quarter: number;
+              totalFacilities: number;
+              facilitiesWithReview: number;
+              coveragePct: number;
+            }>
+          | undefined;
+        if (includeTrend) {
+          const scopedIds = new Set(scoped.map((f) => f.facilityId));
+          const periods: Array<{ year: number; quarter: number }> = [];
+          let py = year;
+          let pq = quarter;
+          for (let i = 0; i < trendQuarters; i++) {
+            periods.push({ year: py, quarter: pq });
+            pq -= 1;
+            if (pq < 1) {
+              pq = 4;
+              py -= 1;
+            }
+          }
+          periods.reverse();
+          trend = await Promise.all(
+            periods.map(async (p) => {
+              const rrows = await storage.listQuarterlyReviews(tenantId, {
+                year: p.year,
+                quarter: p.quarter,
+              });
+              const reviewed = rrows.filter((r) =>
+                scopedIds.has(r.facilityId),
+              ).length;
+              const t = scopedIds.size;
+              return {
+                year: p.year,
+                quarter: p.quarter,
+                totalFacilities: t,
+                facilitiesWithReview: reviewed,
+                coveragePct: t > 0 ? Math.round((reviewed / t) * 100) : 0,
+              };
+            }),
+          );
+        }
+
         res.json({
           year,
           quarter,
@@ -9368,6 +9425,7 @@ export async function registerRoutes(
           facilitiesWithoutReview: total - withReview,
           coveragePct: total > 0 ? Math.round((withReview / total) * 100) : 0,
           facilities: facilitiesOut,
+          ...(trend ? { trend } : {}),
         });
       } catch (err: any) {
         console.error(

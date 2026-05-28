@@ -879,6 +879,14 @@ type QuarterlyReviewCoverageRow = {
   nextSurveyDate: string | null;
 };
 
+type QuarterlyReviewCoverageTrendPoint = {
+  year: number;
+  quarter: number;
+  totalFacilities: number;
+  facilitiesWithReview: number;
+  coveragePct: number;
+};
+
 type QuarterlyReviewCoverageResponse = {
   year: number;
   quarter: number;
@@ -887,6 +895,7 @@ type QuarterlyReviewCoverageResponse = {
   facilitiesWithoutReview: number;
   coveragePct: number;
   facilities: QuarterlyReviewCoverageRow[];
+  trend?: QuarterlyReviewCoverageTrendPoint[];
 };
 
 type QuarterlyReviewNote = {
@@ -915,6 +924,57 @@ const QUARTER_YEAR_OPTIONS: Array<{ year: number; quarter: number }> = (() => {
   return list;
 })();
 
+function QuarterlyCoverageTrend({
+  trend,
+  currentYear,
+  currentQuarter,
+}: {
+  trend: QuarterlyReviewCoverageTrendPoint[] | undefined;
+  currentYear: number;
+  currentQuarter: number;
+}) {
+  const points: Array<QuarterlyReviewCoverageTrendPoint | null> =
+    trend && trend.length > 0
+      ? trend
+      : Array.from({ length: 4 }, () => null);
+  const barCount = points.length;
+  return (
+    <div
+      className="flex items-end gap-0.5 h-10 shrink-0"
+      data-testid="qrc-trend-chart"
+      aria-label="Coverage trend across the last 4 quarters"
+    >
+      {points.map((p, i) => {
+        const pct = p?.coveragePct ?? 0;
+        const tone =
+          pct >= 80
+            ? "bg-emerald-500"
+            : pct >= 50
+            ? "bg-amber-500"
+            : pct > 0
+            ? "bg-rose-500"
+            : "bg-muted";
+        const isCurrent =
+          !!p && p.year === currentYear && p.quarter === currentQuarter;
+        const title = p
+          ? `Q${p.quarter} ${p.year}: ${p.coveragePct}% (${p.facilitiesWithReview}/${p.totalFacilities})`
+          : "No data";
+        const heightPct = p ? Math.max(6, Math.min(pct, 100)) : 6;
+        return (
+          <div
+            key={p ? `${p.year}-${p.quarter}` : `empty-${i}`}
+            title={title}
+            aria-label={title}
+            className={`w-2 rounded-sm ${tone} ${isCurrent ? "ring-1 ring-offset-1 ring-foreground/40" : ""} ${!p ? "opacity-40" : ""}`}
+            style={{ height: `${heightPct}%` }}
+            data-testid={`qrc-trend-bar-${barCount - 1 - i}`}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
 function QuarterlyReviewCoverage() {
   const [year, setYear] = useState<number>(CURRENT_YEAR);
   const [quarter, setQuarter] = useState<number>(CURRENT_QUARTER);
@@ -926,12 +986,14 @@ function QuarterlyReviewCoverage() {
   const queryParams = new URLSearchParams();
   queryParams.set("year", String(year));
   queryParams.set("quarter", String(quarter));
+  queryParams.set("includeTrend", "1");
+  queryParams.set("trendQuarters", "4");
   if (provinceId) queryParams.set("provinceId", String(provinceId));
   if (districtId) queryParams.set("districtId", String(districtId));
   const queryStr = queryParams.toString();
 
   const { data, isLoading } = useQuery<QuarterlyReviewCoverageResponse>({
-    queryKey: ["/api/indicators/quarterly-review-coverage", year, quarter, provinceId, districtId],
+    queryKey: ["/api/indicators/quarterly-review-coverage", year, quarter, provinceId, districtId, "trend4"],
     queryFn: async () => {
       const r = await fetch(`/api/indicators/quarterly-review-coverage?${queryStr}`, { credentials: "include" });
       if (!r.ok) throw new Error("Failed to load quarterly review coverage");
@@ -1011,8 +1073,13 @@ function QuarterlyReviewCoverage() {
           <SummaryTile label="With review note" value={data?.facilitiesWithReview ?? 0} tone="emerald" />
           <SummaryTile label="Missing note" value={data?.facilitiesWithoutReview ?? 0} tone="rose" />
           <div className="rounded-lg border bg-card p-3">
-            <div className="text-xs text-muted-foreground">Coverage</div>
-            <div className="text-2xl font-bold font-mono mt-1" data-testid="qrc-coverage-pct">{coveragePct}%</div>
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <div className="text-xs text-muted-foreground">Coverage</div>
+                <div className="text-2xl font-bold font-mono mt-1" data-testid="qrc-coverage-pct">{coveragePct}%</div>
+              </div>
+              <QuarterlyCoverageTrend trend={data?.trend} currentYear={year} currentQuarter={quarter} />
+            </div>
             <div className="h-1.5 bg-muted rounded-full mt-2 overflow-hidden">
               <div
                 className={`h-full ${coverageTone} rounded-full transition-all duration-500`}
