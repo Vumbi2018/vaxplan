@@ -3,20 +3,38 @@ import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 
-// Lazy-load the Plan-phase module pages so they only load when their step is open.
+// Lazy-load every step's working module so the user can capture data inline
+// on the flow page itself — no need to navigate to a separate workspace.
 const DashboardPage = lazy(() => import("@/pages/Dashboard"));
 const PopulationPage = lazy(() => import("@/pages/Population"));
 const HardToReachPage = lazy(() => import("@/pages/HardToReach"));
 const SessionPlanningPage = lazy(() => import("@/pages/SessionPlanning"));
+const VaccineCalculatorPage = lazy(() => import("@/pages/VaccineCalculator"));
+const SocialMobilizationPage = lazy(() => import("@/pages/SocialMobilization"));
+const BudgetPlanningPage = lazy(() => import("@/pages/BudgetPlanning"));
 const SupervisionPage = lazy(() => import("@/pages/Supervision"));
+const ApprovalsPage = lazy(() => import("@/pages/Approvals"));
+const ClientLogbookPage = lazy(() => import("@/pages/ClientLogbook"));
 
-// Which step renders which module inline (Plan phase only, per user brief).
+// Every one of the 12 flow steps renders its working module inline so users
+// capture data on this same page instead of being sent elsewhere.
+// Steps 5 and 8 anchor on the Session Planning workspace — Session Day Plans
+// itself needs a specific session id from the URL path, so we surface its
+// parent (Session Planning) here. Users can drill into a specific session's
+// day plans from there if they need the per-day staffing / transport view.
 const INLINE_MODULES: Record<number, React.ComponentType<any>> = {
   1: DashboardPage,
   2: PopulationPage,
   3: HardToReachPage,
   4: SessionPlanningPage,
+  5: SessionPlanningPage,
+  6: VaccineCalculatorPage,
+  7: SocialMobilizationPage,
+  8: SessionPlanningPage,
+  9: BudgetPlanningPage,
   10: SupervisionPage,
+  11: ApprovalsPage,
+  12: ClientLogbookPage,
 };
 import {
   PHASES,
@@ -298,6 +316,19 @@ export default function MicroplanFlow() {
 
   const goModule = (step: MicroplanStepDef) => {
     navigate(withContext(step.basePath, facilityId, microplanId));
+  };
+
+  // Scroll the inline workspace into view so the user lands on the form
+  // straight after clicking the primary action. Falls back to navigating
+  // to the full page in the unlikely case no inline module is mapped.
+  const focusInlineWorkspace = (step: MicroplanStepDef) => {
+    if (typeof window === "undefined") return;
+    const el = document.getElementById("flow-inline-workspace");
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+    } else {
+      goModule(step);
+    }
   };
 
   const setStep = (n: number) => {
@@ -585,11 +616,11 @@ export default function MicroplanFlow() {
               <Button
                 type="button"
                 size="lg"
-                onClick={() => goModule(current)}
+                onClick={() => INLINE_MODULES[activeStep] ? focusInlineWorkspace(current) : goModule(current)}
                 className={`flex-1 sm:flex-none rounded-2xl h-12 px-5 text-white ${currentPhase.accent.activeBg} hover:opacity-90 shadow-md ${currentPhase.accent.activeShadow}`}
                 data-testid="flow-open-module"
               >
-                {current.moduleLabel}
+                {INLINE_MODULES[activeStep] ? "Fill in below" : current.moduleLabel}
                 <ArrowUpRight className="h-4 w-4 ml-2" />
               </Button>
               <div className="flex items-center gap-2 sm:ml-auto">
@@ -625,25 +656,26 @@ export default function MicroplanFlow() {
 
         {/* ============ INLINE LIVE MODULE ============ */}
         {INLINE_MODULES[activeStep] && (
-          <Card className="rounded-3xl border bg-background/80 backdrop-blur shadow-sm overflow-hidden">
+          <Card id="flow-inline-workspace" className="rounded-3xl border bg-background/80 backdrop-blur shadow-sm overflow-hidden scroll-mt-4">
             <CardContent className="p-0">
               <div className={`flex items-center gap-2 px-4 sm:px-5 py-3 border-b ${currentPhase.accent.bg} ${currentPhase.accent.border}`}>
                 <current.icon className={`h-4 w-4 ${currentPhase.accent.text}`} />
                 <span className={`text-xs font-bold uppercase tracking-wider ${currentPhase.accent.text}`}>
-                  Live workspace
+                  Capture here
                 </span>
                 <span className="text-[11px] text-muted-foreground truncate">
-                  {current.moduleLabel} — your edits save to the same tables you'd use on the full page
+                  Fill in this {current.moduleLabel.toLowerCase()} form — your edits save instantly to the same records used everywhere else.
                 </span>
                 <Button
                   type="button"
-                  variant="outline"
+                  variant="ghost"
                   size="sm"
-                  className="ml-auto h-7 rounded-full text-[11px]"
+                  className="ml-auto h-7 rounded-full text-[11px] text-muted-foreground"
                   onClick={() => goModule(current)}
                   data-testid="flow-open-full"
+                  title="Open this module on its own page"
                 >
-                  Open full page
+                  Pop out
                   <ArrowUpRight className="h-3 w-3 ml-1" />
                 </Button>
               </div>
