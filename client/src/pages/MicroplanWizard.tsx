@@ -51,8 +51,20 @@ import { usePersistedBasemap } from "@/hooks/usePersistedBasemap";
 import { canApproveSessionPlan } from "@/lib/permissions";
 import { FacilityCascadePicker } from "@/components/FacilityCascadePicker";
 import { DeleteConfirmDialog } from "@/components/DeleteConfirmDialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { getCachedPopulation, setCachedPopulation } from "@/lib/populationCache";
+import {
+  estimateCatchmentPopulation,
+  type CatchmentEstimateResult,
+} from "@/lib/worldpopCatchment";
 import type {
   Microplan,
   Facility,
@@ -2361,11 +2373,84 @@ function Step2({
   onRestoreVillage: (v: Village) => void;
 }) {
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
+  const { toast } = useToast();
+  const [estimate, setEstimate] = useState<
+    | {
+        index: number;
+        lat: number;
+        lng: number;
+        radiusKm: number;
+        status: "loading" | "done";
+        progress: { done: number; total: number };
+        result?: CatchmentEstimateResult;
+      }
+    | null
+  >(null);
+  const estimateAbortRef = useRef<AbortController | null>(null);
 
   const update = (i: number, patch: any) => {
     const next = [...communities];
     next[i] = { ...next[i], ...patch };
     setCommunities(next);
+  };
+
+  const runEstimate = async (index: number, radiusKm: number) => {
+    const c = communities[index];
+    if (!c) return;
+    const lat = parseFloat(c.latitude);
+    const lng = parseFloat(c.longitude);
+    if (isNaN(lat) || isNaN(lng)) return;
+    estimateAbortRef.current?.abort();
+    const ctrl = new AbortController();
+    estimateAbortRef.current = ctrl;
+    setEstimate({
+      index,
+      lat,
+      lng,
+      radiusKm,
+      status: "loading",
+      progress: { done: 0, total: 0 },
+    });
+    const result = await estimateCatchmentPopulation({
+      lat,
+      lng,
+      radiusKm,
+      signal: ctrl.signal,
+      onProgress: (done, total) => {
+        setEstimate((prev) =>
+          prev && prev.index === index && prev.radiusKm === radiusKm
+            ? { ...prev, progress: { done, total } }
+            : prev,
+        );
+      },
+    });
+    if (ctrl.signal.aborted) return;
+    setEstimate((prev) =>
+      prev && prev.index === index && prev.radiusKm === radiusKm
+        ? { ...prev, status: "done", result }
+        : prev,
+    );
+  };
+
+  const openEstimate = (index: number) => {
+    runEstimate(index, 2);
+  };
+  const closeEstimate = () => {
+    estimateAbortRef.current?.abort();
+    estimateAbortRef.current = null;
+    setEstimate(null);
+  };
+  const acceptEstimate = () => {
+    if (!estimate || estimate.result?.status !== "ok") return;
+    update(estimate.index, {
+      targetPopulation: String(estimate.result.total),
+      source: "worldpop",
+    });
+    toast({
+      title: "Estimate applied",
+      description: `Target population set to ${estimate.result.total.toLocaleString()} from WorldPop (${estimate.radiusKm} km).`,
+    });
+    closeEstimate();
   };
   const add = (lat?: number, lng?: number) => {
     const newRow: any = {
@@ -2488,12 +2573,32 @@ function Step2({
                     </Select>
                   </td>
                   <td className="p-1">
-                    <Input
-                      type="number"
-                      value={c.targetPopulation}
-                      onChange={(e) => update(i, { targetPopulation: e.target.value })}
-                      onClick={(e) => e.stopPropagation()}
-                    />
+                    <div className="flex items-center gap-1">
+                      <Input
+                        type="number"
+                        value={c.targetPopulation}
+                        onChange={(e) => update(i, { targetPopulation: e.target.value })}
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        disabled={!hasCoords}
+                        title={
+                          hasCoords
+                            ? "Estimate from map (WorldPop)"
+                            : "Drop a pin first to estimate from map"
+                        }
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openEstimate(i);
+                        }}
+                        data-testid={`button-estimate-from-map-${i}`}
+                      >
+                        Estimate
+                      </Button>
+                    </div>
                   </td>
                   <td className="p-1">
                     <Select value={c.source} onValueChange={(v) => update(i, { source: v })}>
@@ -2553,6 +2658,120 @@ function Step2({
           </tbody>
         </table>
       </div>
+
+      <Dialog
+        open={estimate !== null}
+        onOpenChange={(open) => {
+          if (!open) closeEstimate();
+        }}
+      >
+        <DialogContent data-testid="dialog-estimate-catchment">
+          <DialogHeader>
+            <DialogTitle>Estimate population from map</DialogTitle>
+            <DialogDescription>
+              {estimate && (
+                <>
+                  Summing WorldPop 1&nbsp;km cells inside a circle around{" "}
+                  <span className="font-mono">
+                    {estimate.lat.toFixed(4)}, {estimate.lng.toFixed(4)}
+                  </span>
+                  .
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          {estimate && (
+            <div className="space-y-3">
+              <div>
+                <Label className="text-xs uppercase text-muted-foreground">
+                  Catchment radius
+                </Label>
+                <div className="mt-1 flex gap-2">
+                  {[1, 2, 3].map((r) => (
+                    <Button
+                      key={r}
+                      type="button"
+                      size="sm"
+                      variant={estimate.radiusKm === r ? "default" : "outline"}
+                      onClick={() => runEstimate(estimate.index, r)}
+                      disabled={estimate.status === "loading"}
+                      data-testid={`button-catchment-radius-${r}`}
+                    >
+                      {r} km
+                    </Button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-md border bg-muted/30 p-3 text-sm">
+                {estimate.status === "loading" && (
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Sampling WorldPop cells… ({estimate.progress.done}
+                    {estimate.progress.total > 0
+                      ? ` / ${estimate.progress.total}`
+                      : ""}
+                    )
+                  </div>
+                )}
+                {estimate.status === "done" && estimate.result?.status === "ok" && (
+                  <div data-testid="text-catchment-estimate">
+                    <div className="text-2xl font-semibold">
+                      ≈ {estimate.result.total.toLocaleString()} people
+                    </div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      {estimate.result.sampledCells} cell
+                      {estimate.result.sampledCells === 1 ? "" : "s"} summed
+                      {estimate.result.nodataCells > 0 &&
+                        ` · ${estimate.result.nodataCells} no-data`}
+                      {estimate.result.errorCells > 0 &&
+                        ` · ${estimate.result.errorCells} failed`}
+                      <br />
+                      Source: WorldPop 2020, 1&nbsp;km grid
+                    </div>
+                  </div>
+                )}
+                {estimate.status === "done" &&
+                  estimate.result?.status === "nodata" && (
+                    <div className="text-muted-foreground">
+                      No population data for cells in this area.
+                    </div>
+                  )}
+                {estimate.status === "done" &&
+                  estimate.result?.status === "error" && (
+                    <div className="text-destructive">
+                      {estimate.result.message}
+                    </div>
+                  )}
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={closeEstimate}
+              data-testid="button-catchment-cancel"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={acceptEstimate}
+              disabled={
+                !estimate ||
+                estimate.status !== "done" ||
+                estimate.result?.status !== "ok"
+              }
+              data-testid="button-catchment-accept"
+            >
+              Use this estimate
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
