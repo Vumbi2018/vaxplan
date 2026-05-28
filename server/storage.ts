@@ -96,7 +96,7 @@ import {
 } from "@shared/schema";
 import type { UserRole } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, desc, isNull } from "drizzle-orm";
+import { eq, and, desc, isNull, inArray } from "drizzle-orm";
 
 export interface IStorage {
   // Users (cross-tenant operations — user identity is global, tenant assigned separately)
@@ -214,7 +214,7 @@ export interface IStorage {
   updateSupervisionVisit(tenantId: string, id: number, data: Partial<InsertSupervisionVisit>): Promise<SupervisionVisit | undefined>;
   deleteSupervisionVisit(tenantId: string, id: number): Promise<boolean>;
 
-  listQuarterlyReviews(tenantId: string, filters?: { facilityId?: number; year?: number; quarter?: number }): Promise<QuarterlyReview[]>;
+  listQuarterlyReviews(tenantId: string, filters?: { facilityId?: number; year?: number; quarter?: number }): Promise<(QuarterlyReview & { updatedByName: string | null; createdByName: string | null })[]>;
   getQuarterlyReview(tenantId: string, facilityId: number, year: number, quarter: number): Promise<QuarterlyReview | undefined>;
   upsertQuarterlyReview(tenantId: string, userId: string | null, data: InsertQuarterlyReview): Promise<QuarterlyReview>;
 
@@ -1109,16 +1109,37 @@ export class DatabaseStorage implements IStorage {
   async listQuarterlyReviews(
     tenantId: string,
     filters?: { facilityId?: number; year?: number; quarter?: number },
-  ): Promise<QuarterlyReview[]> {
+  ): Promise<(QuarterlyReview & { updatedByName: string | null; createdByName: string | null })[]> {
     const conds: any[] = [];
     if (filters?.facilityId) conds.push(eq(quarterlyReviews.facilityId, filters.facilityId));
     if (filters?.year) conds.push(eq(quarterlyReviews.year, filters.year));
     if (filters?.quarter) conds.push(eq(quarterlyReviews.quarter, filters.quarter));
-    return await db
+    const rows = await db
       .select()
       .from(quarterlyReviews)
       .where(withTenant(quarterlyReviews, tenantId, conds.length ? and(...conds) : undefined))
-      .orderBy(desc(quarterlyReviews.updatedAt));
+      .orderBy(desc(quarterlyReviews.year), desc(quarterlyReviews.quarter), desc(quarterlyReviews.updatedAt));
+    const userIds = new Set<string>();
+    for (const r of rows) {
+      if (r.updatedByUserId) userIds.add(r.updatedByUserId);
+      if (r.createdByUserId) userIds.add(r.createdByUserId);
+    }
+    const nameById = new Map<string, string>();
+    if (userIds.size > 0) {
+      const us = await db
+        .select({ id: users.id, firstName: users.firstName, lastName: users.lastName, email: users.email })
+        .from(users)
+        .where(inArray(users.id, Array.from(userIds)));
+      for (const u of us) {
+        const full = [u.firstName, u.lastName].filter(Boolean).join(" ").trim();
+        nameById.set(u.id, full || u.email || u.id);
+      }
+    }
+    return rows.map((r) => ({
+      ...r,
+      updatedByName: r.updatedByUserId ? (nameById.get(r.updatedByUserId) ?? null) : null,
+      createdByName: r.createdByUserId ? (nameById.get(r.createdByUserId) ?? null) : null,
+    }));
   }
 
   async getQuarterlyReview(

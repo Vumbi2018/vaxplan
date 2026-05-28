@@ -19,7 +19,15 @@ import {
   MessageSquare,
   Send,
   Loader2,
+  History,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -59,6 +67,13 @@ interface QuarterlyReview {
   correctiveActions: string;
   nextSurveyDate: string | null;
   updatedAt: string;
+  updatedByName: string | null;
+  createdByName: string | null;
+}
+
+function previousYearQuarter(year: number, quarter: number) {
+  if (quarter === 1) return { year: year - 1, quarter: 4 };
+  return { year, quarter: quarter - 1 };
 }
 
 const ANTIGEN_OPTIONS = [
@@ -271,6 +286,48 @@ export default function Defaulters() {
   });
   const existingReview = reviewRows[0] ?? null;
 
+  // Fetch all past reviews for the facility (no year/quarter filter) so we can
+  // show the previous quarter's note above the form and a short history below.
+  const historyQueryString = useMemo(() => {
+    if (!reviewFacilityId) return "";
+    const p = new URLSearchParams();
+    p.set("facilityId", String(reviewFacilityId));
+    return `?${p.toString()}`;
+  }, [reviewFacilityId]);
+
+  const { data: historyRows = [] } = useQuery<QuarterlyReview[]>({
+    queryKey: ["/api/quarterly-reviews", historyQueryString, "history"],
+    queryFn: async () => {
+      if (!reviewFacilityId) return [];
+      const res = await fetch(`/api/quarterly-reviews${historyQueryString}`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to load review history");
+      return (await res.json()) as QuarterlyReview[];
+    },
+    enabled: !!reviewFacilityId,
+  });
+
+  const prev = previousYearQuarter(year, quarter);
+  const previousReview = useMemo(
+    () =>
+      historyRows.find(
+        (r) => r.year === prev.year && r.quarter === prev.quarter,
+      ) ?? null,
+    [historyRows, prev.year, prev.quarter],
+  );
+  // Last 4 quarters strictly prior to the current quarter.
+  const pastReviews = useMemo(
+    () =>
+      historyRows
+        .filter(
+          (r) => r.year < year || (r.year === year && r.quarter < quarter),
+        )
+        .slice(0, 4),
+    [historyRows, year, quarter],
+  );
+  const [pastOpen, setPastOpen] = useState(false);
+
   const [driver1, setDriver1] = useState("");
   const [driver2, setDriver2] = useState("");
   const [driver3, setDriver3] = useState("");
@@ -453,6 +510,57 @@ export default function Defaulters() {
             </div>
           ) : (
             <>
+              {previousReview && (
+                <div
+                  className="rounded-md border border-muted bg-muted/40 p-3 space-y-2"
+                  data-testid="panel-previous-quarter-review"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-sm font-medium">
+                      Previous quarter — Q{previousReview.quarter} {previousReview.year}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      Saved by {previousReview.updatedByName ?? previousReview.createdByName ?? "—"}
+                      {" · "}
+                      {formatRelative(previousReview.updatedAt)}
+                    </div>
+                  </div>
+                  {Array.isArray(previousReview.topDrivers) && previousReview.topDrivers.length > 0 ? (
+                    <div>
+                      <div className="text-xs uppercase text-muted-foreground tracking-wide mb-1">
+                        Top drivers
+                      </div>
+                      <ul className="list-disc list-inside text-sm space-y-0.5">
+                        {previousReview.topDrivers.map((d, i) => (
+                          <li key={i}>{d}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                  {previousReview.correctiveActions ? (
+                    <div>
+                      <div className="text-xs uppercase text-muted-foreground tracking-wide mb-1">
+                        Corrective actions
+                      </div>
+                      <div className="text-sm whitespace-pre-wrap">
+                        {previousReview.correctiveActions}
+                      </div>
+                    </div>
+                  ) : null}
+                  {previousReview.nextSurveyDate ? (
+                    <div className="text-sm">
+                      <span className="text-xs uppercase text-muted-foreground tracking-wide mr-2">
+                        Next survey
+                      </span>
+                      {new Date(previousReview.nextSurveyDate).toLocaleDateString()}
+                    </div>
+                  ) : null}
+                  <div className="text-xs text-muted-foreground italic">
+                    Read-only. Use this to carry forward or check off actions in this quarter's plan below.
+                  </div>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div className="space-y-1">
                   <Label htmlFor="driver1">Top dropout driver #1</Label>
@@ -531,8 +639,82 @@ export default function Defaulters() {
               {existingReview && (
                 <div className="text-xs text-muted-foreground">
                   Last saved{" "}
-                  {new Date(existingReview.updatedAt).toLocaleString()}.
+                  {new Date(existingReview.updatedAt).toLocaleString()}
+                  {existingReview.updatedByName
+                    ? ` by ${existingReview.updatedByName}`
+                    : ""}
+                  .
                 </div>
+              )}
+
+              {pastReviews.length > 0 && (
+                <Collapsible open={pastOpen} onOpenChange={setPastOpen}>
+                  <CollapsibleTrigger
+                    className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground"
+                    data-testid="toggle-past-reviews"
+                  >
+                    {pastOpen ? (
+                      <ChevronDown className="h-4 w-4" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4" />
+                    )}
+                    <History className="h-4 w-4" />
+                    Past reviews ({pastReviews.length})
+                  </CollapsibleTrigger>
+                  <CollapsibleContent
+                    className="pt-3 space-y-3"
+                    data-testid="list-past-reviews"
+                  >
+                    {pastReviews.map((r) => (
+                      <div
+                        key={r.id}
+                        className="rounded-md border border-muted p-3 space-y-2"
+                        data-testid={`past-review-${r.year}-q${r.quarter}`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="text-sm font-medium">
+                            Q{r.quarter} {r.year}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            Saved by {r.updatedByName ?? r.createdByName ?? "—"}
+                            {" · "}
+                            {new Date(r.updatedAt).toLocaleDateString()}
+                          </div>
+                        </div>
+                        {Array.isArray(r.topDrivers) && r.topDrivers.length > 0 ? (
+                          <div>
+                            <div className="text-xs uppercase text-muted-foreground tracking-wide mb-1">
+                              Top drivers
+                            </div>
+                            <ul className="list-disc list-inside text-sm space-y-0.5">
+                              {r.topDrivers.map((d, i) => (
+                                <li key={i}>{d}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        ) : null}
+                        {r.correctiveActions ? (
+                          <div>
+                            <div className="text-xs uppercase text-muted-foreground tracking-wide mb-1">
+                              Corrective actions
+                            </div>
+                            <div className="text-sm whitespace-pre-wrap">
+                              {r.correctiveActions}
+                            </div>
+                          </div>
+                        ) : null}
+                        {r.nextSurveyDate ? (
+                          <div className="text-sm">
+                            <span className="text-xs uppercase text-muted-foreground tracking-wide mr-2">
+                              Next survey
+                            </span>
+                            {new Date(r.nextSurveyDate).toLocaleDateString()}
+                          </div>
+                        ) : null}
+                      </div>
+                    ))}
+                  </CollapsibleContent>
+                </Collapsible>
               )}
             </>
           )}
