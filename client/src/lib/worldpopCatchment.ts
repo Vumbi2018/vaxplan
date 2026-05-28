@@ -53,6 +53,16 @@ async function fetchCellValue(
   return num;
 }
 
+export type CatchmentCell = {
+  lat: number;
+  lng: number;
+  latStepDeg: number;
+  lngStepDeg: number;
+  status: "ok" | "nodata" | "error";
+  value?: number;
+  cached?: boolean;
+};
+
 export type CatchmentEstimateResult =
   | {
       status: "ok";
@@ -64,9 +74,10 @@ export type CatchmentEstimateResult =
       errorCells: number;
       partial: boolean;
       offline: boolean;
+      cells: CatchmentCell[];
     }
-  | { status: "nodata" }
-  | { status: "error"; message: string; offline?: boolean };
+  | { status: "nodata"; cells: CatchmentCell[] }
+  | { status: "error"; message: string; offline?: boolean; cells?: CatchmentCell[] };
 
 export async function estimateCatchmentPopulation(opts: {
   lat: number;
@@ -88,64 +99,79 @@ export async function estimateCatchmentPopulation(opts: {
   const lngStepDeg = stepKm / (111 * Math.max(cosLat, 1e-6));
   const n = Math.max(1, Math.ceil(radiusKm / stepKm));
 
-  const points: Array<{ lat: number; lng: number }> = [];
+  const cells: CatchmentCell[] = [];
   for (let dy = -n; dy <= n; dy++) {
     for (let dx = -n; dx <= n; dx++) {
       const distKm = Math.hypot(dx * stepKm, dy * stepKm);
       if (distKm > radiusKm) continue;
-      points.push({
+      cells.push({
         lat: lat + dy * latStepDeg,
         lng: lng + dx * lngStepDeg,
+        latStepDeg,
+        lngStepDeg,
+        status: "nodata",
       });
     }
   }
-  if (points.length === 0) points.push({ lat, lng });
+  if (cells.length === 0) {
+    cells.push({ lat, lng, latStepDeg, lngStepDeg, status: "nodata" });
+  }
 
   const offline = typeof navigator !== "undefined" && navigator.onLine === false;
   const signal = opts.signal ?? new AbortController().signal;
-  const queue = [...points];
+  const queue: number[] = cells.map((_, i) => i);
   let done = 0;
   let nodata = 0;
   let errors = 0;
   let cachedCells = 0;
   let liveCells = 0;
   let total = 0;
-  const concurrency = Math.min(6, points.length);
+  const concurrency = Math.min(6, cells.length);
 
   async function worker() {
     while (queue.length > 0) {
       if (signal.aborted) return;
-      const p = queue.shift()!;
-      const cached = getCachedPopulation(p.lat, p.lng);
+      const idx = queue.shift()!;
+      const c = cells[idx];
+      const cached = getCachedPopulation(c.lat, c.lng);
       if (cached) {
+        c.status = "ok";
+        c.value = cached.value;
+        c.cached = true;
         total += cached.value;
         cachedCells++;
       } else if (offline) {
-        // No connectivity — record the gap so the caller can flag partial.
+        // No connectivity and no cached value — record the gap so the
+        // caller can flag partial.
+        c.status = "error";
         errors++;
       } else {
         try {
-          const v = await fetchCellValue(p.lat, p.lng, signal);
+          const v = await fetchCellValue(c.lat, c.lng, signal);
           if (v == null) {
+            c.status = "nodata";
             nodata++;
           } else {
+            c.status = "ok";
+            c.value = v;
             total += v;
             liveCells++;
-            setCachedPopulation(p.lat, p.lng, v);
+            setCachedPopulation(c.lat, c.lng, v);
           }
         } catch {
+          c.status = "error";
           errors++;
         }
       }
       done++;
-      opts.onProgress?.(done, points.length);
+      opts.onProgress?.(done, cells.length);
     }
   }
 
   await Promise.all(Array.from({ length: concurrency }, () => worker()));
 
   if (signal.aborted) {
-    return { status: "error", message: "Estimate cancelled." };
+    return { status: "error", message: "Estimate cancelled.", cells };
   }
   const sampledCells = cachedCells + liveCells;
   if (sampledCells === 0) {
@@ -154,12 +180,13 @@ export async function estimateCatchmentPopulation(opts: {
         status: "error",
         message: "Offline and no cached cells for this area yet.",
         offline: true,
+        cells,
       };
     }
-    if (errors === points.length) {
-      return { status: "error", message: "Couldn't reach WorldPop." };
+    if (errors === cells.length) {
+      return { status: "error", message: "Couldn't reach WorldPop.", cells };
     }
-    return { status: "nodata" };
+    return { status: "nodata", cells };
   }
   return {
     status: "ok",
@@ -171,5 +198,6 @@ export async function estimateCatchmentPopulation(opts: {
     errorCells: errors,
     partial: errors > 0,
     offline,
+    cells,
   };
 }

@@ -2840,7 +2840,15 @@ function Step2({
         onPinClick={(i) => setSelectedIdx(i)}
         catchmentPreview={
           estimate
-            ? { lat: estimate.lat, lng: estimate.lng, radiusKm: estimate.radiusKm }
+            ? {
+                lat: estimate.lat,
+                lng: estimate.lng,
+                radiusKm: estimate.radiusKm,
+                cells:
+                  estimate.status === "done" && estimate.result
+                    ? (estimate.result as any).cells ?? null
+                    : null,
+              }
             : null
         }
       />
@@ -3397,7 +3405,19 @@ function Step2Map({
   onMapClick: (lat: number, lng: number) => void;
   onPinDrag: (i: number, lat: number, lng: number) => void;
   onPinClick: (i: number) => void;
-  catchmentPreview?: { lat: number; lng: number; radiusKm: number } | null;
+  catchmentPreview?: {
+    lat: number;
+    lng: number;
+    radiusKm: number;
+    cells?: Array<{
+      lat: number;
+      lng: number;
+      latStepDeg: number;
+      lngStepDeg: number;
+      status: "ok" | "nodata" | "error";
+      value?: number;
+    }> | null;
+  } | null;
 }) {
   // Lazy-load Leaflet so the wizard's earlier steps don't pay the bundle cost.
   const [leaflet, setLeaflet] = useState<any>(null);
@@ -3463,7 +3483,7 @@ function Step2Map({
     );
   }
 
-  const { MapContainer, TileLayer, WMSTileLayer, Marker, Popup, Circle: LCircle, useMapEvents, useMap } = leaflet.rl;
+  const { MapContainer, TileLayer, WMSTileLayer, Marker, Popup, Circle: LCircle, Rectangle: LRectangle, Tooltip: LTooltip, useMapEvents, useMap } = leaflet.rl;
 
   function Recenter({ center }: { center: [number, number] }) {
     const map = useMap();
@@ -3710,6 +3730,63 @@ function Step2Map({
           </Popup>
         )}
 
+        {catchmentPreview?.cells && catchmentPreview.cells.length > 0 && (() => {
+          const okValues = catchmentPreview.cells
+            .filter((c) => c.status === "ok" && typeof c.value === "number")
+            .map((c) => c.value as number);
+          const maxV = okValues.length > 0 ? Math.max(...okValues, 1) : 1;
+          const ramp = ["#fee5d9", "#fcae91", "#fb6a4a", "#de2d26", "#a50f15"];
+          const colorFor = (v: number) => {
+            if (maxV <= 0) return ramp[0];
+            const t = Math.min(1, v / maxV);
+            const idx = Math.min(ramp.length - 1, Math.floor(t * ramp.length));
+            return ramp[idx];
+          };
+          return catchmentPreview.cells.map((c, i) => {
+            const bounds: [[number, number], [number, number]] = [
+              [c.lat - c.latStepDeg / 2, c.lng - c.lngStepDeg / 2],
+              [c.lat + c.latStepDeg / 2, c.lng + c.lngStepDeg / 2],
+            ];
+            const isOk = c.status === "ok" && typeof c.value === "number";
+            const isError = c.status === "error";
+            const fillColor = isOk
+              ? colorFor(c.value as number)
+              : isError
+                ? "#dc2626"
+                : "#9ca3af";
+            const strokeColor = isOk ? "#7f1d1d" : isError ? "#7f1d1d" : "#6b7280";
+            return (
+              <LRectangle
+                key={`cell-${i}`}
+                bounds={bounds}
+                pathOptions={{
+                  color: strokeColor,
+                  weight: 1,
+                  opacity: isOk ? 0.6 : 0.8,
+                  fillColor,
+                  fillOpacity: isOk ? 0.55 : 0.25,
+                  dashArray: isOk ? undefined : "3 3",
+                }}
+              >
+                <LTooltip direction="top" sticky>
+                  <div className="text-xs">
+                    {isOk ? (
+                      <>
+                        <strong>{Math.round(c.value as number).toLocaleString()}</strong>{" "}
+                        people/km²
+                      </>
+                    ) : isError ? (
+                      <span>Lookup failed</span>
+                    ) : (
+                      <span>No data</span>
+                    )}
+                  </div>
+                </LTooltip>
+              </LRectangle>
+            );
+          });
+        })()}
+
         {catchmentPreview && (
           <LCircle
             center={[catchmentPreview.lat, catchmentPreview.lng]}
@@ -3718,7 +3795,7 @@ function Step2Map({
               color: "#2563eb",
               weight: 2,
               fillColor: "#2563eb",
-              fillOpacity: 0.15,
+              fillOpacity: catchmentPreview.cells && catchmentPreview.cells.length > 0 ? 0 : 0.15,
             }}
           />
         )}
