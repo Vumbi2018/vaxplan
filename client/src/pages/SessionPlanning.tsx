@@ -61,6 +61,7 @@ import {
   CheckCircle2,
   AlertTriangle,
   History as HistoryIcon,
+  X,
 } from "lucide-react";
 import {
   insertSessionPlanSchema,
@@ -116,6 +117,11 @@ export default function SessionPlanning({
   // prefilled from an unserved-place pin on the live map.
   const [createProximity, setCreateProximity] = useState<{ nearby: any[]; reason?: string } | null>(null);
   const [createProximityChecking, setCreateProximityChecking] = useState(false);
+  // Task #100 — Villages auto-attached to the new session from the "Plan a
+  // session here" / "Plan follow-up" flow. Stored as {id, name} chips so the
+  // user can see (and remove) the link before saving. Persisted into
+  // session_villages by POST /api/sessions when present.
+  const [attachedVillages, setAttachedVillages] = useState<Array<{ id: number; name: string }>>([]);
   const isDetailMode = lockedMicroplanId != null;
   const parentMicroplanTypeForRoute: "facility_routine" | "sia_campaign" =
     planTypeFilter === "campaign" ? "sia_campaign" : "facility_routine";
@@ -432,6 +438,12 @@ export default function SessionPlanning({
         : "Outreach";
     form.setValue("name", `${prefix} — ${unservedPrefill.name}`);
     form.setValue("sessionType", "outreach" as any);
+    // Task #100 — auto-attach the picked village so the user doesn't have to
+    // remember to re-select it before saving. They can still remove the chip
+    // in the dialog if they don't want the link.
+    if (unservedPrefill.villageId != null) {
+      setAttachedVillages([{ id: unservedPrefill.villageId, name: unservedPrefill.name }]);
+    }
     setDialogOpen(true);
   }, [unservedPrefill, isDetailMode, isCreator, lockedParentForPrefill]);
 
@@ -537,6 +549,9 @@ export default function SessionPlanning({
         microplanId: undefined as any,
         scheduledDate: undefined as any,
       });
+      // Task #100 — clear the auto-attached village chips so they don't leak
+      // into the next "New session" dialog.
+      setAttachedVillages([]);
       toast({
         title: navigator.onLine ? "Session saved" : "Session queued offline",
         description: navigator.onLine
@@ -921,6 +936,11 @@ export default function SessionPlanning({
       });
       return;
     }
+    // Task #100 — Carry the auto-attached village IDs through to the server so
+    // they're written into session_villages on create.
+    if (attachedVillages.length > 0) {
+      (data as any).villageIds = attachedVillages.map((v) => v.id);
+    }
     createMutation.mutate(data);
   };
 
@@ -1069,7 +1089,15 @@ export default function SessionPlanning({
         </div>
 
         {isCreator && (
-          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+          <Dialog
+            open={dialogOpen}
+            onOpenChange={(open) => {
+              setDialogOpen(open);
+              // Task #100 — when the user dismisses the dialog without saving,
+              // forget the auto-attached village so reopening starts clean.
+              if (!open) setAttachedVillages([]);
+            }}
+          >
             <DialogTrigger asChild>
               <Button
                 data-testid="button-add-session"
@@ -1327,6 +1355,41 @@ export default function SessionPlanning({
                       </FormItem>
                     )}
                   />
+
+                  {attachedVillages.length > 0 && (
+                    <div className="rounded-md border p-3 space-y-2" data-testid="attached-villages-panel">
+                      <div className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+                        <MapPin className="h-3.5 w-3.5" />
+                        Villages attached to this session
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {attachedVillages.map((v) => (
+                          <Badge
+                            key={v.id}
+                            variant="secondary"
+                            className="gap-1 pl-2 pr-1 py-1"
+                            data-testid={`attached-village-${v.id}`}
+                          >
+                            <span>{v.name}</span>
+                            <button
+                              type="button"
+                              className="ml-0.5 rounded-sm hover:bg-muted-foreground/20 p-0.5"
+                              aria-label={`Remove ${v.name}`}
+                              data-testid={`remove-attached-village-${v.id}`}
+                              onClick={() =>
+                                setAttachedVillages((prev) => prev.filter((x) => x.id !== v.id))
+                              }
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </Badge>
+                        ))}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        These villages will be linked to the session on save. Remove a chip if you don't want it attached.
+                      </div>
+                    </div>
+                  )}
 
                   {unservedPrefill && (
                     <div className="rounded-md border p-3 bg-red-50 dark:bg-red-950/20 space-y-2">

@@ -3974,6 +3974,36 @@ export async function registerRoutes(
       };
 
       const session = await storage.createSessionPlan(req.tenantId, inherited);
+
+      // Task #100 — Persist the session ↔ village links into the junction table
+      // when the client provides `villageIds` on the create payload (e.g. when
+      // the "Plan a session here" flow auto-attaches the picked village). We
+      // scope the IDs to the tenant first so a crafted payload can't link
+      // foreign villages.
+      const rawVillageIds = Array.isArray(req.body?.villageIds) ? req.body.villageIds : [];
+      const villageIdSet = Array.from(new Set(
+        rawVillageIds
+          .map((x: any) => Number(x))
+          .filter((n: number) => Number.isFinite(n) && n > 0),
+      )) as number[];
+      if (villageIdSet.length > 0) {
+        const tenantVillages = await db
+          .select({ id: villages.id })
+          .from(villages)
+          .where(and(eq(villages.tenantId, req.tenantId), inArray(villages.id, villageIdSet)));
+        const validIds = tenantVillages.map((v) => v.id);
+        if (validIds.length > 0) {
+          await db.insert(sessionVillages).values(
+            validIds.map((vid, idx) => ({
+              tenantId: req.tenantId,
+              sessionId: session.id,
+              villageId: vid,
+              orderIndex: idx,
+            })),
+          );
+        }
+      }
+
       await logAudit(req, "create", "session_plan", session.id, null, session);
       res.status(201).json(session);
     } catch (error) {
