@@ -92,6 +92,7 @@ export default function RedRedQGuidedWorkflow() {
   const { data: budgetItems = [] } = useQuery<any[]>({ queryKey: ["/api/budget-items"] });
   const { data: populationRows = [] } = useQuery<any[]>({ queryKey: ["/api/population"] });
   const { data: htrScores = [] } = useQuery<any[]>({ queryKey: ["/api/htr-scores"] });
+  const { data: supervisionVisits = [] } = useQuery<any[]>({ queryKey: ["/api/supervision-visits"] });
 
   const steps: Step[] = useMemo(() => {
     const currentYear = new Date().getFullYear();
@@ -167,6 +168,24 @@ export default function RedRedQGuidedWorkflow() {
     const step9Done = ["personnel", "transport", "supplies"].every((c) =>
       cats.some((k) => k.includes(c))
     );
+
+    // Step 10 — Supportive supervision: every facility with sessions this quarter has ≥1
+    // supervisory visit whose scheduledDate falls in the current quarter.
+    const qStart = new Date(currentYear, (currentQuarter - 1) * 3, 1);
+    const qEnd = new Date(currentYear, currentQuarter * 3, 1);
+    const quarterVisitFacilityIds = new Set(
+      (supervisionVisits || [])
+        .filter((v: any) => {
+          const d = v.scheduledDate ? new Date(v.scheduledDate) : null;
+          return d && d >= qStart && d < qEnd;
+        })
+        .map((v: any) => v.facilityId)
+    );
+    const supFacilitiesCovered = Array.from(facilitiesWithSessions).filter((fid) =>
+      quarterVisitFacilityIds.has(fid)
+    );
+    const step10Done =
+      facilitiesWithSessions.size > 0 && supFacilitiesCovered.length === facilitiesWithSessions.size;
 
     // Step 11 — Approval: any current-quarter microplan reached approved.
     const step11Done = currentMicroplans.some((m: any) => m.status === "approved" || m.status === "locked");
@@ -391,15 +410,16 @@ export default function RedRedQGuidedWorkflow() {
           "Capture follow-up actions after every visit.",
         ],
         outputs: [
-          "Supervisory visit calendar with checklist references.",
-          "(blocked on supervisory_visits entity).",
+          "≥1 supervisory visit scheduled this quarter for every facility with sessions.",
+          "Checklist captured (Yes / No / N/A) with a derived score and follow-up actions per visit.",
         ],
-        module: "Supportive Supervision (planned)",
-        href: "/standards-alignment",
+        module: "Supportive Supervision",
+        href: "/supervision",
         icon: ClipboardCheck,
-        status: "pending",
-        statusDetail: "Not yet wired — completion check ships with supervisory_visits",
-        pendingTask: "Supportive supervision visits + checklist",
+        status: step10Done ? "done" : "todo",
+        statusDetail: facilitiesWithSessions.size === 0
+          ? "No sessions this quarter — schedule sessions before planning supervision"
+          : `${supFacilitiesCovered.length} / ${facilitiesWithSessions.size} facilities with sessions have a supervisory visit scheduled for Q${currentQuarter}`,
       },
       {
         num: 11,
@@ -453,7 +473,7 @@ export default function RedRedQGuidedWorkflow() {
         pendingTask: "Zero-dose children indicator + defaulter list + DTP dropout view are pending",
       },
     ];
-  }, [microplans, sessions, villages, mobilization, budgetItems, populationRows, htrScores, canApprove]);
+  }, [microplans, sessions, villages, mobilization, budgetItems, populationRows, htrScores, supervisionVisits, canApprove]);
 
   const doneCount = steps.filter((s) => s.status === "done").length;
   const pendingCount = steps.filter((s) => s.status === "pending").length;

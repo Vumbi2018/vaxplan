@@ -119,10 +119,10 @@ Each step lists: **Purpose · What to do · Required output · VaxPlan module ·
 
 ### Step 10 — Supportive supervision plan *(RED 2)*
 - **Purpose.** Schedule quarterly supervisory visits using a standard checklist.
-- **What to do.** Per facility schedule at least one supervisory visit per quarter, name the supervisor, and define the checklist.
-- **Required output.** Supervisory visit calendar with checklist references.
-- **VaxPlan module.** *Pending* — tracked as **"Supportive supervision visits + checklist"**.
-- **Done when.** Supportive-supervision entity ships and at least one visit is scheduled this quarter.
+- **What to do.** Per facility schedule at least one supervisory visit per quarter, name the supervisor, conduct the visit and capture the 12-item WHO RED checklist (Yes / No / N/A) plus findings and follow-up actions.
+- **Required output.** Supervisory visit calendar with checklist scores and follow-up actions for the quarter.
+- **VaxPlan module.** `Supportive Supervision` (`/supervision`), backed by the `supervision_visits` table.
+- **Done when.** Every facility with sessions this quarter has at least one supervisory visit scheduled (or conducted) with `scheduledDate` in the current quarter.
 
 ### Step 11 — Approval cascade *(RED 5)*
 - **Purpose.** Move the microplan from facility draft → district → provincial → national approval.
@@ -178,7 +178,7 @@ A microplan is **complete** (ready for approval submission) when **all twelve** 
 11. The approval has reached the tenant's terminal review level (Step 11).
 12. At least one session this quarter has actual doses recorded *and* a defaulter review has been run (Step 12).
 
-VaxPlan's guided stepper computes 1–4, 6, 7, 9, 11 from existing data today; 5, 8, 10, 12 are marked **"Pending — tracked in [task title]"** until the underlying features ship.
+VaxPlan's guided stepper computes 1–4, 6, 7, 9, 10, 11 from existing data today; 5, 8, 12 are marked **"Pending — tracked in [task title]"** until the underlying features ship.
 
 ---
 
@@ -195,7 +195,7 @@ VaxPlan's guided stepper computes 1–4, 6, 7, 9, 11 from existing data today; 5
 | 7    | Social Mobilization                                    | `/mobilization`                           |
 | 8    | Session Day Plans                                      | `/sessions/:id/day-plans`                 |
 | 9    | Budget Planning                                        | `/budget`                                 |
-| 10   | *(pending — supportive supervision visits)*            | n/a                                       |
+| 10   | Supportive Supervision                                 | `/supervision`                            |
 | 11   | Approvals                                              | `/approvals`                              |
 | 12   | Client Logbook, Dashboard                              | `/clients`, `/`                           |
 

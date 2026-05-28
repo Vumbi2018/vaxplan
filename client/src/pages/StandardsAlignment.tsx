@@ -162,7 +162,7 @@ const SECTIONS: Section[] = [
       { area: "RED 1 · Catchment population denominators with source [RED-Q Identify]", status: "partial", evidence: "villages table + Population page. Guided workflow Step 2 checks every village has a population source.", recommendation: "Require populationSource on every village row at write time." },
       { area: "RED 1 · Missed-community + zero-dose tagging [RED-Q Identify + Reach]", status: "gap", recommendation: "Add a `missedCommunity` boolean + `zeroDoseBurden` int on villages and surface them in Hard-to-Reach (guided workflow Step 3)." },
       // RED 2 — Supportive supervision
-      { area: "RED 2 · Supportive supervision visits + checklist", status: "gap", recommendation: "Add `supervisory_visits` (date, supervisor, facility, checklist score, follow-up actions). Guided workflow Step 10 is marked 'not yet wired' until this ships." },
+      { area: "RED 2 · Supportive supervision visits + checklist", status: "aligned", evidence: "`supervision_visits` table + Supportive Supervision page (`/supervision`) capture scheduled / conducted visits, a 12-item WHO RED checklist (Yes / No / N/A), a derived score, findings and follow-up actions. Guided workflow Step 10 flips green when every facility with sessions has ≥1 visit scheduled for the current quarter." },
       // RED 3 — Community links
       { area: "RED 3 · Community links via mobilization activities [RED-Q Reach]", status: "partial", evidence: "mobilizationActivities table + Social Mobilization page. Guided workflow Step 7 checks ≥1 activity per scheduled session.", recommendation: "Add named community focal point + dialogue / feedback capture." },
       // RED 4 — Monitoring for action
@@ -189,7 +189,7 @@ const SECTIONS: Section[] = [
       { area: "RED 1 · Sessions planned vs held (per facility, per quarter)", status: "partial", evidence: "sessions + sessionStatus capture scheduled vs conducted; guided workflow Step 4 + 12.", recommendation: "Add a per-facility 'sessions held / planned' tile on Dashboard." },
       { area: "RED 1 · Missed-community % (no session in past 12 mo)", status: "gap", recommendation: "RED-Q Measure flagship. Derive from village ↔ sessions join over a rolling 12-mo window." },
       // RED 2 — Supportive supervision
-      { area: "RED 2 · Supervisory visits completed vs planned", status: "gap", recommendation: "Blocked on the supportive_supervision entity (see Section 3 RED 2 row)." },
+      { area: "RED 2 · Supervisory visits completed vs planned", status: "aligned", evidence: "Supportive Supervision page (`/supervision`) tiles count scheduled / conducted / missed / cancelled visits and an average checklist score from the `supervision_visits` table." },
       // RED 3 — Community links
       { area: "RED 3 · Mobilization activities per session", status: "aligned", evidence: "Computed by guided workflow Step 7: mobilization rows / scheduled sessions for the current quarter." },
       // RED 4 — Monitoring for action (computes coverage / dropout / zero-dose)
