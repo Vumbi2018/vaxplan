@@ -1,0 +1,32 @@
+injected.js:214 
+ GET https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit…Id=d2777d28-6bfa-4f64-9359-8e34e6b2afa6&since=2026-05-28T05%3A57%3A23.605Z 500 (Internal Server Error)
+
+injected.js:37 [SyncEngine] sync failed: Error: Pull failed: 500
+    at SyncEngine.pull (syncEngine.ts:164:25)
+    at async SyncEngine.sync (syncEngine.ts:253:7)
+0s89n4x~a1gkv.js:2 WebSocket is already in CLOSING or CLOSED state.
+injected.js:214 
+ GET https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit…Id=d2777d28-6bfa-4f64-9359-8e34e6b2afa6&since=2026-05-28T05%3A57%3A23.605Z 500 (Internal Server Error)
+injected.js:37 [SyncEngine] sync failed: Error: Pull failed: 500
+    at SyncEngine.pull (syncEngine.ts:164:25)
+    at async SyncEngine.sync (syncEngine.ts:253:7)
+07m8a27.qx9xv.js:21 Haven't heard from the server in a while, resetting connection...
+Achievement_Bell_Replit.wav:1 
+ GET https://replit.com/public/sounds/Achievement_Bell_Replit.wav net::ERR_CACHE_OPERATION_NOT_SUPPORTED
+07m8a27.qx9xv.js:21 Haven't heard from the server in a while, resetting connection...
+injected.js:214 
+ GET https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit…Id=d2777d28-6bfa-4f64-9359-8e34e6b2afa6&since=2026-05-28T05%3A57%3A23.605Z 500 (Internal Server Error)
+injected.js:37 [SyncEngine] sync failed: Error: Pull failed: 500
+    at SyncEngine.pull (syncEngine.ts:353:25)
+    at async SyncEngine.sync (syncEngine.ts:451:7)
+2
+07m8a27.qx9xv.js:21 Haven't heard from the server in a while, resetting connection...
+injected.js:214 
+ GET https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit…Id=d2777d28-6bfa-4f64-9359-8e34e6b2afa6&since=2026-05-28T05%3A57%3A23.605Z 500 (Internal Server Error)
+injected.js:37 [SyncEngine] sync failed: Error: Pull failed: 500
+    at SyncEngine.pull (syncEngine.ts:164:25)
+    at async SyncEngine.sync (syncEngine.ts:253:7)
+2
+07m8a27.qx9xv.js:21 Haven't heard from the server in a while, resetting connection...
+
+﻿
