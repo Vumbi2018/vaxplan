@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "Tb4EuGsstMvGRfqPJl99H"
+uri = "file://exports/VaxPlan-Stakeholder-Briefing.pptx"
+type = "slides"
+title = "VaxPlan — Stakeholder Briefing (PPTX)"
