@@ -84,6 +84,8 @@ export default function Settings() {
   const [zoom, setZoom] = useState("6");
   const [maxApprovalLevel, setMaxApprovalLevel] = useState("national");
   const [offlineStaleHours, setOfflineStaleHours] = useState("2");
+  const [brandLogoDataUrl, setBrandLogoDataUrl] = useState<string>("");
+  const [brandColor, setBrandColor] = useState<string>("#1e40af");
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -799,6 +801,8 @@ export default function Settings() {
         setLng(String(s.mapCenter[1]));
       }
       setZoom(String(s.mapZoom || "6"));
+      if (typeof s.brandLogoDataUrl === "string") setBrandLogoDataUrl(s.brandLogoDataUrl);
+      if (typeof s.brandColor === "string") setBrandColor(s.brandColor);
     }
   }, [tenant]);
 
@@ -838,7 +842,9 @@ export default function Settings() {
         pregnant: (parseFloat(pregnant) || 3.2) / 100,
         schoolEntry: (parseFloat(schoolEntry) || 2.7) / 100,
         schoolExit: s.demographics?.schoolExit || 0.022,
-      }
+      },
+      brandLogoDataUrl: brandLogoDataUrl || "",
+      brandColor: brandColor || "",
     };
     updateSettings.mutate({
       settings: updatedSettings
@@ -1345,6 +1351,87 @@ export default function Settings() {
                       placeholder="6"
                       className="font-mono text-sm"
                     />
+                  </div>
+                </div>
+              </div>
+
+              <Separator />
+
+              <div className="space-y-3">
+                <h3 className="text-sm font-semibold text-primary">Report Branding</h3>
+                <p className="text-[11px] text-muted-foreground">
+                  Used on the printable Gavi HSS funding report cover. Falls back to the plain VaxPlan header when unset.
+                </p>
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="brand-logo" className="text-xs">Ministry Logo (PNG/JPG, max 200&nbsp;KB)</Label>
+                    <Input
+                      id="brand-logo"
+                      type="file"
+                      accept="image/png,image/jpeg,image/svg+xml"
+                      disabled={!isNationalAdmin}
+                      data-testid="input-brand-logo"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        if (file.size > 200 * 1024) {
+                          toast({
+                            title: "Logo too large",
+                            description: "Please upload a file under 200 KB.",
+                            variant: "destructive",
+                          });
+                          e.target.value = "";
+                          return;
+                        }
+                        const reader = new FileReader();
+                        reader.onload = () => {
+                          setBrandLogoDataUrl(String(reader.result || ""));
+                        };
+                        reader.readAsDataURL(file);
+                      }}
+                    />
+                    {brandLogoDataUrl ? (
+                      <div className="flex items-center gap-3 pt-1">
+                        <img
+                          src={brandLogoDataUrl}
+                          alt="Tenant logo preview"
+                          className="h-12 w-12 object-contain border border-border rounded bg-white p-1"
+                          data-testid="img-brand-logo-preview"
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          disabled={!isNationalAdmin}
+                          onClick={() => setBrandLogoDataUrl("")}
+                          data-testid="button-clear-brand-logo"
+                        >
+                          Remove
+                        </Button>
+                      </div>
+                    ) : null}
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="brand-color" className="text-xs">Primary Brand Color</Label>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        id="brand-color"
+                        type="color"
+                        value={brandColor || "#1e40af"}
+                        disabled={!isNationalAdmin}
+                        onChange={(e) => setBrandColor(e.target.value)}
+                        className="h-10 w-16 p-1"
+                        data-testid="input-brand-color"
+                      />
+                      <Input
+                        value={brandColor}
+                        disabled={!isNationalAdmin}
+                        onChange={(e) => setBrandColor(e.target.value)}
+                        placeholder="#1e40af"
+                        className="font-mono text-sm"
+                        data-testid="input-brand-color-hex"
+                      />
+                    </div>
                   </div>
                 </div>
               </div>

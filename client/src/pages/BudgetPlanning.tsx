@@ -675,6 +675,18 @@ export default function BudgetPlanning() {
     const geoLabel = geoBits.length ? geoBits.join(" / ") : "All geographies";
     const tenantName = tenant?.name ?? "VaxPlan";
     const generatedAt = new Date().toLocaleString();
+    const tenantSettings = (tenant?.settings || {}) as Record<string, any>;
+    const rawBrandColor =
+      typeof tenantSettings.brandColor === "string" ? tenantSettings.brandColor.trim() : "";
+    const brandColor = /^#[0-9a-fA-F]{3,8}$/.test(rawBrandColor) ? rawBrandColor : "";
+    const rawBrandLogo =
+      typeof tenantSettings.brandLogoDataUrl === "string"
+        ? tenantSettings.brandLogoDataUrl.trim()
+        : "";
+    const brandLogo = /^data:image\/(png|jpe?g|svg\+xml|webp|gif);base64,/.test(rawBrandLogo)
+      ? rawBrandLogo
+      : "";
+    const headingColor = brandColor || "#333";
 
     const sourceOrder = ["government", "gavi", "who", "unicef", "other"];
 
@@ -762,17 +774,19 @@ export default function BudgetPlanning() {
 <style>
   @page { size: A4; margin: 18mm 14mm; }
   body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #111; font-size: 11px; margin: 0; padding: 16px; }
-  h1 { font-size: 18px; margin: 0 0 4px 0; }
-  h2 { font-size: 13px; margin: 18px 0 6px 0; border-bottom: 1px solid #999; padding-bottom: 2px; }
+  h1 { font-size: 18px; margin: 0 0 4px 0; color: ${headingColor}; }
+  h2 { font-size: 13px; margin: 18px 0 6px 0; border-bottom: 2px solid ${headingColor}; padding-bottom: 2px; color: ${headingColor}; }
   .meta { color: #444; font-size: 10px; margin-bottom: 4px; }
   .muted { color: #666; font-style: italic; }
   table { width: 100%; border-collapse: collapse; margin-top: 4px; page-break-inside: auto; }
   thead { display: table-header-group; }
   tr { page-break-inside: avoid; }
   th, td { border: 1px solid #bbb; padding: 4px 6px; text-align: left; vertical-align: top; }
-  th { background: #f1f1f1; font-weight: 600; }
+  th { background: ${brandColor ? brandColor : "#f1f1f1"}; color: ${brandColor ? "#fff" : "#111"}; font-weight: 600; }
   td.num, th.num { text-align: right; white-space: nowrap; }
-  .header { border-bottom: 2px solid #333; padding-bottom: 8px; margin-bottom: 12px; }
+  .header { border-bottom: 3px solid ${headingColor}; padding-bottom: 8px; margin-bottom: 12px; display: flex; align-items: center; gap: 14px; }
+  .header .brand-logo { max-height: 56px; max-width: 120px; object-fit: contain; }
+  .header .header-text { flex: 1; }
   .total-row td { font-weight: 600; background: #f7f7f7; }
   .print-hint { background: #fffbe6; border: 1px solid #ffe58f; padding: 8px 12px; margin-bottom: 12px; font-size: 11px; }
   @media print { .print-hint { display: none; } }
@@ -781,11 +795,14 @@ export default function BudgetPlanning() {
 <body>
   <div class="print-hint">Use your browser's <strong>Print</strong> dialog and choose "Save as PDF" to export.</div>
   <div class="header">
-    <h1>Gavi HSS Funding Report</h1>
-    <div class="meta"><strong>${escapeHtml(tenantName)}</strong></div>
-    <div class="meta">Quarter: Q${selectedQuarter} ${year}</div>
-    <div class="meta">Filter: ${escapeHtml(geoLabel)}</div>
-    <div class="meta">Generated: ${escapeHtml(generatedAt)}</div>
+    ${brandLogo ? `<img class="brand-logo" src="${escapeHtml(brandLogo)}" alt="${escapeHtml(tenantName)} logo" />` : ""}
+    <div class="header-text">
+      <h1>Gavi HSS Funding Report</h1>
+      <div class="meta"><strong>${escapeHtml(tenantName)}</strong></div>
+      <div class="meta">Quarter: Q${selectedQuarter} ${year}</div>
+      <div class="meta">Filter: ${escapeHtml(geoLabel)}</div>
+      <div class="meta">Generated: ${escapeHtml(generatedAt)}</div>
+    </div>
   </div>
 
   <h2>Summary by Funding Source</h2>
