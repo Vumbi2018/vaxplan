@@ -2360,6 +2360,10 @@ function Step2Map({
 }) {
   // Lazy-load Leaflet so the wizard's earlier steps don't pay the bundle cost.
   const [leaflet, setLeaflet] = useState<any>(null);
+  const [showPopulation, setShowPopulation] = useState(false);
+  const [populationUnavailable, setPopulationUnavailable] = useState(false);
+  const popErrorToastedRef = useRef(false);
+  const { toast } = useToast();
   useEffect(() => {
     let active = true;
     Promise.all([
@@ -2402,7 +2406,7 @@ function Step2Map({
     );
   }
 
-  const { MapContainer, TileLayer, Marker, Popup, useMapEvents, useMap } = leaflet.rl;
+  const { MapContainer, TileLayer, WMSTileLayer, Marker, Popup, useMapEvents, useMap } = leaflet.rl;
 
   function Recenter({ center }: { center: [number, number] }) {
     const map = useMap();
@@ -2453,6 +2457,30 @@ function Step2Map({
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           attribution='&copy; OpenStreetMap contributors'
         />
+        {showPopulation && !populationUnavailable && (
+          <WMSTileLayer
+            url="https://ogc.worldpop.org/geoserver/wpGlobal/ows"
+            layers="wpGlobal:ppp_2020_1km_Aggregated"
+            format="image/png"
+            transparent={true}
+            opacity={0.6}
+            version="1.3.0"
+            attribution="Population &copy; WorldPop"
+            eventHandlers={{
+              tileerror: () => {
+                if (popErrorToastedRef.current) return;
+                popErrorToastedRef.current = true;
+                setPopulationUnavailable(true);
+                setShowPopulation(false);
+                toast({
+                  title: "Population layer unavailable",
+                  description: "Couldn't load WorldPop tiles. The layer may be offline.",
+                  variant: "destructive",
+                });
+              },
+            }}
+          />
+        )}
         <ClickCatcher />
         <Recenter center={center} />
 
@@ -2507,6 +2535,47 @@ function Step2Map({
         {/* Unused colour locals kept for tree-shaking-friendly variable usage */}
         <span style={{ display: "none" }}>{[pinBlue, pinGreen, pinAmber].length}</span>
       </MapContainer>
+      <button
+        type="button"
+        onClick={() => {
+          if (populationUnavailable) return;
+          setShowPopulation((v) => !v);
+        }}
+        disabled={populationUnavailable}
+        title={
+          populationUnavailable
+            ? "Population layer unavailable offline."
+            : showPopulation
+            ? "Hide population density"
+            : "Show population density"
+        }
+        className={`absolute top-2 right-2 z-[400] rounded-full px-3 py-1 text-xs font-medium shadow transition-colors ${
+          populationUnavailable
+            ? "bg-muted text-muted-foreground cursor-not-allowed opacity-70"
+            : showPopulation
+            ? "bg-orange-600 text-white hover:bg-orange-700"
+            : "bg-background/90 text-foreground hover:bg-background"
+        }`}
+        data-testid="button-toggle-population"
+      >
+        Population
+      </button>
+      {showPopulation && !populationUnavailable && (
+        <div className="absolute bottom-2 right-2 z-[400] rounded-lg bg-background/90 px-2 py-1 text-[10px] shadow">
+          <div className="mb-1 font-medium">Population density</div>
+          <div
+            className="h-2 w-32 rounded"
+            style={{
+              background:
+                "linear-gradient(to right, #ffffcc, #ffeda0, #fed976, #feb24c, #fd8d3c, #fc4e2a, #e31a1c, #b10026)",
+            }}
+          />
+          <div className="mt-0.5 flex justify-between text-muted-foreground">
+            <span>Low</span>
+            <span>High</span>
+          </div>
+        </div>
+      )}
       <div className="absolute bottom-2 left-2 z-[400] flex flex-wrap gap-2 rounded-lg bg-background/90 px-2 py-1 text-[10px] shadow">
         <span className="flex items-center gap-1">
           <span className="inline-block h-2 w-2 rounded-full bg-green-600" />
