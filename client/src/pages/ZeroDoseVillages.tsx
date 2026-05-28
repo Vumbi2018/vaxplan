@@ -86,6 +86,7 @@ export default function ZeroDoseVillages() {
   const [antigenTouched, setAntigenTouched] = useState(false);
   const [year, setYear] = useState<number>(CURRENT_YEAR);
   const [quarter, setQuarter] = useState<number>(CURRENT_QUARTER);
+  const [outreachName, setOutreachName] = useState<string>("");
 
   // Keep antigen in sync with the indicator mode unless the planner has
   // explicitly picked one, so the one-click default flow still works.
@@ -168,11 +169,13 @@ export default function ZeroDoseVillages() {
 
   const createOutreach = useMutation({
     mutationFn: async () => {
+      const trimmedName = outreachName.trim();
       return await apiRequest<any>("POST", "/api/missed-communities/create-outreach", {
         villageIds: Array.from(selected),
         antigen,
         year,
         quarter,
+        ...(trimmedName ? { name: trimmedName } : {}),
       });
     },
     onSuccess: (res: any) => {
@@ -182,6 +185,7 @@ export default function ZeroDoseVillages() {
       });
       queryClient.invalidateQueries({ queryKey: ["/api/microplans"] });
       setSelected(new Set());
+      setOutreachName("");
       const first = res.microplans?.[0] ?? res.microplan;
       if (first?.id) setLocation(`/microplans/routine/${first.id}`);
     },
@@ -509,6 +513,16 @@ export default function ZeroDoseVillages() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Label className="text-[10px] uppercase text-muted-foreground">Name</Label>
+              <Input
+                value={outreachName}
+                onChange={(e) => setOutreachName(e.target.value)}
+                placeholder="Optional"
+                className="h-8 w-[180px] text-xs"
+                data-testid="input-outreach-name"
+              />
             </div>
             <div className="flex items-center gap-1.5">
               <Label className="text-[10px] uppercase text-muted-foreground">Year</Label>
