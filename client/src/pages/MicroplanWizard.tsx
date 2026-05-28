@@ -36,6 +36,7 @@ import {
   Pencil,
   ArrowLeft,
   AlertCircle,
+  X,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
@@ -219,6 +220,58 @@ function WhatToDo({ bullets }: { bullets: string[] }) {
   );
 }
 
+// Task #101 / #130 — context the wizard needs to send the user back to a
+// village session once the microplan exists. Persisted to sessionStorage so
+// it survives hard reloads and clean-URL navigations (e.g. `/microplan/new?id=`).
+type ReturnVillage = {
+  villageId: number;
+  name: string;
+  lat: number | null;
+  lng: number | null;
+  isHardToReach: boolean;
+};
+
+const RETURN_VILLAGE_STORAGE_PREFIX = "microplan:returnVillage:";
+const returnVillageStorageKey = (id: number | null) =>
+  `${RETURN_VILLAGE_STORAGE_PREFIX}${id ?? "new"}`;
+
+function readStoredReturnVillage(id: number | null): ReturnVillage | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(returnVillageStorageKey(id));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed.villageId !== "number") return null;
+    return {
+      villageId: parsed.villageId,
+      name: typeof parsed.name === "string" ? parsed.name : "",
+      lat: typeof parsed.lat === "number" ? parsed.lat : null,
+      lng: typeof parsed.lng === "number" ? parsed.lng : null,
+      isHardToReach: !!parsed.isHardToReach,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredReturnVillage(id: number | null, v: ReturnVillage) {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(returnVillageStorageKey(id), JSON.stringify(v));
+  } catch {
+    /* ignore quota / private-mode errors */
+  }
+}
+
+function clearStoredReturnVillage(id: number | null) {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.removeItem(returnVillageStorageKey(id));
+  } catch {
+    /* ignore */
+  }
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────
 export default function MicroplanWizard() {
   const { user } = useAuth();
@@ -242,23 +295,31 @@ export default function MicroplanWizard() {
     const n = raw == null ? NaN : Number(raw);
     return Number.isFinite(n) ? n : null;
   })();
-  const returnVillage = useMemo(() => {
-    const sp = initialQueryParams;
-    if (!sp) return null;
+  // Task #130 — initialize from URL when present, otherwise restore from
+  // sessionStorage so a hard reload or in-app revisit keeps the banner alive.
+  const [returnVillage, setReturnVillage] = useState<ReturnVillage | null>(() => {
+    if (typeof window === "undefined") return null;
+    const sp = new URLSearchParams(window.location.search);
     const idRaw = sp.get("returnVillageId");
-    if (!idRaw) return null;
-    const id = Number(idRaw);
-    if (!Number.isFinite(id)) return null;
-    const lat = Number(sp.get("returnVillageLat"));
-    const lng = Number(sp.get("returnVillageLng"));
-    return {
-      villageId: id,
-      name: sp.get("returnVillageName") ?? "",
-      lat: Number.isFinite(lat) ? lat : null,
-      lng: Number.isFinite(lng) ? lng : null,
-      isHardToReach: sp.get("returnVillageHtr") === "1",
-    };
-  }, [initialQueryParams]);
+    if (idRaw) {
+      const id = Number(idRaw);
+      if (Number.isFinite(id)) {
+        const lat = Number(sp.get("returnVillageLat"));
+        const lng = Number(sp.get("returnVillageLng"));
+        return {
+          villageId: id,
+          name: sp.get("returnVillageName") ?? "",
+          lat: Number.isFinite(lat) ? lat : null,
+          lng: Number.isFinite(lng) ? lng : null,
+          isHardToReach: sp.get("returnVillageHtr") === "1",
+        };
+      }
+    }
+    const idParam = sp.get("id");
+    const wizardId =
+      idParam && !Number.isNaN(Number(idParam)) ? Number(idParam) : null;
+    return readStoredReturnVillage(wizardId) ?? readStoredReturnVillage(null);
+  });
 
   const [facilityId, setFacilityId] = useState<number | null>(
     queryFacilityId ?? user?.facilityId ?? null,
@@ -283,6 +344,25 @@ export default function MicroplanWizard() {
     if (user?.facilityId && !facilityId) setFacilityId(user.facilityId);
   }, [user, facilityId, queryFacilityId]);
 
+  // Task #130 — keep sessionStorage in sync with the live context so a reload
+  // restores the banner. Once we have a real microplanId we migrate the entry
+  // off the "new" bucket onto the id-keyed bucket.
+  useEffect(() => {
+    if (!returnVillage) return;
+    if (microplanId) {
+      writeStoredReturnVillage(microplanId, returnVillage);
+      clearStoredReturnVillage(null);
+    } else {
+      writeStoredReturnVillage(null, returnVillage);
+    }
+  }, [returnVillage, microplanId]);
+
+  const clearReturnVillage = () => {
+    clearStoredReturnVillage(microplanId);
+    clearStoredReturnVillage(null);
+    setReturnVillage(null);
+  };
+
   const continueToVillageSession = () => {
     if (!returnVillage || !microplanId) return;
     const qs = new URLSearchParams({
@@ -294,6 +374,7 @@ export default function MicroplanWizard() {
     });
     if (returnVillage.lat != null) qs.set("unservedLat", String(returnVillage.lat));
     if (returnVillage.lng != null) qs.set("unservedLng", String(returnVillage.lng));
+    clearReturnVillage();
     setLocation(`/sessions/microplan/${microplanId}?${qs.toString()}`);
   };
 
@@ -1487,16 +1568,28 @@ export default function MicroplanWizard() {
                 </>
               )}
             </span>
-            <Button
-              size="sm"
-              variant={microplanId ? "default" : "outline"}
-              disabled={!microplanId}
-              onClick={continueToVillageSession}
-              data-testid="button-continue-to-village-session"
-            >
-              Continue to session
-              <ChevronRight className="ml-1 h-4 w-4" />
-            </Button>
+            <div className="flex items-center gap-1">
+              <Button
+                size="sm"
+                variant={microplanId ? "default" : "outline"}
+                disabled={!microplanId}
+                onClick={continueToVillageSession}
+                data-testid="button-continue-to-village-session"
+              >
+                Continue to session
+                <ChevronRight className="ml-1 h-4 w-4" />
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-7 w-7"
+                onClick={clearReturnVillage}
+                aria-label="Dismiss return-to-village reminder"
+                data-testid="button-dismiss-return-to-village"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
         )}
       </div>
