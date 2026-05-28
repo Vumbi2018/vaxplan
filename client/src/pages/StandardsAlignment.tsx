@@ -109,6 +109,12 @@ const SECTIONS: Section[] = [
         evidence: "shared/schema.ts session_day_plans + client/src/pages/SessionDayPlans.tsx.",
       },
       {
+        area: "Sessions hub (unified list + month calendar of every planned / overdue / conducted session)",
+        status: "aligned",
+        evidence:
+          "client/src/pages/SessionsHub.tsx at /all-sessions — tabs for List and Calendar share a Province → District → Facility cascade filter, status sub-tabs (All / Planned / Overdue / Conducted / Cancelled) with counts, and a 'Start' action on calendar days that routes into the existing session workspace.",
+      },
+      {
         area: "Approval cascade (facility → district → province → national)",
         status: "partial",
         evidence: "approval_requests with current_level; approvalStatus per row.",
@@ -193,11 +199,12 @@ const SECTIONS: Section[] = [
       { area: "RED 3 · Mobilization activities per session", status: "aligned", evidence: "Computed by guided workflow Step 7: mobilization rows / scheduled sessions for the current quarter." },
       // RED 4 — Monitoring for action (computes coverage / dropout / zero-dose)
       { area: "RED 4 · DTP1 / DTP3 / MCV1 / MCV2 coverage", status: "partial", evidence: "Dose-level data exists in clientLogbook; aggregate coverage tiles are not yet on the Dashboard.", recommendation: "Add antigen-coverage tiles per facility / district / province." },
-      { area: "RED 4 · DTP1→DTP3 dropout %", status: "gap", recommendation: "Compute from clientLogbook; required by WUENIC and JRF." },
-      { area: "RED 4 · DTP1→MCV1 dropout %", status: "gap", recommendation: "Compute from clientLogbook; required by WUENIC." },
-      { area: "RED 4 · Zero-dose children (no DTP1 by 12 mo) [Gavi 5.0 flagship]", status: "gap", recommendation: "Surface a Dashboard tile; the single most important Gavi 5.0 indicator." },
-      { area: "RED 4 · Under-immunized children (DTP1 yes, DTP3 no)", status: "gap", recommendation: "Derive from clientLogbook." },
-      { area: "RED 4 · Defaulter list (children due, not yet vaccinated)", status: "gap", recommendation: "Add a Defaulters page; required by the WHO/UNICEF monitoring for action core." },
+      { area: "RED 4 · DTP1→DTP3 dropout %", status: "partial", evidence: "Dropout Rates page (/indicators/dropout) computes DTP1→DTP3 from clientLogbook.", recommendation: "Add per-district disaggregation tile for WUENIC submission." },
+      { area: "RED 4 · DTP1→MCV1 dropout %", status: "partial", evidence: "Dropout Rates page (/indicators/dropout) computes DTP1→MCV1.", recommendation: "Add per-district disaggregation tile for WUENIC submission." },
+      { area: "RED 4 · Zero-dose children (no DTP1 by 12 mo) [Gavi 5.0 flagship]", status: "partial", evidence: "Zero-Dose Villages page (/indicators/zero-dose) surfaces villages with zero-dose burden + map + Province/District/Facility cascade filter and basemap toggle.", recommendation: "Promote to a top-of-Dashboard tile and disaggregate by district." },
+      { area: "RED 4 · Under-immunized children (DTP1 yes, DTP3 no)", status: "partial", evidence: "Derived alongside dropout on /indicators/dropout.", recommendation: "Add a dedicated under-immunized list with last-dose + due-by date." },
+      { area: "RED 4 · Defaulter list (children due, not yet vaccinated)", status: "aligned", evidence: "Defaulter List page (/clients/defaulters) lists children with overdue doses; planners can one-click 'Plan defaulter follow-up here' from the zero-dose / under-immunized map pins, which tags the resulting session row with outreachPurpose='defaulter_followup' and exposes coverage impact after mark-done." },
+      { area: "RED 4 · Missed Communities (no session in past 12 mo)", status: "aligned", evidence: "Missed Communities page (/missed-communities) surfaces villages with no immunization contact in the past 12 months and supports CSV import from DHIS2." },
       // RED 5 — Planning & management (vaccines, cold chain, safety, financing)
       { area: "RED 5 · Vaccine doses + AD syringes + safety boxes forecast", status: "aligned", evidence: "Vaccine Calculator + guided workflow Step 6 check on persisted vaccinesRequired." },
       { area: "RED 5 · Per-antigen wastage rate (actual)", status: "partial", evidence: "Stock transactions capture issuances.", recommendation: "Add wastage reason codes + monthly wastage % per antigen." },
@@ -264,9 +271,10 @@ const SECTIONS: Section[] = [
     rows: [
       {
         area: "Zero-dose children (no DTP1 by 12 months)",
-        status: "gap",
+        status: "partial",
+        evidence: "Zero-Dose Villages page (/indicators/zero-dose) surfaces villages with zero-dose burden; mapped with cascade filter and basemap toggle. Planners can launch a defaulter follow-up session straight from the map.",
         recommendation:
-          "Add zero_dose_children view: clients with no DTP1 dose by 12 mo. Surface on Dashboard. **Gavi 5.0 flagship indicator.**",
+          "Promote to a top-of-Dashboard tile and add child-level (not just village-level) zero-dose computation from clientLogbook. **Gavi 5.0 flagship indicator.**",
       },
       { area: "Sub-national equity (district-level dropout)", status: "partial", recommendation: "Compute DTP1→DTP3 + DTP1→MCV1 dropout per district." },
       { area: "HMIS / DHIS2 reporting", status: "aligned", evidence: "Dhis2Adapter in hisInteropService.ts." },
@@ -325,7 +333,7 @@ const SECTIONS: Section[] = [
     subtitle: "WHO/CDC GIS guidance + GRID3 + AccessMod",
     icon: Globe,
     rows: [
-      { area: "Authoritative basemap (OSM)", status: "aligned" },
+      { area: "Authoritative basemap (OSM + satellite)", status: "aligned", evidence: "BasemapToggle component lets planners switch between OpenStreetMap and Esri World Imagery (satellite) on every planning map. Choice persists per user via localStorage (vaxplan.basemap)." },
       {
         area: "Building / settlement enumeration (GRID3 / Microsoft / Ecopia)",
         status: "partial",
@@ -417,14 +425,14 @@ const STATUS_META: Record<Status, { label: string; icon: React.ComponentType<{ c
 };
 
 const TOP_ACTIONS: { n: number; title: string; standard: string; effort: "S" | "M" | "L" }[] = [
-  { n: 1, title: "Enforce session → microplan parenthood (NOT NULL, plan-type match, lock cascade)", standard: "WHO/UNICEF Microplanning §1.3", effort: "M" },
-  { n: 2, title: "Zero-dose children indicator on Dashboard (no DTP1 by 12 mo)", standard: "Gavi 5.0 flagship; IA2030 SP1", effort: "S" },
-  { n: 3, title: "AEFI reports entity + DHIS2 push", standard: "JRF; IHR 2005; Gavi safety", effort: "M" },
-  { n: 4, title: "Cold-chain equipment + temperature logs with PQS codes", standard: "EVM 2.0 E2–E4", effort: "M" },
-  { n: 5, title: "Stockout days + actual wastage in monthly reports", standard: "JRF; EVM 2.0 E6", effort: "M" },
-  { n: 6, title: "Staffing + funding source on microplan", standard: "WHO/UNICEF core elements 6 & 8; Gavi HSS", effort: "S" },
-  { n: 7, title: "GTIN + lot/expiry on stock; barcode-scan UI", standard: "GS1; Gavi traceability", effort: "M" },
-  { n: 8, title: "Defaulter list + DTP1→DTP3 / DTP1→MCV1 dropout", standard: "WUENIC; RED/REC monitoring", effort: "S" },
+  { n: 1, title: "Promote zero-dose to a top-of-Dashboard tile + child-level computation (currently village-level on /indicators/zero-dose)", standard: "Gavi 5.0 flagship; IA2030 SP1", effort: "S" },
+  { n: 2, title: "AEFI reports entity + DHIS2 push", standard: "JRF; IHR 2005; Gavi safety", effort: "M" },
+  { n: 3, title: "Cold-chain equipment + temperature logs with PQS codes", standard: "EVM 2.0 E2–E4", effort: "M" },
+  { n: 4, title: "Stockout days + actual wastage in monthly reports", standard: "JRF; EVM 2.0 E6", effort: "M" },
+  { n: 5, title: "Staffing roster (Wizard Step 5) + funding-source enum on budget lines (Step 9)", standard: "WHO/UNICEF core elements 6 & 8; Gavi HSS", effort: "S" },
+  { n: 6, title: "GTIN + lot/expiry on stock; barcode-scan UI", standard: "GS1; Gavi traceability", effort: "M" },
+  { n: 7, title: "Microplan lock cascade — block POST/PATCH /api/sessions when parent microplan.status='locked'", standard: "WHO/UNICEF Microplanning §1.3", effort: "S" },
+  { n: 8, title: "Per-district disaggregation tiles for dropout (/indicators/dropout) — WUENIC submission", standard: "WUENIC; RED/REC monitoring", effort: "S" },
   { n: 9, title: "Campaign independent monitoring + post-campaign coverage survey entities", standard: "WHO SIA field guide; IA2030 SP5", effort: "M" },
   { n: 10, title: "Service Worker Background Sync for outbox", standard: "Principles for Digital Development", effort: "M" },
   { n: 11, title: "Extend FHIR adapter (Encounter + MedicationAdministration + Location + Practitioner)", standard: "WHO SMART Guidelines IMMZ", effort: "M" },
