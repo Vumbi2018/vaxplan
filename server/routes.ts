@@ -4475,6 +4475,19 @@ export async function registerRoutes(
   // funder that someone has already set.
   app.post("/api/budget-items/bulk-classify", ...auth, async (req: any, res) => {
     try {
+      // Bulk reclassification rewrites funding-source attribution across every
+      // legacy row in the tenant in one call, which directly distorts donor
+      // reporting (Gavi HSS, government, etc.). Restrict to national admins so
+      // facility/district staff cannot mass-retag finance data.
+      const dbUser = req.dbUser;
+      const isNationalAdmin =
+        dbUser?.role === "national_admin" ||
+        (Array.isArray(dbUser?.roles) && (dbUser!.roles as string[]).includes("national_admin"));
+      if (!isNationalAdmin) {
+        return res.status(403).json({
+          message: "Only national administrators can bulk-classify funding sources.",
+        });
+      }
       const { fundingSource, fundingSourceOther, ids } = req.body ?? {};
       const allowed = ["government", "gavi", "who", "unicef", "other"] as const;
       if (!allowed.includes(fundingSource)) {

@@ -158,3 +158,13 @@ export function isAdmin(user: User | null | undefined): boolean {
   if (!user) return false;
   return user.role === "national_admin" || user.role === "gis_specialist";
 }
+
+// Bulk reclassifying funding sources rewrites donor reporting attribution
+// across every legacy budget line in the tenant, so it's restricted to
+// national administrators (the same gate enforced by the server endpoint).
+export function canBulkClassifyBudget(user: User | null | undefined): boolean {
+  if (!user) return false;
+  if (user.role === "national_admin") return true;
+  const roles = (user as any).roles;
+  return Array.isArray(roles) && roles.includes("national_admin");
+}

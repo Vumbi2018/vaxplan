@@ -59,6 +59,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import { canBulkClassifyBudget } from "@/lib/permissions";
 import {
   insertBudgetItemSchema,
   type BudgetItem,
@@ -815,7 +816,7 @@ export default function BudgetPlanning() {
   return (
     <div className="p-6 space-y-6">
       <MicroplanStepper currentStep={9} facilityId={geoFacilityId} />
-      {tenantUnspecifiedCount > 0 && (
+      {tenantUnspecifiedCount > 0 && canBulkClassifyBudget(user) && (
         <div
           className="flex items-start gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-4"
           data-testid="banner-needs-classification"
@@ -1348,7 +1349,7 @@ export default function BudgetPlanning() {
         </div>
       </div>
 
-      <Dialog open={bulkOpen} onOpenChange={setBulkOpen}>
+      <Dialog open={bulkOpen && canBulkClassifyBudget(user)} onOpenChange={setBulkOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Bulk classify funding source</DialogTitle>
