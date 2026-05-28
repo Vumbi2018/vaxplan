@@ -47,7 +47,7 @@ import {
   microplans,
 } from "../../shared/schema";
 
-type TenantCode = "ZMB" | "SSD";
+type TenantCode = "ZMB" | "SSD" | "PNG";
 
 interface FacilityPick {
   facilityId: number;
@@ -1312,7 +1312,7 @@ async function seedImportedCoverage(
  * Returns silently (no process.exit) so it can be invoked from server startup.
  */
 export async function seedDemoOperational(): Promise<void> {
-  for (const code of ["ZMB", "SSD"] as TenantCode[]) {
+  for (const code of ["ZMB", "SSD", "PNG"] as TenantCode[]) {
     const rows = await db.select().from(tenants).where(eq(tenants.code, code)).limit(1);
     const tenant = rows[0];
     if (!tenant) {
@@ -1372,7 +1372,7 @@ async function runCli() {
       (SELECT COUNT(*) FROM client_vaccinations  cv WHERE cv.tenant_id = t.id) AS client_vaccinations,
       (SELECT COUNT(*) FROM imported_coverage    ic WHERE ic.tenant_id = t.id) AS imported_coverage_rows
     FROM tenants t
-    WHERE t.code IN ('ZMB','SSD')
+    WHERE t.code IN ('ZMB','SSD','PNG')
     ORDER BY t.code;
   `);
   console.log("\nDemo operational data rollup:");
