@@ -51,6 +51,7 @@ import {
   clientVaccinations,
   monthlyReports,
 } from "@shared/schema";
+import { expandVaccineSchedule } from "@shared/vaccineSchedule";
 import {
   runMissingSettlementDetection,
   assignAdminBoundaries,
@@ -4190,19 +4191,60 @@ export async function registerRoutes(
       }
 
       const body = req.body || {};
-      const perAntigen = (body.perAntigen && typeof body.perAntigen === "object") ? body.perAntigen : {};
+      const rawPerAntigen = (body.perAntigen && typeof body.perAntigen === "object") ? body.perAntigen : {};
+
+      // Validate perAntigen codes against the tenant's configured vaccine schedule.
+      // Unknown codes are not rejected (older offline-outbox entries may carry them);
+      // instead we split them into an "unmapped" bucket and emit an audit warning so
+      // they remain visible in reports without polluting the per-antigen rollups.
+      const tenantConfigs = await storage.getVaccineConfigs(req.tenantId);
+      const scheduleStages = expandVaccineSchedule(tenantConfigs);
+      // Map any case/whitespace variant back to the canonical schedule code so
+      // per-antigen rollups stay keyed consistently regardless of what the
+      // client submitted (e.g. "opv-1" and "OPV-1" both normalize to "OPV-1").
+      const canonicalByLookup = new Map<string, string>();
+      for (const stage of scheduleStages) {
+        canonicalByLookup.set(stage.code, stage.code);
+        canonicalByLookup.set(stage.code.toUpperCase(), stage.code);
+        canonicalByLookup.set(stage.code.replace(/\s+/g, "_").toUpperCase(), stage.code);
+      }
+      const perAntigen: Record<string, number> = {};
+      const perAntigenUnmapped: Record<string, number> = {};
+      for (const [rawKey, rawVal] of Object.entries(rawPerAntigen)) {
+        const key = String(rawKey).trim();
+        if (!key) continue;
+        const val = Number(rawVal);
+        if (!Number.isFinite(val) || val < 0) continue;
+        const canonical =
+          canonicalByLookup.get(key) ??
+          canonicalByLookup.get(key.toUpperCase()) ??
+          canonicalByLookup.get(key.replace(/\s+/g, "_").toUpperCase());
+        if (canonical) {
+          perAntigen[canonical] = (perAntigen[canonical] ?? 0) + val;
+        } else {
+          perAntigenUnmapped[key] = (perAntigenUnmapped[key] ?? 0) + val;
+        }
+      }
+
       const totals = Number(
-        body.totals != null ? body.totals : Object.values(perAntigen).reduce((s: number, n: any) => s + Number(n || 0), 0),
+        body.totals != null
+          ? body.totals
+          : Object.values(perAntigen).reduce((s: number, n: any) => s + Number(n || 0), 0)
+            + Object.values(perAntigenUnmapped).reduce((s: number, n: any) => s + Number(n || 0), 0),
       );
       if (!Number.isFinite(totals) || totals < 0) {
         return res.status(400).json({ message: "totals must be a non-negative number." });
       }
-      const vc = {
+      const vc: Record<string, any> = {
         totals,
         perAntigen,
         actualDate: body.actualDate || new Date().toISOString(),
         note: body.note ?? null,
       };
+      const unmappedCodes = Object.keys(perAntigenUnmapped);
+      if (unmappedCodes.length > 0) {
+        vc.perAntigenUnmapped = perAntigenUnmapped;
+      }
       const updated = await storage.updateSessionPlan(req.tenantId, entityId, {
         status: "completed",
         isAchieved: true,
@@ -4211,7 +4253,21 @@ export async function registerRoutes(
       } as any);
       if (!updated) return res.status(404).json({ message: "Session not found" });
       await logAudit(req, "mark_done", "session_plan", entityId, oldSession, updated);
-      res.json(updated);
+      if (unmappedCodes.length > 0) {
+        await logAudit(req, "mark_done_unmapped_antigens", "session_plan", entityId, null, {
+          unmappedCodes,
+          perAntigenUnmapped,
+          knownCodeCount: scheduleStages.length,
+        });
+        console.warn(
+          `[mark-done] session ${entityId} (tenant ${req.tenantId}) submitted antigen codes outside the configured schedule:`,
+          unmappedCodes,
+        );
+      }
+      res.json({
+        ...updated,
+        unmappedAntigenCodes: unmappedCodes,
+      });
     } catch (err) {
       console.error("POST /api/sessions/:id/mark-done failed:", err);
       res.status(500).json({ message: "Failed to mark session done" });
