@@ -130,6 +130,11 @@ export default function SessionPlanning({
   // Task #47 — Proximity panel state shown inside the edit dialog.
   const [proximityWarning, setProximityWarning] = useState<{ nearby: any[]; reason?: string } | null>(null);
   const [proximityChecking, setProximityChecking] = useState(false);
+  // Task #162 — Track which (facilityId, villageIds) the last proximity check
+  // was run against, so when the user adds/removes a linked village we can
+  // mark the existing result as stale and automatically re-run the check.
+  const [proximityCheckedKey, setProximityCheckedKey] = useState<string | null>(null);
+  const [proximityStale, setProximityStale] = useState(false);
   // Task #50 — Proximity panel state shown inside the *create* dialog when
   // prefilled from an unserved-place pin on the live map.
   const [createProximity, setCreateProximity] = useState<{ nearby: any[]; reason?: string } | null>(null);
@@ -787,6 +792,31 @@ export default function SessionPlanning({
     setEditVillagesLoaded(true);
   }, [isEditOpen, editingPlan, allSessionVillages, editVillagesLoaded]);
 
+  // Task #162 — When the user adds or removes a linked village (or swaps
+  // the facility) in the edit dialog, any existing proximity result no
+  // longer reflects what Save would enforce. Mark it stale immediately and
+  // debounce a re-run so the panel catches up without spamming the API.
+  useEffect(() => {
+    if (!isEditOpen || !editingPlan) return;
+    if (!editVillagesLoaded) return;
+    if (proximityCheckedKey === null) return; // never been checked → nothing to refresh
+    const facilityId = editFacilityId ?? (editingPlan as any).facilityId;
+    const sortedIds = [...editVillageIds].sort((a, b) => a - b);
+    const currentKey = `${facilityId}:${sortedIds.join(",")}`;
+    if (currentKey === proximityCheckedKey) {
+      if (proximityStale) setProximityStale(false);
+      return;
+    }
+    setProximityStale(true);
+    const t = setTimeout(() => {
+      runProximityCheck(editingPlan);
+    }, 600);
+    return () => clearTimeout(t);
+    // runProximityCheck is intentionally omitted: it's recreated each render
+    // but reads the latest state via the closures above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editVillageIds, editFacilityId, isEditOpen, editingPlan, editVillagesLoaded, proximityCheckedKey]);
+
   const facilityNameById = useMemo(() => {
     const m = new Map<number, string>();
     (facilities ?? []).forEach((f) => m.set(f.id, f.name));
@@ -1034,22 +1064,33 @@ export default function SessionPlanning({
   // Task #47 — Check nearby sessions (2km / ±14d) and population context for
   // a candidate session. Shown as an inline panel inside the edit dialog.
   const runProximityCheck = async (plan: SessionPlan) => {
+    // Task #162 — Use the *currently edited* village list and facility from
+    // the dialog state, not the saved plan, so the check matches what Save
+    // would actually enforce. Also record what we checked so subsequent
+    // edits to the village chips can mark the result stale and re-run.
+    const facilityId = editFacilityId ?? (plan as any).facilityId;
+    const villageIds = [...editVillageIds].sort((a, b) => a - b);
     if (!navigator.onLine) {
       setProximityWarning({ nearby: [], reason: "Offline — check skipped." });
+      setProximityCheckedKey(`${facilityId}:${villageIds.join(",")}`);
+      setProximityStale(false);
       return;
     }
     setProximityChecking(true);
+    setProximityStale(false);
     try {
       const res = await apiRequest("POST", "/api/sessions/validate-proximity", {
-        facilityId: (plan as any).facilityId,
-        villageIds: (plan as any).villageIds ?? [],
+        facilityId,
+        villageIds,
         scheduledDate: (plan as any).scheduledDate ?? null,
         excludeSessionId: plan.id,
       });
       const json: any = await (res as any).json?.() ?? res;
       setProximityWarning({ nearby: json?.nearby ?? [], reason: json?.reason });
+      setProximityCheckedKey(`${facilityId}:${villageIds.join(",")}`);
     } catch (e: any) {
       setProximityWarning({ nearby: [], reason: e?.message ?? "Check failed." });
+      setProximityCheckedKey(`${facilityId}:${villageIds.join(",")}`);
     } finally {
       setProximityChecking(false);
     }
@@ -1802,7 +1843,19 @@ export default function SessionPlanning({
       </Card>
 
       {/* Edit Plan Dialog CRUD Modal */}
-      <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
+      <Dialog
+        open={isEditOpen}
+        onOpenChange={(open) => {
+          setIsEditOpen(open);
+          if (!open) {
+            // Task #162 — Reset the proximity panel state so reopening
+            // the dialog on a different session starts from a clean slate.
+            setProximityWarning(null);
+            setProximityCheckedKey(null);
+            setProximityStale(false);
+          }
+        }}
+      >
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto bg-card border border-border text-foreground rounded-3xl shadow-2xl p-6 font-sans">
           <DialogHeader>
             <DialogTitle className="text-xl font-bold flex items-center gap-2">
@@ -2224,9 +2277,25 @@ export default function SessionPlanning({
                   disabled={proximityChecking}
                   onClick={() => runProximityCheck(editingPlan)}
                 >
-                  {proximityChecking ? "Checking…" : "Check now"}
+                  {proximityChecking
+                    ? "Checking…"
+                    : proximityWarning
+                      ? "Re-check"
+                      : "Check now"}
                 </Button>
               </div>
+              {/* Task #162 — When the linked-village list changes after a
+                  check has been run, surface a stale hint while the
+                  debounced auto re-run is pending or in flight. */}
+              {proximityStale && (
+                <div
+                  className="text-xs text-amber-700 dark:text-amber-400 flex items-center gap-1.5"
+                  data-testid="proximity-stale-hint"
+                >
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                  Linked villages changed — {proximityChecking ? "re-checking…" : "re-checking shortly…"}
+                </div>
+              )}
               {proximityWarning && (
                 proximityWarning.nearby.length > 0 || proximityWarning.reason ? (
                   <Alert variant="destructive" className="py-2">
@@ -2263,6 +2332,8 @@ export default function SessionPlanning({
                 setIsEditOpen(false);
                 setEditingPlan(null);
                 setProximityWarning(null);
+                setProximityCheckedKey(null);
+                setProximityStale(false);
               }}
               className="rounded-xl"
             >
