@@ -382,6 +382,19 @@ export async function setupAuth(app: Express) {
   });
 }
 
+/**
+ * Returns the caller's user id from the session.
+ *
+ * Real OIDC sessions stored by Passport have the shape
+ * `{ claims, access_token, refresh_token, expires_at }` and carry the user id
+ * on `claims.sub`. The local dev mock login synthesizes an extra top-level
+ * `id`. Check `claims.sub` first so OIDC users win, falling back to `id` for
+ * the local mock.
+ */
+export function getCurrentUserId(req: any): string {
+  return (req?.user?.claims?.sub ?? req?.user?.id ?? "") as string;
+}
+
 export const isAuthenticated: RequestHandler = async (req, res, next) => {
   const user = req.user as any;
 
