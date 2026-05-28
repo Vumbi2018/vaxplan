@@ -1845,9 +1845,26 @@ export default function MicroplanWizard({ prePlanType }: MicroplanWizardProps = 
         }
         setDayPlanIdMap(nextIdMap);
       } else if (step === 5) {
-        // Step 5 stores staffing in component state only; the durable write
-        // happens in step 8 along with transport, so each session_day_plan
-        // row is created exactly once.
+        // Step 5 also writes a structured staffing roster to
+        // microplans.staffing so supervision / budget / reports can read
+        // it without parsing executionNotes. The per-session-day write
+        // (vaccinator/recorder/supervisor counts + perDiem in notes)
+        // still happens in step 8 alongside transport.
+        const roster = staffing.map((s) => ({
+          rowId: s.rowId,
+          sessionLabel: s.sessionLabel,
+          vaccinator: s.vaccinator ?? "",
+          recorder: s.recorder ?? "",
+          supervisor: s.supervisor ?? "",
+          teamType: s.teamType ?? "fixed",
+          target: parseInt(s.target || "0", 10),
+          perDiem: parseFloat(s.perDiem || "0"),
+        }));
+        const prev = (microplan as any)?.staffing ?? {};
+        const prevObj = prev && typeof prev === "object" && !Array.isArray(prev) ? prev : {};
+        await patchMicroplan(mpId, {
+          staffing: { ...prevObj, roster, rosterUpdatedAt: new Date().toISOString() },
+        });
       } else if (step === 6) {
         // Bulk upsert vaccine requirements in a single request.
         const nextVaccines = [...vaccines];

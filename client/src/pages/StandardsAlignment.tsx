@@ -141,16 +141,14 @@ const SECTIONS: Section[] = [
       { area: "Transportation & itinerary (incl. terrain + insecurity)", status: "aligned", evidence: "transportModeEnum, is_hard_to_reach, insecurity_level." },
       {
         area: "Human resources per session (vaccinators, mobilizers, supervisors)",
-        status: "gap",
-        evidence: "Only free-text humanResources field on session plan.",
-        recommendation: "Add structured `staffing` JSON to microplans (roles, count, per-diem). Drives budget + supervision.",
+        status: "aligned",
+        evidence: "Wizard Step 5 captures vaccinator / recorder / supervisor / team type / target / per-diem per session-day. Counts persist to session_day_plans (vaccinatorsCount / recordersCount / supervisorsCount) and the full structured roster is written to microplans.staffing as { roster: [...] } so reports and Supportive Supervision can read it without parsing notes.",
       },
       { area: "Social mobilization plan", status: "aligned", evidence: "mobilizationActivities table." },
       {
         area: "Budget by activity and funding source",
-        status: "partial",
-        evidence: "budgetItems with approval workflow.",
-        recommendation: "Add funding source enum (Govt / Gavi / WHO / UNICEF / Other) — required by Gavi HSS reporting.",
+        status: "aligned",
+        evidence: "budget_items.funding_source pgEnum (government / gavi / who / unicef / other / unspecified) with required validation and 'other' descriptor (shared/schema.ts:550). Wizard Step 9 + BudgetPlanning page enforce the enum on every line.",
       },
     ],
   },
@@ -176,9 +174,9 @@ const SECTIONS: Section[] = [
       // RED 5 — Planning & management
       { area: "RED 5 · HF microplan as parent of sessions", status: "aligned", evidence: "microplans + sessionPlans.microplanId NOT NULL; facility-only authoring (permissions.ts)." },
       { area: "RED 5 · Vaccine, supplies & cold-chain forecast (WHO core 4)", status: "partial", evidence: "Vaccine Calculator computes antigen forecasts per session. Guided workflow Step 6 checks vaccinesRequired persisted.", recommendation: "Add cold-chain inventory + temperature logs + stockout/wastage + GTIN-lot-expiry (Step 6 secondary pending)." },
-      { area: "RED 5 · Workforce & teaming roster (WHO core 6)", status: "gap", recommendation: "Add structured staffing + per-diem fields on the microplan. Guided workflow Step 5 is marked 'not yet wired'." },
+      { area: "RED 5 · Workforce & teaming roster (WHO core 6)", status: "aligned", evidence: "Wizard Step 5 captures vaccinator / recorder / supervisor / team type / target / per-diem per session-day; the structured roster is written to microplans.staffing and the per-session counts to session_day_plans." },
       { area: "RED 5 · Logistics & transport per session-day (WHO core 5)", status: "partial", evidence: "Session Day Plans capture transportMode, distance, fuel.", recommendation: "Roll up transport coverage to the microplan view (Step 8 pending)." },
-      { area: "RED 5 · Budget tagged to funding source (WHO core 8)", status: "partial", evidence: "budgetItems with category. Guided workflow Step 9 checks Personnel + Transport + Supplies for the quarter.", recommendation: "Add a structured funding-source enum (Govt / Gavi / WHO / UNICEF / Other) per budget line." },
+      { area: "RED 5 · Budget tagged to funding source (WHO core 8)", status: "aligned", evidence: "budget_items.funding_source pgEnum (government / gavi / who / unicef / other / unspecified). Wizard Step 9 + BudgetPlanning enforce it on every line; 'other' requires a free-text descriptor (zod refinement at shared/schema.ts:1002)." },
       { area: "RED 5 · Approval cascade (facility → district → provincial → national)", status: "aligned", evidence: "Approvals workflow; Step 11 of the guided workflow flips green when the current-quarter microplan is approved." },
     ],
   },
@@ -212,7 +210,7 @@ const SECTIONS: Section[] = [
       { area: "RED 5 · Cold-chain equipment functional %", status: "partial", evidence: "facility.has_refrigerator flag only.", recommendation: "Add cold_chain_equipment table with PQS codes + status." },
       { area: "RED 5 · AEFI cases per 100k doses", status: "gap", recommendation: "Blocked on the aefi_reports entity (see Section 5 JRF)." },
       { area: "RED 5 · Microplan approved before quarter starts", status: "aligned", evidence: "Computed by guided workflow Step 11 against microplans.status." },
-      { area: "RED 5 · Budget executed by funding source (planned vs actual)", status: "gap", recommendation: "Blocked on the funding-source enum on budgetItems (see Section 3 RED 5)." },
+      { area: "RED 5 · Budget executed by funding source (planned vs actual)", status: "partial", evidence: "Planned amounts now carry the funding-source enum per line. Actual-execution capture (paid / pending) is not yet on budget_items.", recommendation: "Add an `actualSpent` decimal + payment status to budget_items so planned-vs-actual can be rolled up per source." },
     ],
   },
   {
@@ -271,16 +269,14 @@ const SECTIONS: Section[] = [
     rows: [
       {
         area: "Zero-dose children (no DTP1 by 12 months)",
-        status: "partial",
-        evidence: "Zero-Dose Villages page (/indicators/zero-dose) surfaces villages with zero-dose burden; mapped with cascade filter and basemap toggle. Planners can launch a defaulter follow-up session straight from the map.",
-        recommendation:
-          "Promote to a top-of-Dashboard tile and add child-level (not just village-level) zero-dose computation from clientLogbook. **Gavi 5.0 flagship indicator.**",
+        status: "aligned",
+        evidence: "Server endpoint /api/indicators/zero-dose computes child-level zero-dose (children ≥12mo with no DTP1, SIA doses excluded) from clients + clientVaccinations. Dashboard mounts ImmunizationIndicatorCards as the first KPI row — shows total, denominator, %, and a per-district breakdown linking to /indicators/zero-dose. **Gavi 5.0 flagship indicator.**",
       },
-      { area: "Sub-national equity (district-level dropout)", status: "partial", recommendation: "Compute DTP1→DTP3 + DTP1→MCV1 dropout per district." },
+      { area: "Sub-national equity (district-level dropout)", status: "partial", evidence: "/indicators/dropout computes DTP1→DTP3 + DTP1→MCV1 per district; surfaced on the Dashboard alongside zero-dose.", recommendation: "Add a JRF-shaped per-district CSV export for WUENIC submission." },
       { area: "HMIS / DHIS2 reporting", status: "aligned", evidence: "Dhis2Adapter in hisInteropService.ts." },
       { area: "Supply chain / EVM", status: "partial" },
-      { area: "Financial sustainability", status: "partial", recommendation: "Add planned-vs-actual budget execution rate per quarter." },
-      { area: "Health workforce", status: "gap", recommendation: "Tie staffing to facility roster (iHRIS optional)." },
+      { area: "Financial sustainability", status: "partial", evidence: "Funding source enum on every budget line.", recommendation: "Add planned-vs-actual execution rate per quarter (needs actualSpent on budget_items)." },
+      { area: "Health workforce", status: "partial", evidence: "Microplan-level structured staffing roster (microplans.staffing.roster) captured per session day in Wizard Step 5.", recommendation: "Tie staffing to a facility-wide HR roster (iHRIS optional) so the same vaccinator/supervisor can be referenced across microplans." },
       { area: "Service delivery in fragile / conflict settings", status: "aligned", evidence: "insecurity_level + HTR module." },
       { area: "Demand generation", status: "aligned", evidence: "Social mobilization module." },
       { area: "Data quality / triangulation", status: "partial", recommendation: "Add DQA self-assessment (verification factor)." },
@@ -425,17 +421,16 @@ const STATUS_META: Record<Status, { label: string; icon: React.ComponentType<{ c
 };
 
 const TOP_ACTIONS: { n: number; title: string; standard: string; effort: "S" | "M" | "L" }[] = [
-  { n: 1, title: "Promote zero-dose to a top-of-Dashboard tile + child-level computation (currently village-level on /indicators/zero-dose)", standard: "Gavi 5.0 flagship; IA2030 SP1", effort: "S" },
-  { n: 2, title: "AEFI reports entity + DHIS2 push", standard: "JRF; IHR 2005; Gavi safety", effort: "M" },
-  { n: 3, title: "Cold-chain equipment + temperature logs with PQS codes", standard: "EVM 2.0 E2–E4", effort: "M" },
-  { n: 4, title: "Stockout days + actual wastage in monthly reports", standard: "JRF; EVM 2.0 E6", effort: "M" },
-  { n: 5, title: "Staffing roster (Wizard Step 5) + funding-source enum on budget lines (Step 9)", standard: "WHO/UNICEF core elements 6 & 8; Gavi HSS", effort: "S" },
-  { n: 6, title: "GTIN + lot/expiry on stock; barcode-scan UI", standard: "GS1; Gavi traceability", effort: "M" },
-  { n: 7, title: "Microplan lock cascade — block POST/PATCH /api/sessions when parent microplan.status='locked'", standard: "WHO/UNICEF Microplanning §1.3", effort: "S" },
-  { n: 8, title: "Per-district disaggregation tiles for dropout (/indicators/dropout) — WUENIC submission", standard: "WUENIC; RED/REC monitoring", effort: "S" },
-  { n: 9, title: "Campaign independent monitoring + post-campaign coverage survey entities", standard: "WHO SIA field guide; IA2030 SP5", effort: "M" },
-  { n: 10, title: "Service Worker Background Sync for outbox", standard: "Principles for Digital Development", effort: "M" },
-  { n: 11, title: "Extend FHIR adapter (Encounter + MedicationAdministration + Location + Practitioner)", standard: "WHO SMART Guidelines IMMZ", effort: "M" },
+  { n: 1, title: "AEFI reports entity + DHIS2 push", standard: "JRF; IHR 2005; Gavi safety", effort: "M" },
+  { n: 2, title: "Cold-chain equipment + temperature logs with PQS codes", standard: "EVM 2.0 E2–E4", effort: "M" },
+  { n: 3, title: "Stockout days + actual wastage in monthly reports", standard: "JRF; EVM 2.0 E6", effort: "M" },
+  { n: 4, title: "GTIN + lot/expiry on stock; barcode-scan UI", standard: "GS1; Gavi traceability", effort: "M" },
+  { n: 5, title: "Microplan lock cascade — block POST/PATCH /api/sessions when parent microplan.status='locked'", standard: "WHO/UNICEF Microplanning §1.3", effort: "S" },
+  { n: 6, title: "Per-district disaggregation export for dropout (/indicators/dropout) — WUENIC submission CSV", standard: "WUENIC; RED/REC monitoring", effort: "S" },
+  { n: 7, title: "Budget actual-spent capture (actualSpent + payment status on budget_items) for planned-vs-actual by funding source", standard: "Gavi HSS; WHO core element 8", effort: "S" },
+  { n: 8, title: "Campaign independent monitoring + post-campaign coverage survey entities", standard: "WHO SIA field guide; IA2030 SP5", effort: "M" },
+  { n: 9, title: "Service Worker Background Sync for outbox", standard: "Principles for Digital Development", effort: "M" },
+  { n: 10, title: "Extend FHIR adapter (Encounter + MedicationAdministration + Location + Practitioner)", standard: "WHO SMART Guidelines IMMZ", effort: "M" },
 ];
 
 function StatusBadge({ status }: { status: Status }) {
