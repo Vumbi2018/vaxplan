@@ -64,12 +64,18 @@ export async function fetchGeoBoundariesMeta(
 
   if (!response.ok) {
     if (response.status === 404) {
-      throw new Error(
+      const err: Error & { status?: number } = new Error(
         `GeoBoundaries has no ${admType} boundary for country code "${countryCode}". ` +
-        `Check the ISO-3 code or try a lower admin level.`
+        `Try a lower admin level (most countries top out at ADM2 or ADM3), or upload a custom GeoJSON instead.`
       );
+      err.status = 404;
+      throw err;
     }
-    throw new Error(`GeoBoundaries API error ${response.status}: ${await response.text()}`);
+    const err: Error & { status?: number } = new Error(
+      `GeoBoundaries API error ${response.status}: ${await response.text()}`
+    );
+    err.status = 502;
+    throw err;
   }
 
   return response.json() as Promise<GeoBoundariesMeta>;
@@ -164,7 +170,7 @@ export const SUPPORTED_COUNTRIES: Array<{
   { code: "SEN", name: "Senegal",          region: "West Africa",       maxLevel: 3, levelNames: { 0: "Country", 1: "Region", 2: "Arrondissement", 3: "Commune" } },
   { code: "ZWE", name: "Zimbabwe",         region: "Southern Africa",   maxLevel: 3, levelNames: { 0: "Country", 1: "Province", 2: "District", 3: "Ward" } },
   { code: "SDN", name: "Sudan",            region: "North Africa",      maxLevel: 3, levelNames: { 0: "Country", 1: "State", 2: "Locality", 3: "Administrative Unit" } },
-  { code: "SSD", name: "South Sudan",      region: "East Africa",       maxLevel: 3, levelNames: { 0: "Country", 1: "State", 2: "County", 3: "Payam" } },
+  { code: "SSD", name: "South Sudan",      region: "East Africa",       maxLevel: 2, levelNames: { 0: "Country", 1: "State", 2: "County" } },
   { code: "MLI", name: "Mali",             region: "West Africa",       maxLevel: 3, levelNames: { 0: "Country", 1: "Region", 2: "Cercle", 3: "Commune" } },
   { code: "NER", name: "Niger",            region: "West Africa",       maxLevel: 3, levelNames: { 0: "Country", 1: "Region", 2: "Department", 3: "Commune" } },
   { code: "BFA", name: "Burkina Faso",     region: "West Africa",       maxLevel: 3, levelNames: { 0: "Country", 1: "Region", 2: "Province", 3: "Commune" } },

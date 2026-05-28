@@ -6055,8 +6055,10 @@ export async function registerRoutes(
 
       res.status(201).json({ ...boundary, geojson: undefined, featureCount });
     } catch (err: any) {
-      console.error("POST /api/boundaries/fetch failed:", err);
-      res.status(500).json({ message: err?.message ?? "Failed to fetch boundary from GeoBoundaries API" });
+      const status = typeof err?.status === "number" ? err.status : 500;
+      if (status >= 500) console.error("POST /api/boundaries/fetch failed:", err);
+      else console.warn("POST /api/boundaries/fetch:", status, err?.message);
+      res.status(status).json({ message: err?.message ?? "Failed to fetch boundary from GeoBoundaries API" });
     }
   });
 
