@@ -1,10 +1,11 @@
 import type { Express, Request } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { setupAuth, isAuthenticated, getCurrentUserId, ensureDbUserFromSession } from "./replitAuth";
+import { setupAuth, isAuthenticated, getCurrentUserId } from "./replitAuth";
 import { hasPermission, tenantRolesCache, ROLE_PERMISSIONS, type Permission } from "./auth/authorization";
 import { registerSsoRoutes } from "./auth/ssoRoutes";
 import { tenantContext, requireTenant } from "./auth/tenantResolver";
+import { loadDbUser } from "./auth/loadDbUser";
 import { seedReplitIdpConfig } from "./auth/seedReplitIdpConfig";
 import {
   insertFacilitySchema,
@@ -193,8 +194,9 @@ function requirePermission(
         await refreshTenantRolesCache(req.tenantId);
       }
       
-      // Load fresh user to capture runtime updates
-      const freshUser = await storage.getUser(getCurrentUserId(req));
+      // Reuse the row attached by the loadDbUser middleware; fall back to a
+      // direct lookup only if the middleware did not run for this request.
+      const freshUser = req.dbUser ?? (await storage.getUser(getCurrentUserId(req)));
       if (!freshUser) {
         return res.status(401).json({ message: "Unauthorized" });
       }
@@ -392,6 +394,7 @@ export async function registerRoutes(
   );
 
   app.use(tenantContext);
+  app.use(loadDbUser);
 
   // --- USER ACCESS MANAGEMENT ENDPOINTS ---
   app.get("/api/users", isAuthenticated, requireTenant, requirePermission("manage_users"), async (req: any, res) => {
@@ -1165,9 +1168,7 @@ export async function registerRoutes(
 
   app.get("/api/auth/user", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
-      const user = await storage.getUser(userId);
-      res.json(user);
+      res.json(req.dbUser ?? null);
     } catch (error) {
       console.error("Error fetching user:", error);
       res.status(500).json({ message: "Failed to fetch user" });
@@ -1236,8 +1237,7 @@ export async function registerRoutes(
       // Resolve the caller's home tenant. If they're switching back to their
       // home country, clear viewTenantId entirely so we fall back to the
       // home-tenant lookup path.
-      const userId = (req.user as any)?.claims?.sub;
-      const dbUser = userId ? await storage.getUser(userId) : null;
+      const dbUser = req.dbUser ?? null;
       const homeTenantId = dbUser?.tenantId || null;
       if (homeTenantId && homeTenantId === tenantId) {
         delete (req.session as any).viewTenantId;
@@ -1730,12 +1730,7 @@ export async function registerRoutes(
   // ─── Facilities ───────────────────────────────────────
   app.get("/api/facilities", ...auth, async (req: any, res) => {
     try {
-      const userId = req.user?.id ?? req.user?.claims?.sub ?? null;
-      if (!userId) {
-        return res.status(401).json({ message: "Unauthorized: Missing user claims context" });
-      }
-
-      const dbUser = await storage.getUser(userId);
+      const dbUser = req.dbUser;
       if (!dbUser) {
         return res.status(401).json({ message: "Unauthorized: User record not found" });
       }
@@ -2053,12 +2048,7 @@ export async function registerRoutes(
   // ─── Villages ─────────────────────────────────────────
   app.get("/api/villages", ...auth, async (req: any, res) => {
     try {
-      const userId = req.user?.id ?? req.user?.claims?.sub ?? null;
-      if (!userId) {
-        return res.status(401).json({ message: "Unauthorized: Missing user claims context" });
-      }
-
-      const dbUser = await storage.getUser(userId);
+      const dbUser = req.dbUser;
       if (!dbUser) {
         return res.status(401).json({ message: "Unauthorized: User record not found" });
       }
@@ -3418,12 +3408,7 @@ export async function registerRoutes(
   // ─── Population data ──────────────────────────────────
   app.get("/api/population", ...auth, async (req: any, res) => {
     try {
-      const userId = req.user?.id ?? req.user?.claims?.sub ?? null;
-      if (!userId) {
-        return res.status(401).json({ message: "Unauthorized: Missing user claims context" });
-      }
-
-      const dbUser = await storage.getUser(userId);
+      const dbUser = req.dbUser;
       if (!dbUser) {
         return res.status(401).json({ message: "Unauthorized: User record not found" });
       }
@@ -3510,7 +3495,7 @@ export async function registerRoutes(
   // ─── Master Microplans (Routine & Campaign) ───────────────────────────
   app.get("/api/microplans", ...auth, async (req: any, res) => {
     try {
-      const dbUser = await ensureDbUserFromSession(req);
+      const dbUser = req.dbUser;
       if (!dbUser) return res.status(401).json({ message: "Unauthorized" });
       const list = await storage.getMicroplans(req.tenantId);
       res.json(list);
@@ -3533,7 +3518,7 @@ export async function registerRoutes(
 
   app.post("/api/microplans", ...auth, async (req: any, res) => {
     try {
-      const dbUser = await ensureDbUserFromSession(req);
+      const dbUser = req.dbUser;
       if (!dbUser) return res.status(401).json({ message: "Unauthorized" });
       const data = insertMicroplanSchema.parse(req.body);
       const plan = await storage.createMicroplan(req.tenantId, data);
@@ -3631,7 +3616,7 @@ export async function registerRoutes(
   app.get("/api/sessions", ...auth, async (req: any, res) => {
     try {
       const user = req.user as any;
-      const dbUser = await ensureDbUserFromSession(req);
+      const dbUser = req.dbUser;
       if (!dbUser) {
         return res.status(401).json({ message: "Unauthorized" });
       }
@@ -3743,7 +3728,7 @@ export async function registerRoutes(
   app.post("/api/sessions", ...auth, async (req: any, res) => {
     try {
       const user = req.user as any;
-      const dbUser = await ensureDbUserFromSession(req);
+      const dbUser = req.dbUser;
       if (!dbUser) {
         return res.status(401).json({ message: "Unauthorized" });
       }
@@ -3874,7 +3859,7 @@ export async function registerRoutes(
   app.patch("/api/sessions/:id", ...auth, async (req: any, res) => {
     try {
       const user = req.user as any;
-      const dbUser = await ensureDbUserFromSession(req);
+      const dbUser = req.dbUser;
       if (!dbUser) return res.status(401).json({ message: "Unauthorized" });
       const authorRoles = new Set(["facility_clerk", "facility_in_charge", "national_admin"]);
       if (!authorRoles.has(dbUser.role)) {
@@ -3985,7 +3970,7 @@ export async function registerRoutes(
   app.delete("/api/sessions/:id", ...auth, async (req: any, res) => {
     try {
       const user = req.user as any;
-      const dbUser = await ensureDbUserFromSession(req);
+      const dbUser = req.dbUser;
       if (!dbUser) return res.status(401).json({ message: "Unauthorized" });
       const authorRoles = new Set(["facility_clerk", "facility_in_charge", "national_admin"]);
       if (!authorRoles.has(dbUser.role)) {
@@ -4289,7 +4274,7 @@ export async function registerRoutes(
   app.post("/api/sessions/:id/mark-done", ...auth, async (req: any, res) => {
     try {
       const user = req.user as any;
-      const dbUser = await ensureDbUserFromSession(req);
+      const dbUser = req.dbUser;
       if (!dbUser) return res.status(401).json({ message: "Unauthorized" });
       const authorRoles = new Set(["facility_clerk", "facility_in_charge", "national_admin"]);
       if (!authorRoles.has(dbUser.role)) {
@@ -5476,7 +5461,7 @@ export async function registerRoutes(
   app.get("/api/clients", isAuthenticated, requireTenant, async (req: any, res) => {
     try {
       const user = req.user as any;
-      const dbUser = await ensureDbUserFromSession(req);
+      const dbUser = req.dbUser;
       if (!dbUser) {
         return res.status(401).json({ message: "Unauthorized" });
       }
@@ -5537,7 +5522,7 @@ export async function registerRoutes(
   app.post("/api/clients", isAuthenticated, requireTenant, loadRole, async (req: any, res) => {
     try {
       const user = req.user as any;
-      const dbUser = await ensureDbUserFromSession(req);
+      const dbUser = req.dbUser;
       if (!dbUser) {
         return res.status(401).json({ message: "Unauthorized" });
       }
@@ -6775,7 +6760,7 @@ export async function registerRoutes(
         // Geographic scope check: ensure the user has manage_session_plans permission
         // for every facility involved. Reuses the same row-level guard used by
         // POST /api/sessions so this bulk path cannot escape geographic scope.
-        const dbUser = userId ? await storage.getUser(userId) : null;
+        const dbUser = req.dbUser;
         if (!dbUser) return res.status(401).json({ message: "Unauthorized" });
         for (const fid of Array.from(byFacility.keys())) {
           const geoContext = await getFacilityHierarchy(fid, req.tenantId);
@@ -7481,7 +7466,7 @@ export async function registerRoutes(
     requireTenant,
     async (req: any, res) => {
       try {
-        const dbUser = await ensureDbUserFromSession(req);
+        const dbUser = req.dbUser;
         if (!dbUser) return res.status(401).json({ message: "Unauthorized" });
         const tenantId = req.tenantId as string;
         const provinceId = req.query.provinceId
@@ -7656,7 +7641,7 @@ export async function registerRoutes(
     requireTenant,
     async (req: any, res) => {
       try {
-        const dbUser = await ensureDbUserFromSession(req);
+        const dbUser = req.dbUser;
         if (!dbUser) return res.status(401).json({ message: "Unauthorized" });
         const tenantId = req.tenantId as string;
         const provinceId = req.query.provinceId
@@ -7855,7 +7840,7 @@ export async function registerRoutes(
     requireTenant,
     async (req: any, res) => {
       try {
-        const dbUser = await ensureDbUserFromSession(req);
+        const dbUser = req.dbUser;
         if (!dbUser) return res.status(401).json({ message: "Unauthorized" });
         const tenantId = req.tenantId as string;
         const provinceId = req.query.provinceId
