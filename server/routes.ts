@@ -10,6 +10,9 @@ import {
   type Permission,
 } from "./auth/authorization";
 import { registerSsoRoutes } from "./auth/ssoRoutes";
+import { registerPasswordAuthRoutes, requireAdmin as requirePlatformOrNationalAdmin } from "./auth/passwordAuth";
+import { spawn } from "child_process";
+import { readFileSync as _readFileSync } from "fs";
 import { tenantContext, requireTenant } from "./auth/tenantResolver";
 import { loadDbUser, requireDbUser } from "./auth/loadDbUser";
 import { seedReplitIdpConfig } from "./auth/seedReplitIdpConfig";
@@ -448,6 +451,48 @@ export async function registerRoutes(
 ): Promise<Server> {
   await setupAuth(app);
   registerSsoRoutes(app);
+  registerPasswordAuthRoutes(app);
+
+  // ── App version (used by web/Electron/Android update checks) ──────────
+  const APP_VERSION = (() => {
+    try {
+      const pkg = JSON.parse(_readFileSync(process.cwd() + "/package.json", "utf8"));
+      return String(pkg.version || "0.0.0");
+    } catch { return "0.0.0"; }
+  })();
+  const SERVER_BOOT_TIME = new Date().toISOString();
+  app.get("/api/version", (_req, res) => {
+    res.json({
+      version: APP_VERSION,
+      buildTime: SERVER_BOOT_TIME,
+      windowsInstallerUrl: process.env.WINDOWS_INSTALLER_URL || null,
+      androidApkUrl: process.env.ANDROID_APK_URL || null,
+    });
+  });
+
+  // ── Source tarball download (for laptop-side installer builds) ────────
+  // GET /release/vaxplan-source-<anything>.tar.gz → streams a git archive
+  // of HEAD. The "<anything>" is purely cosmetic so users can pin a name
+  // in their PowerShell scripts; we always serve the current HEAD.
+  app.get(/^\/release\/vaxplan-source-[^/]+\.tar\.gz$/, requirePlatformOrNationalAdmin, (_req, res) => {
+    res.setHeader("Content-Type", "application/gzip");
+    res.setHeader("Content-Disposition", `attachment; filename="vaxplan-source-${APP_VERSION}.tar.gz"`);
+    const child = spawn("git", ["archive", "--format=tar.gz", "HEAD"], { cwd: process.cwd() });
+    child.stdout.pipe(res);
+    let stderr = "";
+    child.stderr.on("data", (d) => { stderr += d.toString(); });
+    child.on("close", (code) => {
+      if (code !== 0 && !res.headersSent) {
+        res.status(500).json({ message: "git archive failed", stderr });
+      } else if (code !== 0) {
+        console.error("[release-tarball] git archive exited", code, stderr);
+      }
+    });
+    child.on("error", (err) => {
+      console.error("[release-tarball] spawn failed:", err);
+      if (!res.headersSent) res.status(500).json({ message: "git archive unavailable" });
+    });
+  });
   await seedReplitIdpConfig().catch((err) =>
     console.error("Replit IdP seed failed:", err),
   );

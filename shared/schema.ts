@@ -206,6 +206,11 @@ export const users = pgTable("users", {
   provinceId: integer("province_id"),
   hmisCode: varchar("hmis_code"),
   isActive: boolean("is_active").default(true),
+  // Optional bcrypt password hash. Populated only for users who sign in via
+  // the email+password path (POST /api/auth/login-password). Users who sign
+  // in via Replit OIDC, tenant SSO, or device tokens leave this null. The
+  // column is intentionally not selected in any list endpoint.
+  passwordHash: varchar("password_hash"),
   // Cross-tenant platform super-admin. Orthogonal to `role` (which is still
   // tenant-scoped — e.g. national_admin OF a specific Ministry). When true,
   // hasPermission() short-circuits to allow everything in every tenant.

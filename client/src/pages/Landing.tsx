@@ -1,7 +1,11 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Map,
   Users,
@@ -86,6 +90,86 @@ const trustPoints = [
   "Audit log on every change",
 ];
 
+function PasswordLoginButton() {
+  const [open, setOpen] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/auth/login-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ email: email.trim(), password }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data?.message || "Login failed.");
+        return;
+      }
+      window.location.href = "/";
+    } catch (err) {
+      setError("Network error. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <Button variant="ghost" size="sm" onClick={() => setOpen(true)} data-testid="button-email-login">
+        Email login
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Sign in with email</DialogTitle>
+            <DialogDescription>
+              For colleagues without a Replit account. Your admin gives you the password.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={submit} className="space-y-3">
+            <div className="space-y-1">
+              <Label htmlFor="pw-email">Email</Label>
+              <Input
+                id="pw-email"
+                type="email"
+                autoComplete="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                data-testid="input-email"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="pw-password">Password</Label>
+              <Input
+                id="pw-password"
+                type="password"
+                autoComplete="current-password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                data-testid="input-password"
+              />
+            </div>
+            {error && <div className="text-sm text-destructive" data-testid="text-login-error">{error}</div>}
+            <Button type="submit" className="w-full" disabled={busy} data-testid="button-submit-login">
+              {busy ? "Signing in…" : "Sign in"}
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 function TenantCard({ tenant }: { tenant: PublicTenant }) {
   return (
     <Card
@@ -137,6 +221,7 @@ export default function Landing() {
             <Button variant="outline" asChild data-testid="button-request-access">
               <a href="/signup">Request access</a>
             </Button>
+            <PasswordLoginButton />
             <Button asChild data-testid="button-login">
               <a href="/api/login">Sign In</a>
             </Button>
