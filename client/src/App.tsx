@@ -9,6 +9,8 @@ import { AppSidebar } from "@/components/AppSidebar";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { SyncStatus } from "@/components/SyncStatus";
+import { ConflictBadge } from "@/components/ConflictBadge";
+import { useDeviceTokenBootstrap } from "@/hooks/useDeviceTokenBootstrap";
 import { UserMenu } from "@/components/UserMenu";
 import { useAuth } from "@/hooks/useAuth";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -193,6 +195,7 @@ function AuthenticatedRouter() {
       <Route path="/standards-alignment" component={StandardsAlignment} />
       <Route path="/national-plan" component={AnnualNationalPlan} />
       <Route path="/settings" component={Settings} />
+      <Route path="/sync/conflicts" component={lazy(() => import("@/pages/SyncConflicts"))} />
       <Route path="/help" component={Help} />
       <Route component={NotFound} />
     </Switch>
@@ -206,6 +209,7 @@ function AuthenticatedLayout() {
   // and the server reports antigen codes outside the tenant's vaccine schedule.
   useUnmappedAntigenWarnings();
   useProximityConflictWarnings();
+  useDeviceTokenBootstrap(user);
 
   if (isLoading) {
     return (
@@ -244,6 +248,7 @@ function AuthenticatedLayout() {
                 <SidebarTrigger data-testid="button-sidebar-toggle" />
               </div>
               <div className="flex items-center gap-2">
+                <ConflictBadge />
                 <SyncStatus />
                 <ThemeToggle />
                 <UserMenu user={user} />

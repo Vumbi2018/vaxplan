@@ -239,6 +239,33 @@ export const userRoles = pgTable(
   ]
 );
 
+// Device-bound offline auth tokens (Task #232).
+// Issued by the server after a successful online login on a specific
+// installer build (Windows .exe / Android .apk). The client stores the
+// token plaintext in the device's secure store (Electron safeStorage,
+// Android Keystore via Capacitor Preferences) and presents it back on
+// `POST /api/auth/device-token/validate` to restore the session on
+// app launch without forcing a fresh OIDC round-trip.
+// `tokenHash` is sha256(token) so a DB leak doesn't expose live tokens.
+export const deviceTokens = pgTable("device_tokens", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  tenantId: varchar("tenant_id").references(() => tenants.id, { onDelete: "cascade" }),
+  tokenHash: varchar("token_hash", { length: 128 }).notNull().unique(),
+  platform: varchar("platform", { length: 32 }).notNull(), // "windows" | "android" | "web"
+  deviceLabel: varchar("device_label", { length: 255 }), // user-friendly label, e.g. hostname
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  lastUsedAt: timestamp("last_used_at"),
+  expiresAt: timestamp("expires_at").notNull(),
+  revokedAt: timestamp("revoked_at"),
+}, (table) => [
+  index("idx_device_tokens_user").on(table.userId),
+  index("idx_device_tokens_hash").on(table.tokenHash),
+]);
+
+export type DeviceToken = typeof deviceTokens.$inferSelect;
+export type InsertDeviceToken = typeof deviceTokens.$inferInsert;
+
 // Regions (top-level: Southern, Highlands, Islands, Momase)
 export const regions = pgTable("regions", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),

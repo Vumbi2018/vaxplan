@@ -1,7 +1,7 @@
 import express, { type Express, type Request } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { setupAuth, isAuthenticated, getCurrentUserId } from "./replitAuth";
+import { setupAuth, isAuthenticated, getCurrentUserId, ensureDbUserFromSession } from "./replitAuth";
 import {
   hasPermission,
   ROLE_PERMISSIONS,
@@ -78,7 +78,7 @@ import { z } from "zod";
 import { db, pool } from "./db";
 import { readFileSync, existsSync, readdirSync, createReadStream, createWriteStream } from "fs";
 import { join } from "path";
-import { eq, and, desc, ne, inArray, gte, lte, like, sql as dsql } from "drizzle-orm";
+import { eq, and, desc, ne, inArray, gte, lte, like, isNull, gt, sql as dsql } from "drizzle-orm";
 import {
   fetchGeoBoundariesGeoJSON,
   calcBBox,
@@ -11074,6 +11074,156 @@ export async function registerRoutes(
       }
     },
   );
+
+  // ─────────────────────────────────────────────────────────────────────
+  // DEVICE-BOUND OFFLINE AUTH TOKENS (Task #232)
+  //
+  // After a successful interactive login on an installer build, the
+  // client mints a long-lived opaque token bound to that device. On next
+  // launch (even without network) the client presents it to the server
+  // to restore the session — so a health worker can log in once on each
+  // device and continue working offline thereafter.
+  //
+  // Tokens are hashed (sha256) at rest. Revoke from this device or any
+  // other device the user is signed in on via the management endpoints.
+  // ─────────────────────────────────────────────────────────────────────
+  {
+    const crypto = await import("crypto");
+    const { deviceTokens } = await import("@shared/schema");
+
+    const DEFAULT_TTL_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
+    const hash = (t: string) => crypto.createHash("sha256").update(t).digest("hex");
+
+    app.post("/api/auth/device-token", isAuthenticated, async (req: any, res) => {
+      try {
+        const dbUser = await ensureDbUserFromSession(req);
+        if (!dbUser) return res.status(401).json({ message: "Unauthorized" });
+        const schema = z.object({
+          platform: z.enum(["windows", "android", "web"]).default("web"),
+          deviceLabel: z.string().max(255).nullable().optional(),
+          ttlMs: z.number().int().positive().max(365 * 24 * 60 * 60 * 1000).optional(),
+        });
+        const { platform, deviceLabel, ttlMs } = schema.parse(req.body ?? {});
+        const raw = crypto.randomBytes(48).toString("base64url");
+        const expiresAt = new Date(Date.now() + (ttlMs ?? DEFAULT_TTL_MS));
+        await db.insert(deviceTokens).values({
+          userId: dbUser.id,
+          tenantId: dbUser.tenantId ?? null,
+          tokenHash: hash(raw),
+          platform,
+          deviceLabel: deviceLabel ?? null,
+          expiresAt,
+        });
+        res.json({ token: raw, expiresAt: expiresAt.toISOString() });
+      } catch (err: any) {
+        if (err?.name === "ZodError") {
+          return res.status(400).json({ message: "Invalid payload", errors: err.errors });
+        }
+        console.error("POST /api/auth/device-token failed:", err);
+        res.status(500).json({ message: "Failed to mint device token" });
+      }
+    });
+
+    app.post("/api/auth/device-token/validate", async (req: any, res) => {
+      try {
+        const { token } = z.object({ token: z.string().min(1) }).parse(req.body ?? {});
+        const tokHash = hash(token);
+        const rows = await db
+          .select()
+          .from(deviceTokens)
+          .where(
+            and(
+              eq(deviceTokens.tokenHash, tokHash),
+              isNull(deviceTokens.revokedAt),
+              gt(deviceTokens.expiresAt, new Date()),
+            ),
+          )
+          .limit(1);
+        const row = rows[0];
+        if (!row) return res.status(401).json({ message: "Invalid or expired token" });
+        const dbUser = await storage.getUser(row.userId);
+        if (!dbUser || !dbUser.isActive) {
+          return res.status(401).json({ message: "User unavailable" });
+        }
+        const sessionUser = {
+          id: dbUser.id,
+          email: dbUser.email,
+          firstName: dbUser.firstName,
+          lastName: dbUser.lastName,
+          role: dbUser.role,
+          roles: dbUser.roles,
+          permissions: dbUser.permissions,
+          dataAccessScope: dbUser.dataAccessScope,
+          tenantId: dbUser.tenantId,
+          claims: { sub: dbUser.id, email: dbUser.email },
+          access_token: "device-token",
+          refresh_token: null,
+          // Match the cookie session TTL (1 week) — device-token rotation
+          // gives offline reach beyond this, but every reconnect promotes
+          // the session back to fresh-OIDC-grade lifetime.
+          expires_at: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60,
+        };
+        req.login(sessionUser, async (err: any) => {
+          if (err) return res.status(500).json({ message: "Login failed" });
+          await db
+            .update(deviceTokens)
+            .set({ lastUsedAt: new Date() })
+            .where(eq(deviceTokens.id, row.id));
+          res.json({ ok: true, userId: dbUser.id, tenantId: dbUser.tenantId ?? null });
+        });
+      } catch (err: any) {
+        if (err?.name === "ZodError") {
+          return res.status(400).json({ message: "Invalid payload" });
+        }
+        console.error("POST /api/auth/device-token/validate failed:", err);
+        res.status(500).json({ message: "Validation failed" });
+      }
+    });
+
+    app.get("/api/me/device-tokens", isAuthenticated, async (req: any, res) => {
+      try {
+        const dbUser = await ensureDbUserFromSession(req);
+        if (!dbUser) return res.status(401).json({ message: "Unauthorized" });
+        const rows = await db
+          .select({
+            id: deviceTokens.id,
+            platform: deviceTokens.platform,
+            deviceLabel: deviceTokens.deviceLabel,
+            createdAt: deviceTokens.createdAt,
+            lastUsedAt: deviceTokens.lastUsedAt,
+            expiresAt: deviceTokens.expiresAt,
+            revokedAt: deviceTokens.revokedAt,
+          })
+          .from(deviceTokens)
+          .where(eq(deviceTokens.userId, dbUser.id));
+        res.json(rows);
+      } catch (err: any) {
+        console.error("GET /api/me/device-tokens failed:", err);
+        res.status(500).json({ message: "Failed to load device tokens" });
+      }
+    });
+
+    app.post("/api/auth/device-token/revoke", isAuthenticated, async (req: any, res) => {
+      try {
+        const dbUser = await ensureDbUserFromSession(req);
+        if (!dbUser) return res.status(401).json({ message: "Unauthorized" });
+        const { id } = z.object({ id: z.string().uuid() }).parse(req.body ?? {});
+        await db
+          .update(deviceTokens)
+          .set({ revokedAt: new Date() })
+          .where(and(eq(deviceTokens.id, id), eq(deviceTokens.userId, dbUser.id)));
+        res.json({ ok: true });
+      } catch (err: any) {
+        if (err?.name === "ZodError") {
+          return res.status(400).json({ message: "Invalid payload" });
+        }
+        console.error("POST /api/auth/device-token/revoke failed:", err);
+        res.status(500).json({ message: "Revoke failed" });
+      }
+    });
+    // suppress unused-import warning for drizzle helper we don't reference
+    void dsql;
+  }
 
   return httpServer;
 }
