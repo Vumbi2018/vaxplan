@@ -46,7 +46,7 @@ const SessionHistory = lazy(() => import("@/pages/SessionHistory"));
 const HisIntegrations = lazy(() => import("@/pages/HisIntegrations"));
 const MissedCommunities = lazy(() => import("@/pages/MissedCommunities"));
 const MicroplanBuilder = lazy(() => import("@/pages/MicroplanBuilder"));
-const MicroplanFlow = lazy(() => import("@/pages/MicroplanFlow"));
+const MicroplanWizard = lazy(() => import("@/pages/MicroplanWizard"));
 const SettlementIntelligence = lazy(() => import("@/pages/SettlementIntelligence"));
 const StandardsAlignment = lazy(() => import("@/pages/StandardsAlignment"));
 
@@ -83,7 +83,8 @@ function AuthenticatedRouter() {
     <Suspense fallback={<RouteFallback />}>
     <Switch>
       <Route path="/" component={Dashboard} />
-      <Route path="/flow" component={MicroplanFlow} />
+      <Route path="/flow" component={MicroplanWizard} />
+      <Route path="/microplan/new" component={MicroplanWizard} />
       <Route path="/map" component={MapPage} />
       <Route path="/settlement-intelligence" component={SettlementIntelligence} />
       <Route path="/facilities" component={Facilities} />
