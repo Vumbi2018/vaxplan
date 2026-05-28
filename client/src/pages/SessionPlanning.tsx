@@ -1078,8 +1078,8 @@ export default function SessionPlanning({
   }, [tenantVillages, editFacilityId, editVillageIds]);
 
   const geoMaps = useMemo(
-    () => buildGeoMaps({ provinces, districts, villages: [], facilities }),
-    [provinces, districts, facilities],
+    () => buildGeoMaps({ provinces, districts, villages: tenantVillages ?? [], facilities }),
+    [provinces, districts, facilities, tenantVillages],
   );
 
   const filteredSessions = useMemo(() => {
@@ -1154,7 +1154,7 @@ export default function SessionPlanning({
     },
     {
       key: "name",
-      header: "Microplan",
+      header: "Session",
       sortable: true,
       render: (item: SessionPlan) => (
         <div
@@ -2148,7 +2148,7 @@ export default function SessionPlanning({
       <Card>
         <CardHeader>
           <CardTitle className="text-base">
-            {isCreator ? "My microplans" : "All microplans"}
+            {isCreator ? "My sessions" : "All sessions"}
           </CardTitle>
         </CardHeader>
         <CardContent className="p-6 pt-0 space-y-4">
@@ -2225,8 +2225,8 @@ export default function SessionPlanning({
             searchKeys={["name"]}
             emptyMessage={
               isCreator
-                ? "No microplans yet. Click 'New microplan' to start your first one."
-                : "No microplans submitted yet."
+                ? "No sessions match the current filters. Click 'New microplan' to start one, or clear the filters above."
+                : "No sessions match the current filters. Try clearing the geo filters above."
             }
           />
         </CardContent>

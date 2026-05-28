@@ -42,6 +42,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useLocation } from "wouter";
 import type { Tenant } from "@shared/schema";
 import { useState } from "react";
+import UserGuideSection from "@/components/UserGuideSection";
 
 const defaultFaqs = [
   {
@@ -536,6 +537,13 @@ export default function Help() {
           Find answers, review guides, access external WHO resources, and get assistance with VaxPlan
         </p>
       </div>
+
+      <UserGuideSection
+        isFacilityRole={
+          (user as any)?.role === "facility_clerk" ||
+          (user as any)?.role === "facility_in_charge"
+        }
+      />
 
       <div className="grid lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
