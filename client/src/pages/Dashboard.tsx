@@ -73,7 +73,16 @@ interface ZeroDoseSummary {
   total: number;
   denominator: number;
   pct: number;
-  byDistrict: Array<{ districtId: number; districtName: string; zeroDose: number; denominator: number; pct: number }>;
+  underImmunized: { total: number; denominator: number; pct: number };
+  byDistrict: Array<{
+    districtId: number;
+    districtName: string;
+    zeroDose: number;
+    underImmunized: number;
+    denominator: number;
+    pct: number;
+    underImmunizedPct: number;
+  }>;
 }
 interface DropoutSummary {
   dtp1_dtp3: { num: number; denom: number; rate: number; byDistrict: Array<{ districtId: number; districtName: string; dtp1: number; dtp3: number; rate: number }> };
@@ -98,7 +107,7 @@ function ImmunizationIndicatorCards() {
   const maxZd = Math.max(1, ...topZeroDose.map((d) => d.zeroDose));
 
   return (
-    <div className="grid md:grid-cols-2 gap-6">
+    <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-6">
       <Card data-testid="card-zero-dose">
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between gap-2">
@@ -162,6 +171,83 @@ function ImmunizationIndicatorCards() {
         </CardContent>
       </Card>
 
+      <Card data-testid="card-under-immunized">
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between gap-2">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Syringe className="h-5 w-5 text-amber-500" />
+              Under-immunized children
+            </CardTitle>
+            <Link
+              href="/indicators/dropout"
+              className="text-xs font-semibold text-primary hover:underline"
+              data-testid="link-under-immunized-details"
+            >
+              View dropout →
+            </Link>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-3 pt-2">
+          {zdLoading ? (
+            <Skeleton className="h-20 w-full" />
+          ) : !zd || zd.denominator === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No eligible children (≥12 months) registered yet.
+            </p>
+          ) : (
+            <>
+              <div className="flex items-baseline gap-2">
+                <span
+                  className="text-3xl font-bold text-amber-600"
+                  data-testid="text-under-immunized-total"
+                >
+                  {zd.underImmunized.total.toLocaleString()}
+                </span>
+                <span className="text-sm text-muted-foreground">
+                  of {zd.underImmunized.denominator.toLocaleString()} children ≥12 mo · {zd.underImmunized.pct}%
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Children ≥12 months who received DTP1 but not DTP3 (Pentavalent-3). Excludes SIA / campaign doses.
+              </p>
+              <div className="space-y-1.5 pt-1">
+                {zd.byDistrict.filter((d) => d.underImmunized > 0).length === 0 ? (
+                  <p className="text-xs text-muted-foreground">All districts at 0%.</p>
+                ) : (
+                  [...zd.byDistrict]
+                    .sort((a, b) => b.underImmunized - a.underImmunized)
+                    .slice(0, 5)
+                    .map((d) => {
+                      const maxUI = Math.max(
+                        1,
+                        ...zd.byDistrict.map((x) => x.underImmunized),
+                      );
+                      return (
+                        <div key={d.districtId} className="space-y-1">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="font-medium truncate text-foreground">
+                              {d.districtName}
+                            </span>
+                            <span className="font-mono text-muted-foreground">
+                              {d.underImmunized} ({d.underImmunizedPct}%)
+                            </span>
+                          </div>
+                          <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-amber-500 rounded-full"
+                              style={{ width: `${(d.underImmunized / maxUI) * 100}%` }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })
+                )}
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
       <Card data-testid="card-dropout">
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between gap-2">
@@ -170,11 +256,11 @@ function ImmunizationIndicatorCards() {
               Dropout rates
             </CardTitle>
             <Link
-              href="/clients/defaulters"
+              href="/indicators/dropout"
               className="text-xs font-semibold text-primary hover:underline"
               data-testid="link-dropout-details"
             >
-              View defaulters →
+              Per-facility view →
             </Link>
           </div>
         </CardHeader>

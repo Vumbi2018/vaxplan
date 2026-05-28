@@ -49,6 +49,7 @@ const MicroplanBuilder = lazy(() => import("@/pages/MicroplanBuilder"));
 const MicroplanWizard = lazy(() => import("@/pages/MicroplanWizard"));
 const SettlementIntelligence = lazy(() => import("@/pages/SettlementIntelligence"));
 const StandardsAlignment = lazy(() => import("@/pages/StandardsAlignment"));
+const DropoutRates = lazy(() => import("@/pages/DropoutRates"));
 
 function RouteFallback() {
   return (
@@ -115,6 +116,7 @@ function AuthenticatedRouter() {
       <Route path="/sessions/history" component={SessionHistory} />
       <Route path="/sessions/:id/day-plans" component={SessionDayPlans} />
       <Route path="/clients/defaulters" component={Defaulters} />
+      <Route path="/indicators/dropout" component={DropoutRates} />
       <Route path="/clients" component={ClientLogbook} />
       <Route path="/stock">
         {modules.stock !== false ? <StockLedger /> : <NotFound />}

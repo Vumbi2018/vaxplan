@@ -93,6 +93,12 @@ export default function RedRedQGuidedWorkflow() {
   const { data: populationRows = [] } = useQuery<any[]>({ queryKey: ["/api/population"] });
   const { data: htrScores = [] } = useQuery<any[]>({ queryKey: ["/api/htr-scores"] });
   const { data: supervisionVisits = [] } = useQuery<any[]>({ queryKey: ["/api/supervision-visits"] });
+  const { data: defaulterReview } = useQuery<{
+    reviewedThisQuarter: boolean;
+    reviewsThisQuarter: number;
+    lastReviewedAt: string | null;
+    quarterStart: string;
+  }>({ queryKey: ["/api/indicators/defaulter-review-status"] });
 
   const steps: Step[] = useMemo(() => {
     const currentYear = new Date().getFullYear();
@@ -449,31 +455,44 @@ export default function RedRedQGuidedWorkflow() {
           ? "Current-quarter microplan approved (or locked)"
           : "Awaiting submission / approval for the current quarter",
       },
-      {
-        num: 12,
-        title: "Execution, monitoring & quarterly review",
-        redComponent: "RED 4 — Monitoring for action",
-        redQLayer: "RED-Q Measure",
-        purpose: "Record doses given, run defaulter review, re-rank missed communities, feed back into Step 1.",
-        whatToDo: [
-          "Record doses given per session in the Client Logbook.",
-          "Update the wall chart and review defaulters monthly.",
-          "Re-rank missed communities every quarter; trigger a coverage survey after every SIA.",
-        ],
-        outputs: [
-          "Monthly tally + defaulter list + quarterly review note.",
-          "Sessions for the current quarter are marked conducted with actual doses recorded.",
-        ],
-        module: "Client Logbook + Dashboard",
-        href: "/clients",
-        icon: Activity,
-        // Completion stays "pending" until the defaulter / zero-dose / dropout dependencies ship.
-        status: "pending",
-        statusDetail: `Not yet wired — ${sessionsConducted} session(s) this quarter marked conducted, but defaulter / zero-dose / dropout views are pending`,
-        pendingTask: "Zero-dose children indicator + defaulter list + DTP dropout view are pending",
-      },
+      (() => {
+        const reviewed = !!defaulterReview?.reviewedThisQuarter;
+        const step12Done = sessionsConducted > 0 && reviewed;
+        const lastReviewedAt = defaulterReview?.lastReviewedAt
+          ? new Date(defaulterReview.lastReviewedAt).toLocaleDateString()
+          : null;
+        return {
+          num: 12,
+          title: "Execution, monitoring & quarterly review",
+          redComponent: "RED 4 — Monitoring for action",
+          redQLayer: "RED-Q Measure",
+          purpose: "Record doses given, run defaulter review, re-rank missed communities, feed back into Step 1.",
+          whatToDo: [
+            "Record doses given per session in the Client Logbook.",
+            "Open the Defaulter List at least once this quarter and follow up overdue children.",
+            "Re-rank missed communities every quarter; trigger a coverage survey after every SIA.",
+          ],
+          outputs: [
+            "Sessions for the current quarter are marked conducted with actual doses recorded.",
+            "A defaulter review has been opened this quarter (audit-logged when the Defaulter List page loads).",
+          ],
+          module: "Defaulter List + Dropout Rates",
+          href: "/clients/defaulters",
+          icon: Activity,
+          status: step12Done ? "done" : "todo",
+          statusDetail: step12Done
+            ? `${sessionsConducted} session(s) conducted this quarter; defaulter review opened${
+                lastReviewedAt ? ` (last ${lastReviewedAt})` : ""
+              }`
+            : sessionsConducted === 0
+              ? "No sessions conducted yet this quarter"
+              : reviewed
+                ? "Sessions conducted but defaulter review not yet opened this quarter"
+                : "Open the Defaulter List this quarter to complete the quarterly review",
+        } as Step;
+      })(),
     ];
-  }, [microplans, sessions, villages, mobilization, budgetItems, populationRows, htrScores, supervisionVisits, canApprove]);
+  }, [microplans, sessions, villages, mobilization, budgetItems, populationRows, htrScores, supervisionVisits, canApprove, defaulterReview]);
 
   const doneCount = steps.filter((s) => s.status === "done").length;
   const pendingCount = steps.filter((s) => s.status === "pending").length;

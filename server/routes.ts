@@ -7285,7 +7285,13 @@ export async function registerRoutes(
         if (cached) return res.json(cached);
 
         if (scopedFacilityIds && scopedFacilityIds.length === 0) {
-          const empty = { total: 0, denominator: 0, byDistrict: [] };
+          const empty = {
+            total: 0,
+            denominator: 0,
+            pct: 0,
+            underImmunized: { total: 0, denominator: 0, pct: 0 },
+            byDistrict: [],
+          };
           cacheSetIndicator(cacheKey, empty);
           return res.json(empty);
         }
@@ -7316,7 +7322,15 @@ export async function registerRoutes(
           );
 
         if (eligible.length === 0) {
-          return res.json({ total: 0, denominator: 0, byDistrict: [] });
+          const empty = {
+            total: 0,
+            denominator: 0,
+            pct: 0,
+            underImmunized: { total: 0, denominator: 0, pct: 0 },
+            byDistrict: [],
+          };
+          cacheSetIndicator(cacheKey, empty);
+          return res.json(empty);
         }
 
         // Find which eligible children HAVE received any DTP1/PENTA_1 dose
@@ -7334,33 +7348,54 @@ export async function registerRoutes(
             ),
           );
         const haveDtp1 = new Set<string>();
+        const haveDtp3 = new Set<string>();
         for (const d of dosed) {
           if (isCampaignDose(d.vaccineName)) continue;
-          if (normAntigen(d.vaccineName) === "PENTA_1") haveDtp1.add(d.clientId);
+          const code = normAntigen(d.vaccineName);
+          if (code === "PENTA_1") haveDtp1.add(d.clientId);
+          else if (code === "PENTA_3") haveDtp3.add(d.clientId);
         }
 
-        const byDistMap = new Map<
-          number,
-          { districtId: number; districtName: string; zeroDose: number; denominator: number }
-        >();
+        type DistAgg = {
+          districtId: number;
+          districtName: string;
+          zeroDose: number;
+          underImmunized: number;
+          denominator: number;
+        };
+        const byDistMap = new Map<number, DistAgg>();
         let total = 0;
+        let underTotal = 0;
         for (const c of eligible) {
-          const entry =
+          const entry: DistAgg =
             byDistMap.get(c.districtId) ??
-            { districtId: c.districtId, districtName: c.districtName, zeroDose: 0, denominator: 0 };
+            {
+              districtId: c.districtId,
+              districtName: c.districtName,
+              zeroDose: 0,
+              underImmunized: 0,
+              denominator: 0,
+            };
           entry.denominator += 1;
           if (!haveDtp1.has(c.id)) {
             entry.zeroDose += 1;
             total += 1;
+          } else if (!haveDtp3.has(c.id)) {
+            entry.underImmunized += 1;
+            underTotal += 1;
           }
           byDistMap.set(c.districtId, entry);
         }
-        const byDistrictRaw: Array<{ districtId: number; districtName: string; zeroDose: number; denominator: number }> = [];
+        const byDistrictRaw: DistAgg[] = [];
         byDistMap.forEach((v) => byDistrictRaw.push(v));
         const byDistrict = byDistrictRaw
           .map((d) => ({
             ...d,
             pct: d.denominator > 0 ? Math.round((d.zeroDose / d.denominator) * 1000) / 10 : 0,
+            underImmunizedPct:
+              d.denominator > 0
+                ? Math.round((d.underImmunized / d.denominator) * 1000) / 10
+                : 0,
           }))
           .sort((a, b) => b.zeroDose - a.zeroDose);
 
@@ -7368,6 +7403,14 @@ export async function registerRoutes(
           total,
           denominator: eligible.length,
           pct: eligible.length > 0 ? Math.round((total / eligible.length) * 1000) / 10 : 0,
+          underImmunized: {
+            total: underTotal,
+            denominator: eligible.length,
+            pct:
+              eligible.length > 0
+                ? Math.round((underTotal / eligible.length) * 1000) / 10
+                : 0,
+          },
           byDistrict,
         };
         cacheSetIndicator(cacheKey, payload);
@@ -7764,6 +7807,82 @@ export async function registerRoutes(
       } catch (err: any) {
         console.error("GET /api/indicators/defaulters failed:", err);
         res.status(500).json({ message: "Failed to compute defaulter list" });
+      }
+    },
+  );
+
+  // POST /api/indicators/defaulters/review
+  // Records that the current user opened a defaulter review. Used by the
+  // Step-12 (RED 4 / RED-Q Measure) completion check in the guided workflow.
+  app.post(
+    "/api/indicators/defaulters/review",
+    isAuthenticated,
+    requireTenant,
+    async (req: any, res) => {
+      try {
+        const userId = getCurrentUserId(req);
+        const tenantId = req.tenantId as string;
+        await storage.createAuditLog(tenantId, {
+          userId,
+          action: "defaulter_review_opened",
+          entityType: "defaulters",
+          entityId: null,
+          oldValue: null,
+          newValue: { openedAt: new Date().toISOString() },
+          ipAddress:
+            (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ||
+            req.socket?.remoteAddress ||
+            null,
+        });
+        res.json({ ok: true });
+      } catch (err: any) {
+        console.error("POST /api/indicators/defaulters/review failed:", err);
+        res.status(500).json({ message: "Failed to record defaulter review" });
+      }
+    },
+  );
+
+  // GET /api/indicators/defaulter-review-status
+  // Returns whether the tenant has opened a defaulter review this quarter,
+  // and the most recent open. Drives the Step-12 completion check.
+  app.get(
+    "/api/indicators/defaulter-review-status",
+    isAuthenticated,
+    requireTenant,
+    async (req: any, res) => {
+      try {
+        const tenantId = req.tenantId as string;
+        const now = new Date();
+        const quarter = Math.floor(now.getUTCMonth() / 3);
+        const quarterStart = new Date(
+          Date.UTC(now.getUTCFullYear(), quarter * 3, 1),
+        );
+        const logs = await storage.listAuditLogs(tenantId, {
+          entityType: "defaulters",
+          limit: 50,
+        });
+        const inQuarter = logs.filter(
+          (l) =>
+            l.action === "defaulter_review_opened" &&
+            l.createdAt &&
+            new Date(l.createdAt as any) >= quarterStart,
+        );
+        const latest =
+          logs.find((l) => l.action === "defaulter_review_opened") ?? null;
+        res.json({
+          reviewedThisQuarter: inQuarter.length > 0,
+          reviewsThisQuarter: inQuarter.length,
+          lastReviewedAt: latest?.createdAt ?? null,
+          quarterStart: quarterStart.toISOString(),
+        });
+      } catch (err: any) {
+        console.error(
+          "GET /api/indicators/defaulter-review-status failed:",
+          err,
+        );
+        res
+          .status(500)
+          .json({ message: "Failed to compute defaulter review status" });
       }
     },
   );

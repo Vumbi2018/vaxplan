@@ -1,5 +1,5 @@
-import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useMemo, useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { DataTable } from "@/components/DataTable";
@@ -59,10 +59,27 @@ const ANTIGEN_OPTIONS = [
 ];
 
 export default function Defaulters() {
+  const queryClient = useQueryClient();
   const [provinceId, setProvinceId] = useState<number | null>(null);
   const [districtId, setDistrictId] = useState<number | null>(null);
   const [facilityId, setFacilityId] = useState<number | null>(null);
   const [antigen, setAntigen] = useState<string>("all");
+
+  // Record that the user opened a defaulter review. The audit_log entry is
+  // what the guided workflow Step 12 (RED 4 / RED-Q Measure) reads to mark
+  // the quarterly review as done.
+  useEffect(() => {
+    fetch("/api/indicators/defaulters/review", {
+      method: "POST",
+      credentials: "include",
+    })
+      .then(() => {
+        queryClient.invalidateQueries({
+          queryKey: ["/api/indicators/defaulter-review-status"],
+        });
+      })
+      .catch(() => {});
+  }, [queryClient]);
 
   const queryString = useMemo(() => {
     const p = new URLSearchParams();
