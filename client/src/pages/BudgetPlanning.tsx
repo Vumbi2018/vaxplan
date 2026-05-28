@@ -128,6 +128,7 @@ export default function BudgetPlanning() {
   const [selectedQuarter, setSelectedQuarter] = useState(
     Math.ceil((new Date().getMonth() + 1) / 3)
   );
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [geoProvinceId, setGeoProvinceId] = useState<number | null>(null);
   const [geoDistrictId, setGeoDistrictId] = useState<number | null>(null);
   const [geoFacilityId, setGeoFacilityId] = useState<number | null>(() => {
@@ -382,7 +383,7 @@ export default function BudgetPlanning() {
   });
 
   const quarterItemsRaw = budgetItems?.filter(
-    (b) => b.quarter === selectedQuarter && b.year === new Date().getFullYear()
+    (b) => b.quarter === selectedQuarter && b.year === selectedYear
   ) || [];
 
   const quarterItems = useMemo(() => {
@@ -459,7 +460,7 @@ export default function BudgetPlanning() {
   };
 
   const handleExportCsv = () => {
-    const year = new Date().getFullYear();
+    const year = selectedYear;
     const lines: string[] = [];
     lines.push(
       `Gavi HSS Funding Report — Q${selectedQuarter} ${year}`,
@@ -858,6 +859,32 @@ export default function BudgetPlanning() {
         </div>
 
         <div className="flex gap-2">
+          <Select
+            value={selectedYear.toString()}
+            onValueChange={(v) => setSelectedYear(parseInt(v))}
+          >
+            <SelectTrigger className="w-28" data-testid="select-year-filter">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {(() => {
+                const currentYear = new Date().getFullYear();
+                const itemYears = Array.from(
+                  new Set((budgetItems ?? []).map((b: any) => Number(b.year)).filter((y) => Number.isFinite(y))),
+                );
+                const baseYears = [currentYear - 2, currentYear - 1, currentYear, currentYear + 1];
+                const years = Array.from(new Set([...itemYears, ...baseYears, selectedYear]))
+                  .filter((y) => Number.isFinite(y))
+                  .sort((a, b) => b - a);
+                return years.map((y) => (
+                  <SelectItem key={y} value={y.toString()}>
+                    {y}
+                  </SelectItem>
+                ));
+              })()}
+            </SelectContent>
+          </Select>
+
           <Select
             value={selectedQuarter.toString()}
             onValueChange={(v) => setSelectedQuarter(parseInt(v))}
