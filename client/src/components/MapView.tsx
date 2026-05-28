@@ -84,16 +84,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  applyDefaultLeafletPinIcon,
+  createFacilityCircleIcon,
+  createFilledPinIcon,
+  FILLED_PIN_DATA_URIS,
+  FILLED_PIN_SIZE_20x29,
+} from "@/lib/mapIcons";
 
 
 // Delete default Leaflet icons and replace with offline-available premium vector SVG pins
-delete (L.Icon.Default.prototype as any)._getIconUrl;
-L.Icon.Default.prototype.options.iconUrl = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIzNSIgdmlld0JveD0iMCAwIDI0IDM1IiBmaWxsPSJub25lIj48cGF0aCBkPSJNMTIgMEM1LjM3IDAgMCA1LjM3IDAgMTJjMCA5LjMgMTIgMjMgMTIgMjNzMTItMTMuNyAxMi0yM2MwLTYuNjMtNS4zNy0xMi0xMi0xMnoiIGZpbGw9IiMyNTYzZWIiLz48Y2lyY2xlIGN4PSIxMiIgY3k9IjEyIiByPSI0LjUiIGZpbGw9IiNmZmZmZmYiLz48L3N2Zz4=";
-L.Icon.Default.prototype.options.iconRetinaUrl = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIzNSIgdmlld0JveD0iMCAwIDI0IDM1IiBmaWxsPSJub25lIj48cGF0aCBkPSJNMTIgMEM1LjM3IDAgMCA1LjM3IDAgMTJjMCA5LjMgMTIgMjMgMTIgMjNzMTItMTMuNyAxMi0yM2MwLTYuNjMtNS4zNy0xMi0xMi0xMnoiIGZpbGw9IiMyNTYzZWIiLz48Y2lyY2xlIGN4PSIxMiIgY3k9IjEyIiByPSI0LjUiIGZpbGw9IiNmZmZmZmYiLz48L3N2Zz4=";
-L.Icon.Default.prototype.options.shadowUrl = ""; // Offline flat vector shadow override
-L.Icon.Default.prototype.options.iconSize = [24, 35];
-L.Icon.Default.prototype.options.iconAnchor = [12, 35];
-L.Icon.Default.prototype.options.popupAnchor = [0, -35];
+applyDefaultLeafletPinIcon();
 
 /* Original Default Leaflet Options Commented out for Offline Capability:
 L.Icon.Default.mergeOptions({
@@ -208,36 +209,11 @@ const missingHtrIcon = new L.Icon({
 });
 */
 
-// Premium Offline-Available Vector Map Pin Icons (Encoded in Base64 Data URIs)
-const facilityIcon = new L.Icon({
-  // Sleek green circle with a white cross inside representing a health facility, smaller in size (18x18)
-  iconUrl: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxOCIgaGVpZ2h0PSIxOCIgdmlld0JveD0iMCAwIDE4IDE4Ij4KICA8Y2lyY2xlIGN4PSI5IiBjeT0iOSIgcj0iOCIgZmlsbD0iIzEwYjk4MSIgc3Ryb2tlPSIjZmZmZmZmIiBzdHJva2Utd2lkdGg9IjEuNSIgLz4KICA8cGF0aCBkPSJNOSA1djhNNSA5aDgiIHN0cm9rZT0iI2ZmZmZmZiIgc3Ryb2tlLXdpZHRoPSIyLjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgLz4KPC9zdmc+",
-  iconSize: [18, 18],
-  iconAnchor: [9, 9],
-  popupAnchor: [0, -9]
-});
-
-
-const plannedIcon = new L.Icon({
-  iconUrl: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIzNSIgdmlld0JveD0iMCAwIDI0IDM1IiBmaWxsPSJub25lIj48cGF0aCBkPSJNMTIgMEM1LjM3IDAgMCA1LjM3IDAgMTJjMCA5LjMgMTIgMjMgMTIgMjNzMTItMTMuNyAxMi0yM2MwLTYuNjMtNS4zNy0xMi0xMi0xMnoiIGZpbGw9IiMxMGI5ODEiLz48Y2lyY2xlIGN4PSIxMiIgY3k9IjEyIiByPSI0LjUiIGZpbGw9IiNmZmZmZmYiLz48L3N2Zz4=",
-  iconSize: [20, 29],
-  iconAnchor: [10, 29],
-  popupAnchor: [0, -29]
-});
-
-const missingStandardIcon = new L.Icon({
-  iconUrl: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIzNSIgdmlld0JveD0iMCAwIDI0IDM1IiBmaWxsPSJub25lIj48cGF0aCBkPSJNMTIgMEM1LjM3IDAgMCA1LjM3IDAgMTJjMCA5LjMgMTIgMjMgMTIgMjNzMTItMTMuNyAxMi0yM2MwLTYuNjMtNS4zNy0xMi0xMi0xMnoiIGZpbGw9IiNmNTllMGIiLz48Y2lyY2xlIGN4PSIxMiIgY3k9IjEyIiByPSI0LjUiIGZpbGw9IiNmZmZmZmYiLz48L3N2Zz4=",
-  iconSize: [20, 29],
-  iconAnchor: [10, 29],
-  popupAnchor: [0, -29]
-});
-
-const missingHtrIcon = new L.Icon({
-  iconUrl: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIzNSIgdmlld0JveD0iMCAwIDI0IDM1IiBmaWxsPSJub25lIj48cGF0aCBkPSJNMTIgMEM1LjM3IDAgMCA1LjM3IDAgMTJjMCA5LjMgMTIgMjMgMTIgMjNzMTItMTMuNyAxMi0yM2MwLTYuNjMtNS4zNy0xMi0xMi0xMnoiIGZpbGw9IiNlZjQ0NDQiLz48Y2lyY2xlIGN4PSIxMiIgY3k9IjEyIiByPSI0LjUiIGZpbGw9IiNmZmZmZmYiLz48L3N2Zz4=",
-  iconSize: [20, 29],
-  iconAnchor: [10, 29],
-  popupAnchor: [0, -29]
-});
+// Premium Offline-Available Vector Map Pin Icons (Built from shared SVG constants)
+const facilityIcon = createFacilityCircleIcon();
+const plannedIcon = createFilledPinIcon("green", FILLED_PIN_SIZE_20x29);
+const missingStandardIcon = createFilledPinIcon("amber", FILLED_PIN_SIZE_20x29);
+const missingHtrIcon = createFilledPinIcon("red", FILLED_PIN_SIZE_20x29);
 
 const villageIcon = plannedIcon;
 const htrIcon = missingHtrIcon;
@@ -4301,8 +4277,8 @@ export function MapView({
                   icon={
                     new L.Icon({
                       iconUrl: plan.isAchieved
-                        ? "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIzNSIgdmlld0JveD0iMCAwIDI0IDM1IiBmaWxsPSJub25lIj48cGF0aCBkPSJNMTIgMEM1LjM3IDAgMCA1LjM3IDAgMTJjMCA5LjMgMTIgMjMgMTIgMjNzMTItMTMuNyAxMi0yM2MwLTYuNjMtNS4zNy0xMi0xMi0xMnoiIGZpbGw9IiMxMGI5ODEiLz48Y2lyY2xlIGN4PSIxMiIgY3k9IjEyIiByPSI0LjUiIGZpbGw9IiNmZmZmZmYiLz48L3N2Zz4="
-                        : "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIzNSIgdmlld0JveD0iMCAwIDI0IDM1IiBmaWxsPSJub25lIj48cGF0aCBkPSJNMTIgMEM1LjM3IDAgMCA1LjM3IDAgMTJjMCA5LjMgMTIgMjMgMTIgMjNzMTItMTMuNyAxMi0yM2MwLTYuNjMtNS4zNy0xMi0xMi0xMnoiIGZpbGw9IiNmNTllMGIiLz48Y2lyY2xlIGN4PSIxMiIgY3k9IjEyIiByPSI0LjUiIGZpbGw9IiNmZmZmZmYiLz48L3N2Zz4=",
+                        ? FILLED_PIN_DATA_URIS.green
+                        : FILLED_PIN_DATA_URIS.amber,
                       iconSize: [22, 32],
                       iconAnchor: [11, 32],
                       popupAnchor: [0, -32],

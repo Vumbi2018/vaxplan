@@ -7,6 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MapContainer, TileLayer, Marker, Polygon as LeafletPolygon, Popup, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { createOutlinePinIcon } from "@/lib/mapIcons";
 
 // Fix Leaflet default marker icon asset pathways
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -16,20 +17,12 @@ L.Icon.Default.mergeOptions({
   shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png",
 });
 
-// Premium Offline-Available Vector Pin Icons
-const OFFLINE_FACILITY_ICON = typeof window !== "undefined" ? L.icon({
-  iconUrl: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiNlMTFkNDgiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNMjEgMTBhOSA5IDAgMSAwLTE4IDAgYzAgNyA5IDEzIDkgMTNzOS02IDktMTNaIi8+PGNpcmNsZSBjeD0iMTIiIGN5PSIxMCIgcj0iMyIvPjwvc3ZnPg==",
-  iconSize: [24, 30],
-  iconAnchor: [12, 30],
-  popupAnchor: [0, -30],
-}) : null as any;
+// Premium Offline-Available Vector Pin Icons (Built from shared SVG constants)
+const OFFLINE_FACILITY_ICON =
+  typeof window !== "undefined" ? createOutlinePinIcon("rose") : (null as any);
 
-const OFFLINE_VILLAGE_ICON = typeof window !== "undefined" ? L.icon({
-  iconUrl: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiMxMGI5ODEiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNMjEgMTBhOSA5IDAgMSAwLTE4IDAgYzAgNyA5IDEzIDkgMTNzOS02IDktMTNaIi8+PGNpcmNsZSBjeD0iMTIiIGN5PSIxMCIgcj0iMyIvPjwvc3ZnPg==",
-  iconSize: [24, 30],
-  iconAnchor: [12, 30],
-  popupAnchor: [0, -30],
-}) : null as any;
+const OFFLINE_VILLAGE_ICON =
+  typeof window !== "undefined" ? createOutlinePinIcon("green") : (null as any);
 import {
   Dialog,
   DialogContent,
