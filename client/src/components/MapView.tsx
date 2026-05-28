@@ -650,6 +650,7 @@ export interface MapOverlayLayers {
   constituencies: boolean;
   populationGeoTIFF: boolean;
   grid3Settlements: boolean;
+  zeroDoseVillages: boolean; // Per-village zero-dose / under-immunized graduated pins
 }
 
 interface LayerPanelProps {
@@ -805,6 +806,9 @@ function LayerPanel({
                     } else {
                       subtext = "High-fidelity building footprint extents (external API)";
                     }
+                  } else if (key === "zeroDoseVillages") {
+                    displayName = "Zero-dose Villages";
+                    subtext = "Graduated pins by missed-child count (DTP1 gap)";
                   }
 
                   // ── Data-availability dot color ──
@@ -1603,6 +1607,7 @@ export function MapView({
     constituencies: false,
     populationGeoTIFF: true,
     grid3Settlements: false,
+    zeroDoseVillages: false,
   });
 
   // Advanced GIS-Microplanning States & Refs
@@ -1627,6 +1632,30 @@ export function MapView({
 
   const { data: rasterListData } = useQuery<{ success: boolean; files: Array<{ fileName: string; country: string; resolution: string }> }>({
     queryKey: ["/api/resources/geotiff/list"],
+  });
+
+  // Zero-dose / under-immunized per-village breakdown.
+  // Only fetched when the layer is toggled on, to avoid extra load on initial map open.
+  const { data: zeroDoseData } = useQuery<{
+    byVillage: Array<{
+      villageId: number | null;
+      villageName: string;
+      districtId: number;
+      districtName: string;
+      facilityId: number;
+      facilityName: string;
+      latitude: number | null;
+      longitude: number | null;
+      isHardToReach: boolean;
+      zeroDose: number;
+      underImmunized: number;
+      denominator: number;
+      pct: number;
+      underImmunizedPct: number;
+    }>;
+  }>({
+    queryKey: ["/api/indicators/zero-dose"],
+    enabled: layers.zeroDoseVillages,
   });
 
   // Query all public tenants to allow synchronization between raster selection and planning context
@@ -5048,6 +5077,68 @@ export function MapView({
               </Popup>
             </CircleMarker>
           ))}
+
+        {/* Zero-dose / under-immunized village pins — graduated by missed-child count.
+            Mirrors the popup + color/radius logic from pages/ZeroDoseVillages.tsx so
+            planners see the same layer in the context of the main map. */}
+        {layers.zeroDoseVillages && (() => {
+          const rows = (zeroDoseData?.byVillage ?? []).filter(
+            (v) => v.latitude != null && v.longitude != null && v.zeroDose > 0,
+          );
+          // Honor the page's existing province/district scope filters. The API
+          // payload only carries districtId, so province scoping is resolved by
+          // walking the already-loaded districts list.
+          const districtsInProvince =
+            selectedProvinceId === "all"
+              ? null
+              : new Set(
+                  districts
+                    .filter((d) => Number(d.provinceId) === Number(selectedProvinceId))
+                    .map((d) => Number(d.id)),
+                );
+          const scoped = rows.filter((v) => {
+            if (districtsInProvince && !districtsInProvince.has(Number(v.districtId))) return false;
+            if (selectedDistrictId !== "all" && Number(v.districtId) !== Number(selectedDistrictId)) return false;
+            return true;
+          });
+          const maxCount = Math.max(1, ...scoped.map((v) => v.zeroDose));
+          const colorFor = (n: number) => {
+            const r = n / maxCount;
+            if (r > 0.66) return "#dc2626";
+            if (r > 0.33) return "#ea580c";
+            return "#f59e0b";
+          };
+          return scoped.map((v) => {
+            const n = v.zeroDose;
+            const color = colorFor(n);
+            const radius = 6 + Math.round((n / maxCount) * 12);
+            return (
+              <CircleMarker
+                key={`zerodose-${v.villageId ?? "f" + v.facilityId}`}
+                center={[Number(v.latitude), Number(v.longitude)]}
+                radius={radius}
+                pathOptions={{ color, fillColor: color, fillOpacity: 0.65, weight: 1 }}
+              >
+                <Popup>
+                  <div className="text-xs space-y-1">
+                    <div className="font-semibold">{v.villageName}</div>
+                    <div>{v.facilityName} · {v.districtName}</div>
+                    <div>
+                      Zero-dose: <strong>{v.zeroDose}</strong> ({v.pct}%)
+                    </div>
+                    <div>
+                      Under-imm: <strong>{v.underImmunized}</strong> ({v.underImmunizedPct}%)
+                    </div>
+                    <div>of {v.denominator} eligible children</div>
+                    {v.isHardToReach && (
+                      <Badge className="bg-amber-500/10 text-amber-700">Hard-to-reach</Badge>
+                    )}
+                  </div>
+                </Popup>
+              </CircleMarker>
+            );
+          });
+        })()}
 
         {/* Dynamic measurement overlay polyline & circle markers */}
         {isMeasuring && measurementPoints.length > 0 && (
