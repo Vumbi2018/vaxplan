@@ -30,6 +30,9 @@ import {
   sessionDayPlans,
   stockTransactions,
   monthlyReports,
+  notifications,
+  type Notification,
+  type InsertNotification,
   type User,
   type UpsertUser,
   type SignupRequest,
@@ -1704,6 +1707,56 @@ export class DatabaseStorage implements IStorage {
       .where(and(eq(monthlyReports.id, id), eq(monthlyReports.tenantId, tenantId)))
       .returning();
     return row;
+  }
+
+  // --- Notifications ---
+  async createNotification(data: InsertNotification): Promise<Notification> {
+    const [row] = await db.insert(notifications).values(data).returning();
+    return row;
+  }
+
+  async getNotificationsForUser(
+    userId: string,
+    opts: { limit?: number; unreadOnly?: boolean } = {},
+  ): Promise<Notification[]> {
+    const limit = Math.min(Math.max(opts.limit ?? 50, 1), 200);
+    const where = opts.unreadOnly
+      ? and(eq(notifications.userId, userId), isNull(notifications.readAt))
+      : eq(notifications.userId, userId);
+    return await db
+      .select()
+      .from(notifications)
+      .where(where)
+      .orderBy(desc(notifications.createdAt))
+      .limit(limit);
+  }
+
+  async markNotificationRead(userId: string, id: string): Promise<boolean> {
+    const result = await db
+      .update(notifications)
+      .set({ readAt: new Date() })
+      .where(and(eq(notifications.id, id), eq(notifications.userId, userId)));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  async markAllNotificationsRead(userId: string): Promise<number> {
+    const result = await db
+      .update(notifications)
+      .set({ readAt: new Date() })
+      .where(and(eq(notifications.userId, userId), isNull(notifications.readAt)));
+    return result.rowCount ?? 0;
+  }
+
+  async getUsersByTenantAndRoles(
+    tenantId: string,
+    roles: string[],
+  ): Promise<User[]> {
+    if (roles.length === 0) return [];
+    const rows = await db
+      .select()
+      .from(users)
+      .where(and(eq(users.tenantId, tenantId), eq(users.isActive, true)));
+    return rows.filter((u) => roles.includes(u.role as string));
   }
 }
 

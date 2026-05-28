@@ -1776,3 +1776,54 @@ export type ImportedCoverage = typeof importedCoverage.$inferSelect;
 export type InsertImportedCoverage = z.infer<typeof insertImportedCoverageSchema>;
 export type CsvImport = typeof csvImports.$inferSelect;
 export type InsertCsvImport = z.infer<typeof insertCsvImportSchema>;
+
+// ============================================================================
+// NOTIFICATIONS — In-app digests (e.g. stock alerts)
+// ============================================================================
+export const notifications = pgTable(
+  "notifications",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    tenantId: varchar("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    userId: varchar("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    type: varchar("type", { length: 50 }).notNull(),
+    title: varchar("title", { length: 255 }).notNull(),
+    body: text("body"),
+    data: jsonb("data").default({}).notNull(),
+    readAt: timestamp("read_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("idx_notifications_user_unread").on(table.userId, table.readAt),
+    index("idx_notifications_tenant").on(table.tenantId),
+  ],
+);
+
+export type Notification = typeof notifications.$inferSelect;
+export type InsertNotification = typeof notifications.$inferInsert;
+
+// Stock-alert digest tenant settings shape (lives inside tenants.settings.stockAlertDigest).
+export type StockAlertDigestFrequency = "daily" | "weekly";
+export interface StockAlertDigestSettings {
+  enabled: boolean;
+  frequency: StockAlertDigestFrequency;
+  thresholdMonths: number;
+  // Optional recipient role override. Defaults to ["facility_clerk", "facility_in_charge"].
+  recipientRoles?: string[];
+}
+export const DEFAULT_STOCK_ALERT_DIGEST: StockAlertDigestSettings = {
+  enabled: true,
+  frequency: "weekly",
+  thresholdMonths: 1,
+  recipientRoles: ["facility_clerk", "facility_in_charge"],
+};
+export const stockAlertDigestSettingsSchema = z.object({
+  enabled: z.boolean(),
+  frequency: z.enum(["daily", "weekly"]),
+  thresholdMonths: z.number().positive(),
+  recipientRoles: z.array(z.string()).optional(),
+});

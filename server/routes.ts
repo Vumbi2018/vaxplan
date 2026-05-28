@@ -52,6 +52,8 @@ import {
   insertStockTransactionSchema,
   insertMonthlyReportSchema,
   insertUserRoleSchema,
+  stockAlertDigestSettingsSchema,
+  DEFAULT_STOCK_ALERT_DIGEST,
   settlementsMaster,
   candidateUnmappedSettlements,
   populationGrids,
@@ -8684,6 +8686,101 @@ export async function registerRoutes(
    * GET /api/sync/status
    * Returns aggregate record counts for the tenant — used by the offline banner.
    */
+  // ─────────────────────────────────────────────────────────────────────────
+  // NOTIFICATIONS — in-app digest delivery (e.g. stock alerts)
+  // ─────────────────────────────────────────────────────────────────────────
+
+  app.get("/api/notifications", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+      const unreadOnly = req.query.unreadOnly === "1" || req.query.unreadOnly === "true";
+      const limit = req.query.limit ? parseInt(String(req.query.limit), 10) : undefined;
+      const list = await storage.getNotificationsForUser(userId, { unreadOnly, limit });
+      res.json(list);
+    } catch (err: any) {
+      console.error("GET /api/notifications failed:", err);
+      res.status(500).json({ message: "Failed to fetch notifications" });
+    }
+  });
+
+  app.post("/api/notifications/:id/read", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+      const ok = await storage.markNotificationRead(userId, req.params.id);
+      if (!ok) return res.status(404).json({ message: "Notification not found" });
+      res.json({ ok: true });
+    } catch (err: any) {
+      console.error("POST /api/notifications/:id/read failed:", err);
+      res.status(500).json({ message: "Failed to mark notification read" });
+    }
+  });
+
+  app.post("/api/notifications/read-all", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getCurrentUserId(req);
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+      const count = await storage.markAllNotificationsRead(userId);
+      res.json({ ok: true, count });
+    } catch (err: any) {
+      console.error("POST /api/notifications/read-all failed:", err);
+      res.status(500).json({ message: "Failed to mark notifications read" });
+    }
+  });
+
+  // GET — current tenant's stock-alert digest preference (merged with defaults)
+  app.get(
+    "/api/me/tenant/stock-alert-digest",
+    isAuthenticated,
+    requireTenant,
+    async (req: any, res) => {
+      try {
+        const tenant = await storage.getTenant(req.tenantId!);
+        if (!tenant) return res.status(404).json({ message: "Tenant not found" });
+        const raw = (tenant.settings as any)?.stockAlertDigest ?? {};
+        res.json({ ...DEFAULT_STOCK_ALERT_DIGEST, ...raw });
+      } catch (err: any) {
+        console.error("GET /api/me/tenant/stock-alert-digest failed:", err);
+        res.status(500).json({ message: "Failed to fetch digest settings" });
+      }
+    },
+  );
+
+  // PATCH — admins update the digest config; non-admins get 403.
+  app.patch(
+    "/api/me/tenant/stock-alert-digest",
+    isAuthenticated,
+    requireTenant,
+    async (req: any, res) => {
+      try {
+        const userId = getCurrentUserId(req);
+        const user = userId ? await storage.getUser(userId) : null;
+        const adminRoles = new Set(["national_admin", "provincial_coordinator"]);
+        if (!user || !adminRoles.has(user.role as string)) {
+          return res.status(403).json({ message: "Forbidden" });
+        }
+        const data = stockAlertDigestSettingsSchema.partial().parse(req.body);
+        const current = await storage.getTenant(req.tenantId!);
+        if (!current) return res.status(404).json({ message: "Tenant not found" });
+        const prevDigest = ((current.settings as any)?.stockAlertDigest ?? {}) as Record<string, any>;
+        const nextDigest = { ...DEFAULT_STOCK_ALERT_DIGEST, ...prevDigest, ...data };
+        const newSettings = {
+          ...((current.settings as Record<string, any>) ?? {}),
+          stockAlertDigest: nextDigest,
+        };
+        await storage.updateTenant(req.tenantId!, { settings: newSettings });
+        res.json(nextDigest);
+      } catch (err: any) {
+        if (err?.name === "ZodError") {
+          return res.status(400).json({ message: "Invalid payload", errors: err.errors });
+        }
+        console.error("PATCH /api/me/tenant/stock-alert-digest failed:", err);
+        res.status(500).json({ message: "Failed to update digest settings" });
+      }
+    },
+  );
+
   app.get("/api/sync/status", isAuthenticated, requireTenant, async (req: any, res) => {
     try {
       const stats = await getSyncStats(req.tenantId);
