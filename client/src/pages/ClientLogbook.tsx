@@ -578,7 +578,8 @@ export default function ClientLogbook() {
       if (!navigator.onLine) {
         return (await offlineDb.clients.toArray()) as unknown as Client[];
       }
-      const res = await fetch("/api/clients");
+      const res = await fetch("/api/clients", { credentials: "include" });
+      if (res.status === 401 || res.status === 403) return [];
       if (!res.ok) throw new Error("Failed to load clients");
       return res.json();
     },
@@ -600,7 +601,7 @@ export default function ClientLogbook() {
       if (!navigator.onLine) {
         return (await offlineDb.vaccineConfigs.toArray()) as unknown as VaccineConfig[];
       }
-      const res = await fetch("/api/vaccines/config");
+      const res = await fetch("/api/vaccines/config", { credentials: "include" });
       if (!res.ok) throw new Error("Failed to load configs");
       return res.json();
     },
@@ -612,7 +613,7 @@ export default function ClientLogbook() {
       if (!navigator.onLine) {
         return (await offlineDb.villages.toArray()) as unknown as Village[];
       }
-      const res = await fetch("/api/villages");
+      const res = await fetch("/api/villages", { credentials: "include" });
       if (!res.ok) throw new Error("Failed to load villages");
       return res.json();
     },
@@ -624,7 +625,7 @@ export default function ClientLogbook() {
       if (!navigator.onLine) {
         return (await offlineDb.districts.toArray()) as unknown as District[];
       }
-      const res = await fetch("/api/districts");
+      const res = await fetch("/api/districts", { credentials: "include" });
       if (!res.ok) throw new Error("Failed to load districts");
       return res.json();
     },
@@ -636,7 +637,7 @@ export default function ClientLogbook() {
       if (!navigator.onLine) {
         return (await offlineDb.provinces.toArray()) as unknown as Province[];
       }
-      const res = await fetch("/api/provinces");
+      const res = await fetch("/api/provinces", { credentials: "include" });
       if (!res.ok) throw new Error("Failed to load provinces");
       return res.json();
     },
@@ -649,7 +650,7 @@ export default function ClientLogbook() {
       if (!navigator.onLine) {
         return (await offlineDb.facilities.toArray()) as unknown as Facility[];
       }
-      const res = await fetch("/api/facilities");
+      const res = await fetch("/api/facilities", { credentials: "include" });
       if (!res.ok) throw new Error("Failed to load facilities");
       return res.json();
     },
@@ -661,7 +662,7 @@ export default function ClientLogbook() {
       if (!navigator.onLine) {
         return { name: "Ministry of Health", code: "SSD", countryCode: "SSD" };
       }
-      const res = await fetch("/api/me/tenant");
+      const res = await fetch("/api/me/tenant", { credentials: "include" });
       if (!res.ok) throw new Error("Failed to load tenant info");
       return res.json();
     },
@@ -718,7 +719,7 @@ export default function ClientLogbook() {
           .equals(selectedClient.id)
           .toArray()) as unknown as ClientVaccination[];
       }
-      const res = await fetch(`/api/clients/${selectedClient.id}/vaccinations`);
+      const res = await fetch(`/api/clients/${selectedClient.id}/vaccinations`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to load vaccinations");
       return res.json();
     },
