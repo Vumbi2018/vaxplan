@@ -4,20 +4,33 @@
  * Drills the dashboard's zero-dose tile into a ranked village list plus a
  * Leaflet pin layer, so planners can spot exactly which catchment areas are
  * driving the missed-child counts and target outreach accordingly.
+ *
+ * Planners can multi-select villages (via row checkboxes or map-pin clicks)
+ * and click "Create outreach microplan" to draft a routine microplan via
+ * `POST /api/missed-communities/create-outreach`, mirroring the flow on
+ * `client/src/pages/MissedCommunities.tsx`. Antigen is chosen automatically
+ * based on the current indicator mode (PENTA1 for zero-dose catch-up,
+ * PENTA3 for under-immunized defaulter follow-up).
  */
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Link } from "wouter";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Link, useLocation } from "wouter";
 import { MapContainer, TileLayer, CircleMarker, Popup } from "react-leaflet";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { AlertTriangle, Syringe, MapPin, Layers, ArrowLeft } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
+import {
+  AlertTriangle, Syringe, MapPin, Layers, ArrowLeft, ArrowRight, RefreshCw,
+} from "lucide-react";
 
 interface VillageRow {
   villageId: number | null;
@@ -49,9 +62,14 @@ interface ZeroDoseSummary {
 type Mode = "zero" | "under";
 
 export default function ZeroDoseVillages() {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [, setLocation] = useLocation();
+
   const [mode, setMode] = useState<Mode>("zero");
   const [districtFilter, setDistrictFilter] = useState<string>("");
   const [search, setSearch] = useState("");
+  const [selected, setSelected] = useState<Set<number>>(new Set());
 
   const { data, isLoading } = useQuery<ZeroDoseSummary>({
     queryKey: ["/api/indicators/zero-dose"],
@@ -88,7 +106,6 @@ export default function ZeroDoseVillages() {
     ? [mapped[0].latitude!, mapped[0].longitude!]
     : [-6.314993, 143.95555];
 
-  const accent = mode === "zero" ? "rose" : "amber";
   const accentText = mode === "zero" ? "text-rose-600" : "text-amber-600";
   const accentBorder = mode === "zero" ? "border-rose-200" : "border-amber-200";
   const Icon = mode === "zero" ? AlertTriangle : Syringe;
@@ -112,6 +129,51 @@ export default function ZeroDoseVillages() {
   const denominatorDisplay = data?.denominator ?? 0;
   const pctDisplay =
     mode === "zero" ? data?.pct ?? 0 : data?.underImmunized.pct ?? 0;
+
+  const toggleSelect = (vid: number | null) => {
+    if (vid == null) return;
+    setSelected((prev) => {
+      const next = new Set<number>(prev);
+      if (next.has(vid)) next.delete(vid); else next.add(vid);
+      return next;
+    });
+  };
+  const selectableIds = filtered
+    .map((r) => r.villageId)
+    .filter((id): id is number => id != null);
+  const selectTop = () => setSelected(new Set(selectableIds.slice(0, 50)));
+  const clearAll = () => setSelected(new Set());
+
+  const createOutreach = useMutation({
+    mutationFn: async () => {
+      const d = new Date();
+      const year = d.getFullYear();
+      const quarter = Math.floor(d.getMonth() / 3) + 1;
+      const antigen = mode === "zero" ? "PENTA1" : "PENTA3";
+      return await apiRequest<any>("POST", "/api/missed-communities/create-outreach", {
+        villageIds: Array.from(selected),
+        antigen,
+        year,
+        quarter,
+      });
+    },
+    onSuccess: (res: any) => {
+      toast({
+        title: "Draft microplan created",
+        description: `${res.sessions.length} outreach session(s) drafted across ${selected.size} villages. Opening builder…`,
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/microplans"] });
+      setSelected(new Set());
+      const first = res.microplans?.[0] ?? res.microplan;
+      if (first?.id) setLocation(`/microplans/routine/${first.id}`);
+    },
+    onError: (err: Error) =>
+      toast({
+        title: "Failed to create microplan",
+        description: err.message,
+        variant: "destructive",
+      }),
+  });
 
   return (
     <div className="p-6 space-y-6 max-w-7xl">
@@ -142,7 +204,13 @@ export default function ZeroDoseVillages() {
           <div className="grid sm:grid-cols-4 gap-3">
             <div className="space-y-1">
               <Label className="text-xs uppercase text-muted-foreground">Indicator</Label>
-              <Select value={mode} onValueChange={(v) => setMode(v as Mode)}>
+              <Select
+                value={mode}
+                onValueChange={(v) => {
+                  setMode(v as Mode);
+                  setSelected(new Set());
+                }}
+              >
                 <SelectTrigger data-testid="select-mode"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="zero">Zero-dose (no DTP1)</SelectItem>
@@ -223,17 +291,24 @@ export default function ZeroDoseVillages() {
                     const n = countFor(v);
                     const color = colorFor(n);
                     const radius = 6 + Math.round((n / maxCount) * 12);
+                    const isSelected = v.villageId != null && selected.has(v.villageId);
+                    const canSelect = v.villageId != null;
                     return (
                       <CircleMarker
                         key={`${v.villageId ?? "f" + v.facilityId}`}
                         center={[v.latitude!, v.longitude!]}
-                        radius={radius}
+                        radius={isSelected ? radius + 4 : radius}
                         pathOptions={{
-                          color,
+                          color: isSelected ? "#1d4ed8" : color,
                           fillColor: color,
-                          fillOpacity: 0.65,
-                          weight: 1,
+                          fillOpacity: 0.7,
+                          weight: isSelected ? 3 : 1,
                         }}
+                        eventHandlers={
+                          canSelect
+                            ? { click: () => toggleSelect(v.villageId) }
+                            : undefined
+                        }
                       >
                         <Popup>
                           <div className="text-xs space-y-1">
@@ -249,6 +324,19 @@ export default function ZeroDoseVillages() {
                             {v.isHardToReach && (
                               <Badge className="bg-amber-500/10 text-amber-700">Hard-to-reach</Badge>
                             )}
+                            {canSelect && (
+                              <div className="pt-1">
+                                <Button
+                                  size="sm"
+                                  variant={isSelected ? "secondary" : "default"}
+                                  onClick={() => toggleSelect(v.villageId)}
+                                  className="h-6 text-[11px]"
+                                  data-testid={`btn-popup-toggle-${v.villageId}`}
+                                >
+                                  {isSelected ? "Remove from selection" : "Add to selection"}
+                                </Button>
+                              </div>
+                            )}
                           </div>
                         </Popup>
                       </CircleMarker>
@@ -262,11 +350,33 @@ export default function ZeroDoseVillages() {
 
         {/* Ranked list */}
         <Card>
-          <CardHeader className="pb-2">
+          <CardHeader className="pb-2 flex flex-row items-center justify-between">
             <CardTitle className="text-sm flex items-center gap-2">
               <Icon className={`h-4 w-4 ${accentText}`} />
               Ranked villages ({filtered.length})
             </CardTitle>
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={selectTop}
+                className="h-7 text-xs"
+                disabled={selectableIds.length === 0}
+                data-testid="btn-select-top"
+              >
+                Select top 50
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={clearAll}
+                className="h-7 text-xs"
+                disabled={selected.size === 0}
+                data-testid="btn-clear-selection"
+              >
+                Clear
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="p-0">
             <div className="h-[500px] overflow-auto">
@@ -282,6 +392,7 @@ export default function ZeroDoseVillages() {
                 <table className="w-full text-xs">
                   <thead className="sticky top-0 bg-card border-b border-border">
                     <tr className="text-left">
+                      <th className="p-2 w-8"></th>
                       <th className="p-2">Village</th>
                       <th className="p-2">Facility · District</th>
                       <th className="p-2 text-right">
@@ -294,12 +405,30 @@ export default function ZeroDoseVillages() {
                     {filtered.map((r) => {
                       const n = countFor(r);
                       const pct = mode === "zero" ? r.pct : r.underImmunizedPct;
+                      const canSelect = r.villageId != null;
+                      const isSelected = canSelect && selected.has(r.villageId!);
                       return (
                         <tr
                           key={`${r.villageId ?? "f" + r.facilityId}`}
-                          className="border-b border-border/50 hover:bg-secondary/40"
+                          className={`border-b border-border/50 hover:bg-secondary/40 ${isSelected ? (mode === "zero" ? "bg-rose-500/5" : "bg-amber-500/5") : ""}`}
                           data-testid={`row-village-${r.villageId ?? "f" + r.facilityId}`}
                         >
+                          <td className="p-2">
+                            {canSelect ? (
+                              <Checkbox
+                                checked={isSelected}
+                                onCheckedChange={() => toggleSelect(r.villageId)}
+                                data-testid={`checkbox-village-${r.villageId}`}
+                              />
+                            ) : (
+                              <span
+                                className="text-[10px] text-muted-foreground"
+                                title="Facility-level rollup — no specific village to target"
+                              >
+                                —
+                              </span>
+                            )}
+                          </td>
                           <td className="p-2">
                             <div className="font-medium flex items-center gap-1">
                               {r.latitude != null && r.longitude != null && (
@@ -336,6 +465,32 @@ export default function ZeroDoseVillages() {
                 </table>
               )}
             </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Sticky action bar — mirrors MissedCommunities.tsx */}
+      <div className="sticky bottom-4 z-10 flex justify-end">
+        <Card className={`shadow-2xl ${accentBorder}`}>
+          <CardContent className="p-3 flex items-center gap-3">
+            <span className="text-sm font-medium" data-testid="text-selected-count">
+              {selected.size} village{selected.size === 1 ? "" : "s"} selected
+            </span>
+            <Button
+              size="sm"
+              disabled={selected.size === 0 || createOutreach.isPending}
+              onClick={() => createOutreach.mutate()}
+              className={
+                mode === "zero"
+                  ? "gap-1.5 bg-rose-600 hover:bg-rose-500 text-white"
+                  : "gap-1.5 bg-amber-600 hover:bg-amber-500 text-white"
+              }
+              data-testid="btn-create-outreach"
+            >
+              {createOutreach.isPending
+                ? <><RefreshCw className="h-4 w-4 animate-spin" /> Creating…</>
+                : <>Create outreach microplan <ArrowRight className="h-4 w-4" /></>}
+            </Button>
           </CardContent>
         </Card>
       </div>
