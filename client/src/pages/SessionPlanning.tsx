@@ -70,7 +70,9 @@ import {
   type District,
   type InsertSessionPlan,
   type Microplan,
+  type VaccineConfig,
 } from "@shared/schema";
+import { expandVaccineSchedule } from "@shared/vaccineSchedule";
 import { z } from "zod";
 
 const sessionFormSchema = insertSessionPlanSchema.extend({
@@ -213,6 +215,22 @@ export default function SessionPlanning({
       return res.json();
     },
   });
+
+  // Tenant antigen / dose schedule — drives the Mark Done dialog inputs so
+  // counts are captured per the tenant's actual schedule (not a hardcoded list).
+  const { data: vaccineConfigs } = useQuery<VaccineConfig[]>({
+    queryKey: ["/api/vaccines/config"],
+    queryFn: async () => {
+      if (!navigator.onLine) {
+        return (await offlineDb.vaccineConfigs.toArray()) as unknown as VaccineConfig[];
+      }
+      const res = await fetch("/api/vaccines/config");
+      if (!res.ok) throw new Error("Failed to load vaccine configs");
+      return res.json();
+    },
+  });
+
+  const doseStages = useMemo(() => expandVaccineSchedule(vaccineConfigs), [vaccineConfigs]);
 
   // Master microplans of the route's planType. Required for the cascade:
   // a session must belong to a parent microplan of matching planType.
@@ -711,18 +729,20 @@ export default function SessionPlanning({
   // even with no signal and have it sync later.
   const markDoneMutation = useMutation({
     mutationFn: async ({ id, counts }: { id: number; counts: Record<string, number> }) => {
+      const totals = Object.values(counts).reduce((s, n) => s + (Number(n) || 0), 0);
+      const payload = { perAntigen: counts, totals };
       if (!navigator.onLine) {
         await enqueueOutbox({
           tenantId: user?.tenantId ?? "SSD",
           entityType: "sessionPlan",
           method: "POST",
           url: `/api/sessions/${id}/mark-done`,
-          body: JSON.stringify({ vaccinatedCounts: counts }),
+          body: JSON.stringify(payload),
           serverId: id,
         });
         return { queued: true };
       }
-      return apiRequest("POST", `/api/sessions/${id}/mark-done`, { vaccinatedCounts: counts });
+      return apiRequest("POST", `/api/sessions/${id}/mark-done`, payload);
     },
     onSuccess: (res: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/sessions"] });
@@ -1678,22 +1698,37 @@ export default function SessionPlanning({
                   {markDoneSession.sessionType} · target {markDoneSession.targetPopulation?.toLocaleString() ?? "—"}
                 </div>
               </div>
-              <div className="space-y-2">
-                {["BCG", "OPV", "Penta", "MR", "HPV", "Other"].map((vac) => (
-                  <div key={vac} className="flex items-center justify-between gap-3">
-                    <Label className="text-xs font-medium w-24" htmlFor={`vc-${vac}`}>{vac}</Label>
-                    <Input
-                      id={`vc-${vac}`}
-                      data-testid={`input-vaccinated-${vac.toLowerCase()}`}
-                      type="number"
-                      min={0}
-                      placeholder="0"
-                      value={vaccinatedCounts[vac] ?? ""}
-                      onChange={(e) => setVaccinatedCounts((s) => ({ ...s, [vac]: e.target.value }))}
-                      className="h-8"
-                    />
+              <div className="space-y-2 max-h-[50vh] overflow-y-auto pr-1">
+                {doseStages.length === 0 ? (
+                  <div className="text-xs text-muted-foreground border rounded-md p-3">
+                    No antigen schedule is configured for this tenant yet. Ask
+                    your admin to set up vaccines in the Vaccine Calculator first.
                   </div>
-                ))}
+                ) : (
+                  doseStages.map((stage) => (
+                    <div key={`${stage.configId}-${stage.doseNumber}`} className="flex items-center justify-between gap-3">
+                      <Label
+                        className="text-xs font-medium w-28 truncate"
+                        htmlFor={`vc-${stage.code}`}
+                        title={stage.label}
+                      >
+                        {stage.label}
+                      </Label>
+                      <Input
+                        id={`vc-${stage.code}`}
+                        data-testid={`input-vaccinated-${stage.code.toLowerCase()}`}
+                        type="number"
+                        min={0}
+                        placeholder="0"
+                        value={vaccinatedCounts[stage.code] ?? ""}
+                        onChange={(e) =>
+                          setVaccinatedCounts((s) => ({ ...s, [stage.code]: e.target.value }))
+                        }
+                        className="h-8"
+                      />
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           )}
