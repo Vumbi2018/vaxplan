@@ -2959,10 +2959,53 @@ function Step2({
                       {estimate.result.nodataCells > 0 &&
                         ` · ${estimate.result.nodataCells} no-data`}
                       {estimate.result.errorCells > 0 &&
-                        ` · ${estimate.result.errorCells} failed`}
+                        ` · ${estimate.result.errorCells} missing`}
                       <br />
                       Source: WorldPop 2020, 1&nbsp;km grid
                     </div>
+                    {(() => {
+                      const r = estimate.result;
+                      let badgeText = "";
+                      let badgeClass = "";
+                      let testId = "";
+                      if (r.partial) {
+                        badgeText = `Partial — ${r.errorCells} cell${
+                          r.errorCells === 1 ? "" : "s"
+                        } missing${r.offline ? " (offline)" : ""}, ${
+                          r.cachedCells
+                        } from cache, ${r.liveCells} live`;
+                        badgeClass =
+                          "bg-amber-100 text-amber-900 dark:bg-amber-900/30 dark:text-amber-200";
+                        testId = "badge-catchment-partial";
+                      } else if (r.liveCells === 0 && r.cachedCells > 0) {
+                        badgeText = `Using cached data${
+                          r.offline ? " (offline)" : ""
+                        } — ${r.cachedCells} cell${
+                          r.cachedCells === 1 ? "" : "s"
+                        } from previous lookups`;
+                        badgeClass =
+                          "bg-blue-100 text-blue-900 dark:bg-blue-900/30 dark:text-blue-200";
+                        testId = "badge-catchment-cached";
+                      } else if (r.cachedCells > 0) {
+                        badgeText = `Live — ${r.liveCells} fetched, ${r.cachedCells} from cache`;
+                        badgeClass =
+                          "bg-emerald-100 text-emerald-900 dark:bg-emerald-900/30 dark:text-emerald-200";
+                        testId = "badge-catchment-live";
+                      } else {
+                        badgeText = "Live — all cells fetched";
+                        badgeClass =
+                          "bg-emerald-100 text-emerald-900 dark:bg-emerald-900/30 dark:text-emerald-200";
+                        testId = "badge-catchment-live";
+                      }
+                      return (
+                        <div
+                          className={`mt-2 inline-block rounded px-2 py-0.5 text-xs font-medium ${badgeClass}`}
+                          data-testid={testId}
+                        >
+                          {badgeText}
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
                 {estimate.status === "done" &&

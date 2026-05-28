@@ -1,5 +1,5 @@
 const STORAGE_KEY = "vaxplan.worldpop.cache.v1";
-const MAX_ENTRIES = 500;
+const MAX_ENTRIES = 5000;
 const TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 const KEY_PRECISION = 4;
 

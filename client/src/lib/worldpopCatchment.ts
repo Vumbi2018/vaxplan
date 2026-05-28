@@ -1,3 +1,5 @@
+import { getCachedPopulation, setCachedPopulation } from "./populationCache";
+
 const EARTH_RADIUS_M = 6378137;
 const WORLDPOP_WMS_URL = "https://ogc.worldpop.org/geoserver/wpGlobal/ows";
 const WORLDPOP_LAYER = "wpGlobal:ppp_2020_1km_Aggregated";
@@ -56,11 +58,15 @@ export type CatchmentEstimateResult =
       status: "ok";
       total: number;
       sampledCells: number;
+      cachedCells: number;
+      liveCells: number;
       nodataCells: number;
       errorCells: number;
+      partial: boolean;
+      offline: boolean;
     }
   | { status: "nodata" }
-  | { status: "error"; message: string };
+  | { status: "error"; message: string; offline?: boolean };
 
 export async function estimateCatchmentPopulation(opts: {
   lat: number;
@@ -95,11 +101,14 @@ export async function estimateCatchmentPopulation(opts: {
   }
   if (points.length === 0) points.push({ lat, lng });
 
+  const offline = typeof navigator !== "undefined" && navigator.onLine === false;
   const signal = opts.signal ?? new AbortController().signal;
   const queue = [...points];
   let done = 0;
   let nodata = 0;
   let errors = 0;
+  let cachedCells = 0;
+  let liveCells = 0;
   let total = 0;
   const concurrency = Math.min(6, points.length);
 
@@ -107,12 +116,26 @@ export async function estimateCatchmentPopulation(opts: {
     while (queue.length > 0) {
       if (signal.aborted) return;
       const p = queue.shift()!;
-      try {
-        const v = await fetchCellValue(p.lat, p.lng, signal);
-        if (v == null) nodata++;
-        else total += v;
-      } catch {
+      const cached = getCachedPopulation(p.lat, p.lng);
+      if (cached) {
+        total += cached.value;
+        cachedCells++;
+      } else if (offline) {
+        // No connectivity — record the gap so the caller can flag partial.
         errors++;
+      } else {
+        try {
+          const v = await fetchCellValue(p.lat, p.lng, signal);
+          if (v == null) {
+            nodata++;
+          } else {
+            total += v;
+            liveCells++;
+            setCachedPopulation(p.lat, p.lng, v);
+          }
+        } catch {
+          errors++;
+        }
       }
       done++;
       opts.onProgress?.(done, points.length);
@@ -124,18 +147,29 @@ export async function estimateCatchmentPopulation(opts: {
   if (signal.aborted) {
     return { status: "error", message: "Estimate cancelled." };
   }
-  if (errors === points.length) {
-    return { status: "error", message: "Couldn't reach WorldPop." };
-  }
-  const sampledCells = points.length - nodata - errors;
+  const sampledCells = cachedCells + liveCells;
   if (sampledCells === 0) {
+    if (offline) {
+      return {
+        status: "error",
+        message: "Offline and no cached cells for this area yet.",
+        offline: true,
+      };
+    }
+    if (errors === points.length) {
+      return { status: "error", message: "Couldn't reach WorldPop." };
+    }
     return { status: "nodata" };
   }
   return {
     status: "ok",
     total: Math.round(total),
     sampledCells,
+    cachedCells,
+    liveCells,
     nodataCells: nodata,
     errorCells: errors,
+    partial: errors > 0,
+    offline,
   };
 }
