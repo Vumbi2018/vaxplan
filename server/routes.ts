@@ -2,7 +2,13 @@ import type { Express, Request } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated, getCurrentUserId } from "./replitAuth";
-import { hasPermission, tenantRolesCache, ROLE_PERMISSIONS, type Permission } from "./auth/authorization";
+import {
+  hasPermission,
+  ROLE_PERMISSIONS,
+  refreshTenantRolesCache,
+  ensureTenantRolesCache,
+  type Permission,
+} from "./auth/authorization";
 import { registerSsoRoutes } from "./auth/ssoRoutes";
 import { tenantContext, requireTenant } from "./auth/tenantResolver";
 import { loadDbUser } from "./auth/loadDbUser";
@@ -156,28 +162,6 @@ async function getFacilityHierarchy(facilityId: number, tenantId: string) {
   }
 }
 
-// Helper to refresh the memory cache of dynamic role definitions for a tenant
-async function refreshTenantRolesCache(tenantId: string): Promise<void> {
-  try {
-    const dbRoles = await storage.getUserRoles(tenantId);
-    const roleMap: Record<string, Permission[]> = {};
-    
-    // Fallback/load defaults
-    Object.entries(ROLE_PERMISSIONS).forEach(([code, perms]) => {
-      roleMap[code] = perms;
-    });
-    
-    // Override/extend with custom dynamic definitions
-    dbRoles.forEach(r => {
-      roleMap[r.code] = r.permissions as Permission[];
-    });
-    
-    tenantRolesCache.set(tenantId, roleMap);
-  } catch (err) {
-    console.error(`Failed to refresh tenant roles cache for ${tenantId}:`, err);
-  }
-}
-
 // Granular RBAC and Row-Level permission validation middleware
 function requirePermission(
   permission: Permission,
@@ -190,9 +174,12 @@ function requirePermission(
         return res.status(401).json({ message: "Unauthorized" });
       }
       
-      // Lazily populate dynamic role permissions cache for this tenant
-      if (req.tenantId && !tenantRolesCache.has(req.tenantId)) {
-        await refreshTenantRolesCache(req.tenantId);
+      // Lazily populate dynamic role permissions cache for this tenant. The
+      // helper no-ops when the cache is already warm, so the steady-state
+      // cost is one Map.has lookup; admin endpoints that mutate roles
+      // invalidate this cache so we never serve stale permissions.
+      if (req.tenantId) {
+        await ensureTenantRolesCache(req.tenantId);
       }
       
       // Reuse the row attached by the loadDbUser middleware; fall back to a

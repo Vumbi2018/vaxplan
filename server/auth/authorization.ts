@@ -1,4 +1,5 @@
 import type { User } from "@shared/schema";
+import { storage } from "../storage";
 
 export type Permission =
   | "view_clients"
@@ -120,8 +121,62 @@ export interface UserDataAccessScope {
   facilities: number[];
 }
 
-// Memory cache for tenant roles to allow synchronous evaluation inside hasPermission
+// Memory cache for tenant roles to allow synchronous evaluation inside hasPermission.
+// Populated lazily by `ensureTenantRolesCache` on the first authorized request per
+// tenant, and refreshed / invalidated by the `/api/user-roles` admin endpoints so
+// permission edits take effect immediately without a server restart.
 export const tenantRolesCache = new Map<string, Record<string, Permission[]>>();
+
+/**
+ * Rebuild the cached role -> permissions map for a tenant by reading the
+ * tenant's custom user roles from storage and layering them over the static
+ * `ROLE_PERMISSIONS` defaults. Call this after any mutation to a tenant's
+ * roles so subsequent `hasPermission` checks see the new permission set.
+ */
+export async function refreshTenantRolesCache(tenantId: string): Promise<void> {
+  try {
+    const dbRoles = await storage.getUserRoles(tenantId);
+    const roleMap: Record<string, Permission[]> = {};
+
+    // Start from the static defaults so unmodified built-in roles still work
+    // even if a tenant hasn't materialized them in the user_roles table yet.
+    for (const [code, perms] of Object.entries(ROLE_PERMISSIONS)) {
+      roleMap[code] = perms;
+    }
+
+    // Override / extend with any custom or edited role definitions.
+    for (const r of dbRoles) {
+      roleMap[r.code] = r.permissions as Permission[];
+    }
+
+    tenantRolesCache.set(tenantId, roleMap);
+  } catch (err) {
+    // On failure leave the cache untouched so the next request retries the
+    // lazy populate path instead of locking in an empty role map.
+    console.error(`Failed to refresh tenant roles cache for ${tenantId}:`, err);
+  }
+}
+
+/**
+ * Drop the cached role -> permissions map for a tenant. The next
+ * `ensureTenantRolesCache` call will re-read from storage. Useful when the
+ * caller only needs to guarantee the cache is no longer stale and is happy
+ * for the next request to pay the (one-time) reload cost.
+ */
+export function invalidateTenantRolesCache(tenantId: string): void {
+  tenantRolesCache.delete(tenantId);
+}
+
+/**
+ * Lazily populate the tenant roles cache on the first authorized request for
+ * a tenant. No-op when the cache already has an entry, so the per-request
+ * cost is a single `Map.has` lookup once the cache is warm.
+ */
+export async function ensureTenantRolesCache(tenantId: string): Promise<void> {
+  if (!tenantRolesCache.has(tenantId)) {
+    await refreshTenantRolesCache(tenantId);
+  }
+}
 
 /**
  * Checks if a user has a specified permission, and if a geographic context is provided,
