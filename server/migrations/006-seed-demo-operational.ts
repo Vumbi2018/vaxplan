@@ -1055,9 +1055,11 @@ interface CohortDef {
 /**
  * Shared cohort blueprint applied to every demo facility. Together with
  * per-facility villages, names and phone numbers (built below), this yields
- * ~28 demo clients per facility — enough for a populated Client Logbook and
+ * ~51 demo clients per facility — enough for a populated Client Logbook,
  * a Defaulter List that spans mild (≥4w overdue), moderate (≥6w) and severe
- * (≥8w) buckets across multiple antigens.
+ * (≥8w) buckets across multiple antigens, AND a realistic eligible-age
+ * (≥12 months) population that exercises the Zero-Dose, Under-Immunized
+ * and DTP1→DTP3/MCV1 dropout indicators end-to-end.
  *
  * NOTE on monthly_reports impact: the seed only subtracts doses whose admin
  * date falls inside the *current quarter* (see seedDemoClients below). Most
@@ -1124,6 +1126,68 @@ const COHORTS: CohortDef[] = [
     vaccinations: [...D_BIRTH, ...D_6W, ...D_10W, ...D_14W] }, // MR_1 due 273 → 177d
   { slug: "sev-mr2", clientType: "child", gender: "female", ageDays: 900,
     vaccinations: [...D_BIRTH, ...D_6W, ...D_10W, ...D_14W, ...D_9M] }, // MR_2 due 546 → 354d
+
+  // --- Eligible-age cohort (≥12 months) ====================================
+  // The Zero-Dose, Under-Immunized and DTP1→DTP3/MCV1 tiles only count
+  // children ≥12 months old. The defaulter cohorts above are mostly under
+  // 12 months so they don't move those tiles at all. This block adds a
+  // realistic eligible-age population with the distribution:
+  //   ~70% complete through DTP3 + MCV1
+  //   ~15% under-immunized (DTP1 but no DTP3)
+  //   ~10% zero-dose (no DTP1)
+  //   ~5%  mixed dropout (DTP1+DTP2 but no DTP3 / MCV1) — also flagged as
+  //         under-immunized by the indicator since it lacks DTP3.
+  // All priming doses land >6 months ago so monthly_reports stays stable
+  // (the in-quarter adjustment in seedDemoClients still handles any overlap
+  // safely by clamping to 0).
+
+  // 14 complete (DTP3 + MCV1), ages 13–30 months
+  { slug: "elig-cmp-01", clientType: "child", gender: "female", ageDays: 400,
+    vaccinations: [...D_BIRTH, ...D_6W, ...D_10W, ...D_14W, ...D_9M] },
+  { slug: "elig-cmp-02", clientType: "child", gender: "male", ageDays: 430,
+    vaccinations: [...D_BIRTH, ...D_6W, ...D_10W, ...D_14W, ...D_9M] },
+  { slug: "elig-cmp-03", clientType: "child", gender: "female", ageDays: 470,
+    vaccinations: [...D_BIRTH, ...D_6W, ...D_10W, ...D_14W, ...D_9M] },
+  { slug: "elig-cmp-04", clientType: "child", gender: "male", ageDays: 500,
+    vaccinations: [...D_BIRTH, ...D_6W, ...D_10W, ...D_14W, ...D_9M] },
+  { slug: "elig-cmp-05", clientType: "child", gender: "female", ageDays: 540,
+    vaccinations: [...D_BIRTH, ...D_6W, ...D_10W, ...D_14W, ...D_9M] },
+  { slug: "elig-cmp-06", clientType: "child", gender: "male", ageDays: 580,
+    vaccinations: [...D_BIRTH, ...D_6W, ...D_10W, ...D_14W, ...D_9M] },
+  { slug: "elig-cmp-07", clientType: "child", gender: "female", ageDays: 620,
+    vaccinations: [...D_BIRTH, ...D_6W, ...D_10W, ...D_14W, ...D_9M] },
+  { slug: "elig-cmp-08", clientType: "child", gender: "male", ageDays: 660,
+    vaccinations: [...D_BIRTH, ...D_6W, ...D_10W, ...D_14W, ...D_9M] },
+  { slug: "elig-cmp-09", clientType: "child", gender: "female", ageDays: 700,
+    vaccinations: [...D_BIRTH, ...D_6W, ...D_10W, ...D_14W, ...D_9M] },
+  { slug: "elig-cmp-10", clientType: "child", gender: "male", ageDays: 740,
+    vaccinations: [...D_BIRTH, ...D_6W, ...D_10W, ...D_14W, ...D_9M] },
+  { slug: "elig-cmp-11", clientType: "child", gender: "female", ageDays: 780,
+    vaccinations: [...D_BIRTH, ...D_6W, ...D_10W, ...D_14W, ...D_9M] },
+  { slug: "elig-cmp-12", clientType: "child", gender: "male", ageDays: 820,
+    vaccinations: [...D_BIRTH, ...D_6W, ...D_10W, ...D_14W, ...D_9M] },
+  { slug: "elig-cmp-13", clientType: "child", gender: "female", ageDays: 860,
+    vaccinations: [...D_BIRTH, ...D_6W, ...D_10W, ...D_14W, ...D_9M] },
+  { slug: "elig-cmp-14", clientType: "child", gender: "male", ageDays: 900,
+    vaccinations: [...D_BIRTH, ...D_6W, ...D_10W, ...D_14W, ...D_9M] },
+
+  // 3 under-immunized: DTP1 (Penta_1) administered but no DTP3, no MCV1
+  { slug: "elig-ui-01", clientType: "child", gender: "male", ageDays: 410,
+    vaccinations: [...D_BIRTH, ...D_6W] },
+  { slug: "elig-ui-02", clientType: "child", gender: "female", ageDays: 520,
+    vaccinations: [...D_BIRTH, ...D_6W] },
+  { slug: "elig-ui-03", clientType: "child", gender: "male", ageDays: 640,
+    vaccinations: [...D_BIRTH, ...D_6W] },
+
+  // 2 zero-dose: no DTP1 ever administered (one truly empty, one BCG-only)
+  { slug: "elig-zd-01", clientType: "child", gender: "female", ageDays: 460,
+    vaccinations: [] },
+  { slug: "elig-zd-02", clientType: "child", gender: "male", ageDays: 600,
+    vaccinations: [{ vaccineName: "BCG", daysAfterDob: 1 }] },
+
+  // 1 mixed dropout: DTP1 + DTP2 but no DTP3 / MCV1
+  { slug: "elig-do-01", clientType: "child", gender: "female", ageDays: 560,
+    vaccinations: [...D_BIRTH, ...D_6W, ...D_10W] },
 
   // --- Pregnant women (3) ---------------------------------------------------
   { slug: "preg-td1", clientType: "pregnant_woman", gender: "female",
@@ -1196,16 +1260,17 @@ async function seedDemoClients(
 
     const roster = buildClientRoster(pi);
 
-    // Idempotency: if any "Demo " client already exists for this facility, the
-    // seed is treated as already-run for this facility — skip insertion AND
-    // the monthly_reports adjustment so re-running is a true no-op.
+    // Idempotency: skip any roster entry whose generated name already exists
+    // on this facility. This is per-client, not per-facility, so adding new
+    // cohorts in later seed runs picks up only the new entries instead of
+    // re-inserting every demo client. The monthly_reports adjustment below
+    // only subtracts doses we actually inserted in *this* run, so it's a
+    // true no-op when nothing new is added.
     const existing = await db
       .select({ id: clients.id, name: clients.name })
       .from(clients)
       .where(and(eq(clients.tenantId, tenantId), eq(clients.facilityId, p.facilityId)));
     const existingNames = new Set(existing.map((r) => r.name));
-    const anyDemoExists = existing.some((r) => r.name.startsWith("Demo "));
-    if (anyDemoExists) continue;
 
     // Insert clients (skip any whose name happens to collide with a non-demo
     // row — extremely unlikely thanks to the "Demo " prefix, but defensive).
