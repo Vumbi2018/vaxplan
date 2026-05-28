@@ -9626,6 +9626,9 @@ export async function registerRoutes(
         const districtId = req.query.districtId
           ? parseInt(String(req.query.districtId), 10)
           : undefined;
+        const facilityIdScope = req.query.facilityId
+          ? parseInt(String(req.query.facilityId), 10)
+          : undefined;
         const includeTrend =
           req.query.includeTrend === "1" ||
           req.query.includeTrend === "true";
@@ -9671,6 +9674,11 @@ export async function registerRoutes(
           .filter((f) =>
             Number.isFinite(districtId as number)
               ? f.districtId === districtId
+              : true,
+          )
+          .filter((f) =>
+            Number.isFinite(facilityIdScope as number)
+              ? f.facilityId === facilityIdScope
               : true,
           );
 

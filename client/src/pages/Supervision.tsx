@@ -1027,8 +1027,10 @@ function QuarterlyReviewCoverage() {
   const [quarter, setQuarter] = useState<number>(CURRENT_QUARTER);
   const [provinceId, setProvinceId] = useState<number | null>(null);
   const [districtId, setDistrictId] = useState<number | null>(null);
+  const [facilityId, setFacilityId] = useState<number | null>(null);
   const [statusFilter, setStatusFilter] = useState<"all" | "missing" | "done">("all");
   const [openFacilityId, setOpenFacilityId] = useState<number | null>(null);
+  const hasScopeFilter = provinceId !== null || districtId !== null || facilityId !== null;
 
   const queryParams = new URLSearchParams();
   queryParams.set("year", String(year));
@@ -1037,10 +1039,12 @@ function QuarterlyReviewCoverage() {
   queryParams.set("trendQuarters", "4");
   if (provinceId) queryParams.set("provinceId", String(provinceId));
   if (districtId) queryParams.set("districtId", String(districtId));
+  if (facilityId) queryParams.set("facilityId", String(facilityId));
   const queryStr = queryParams.toString();
 
   const { data, isLoading } = useQuery<QuarterlyReviewCoverageResponse>({
-    queryKey: ["/api/indicators/quarterly-review-coverage", year, quarter, provinceId, districtId, "trend4"],
+    queryKey: ["/api/indicators/quarterly-review-coverage", year, quarter, provinceId, districtId, facilityId, "trend4"],
+    enabled: hasScopeFilter,
     queryFn: async () => {
       const r = await fetch(`/api/indicators/quarterly-review-coverage?${queryStr}`, { credentials: "include" });
       if (!r.ok) throw new Error("Failed to load quarterly review coverage");
@@ -1108,8 +1112,11 @@ function QuarterlyReviewCoverage() {
           <GeoCascadeFilter
             provinceId={provinceId}
             districtId={districtId}
-            onProvinceChange={(id) => { setProvinceId(id); setDistrictId(null); }}
-            onDistrictChange={setDistrictId}
+            facilityId={facilityId}
+            showFacility
+            onProvinceChange={(id) => { setProvinceId(id); setDistrictId(null); setFacilityId(null); }}
+            onDistrictChange={(id) => { setDistrictId(id); setFacilityId(null); }}
+            onFacilityChange={setFacilityId}
             testIdPrefix="qrc-geo"
           />
         </div>
@@ -1141,7 +1148,16 @@ function QuarterlyReviewCoverage() {
           </div>
         </div>
 
-        {isLoading ? (
+        {!hasScopeFilter ? (
+          <div className="text-center py-8 px-4 text-sm text-muted-foreground border border-dashed rounded-md bg-muted/30">
+            <div className="font-medium text-foreground mb-1">
+              Pick a Province, District, or Facility above
+            </div>
+            <div>
+              Showing every facility in the tenant at once would be too long to scroll. Use the cascade filters to narrow down.
+            </div>
+          </div>
+        ) : isLoading ? (
           <div className="space-y-2">
             {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-12 w-full" />)}
           </div>
