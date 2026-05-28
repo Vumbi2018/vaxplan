@@ -852,25 +852,21 @@ export default function MicroplanWizard() {
     let cancelled = false;
     (async () => {
       try {
-        const dayPlanArrays = await Promise.all(
-          sessionIds.map(async (sid) => {
-            try {
-              const res = await fetch(`/api/sessions/${sid}/days`, {
-                credentials: "include",
-              });
-              if (!res.ok) return [] as SessionDayPlan[];
-              return (await res.json()) as SessionDayPlan[];
-            } catch {
-              return [] as SessionDayPlan[];
-            }
-          }),
+        const res = await fetch(
+          `/api/session-day-plans?microplanId=${microplanId}`,
+          { credentials: "include" },
         );
+        if (!res.ok) return;
+        const allDayPlans = (await res.json()) as SessionDayPlan[];
         if (cancelled) return;
+        const sessionIdSet = new Set(sessionIds);
         const bySessionId: Record<number, SessionDayPlan> = {};
-        sessionIds.forEach((sid, idx) => {
-          const arr = dayPlanArrays[idx];
-          if (arr && arr.length) bySessionId[sid] = arr[0];
-        });
+        for (const dp of allDayPlans) {
+          if (!sessionIdSet.has(dp.sessionPlanId)) continue;
+          // Storage orders by sessionPlanId, dayNumber, so the first row per
+          // session is the lowest dayNumber — matching the prior `arr[0]` behavior.
+          if (!bySessionId[dp.sessionPlanId]) bySessionId[dp.sessionPlanId] = dp;
+        }
         const dayIdMap: Record<string, number> = {};
         setStaffing((prev) =>
           prev.map((s) => {

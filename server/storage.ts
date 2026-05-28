@@ -261,6 +261,7 @@ export interface IStorage {
 
   // --- 4. Session Day Plans ---
   getSessionDayPlans(tenantId: string, sessionPlanId: number): Promise<SessionDayPlan[]>;
+  getSessionDayPlansByMicroplan(tenantId: string, microplanId: number): Promise<SessionDayPlan[]>;
   createSessionDayPlan(tenantId: string, data: InsertSessionDayPlan): Promise<SessionDayPlan>;
   updateSessionDayPlan(tenantId: string, id: number, data: Partial<InsertSessionDayPlan>): Promise<SessionDayPlan | undefined>;
   deleteSessionDayPlan(tenantId: string, id: number): Promise<boolean>;
@@ -1516,6 +1517,19 @@ export class DatabaseStorage implements IStorage {
       .from(sessionDayPlans)
       .where(and(eq(sessionDayPlans.tenantId, tenantId), eq(sessionDayPlans.sessionPlanId, sessionPlanId)))
       .orderBy(sessionDayPlans.dayNumber);
+  }
+
+  async getSessionDayPlansByMicroplan(tenantId: string, microplanId: number): Promise<SessionDayPlan[]> {
+    const rows = await db
+      .select({ dp: sessionDayPlans })
+      .from(sessionDayPlans)
+      .innerJoin(sessionPlans, eq(sessionDayPlans.sessionPlanId, sessionPlans.id))
+      .where(and(
+        eq(sessionDayPlans.tenantId, tenantId),
+        eq(sessionPlans.microplanId, microplanId),
+      ))
+      .orderBy(sessionDayPlans.sessionPlanId, sessionDayPlans.dayNumber);
+    return rows.map((r) => r.dp);
   }
 
   async createSessionDayPlan(tenantId: string, data: InsertSessionDayPlan): Promise<SessionDayPlan> {

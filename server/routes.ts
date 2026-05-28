@@ -6287,9 +6287,20 @@ export async function registerRoutes(
   // SESSION DAY PLANS — UNICEF Day-by-Day session activity planning
   // ─────────────────────────────────────────────────────────────────────────
 
-  // GET /api/session-day-plans — Fetch all day plans for the current tenant
+  // GET /api/session-day-plans — Fetch session day plans for the current tenant,
+  // optionally narrowed to a single microplan via ?microplanId=… so the wizard
+  // can hydrate every session's staffing/transport in one round-trip.
   app.get("/api/session-day-plans", isAuthenticated, requireTenant, async (req: any, res) => {
     try {
+      const microplanIdRaw = req.query.microplanId;
+      if (microplanIdRaw !== undefined) {
+        const microplanId = parseInt(String(microplanIdRaw));
+        if (isNaN(microplanId)) {
+          return res.status(400).json({ message: "Invalid microplanId" });
+        }
+        const list = await storage.getSessionDayPlansByMicroplan(req.tenantId, microplanId);
+        return res.json(list);
+      }
       const list = await db
         .select()
         .from(sessionDayPlans)
