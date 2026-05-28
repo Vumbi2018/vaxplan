@@ -2,6 +2,33 @@ import { createRoot } from "react-dom/client";
 import App from "./App";
 import "./index.css";
 
+// ─── Dev-only Service Worker kill switch ────────────────────────────────────
+// The PWA service worker (/sw.js) is registered only in production, but once
+// installed it persists on the origin and serves stale, Cache-First assets —
+// which shows up as a blank screen in the dev preview. In dev we proactively
+// unregister any leftover worker and purge its caches so the preview always
+// loads fresh. No-op when no worker is present.
+if (import.meta.env.DEV && "serviceWorker" in navigator) {
+  navigator.serviceWorker
+    .getRegistrations()
+    .then((regs) => {
+      if (regs.length > 0) {
+        console.info("[VaxPlan] Dev mode: removing stale service worker(s).");
+      }
+      return Promise.all(regs.map((r) => r.unregister()));
+    })
+    .then(() => {
+      if ("caches" in window) {
+        return caches
+          .keys()
+          .then((keys) => Promise.all(keys.map((k) => caches.delete(k))));
+      }
+    })
+    .catch(() => {
+      /* best-effort cleanup */
+    });
+}
+
 // ─── Global Fetch Interceptor for Tenant Context Persistence ─────────────────
 const originalFetch = window.fetch;
 window.fetch = async (input, init) => {
