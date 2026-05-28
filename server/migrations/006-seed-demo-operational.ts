@@ -69,11 +69,14 @@ const VACCINES: Array<{
   wastageRate: number; // percent
   dosesPerVial: number;
 }> = [
-  { name: "BCG",     cohort: "under1",      dosesPerChild: 1, wastageRate: 50, dosesPerVial: 20 },
-  { name: "OPV",     cohort: "under1",      dosesPerChild: 4, wastageRate: 25, dosesPerVial: 20 },
-  { name: "Penta",   cohort: "under1",      dosesPerChild: 3, wastageRate: 10, dosesPerVial: 1  },
-  { name: "MR",      cohort: "schoolEntry", dosesPerChild: 2, wastageRate: 15, dosesPerVial: 10 },
-  { name: "TT",      cohort: "pregnant",    dosesPerChild: 2, wastageRate: 10, dosesPerVial: 20 },
+  { name: "BCG",        cohort: "under1",      dosesPerChild: 1, wastageRate: 50, dosesPerVial: 20 },
+  { name: "OPV",        cohort: "under1",      dosesPerChild: 4, wastageRate: 25, dosesPerVial: 20 },
+  { name: "Penta",      cohort: "under1",      dosesPerChild: 3, wastageRate: 10, dosesPerVial: 1  },
+  { name: "PCV",        cohort: "under1",      dosesPerChild: 3, wastageRate: 11, dosesPerVial: 1  },
+  { name: "Rotavirus",  cohort: "under1",      dosesPerChild: 3, wastageRate: 5,  dosesPerVial: 1  },
+  { name: "IPV",        cohort: "under1",      dosesPerChild: 2, wastageRate: 5,  dosesPerVial: 5  },
+  { name: "MR",         cohort: "schoolEntry", dosesPerChild: 2, wastageRate: 15, dosesPerVial: 10 },
+  { name: "TT",         cohort: "pregnant",    dosesPerChild: 2, wastageRate: 10, dosesPerVial: 20 },
 ];
 
 interface DemoSessionTemplate {
@@ -381,11 +384,14 @@ async function seedVaccineRequirements(
  * vaccine_requirements row.
  */
 const DEMO_COVERAGE_FRACTIONS: Record<string, number> = {
-  BCG: 0.88,   // green
-  OPV: 0.62,   // amber
-  Penta: 0.74, // amber
-  MR: 0.42,    // red
-  TT: 0.55,    // amber
+  BCG: 0.88,        // green
+  OPV: 0.62,        // amber
+  Penta: 0.74,      // amber
+  PCV: 0.71,        // amber
+  Rotavirus: 0.68,  // amber
+  IPV: 0.58,        // amber
+  MR: 0.42,         // red
+  TT: 0.55,         // amber
 };
 
 /**
@@ -593,11 +599,14 @@ const VACCINE_CONFIG_DEFAULTS: Array<{
   wastageFactor: string;
   vialsPerDose: number;
 }> = [
-  { name: "BCG",   targetGroup: "births",      doses: 1, recommendedAge: "At birth",            recommendedAgeWeeks: 0,  wastageFactor: "50.00", vialsPerDose: 20 },
-  { name: "OPV",   targetGroup: "under1",      doses: 4, recommendedAge: "Birth, 6, 10, 14 wk", recommendedAgeWeeks: 6,  wastageFactor: "25.00", vialsPerDose: 20 },
-  { name: "Penta", targetGroup: "under1",      doses: 3, recommendedAge: "6, 10, 14 weeks",     recommendedAgeWeeks: 6,  wastageFactor: "10.00", vialsPerDose: 1  },
-  { name: "MR",    targetGroup: "schoolEntry", doses: 2, recommendedAge: "9 & 18 months",       recommendedAgeWeeks: 39, wastageFactor: "15.00", vialsPerDose: 10 },
-  { name: "TT",    targetGroup: "pregnant",    doses: 2, recommendedAge: "2nd & 3rd trimester", recommendedAgeWeeks: 0,  wastageFactor: "10.00", vialsPerDose: 20 },
+  { name: "BCG",       targetGroup: "births",      doses: 1, recommendedAge: "At birth",            recommendedAgeWeeks: 0,  wastageFactor: "50.00", vialsPerDose: 20 },
+  { name: "OPV",       targetGroup: "under1",      doses: 4, recommendedAge: "Birth, 6, 10, 14 wk", recommendedAgeWeeks: 6,  wastageFactor: "25.00", vialsPerDose: 20 },
+  { name: "Penta",     targetGroup: "under1",      doses: 3, recommendedAge: "6, 10, 14 weeks",     recommendedAgeWeeks: 6,  wastageFactor: "10.00", vialsPerDose: 1  },
+  { name: "PCV",       targetGroup: "under1",      doses: 3, recommendedAge: "6, 10, 14 weeks",     recommendedAgeWeeks: 6,  wastageFactor: "11.00", vialsPerDose: 1  },
+  { name: "Rotavirus", targetGroup: "under1",      doses: 3, recommendedAge: "6, 10, 14 weeks",     recommendedAgeWeeks: 6,  wastageFactor: "5.00",  vialsPerDose: 1  },
+  { name: "IPV",       targetGroup: "under1",      doses: 2, recommendedAge: "14 weeks & 9 months", recommendedAgeWeeks: 14, wastageFactor: "5.00",  vialsPerDose: 5  },
+  { name: "MR",        targetGroup: "schoolEntry", doses: 2, recommendedAge: "9 & 18 months",       recommendedAgeWeeks: 39, wastageFactor: "15.00", vialsPerDose: 10 },
+  { name: "TT",        targetGroup: "pregnant",    doses: 2, recommendedAge: "2nd & 3rd trimester", recommendedAgeWeeks: 0,  wastageFactor: "10.00", vialsPerDose: 20 },
 ];
 
 async function ensureVaccineConfigs(tenantId: string): Promise<Map<string, number>> {
@@ -808,6 +817,9 @@ function vaccineConfigKey(displayName: string): string {
   if (u.startsWith("BCG")) return "BCG";
   if (u.startsWith("OPV")) return "OPV";
   if (u.startsWith("PENTA")) return "Penta";
+  if (u.startsWith("PCV")) return "PCV";
+  if (u.startsWith("ROTA")) return "Rotavirus";
+  if (u.startsWith("IPV")) return "IPV";
   if (u.startsWith("MR") || u.startsWith("MEASLES")) return "MR";
   if (u.startsWith("TT") || u.startsWith("TD")) return "TT";
   return displayName;
@@ -823,17 +835,25 @@ const D_BIRTH: Array<{ vaccineName: string; daysAfterDob: number }> = [
 const D_6W: Array<{ vaccineName: string; daysAfterDob: number }> = [
   { vaccineName: "OPV 1", daysAfterDob: 45 },
   { vaccineName: "Penta 1", daysAfterDob: 45 },
+  { vaccineName: "PCV 1", daysAfterDob: 45 },
+  { vaccineName: "Rota 1", daysAfterDob: 45 },
 ];
 const D_10W: Array<{ vaccineName: string; daysAfterDob: number }> = [
   { vaccineName: "OPV 2", daysAfterDob: 73 },
   { vaccineName: "Penta 2", daysAfterDob: 73 },
+  { vaccineName: "PCV 2", daysAfterDob: 73 },
+  { vaccineName: "Rota 2", daysAfterDob: 73 },
 ];
 const D_14W: Array<{ vaccineName: string; daysAfterDob: number }> = [
   { vaccineName: "OPV 3", daysAfterDob: 101 },
   { vaccineName: "Penta 3", daysAfterDob: 101 },
+  { vaccineName: "PCV 3", daysAfterDob: 101 },
+  { vaccineName: "Rota 3", daysAfterDob: 101 },
+  { vaccineName: "IPV 1", daysAfterDob: 101 },
 ];
 const D_9M: Array<{ vaccineName: string; daysAfterDob: number }> = [
   { vaccineName: "MR 1", daysAfterDob: 277 },
+  { vaccineName: "IPV 2", daysAfterDob: 277 },
 ];
 
 const CHILD_FIRST_NAMES = [
