@@ -4837,6 +4837,104 @@ export async function registerRoutes(
       if (unmappedCodes.length > 0) {
         vc.perAntigenUnmapped = perAntigenUnmapped;
       }
+
+      // Task #198 — Defaulter follow-up impact. For any session that has at
+      // least one attached village (i.e. was scoped to a specific community,
+      // which is how the "Plan defaulter follow-up here" pin flow creates
+      // sessions), count how many children in those villages who had not yet
+      // received PENTA_3 before this session day actually received a PENTA
+      // dose on the session's actual date. That number is the "defaulters
+      // caught up" closure-of-loop metric surfaced in the mark-done summary
+      // and on the under-immunized map pin popup.
+      let defaultersCaughtUp: number | null = null;
+      let defaulterVillageIds: number[] = [];
+      try {
+        const villageRows = await db
+          .select({ villageId: sessionVillages.villageId })
+          .from(sessionVillages)
+          .where(
+            and(
+              eq(sessionVillages.tenantId, String(req.tenantId)),
+              eq(sessionVillages.sessionId, entityId),
+            ),
+          );
+        defaulterVillageIds = villageRows
+          .map((r) => Number(r.villageId))
+          .filter((n) => Number.isFinite(n));
+
+        if (defaulterVillageIds.length > 0) {
+          const actualDate = new Date(vc.actualDate as string);
+          if (!Number.isFinite(actualDate.getTime())) {
+            throw new Error("invalid actualDate");
+          }
+          const dayStart = new Date(actualDate);
+          dayStart.setHours(0, 0, 0, 0);
+          const dayEnd = new Date(actualDate);
+          dayEnd.setHours(23, 59, 59, 999);
+
+          const childrenInVills = await db
+            .select({ id: clients.id })
+            .from(clients)
+            .where(
+              and(
+                eq(clients.tenantId, req.tenantId),
+                eq(clients.clientType, "child"),
+                inArray(clients.villageId, defaulterVillageIds),
+              ),
+            );
+
+          if (childrenInVills.length > 0) {
+            const cids = childrenInVills.map((c) => c.id);
+            const allDoses = await db
+              .select({
+                clientId: clientVaccinations.clientId,
+                vaccineName: clientVaccinations.vaccineName,
+                administeredDate: clientVaccinations.administeredDate,
+              })
+              .from(clientVaccinations)
+              .where(
+                and(
+                  eq(clientVaccinations.tenantId, req.tenantId),
+                  inArray(clientVaccinations.clientId, cids),
+                ),
+              );
+            const byChild = new Map<
+              string,
+              { hadPenta3Before: boolean; gotPentaToday: boolean }
+            >();
+            for (const d of allDoses) {
+              if (isCampaignDose(d.vaccineName)) continue;
+              const code = normAntigen(d.vaccineName);
+              if (code !== "PENTA_1" && code !== "PENTA_2" && code !== "PENTA_3") continue;
+              const rec = byChild.get(d.clientId) ?? {
+                hadPenta3Before: false,
+                gotPentaToday: false,
+              };
+              const dt = new Date(d.administeredDate as any);
+              if (code === "PENTA_3" && dt < dayStart) rec.hadPenta3Before = true;
+              if (dt >= dayStart && dt <= dayEnd) rec.gotPentaToday = true;
+              byChild.set(d.clientId, rec);
+            }
+            let count = 0;
+            byChild.forEach((rec) => {
+              if (rec.gotPentaToday && !rec.hadPenta3Before) count += 1;
+            });
+            defaultersCaughtUp = count;
+            vc.defaultersCaughtUp = count;
+            vc.defaulterVillageIds = defaulterVillageIds;
+          } else {
+            defaultersCaughtUp = 0;
+            vc.defaultersCaughtUp = 0;
+            vc.defaulterVillageIds = defaulterVillageIds;
+          }
+        }
+      } catch (e) {
+        console.warn(
+          `[mark-done] defaulters-caught-up computation failed for session ${entityId}:`,
+          e,
+        );
+      }
+
       const updated = await storage.updateSessionPlan(req.tenantId, entityId, {
         status: "completed",
         isAchieved: true,
@@ -4856,9 +4954,24 @@ export async function registerRoutes(
           unmappedCodes,
         );
       }
+      // Invalidate zero-dose indicator cache so the under-immunized map pin
+      // popup picks up "Last defaulter session" immediately on the next refresh
+      // rather than waiting for the cache TTL.
+      if (defaultersCaughtUp !== null) {
+        try {
+          const prefix = `zero-dose:${req.tenantId}:`;
+          const keysToDelete: string[] = [];
+          indicatorCache.forEach((_v, k) => {
+            if (typeof k === "string" && k.startsWith(prefix)) keysToDelete.push(k);
+          });
+          for (const k of keysToDelete) indicatorCache.delete(k);
+        } catch {}
+      }
       res.json({
         ...updated,
         unmappedAntigenCodes: unmappedCodes,
+        defaultersCaughtUp,
+        defaulterVillageCount: defaulterVillageIds.length,
       });
     } catch (err) {
       console.error("POST /api/sessions/:id/mark-done failed:", err);
@@ -8776,6 +8889,50 @@ export async function registerRoutes(
           }))
           .sort((a, b) => b.zeroDose - a.zeroDose);
 
+        // Task #198 — Latest completed defaulter follow-up session per village,
+        // for the under-immunized / zero-dose map pin popups. We pick the most
+        // recent completed session attached to each village that has a
+        // `defaultersCaughtUp` value persisted on its vaccinatedCounts (set by
+        // the mark-done handler whenever the session had attached villages —
+        // which is how the "Plan defaulter follow-up here" flow creates them).
+        const defaulterRows = await db
+          .select({
+            villageId: sessionVillages.villageId,
+            completedAt: sessionPlans.completedAt,
+            vaccinatedCounts: sessionPlans.vaccinatedCounts,
+          })
+          .from(sessionPlans)
+          .innerJoin(
+            sessionVillages,
+            and(
+              eq(sessionVillages.sessionId, sessionPlans.id),
+              eq(sessionVillages.tenantId, String(tenantId)),
+            ),
+          )
+          .where(
+            and(
+              eq(sessionPlans.tenantId, String(tenantId)),
+              eq(sessionPlans.status, "completed"),
+            ),
+          );
+        const lastDefaulterByVillage = new Map<
+          number,
+          { date: string; caughtUp: number }
+        >();
+        for (const r of defaulterRows) {
+          const vc = (r.vaccinatedCounts as any) || {};
+          if (vc.defaultersCaughtUp == null) continue;
+          if (r.villageId == null || r.completedAt == null) continue;
+          const caughtUp = Number(vc.defaultersCaughtUp) || 0;
+          const dt = new Date(r.completedAt as any);
+          if (!Number.isFinite(dt.getTime())) continue;
+          const vid = Number(r.villageId);
+          const existing = lastDefaulterByVillage.get(vid);
+          if (!existing || new Date(existing.date) < dt) {
+            lastDefaulterByVillage.set(vid, { date: dt.toISOString(), caughtUp });
+          }
+        }
+
         const byVillageRaw: VillAgg[] = [];
         byVillMap.forEach((v) => byVillageRaw.push(v));
         const byVillage = byVillageRaw
@@ -8787,6 +8944,10 @@ export async function registerRoutes(
               v.denominator > 0
                 ? Math.round((v.underImmunized / v.denominator) * 1000) / 10
                 : 0,
+            lastDefaulterSession:
+              v.villageId != null
+                ? lastDefaulterByVillage.get(Number(v.villageId)) ?? null
+                : null,
           }))
           .filter((v) => v.zeroDose + v.underImmunized > 0)
           .sort((a, b) =>

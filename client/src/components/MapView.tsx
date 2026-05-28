@@ -1659,6 +1659,7 @@ export function MapView({
       denominator: number;
       pct: number;
       underImmunizedPct: number;
+      lastDefaulterSession?: { date: string; caughtUp: number } | null;
     }>;
   }>({
     queryKey: ["/api/indicators/zero-dose"],
@@ -5140,6 +5141,16 @@ export function MapView({
                     {v.isHardToReach && (
                       <Badge className="bg-amber-500/10 text-amber-700">Hard-to-reach</Badge>
                     )}
+                    {v.lastDefaulterSession && (
+                      <div
+                        className="text-[11px] text-emerald-700 bg-emerald-50 rounded px-1.5 py-0.5"
+                        data-testid={`text-last-defaulter-session-zerodose-${v.villageId ?? v.facilityId}`}
+                      >
+                        Last defaulter session:{" "}
+                        {new Date(v.lastDefaulterSession.date).toLocaleDateString()}{" "}
+                        — <strong>{v.lastDefaulterSession.caughtUp}</strong> caught up
+                      </div>
+                    )}
                     {canCreateSessionPlan(user) && v.facilityId != null && (
                       <Button
                         size="sm"
@@ -5229,6 +5240,16 @@ export function MapView({
                     <div>of {v.denominator} eligible children</div>
                     {v.isHardToReach && (
                       <Badge className="bg-amber-500/10 text-amber-700">Hard-to-reach</Badge>
+                    )}
+                    {v.lastDefaulterSession && (
+                      <div
+                        className="text-[11px] text-emerald-700 bg-emerald-50 rounded px-1.5 py-0.5"
+                        data-testid={`text-last-defaulter-session-underimm-${v.villageId ?? v.facilityId}`}
+                      >
+                        Last defaulter session:{" "}
+                        {new Date(v.lastDefaulterSession.date).toLocaleDateString()}{" "}
+                        — <strong>{v.lastDefaulterSession.caughtUp}</strong> caught up
+                      </div>
                     )}
                     {canCreateSessionPlan(user) && v.facilityId != null && (
                       <Button

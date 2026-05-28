@@ -128,6 +128,19 @@ export default function SessionPlanning({
   // Task #47 — Mark Done dialog state. Captures per-vaccine doses administered.
   const [markDoneSession, setMarkDoneSession] = useState<SessionPlan | null>(null);
   const [vaccinatedCounts, setVaccinatedCounts] = useState<Record<string, string>>({});
+  // Task #198 — After mark-done, surface the closure-of-loop summary for
+  // sessions scoped to a specific village (the "Plan defaulter follow-up here"
+  // flow). Server returns `defaultersCaughtUp` whenever the session had at
+  // least one attached village.
+  const [markDoneSummary, setMarkDoneSummary] = useState<
+    | {
+        sessionName: string;
+        totals: number;
+        defaultersCaughtUp: number;
+        defaulterVillageCount: number;
+      }
+    | null
+  >(null);
   // Task #47 — Proximity panel state shown inside the edit dialog.
   const [proximityWarning, setProximityWarning] = useState<{ nearby: any[]; reason?: string } | null>(null);
   const [proximityChecking, setProximityChecking] = useState(false);
@@ -1246,14 +1259,43 @@ export default function SessionPlanning({
       }
       return apiRequest("POST", `/api/sessions/${id}/mark-done`, payload);
     },
-    onSuccess: (res: any) => {
+    onSuccess: (res: any, vars: { id: number; counts: Record<string, number> }) => {
       queryClient.invalidateQueries({ queryKey: ["/api/sessions"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sessions/map"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sessions/history"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/indicators/zero-dose"] });
       toast({
         title: res?.queued ? "Queued offline" : "Session marked done",
         description: res?.queued ? "Will sync when back online." : "Moved to history.",
       });
+      // Task #198 — When the session had attached villages (i.e. the server
+      // ran the defaulter follow-up impact calculation), keep the dialog open
+      // and replace its body with a "Defaulters caught up" summary so the
+      // planner sees the closure-of-loop number for the session they just
+      // closed out. For sessions without attached villages, or for offline
+      // queued submissions, fall through to the regular toast-and-close path.
+      if (
+        !res?.queued &&
+        markDoneSession &&
+        res &&
+        typeof res === "object" &&
+        res.defaultersCaughtUp != null
+      ) {
+        const totals = Object.values(vars.counts).reduce(
+          (s, n) => s + (Number(n) || 0),
+          0,
+        );
+        setMarkDoneSummary({
+          sessionName: markDoneSession.name,
+          totals,
+          defaultersCaughtUp: Number(res.defaultersCaughtUp) || 0,
+          defaulterVillageCount: Number(res.defaulterVillageCount) || 0,
+        });
+        setVaccinatedCounts({});
+        // Leave markDoneSession set so the dialog stays open while the summary
+        // view is shown; closing the summary clears both.
+        return;
+      }
       // Task #106: when the server reports antigen codes outside the tenant's
       // configured vaccine schedule, surface a warning so the health worker
       // knows those counts went into an "unmapped" bucket and a sync/refresh
@@ -2644,18 +2686,46 @@ export default function SessionPlanning({
 
       {/* Task #47 — Mark Done dialog. Captures vaccinated counts per antigen
           (free-form keys so it works across tenants/programs). */}
-      <Dialog open={!!markDoneSession} onOpenChange={(open) => { if (!open) { setMarkDoneSession(null); setVaccinatedCounts({}); } }}>
+      <Dialog open={!!markDoneSession} onOpenChange={(open) => { if (!open) { setMarkDoneSession(null); setVaccinatedCounts({}); setMarkDoneSummary(null); } }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <CheckCircle2 className="h-5 w-5 text-emerald-600" /> Mark session done
+              <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+              {markDoneSummary ? "Session marked done" : "Mark session done"}
             </DialogTitle>
             <DialogDescription>
-              Record how many people were vaccinated. The session moves to history
-              and stays on the live map for 30 more days.
+              {markDoneSummary
+                ? "The session moved to history and stays on the live map for 30 more days."
+                : "Record how many people were vaccinated. The session moves to history and stays on the live map for 30 more days."}
             </DialogDescription>
           </DialogHeader>
-          {markDoneSession && (
+          {markDoneSummary ? (
+            <div className="space-y-3" data-testid="panel-mark-done-summary">
+              <div className="text-sm">
+                <div className="font-semibold">{markDoneSummary.sessionName}</div>
+                <div className="text-xs text-muted-foreground">
+                  {markDoneSummary.totals.toLocaleString()} dose
+                  {markDoneSummary.totals === 1 ? "" : "s"} recorded
+                </div>
+              </div>
+              <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3">
+                <div className="text-xs font-semibold text-emerald-800 uppercase tracking-wide">
+                  Defaulters caught up
+                </div>
+                <div
+                  className="mt-1 text-2xl font-bold text-emerald-700"
+                  data-testid="text-defaulters-caught-up"
+                >
+                  {markDoneSummary.defaultersCaughtUp}
+                </div>
+                <div className="text-xs text-emerald-900/80 mt-1">
+                  {markDoneSummary.defaultersCaughtUp === 0
+                    ? `No DTP1-no-DTP3 children in the attached village${markDoneSummary.defaulterVillageCount === 1 ? "" : "s"} received a missing dose at this session.`
+                    : `Children in the attached village${markDoneSummary.defaulterVillageCount === 1 ? "" : "s"} who hadn't received DTP3 yet and got a catch-up dose at this session.`}
+                </div>
+              </div>
+            </div>
+          ) : markDoneSession && (
             <div className="space-y-3">
               <div className="text-sm">
                 <div className="font-semibold">{markDoneSession.name}</div>
@@ -2712,27 +2782,39 @@ export default function SessionPlanning({
             </div>
           )}
           <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => { setMarkDoneSession(null); setVaccinatedCounts({}); }}>Cancel</Button>
-            <Button
-              data-testid="button-confirm-mark-done"
-              disabled={
-                markDoneMutation.isPending ||
-                !markDoneSession ||
-                !!(markDoneSession && pendingSessionSync?.markDoneServerIds.has(markDoneSession.id))
-              }
-              onClick={() => {
-                if (!markDoneSession) return;
-                const counts: Record<string, number> = {};
-                for (const [k, v] of Object.entries(vaccinatedCounts)) {
-                  const n = Number(v);
-                  if (Number.isFinite(n) && n > 0) counts[k] = n;
-                }
-                markDoneMutation.mutate({ id: markDoneSession.id, counts });
-              }}
-              className="bg-emerald-600 hover:bg-emerald-500 text-white"
-            >
-              {markDoneMutation.isPending ? "Saving…" : "Confirm"}
-            </Button>
+            {markDoneSummary ? (
+              <Button
+                data-testid="button-close-mark-done-summary"
+                onClick={() => { setMarkDoneSession(null); setVaccinatedCounts({}); setMarkDoneSummary(null); }}
+                className="bg-emerald-600 hover:bg-emerald-500 text-white"
+              >
+                Close
+              </Button>
+            ) : (
+              <>
+                <Button variant="outline" onClick={() => { setMarkDoneSession(null); setVaccinatedCounts({}); }}>Cancel</Button>
+                <Button
+                  data-testid="button-confirm-mark-done"
+                  disabled={
+                    markDoneMutation.isPending ||
+                    !markDoneSession ||
+                    !!(markDoneSession && pendingSessionSync?.markDoneServerIds.has(markDoneSession.id))
+                  }
+                  onClick={() => {
+                    if (!markDoneSession) return;
+                    const counts: Record<string, number> = {};
+                    for (const [k, v] of Object.entries(vaccinatedCounts)) {
+                      const n = Number(v);
+                      if (Number.isFinite(n) && n > 0) counts[k] = n;
+                    }
+                    markDoneMutation.mutate({ id: markDoneSession.id, counts });
+                  }}
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white"
+                >
+                  {markDoneMutation.isPending ? "Saving…" : "Confirm"}
+                </Button>
+              </>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
