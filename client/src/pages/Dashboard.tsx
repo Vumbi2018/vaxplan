@@ -352,6 +352,7 @@ function quarterEnd(year: number, quarter: number) {
 function SupervisionCoverageByDistrictCard() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const [provinceFilter, setProvinceFilter] = useState<string>("all");
   const { data: visits, isLoading: loadingVisits } = useQuery<SupervisionVisitLite[]>({
     queryKey: ["/api/supervision-visits"],
   });
@@ -361,6 +362,29 @@ function SupervisionCoverageByDistrictCard() {
   const { data: districts } = useQuery<any[]>({
     queryKey: ["/api/districts"],
   });
+  const { data: provinces } = useQuery<any[]>({
+    queryKey: ["/api/provinces"],
+  });
+
+  const provinceOptions = useMemo(() => {
+    const present = new Set<number>();
+    (districts || []).forEach((d: any) => {
+      const pid = Number(d.provinceId);
+      if (pid) present.add(pid);
+    });
+    return (provinces || [])
+      .filter((p: any) => present.has(Number(p.id)))
+      .map((p: any) => ({ id: Number(p.id), name: String(p.name) }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [provinces, districts]);
+
+  const selectedProvince = useMemo(() => {
+    if (provinceFilter === "all") return null;
+    const pid = Number(provinceFilter);
+    return provinceOptions.find((p) => p.id === pid) || null;
+  }, [provinceFilter, provinceOptions]);
+
+  const provinceLabel = selectedProvince ? selectedProvince.name : "All provinces";
 
   const qStart = quarterStart(CURRENT_YEAR, CURRENT_QUARTER);
   const qEnd = quarterEnd(CURRENT_YEAR, CURRENT_QUARTER);
@@ -385,7 +409,11 @@ function SupervisionCoverageByDistrictCard() {
       visitsByFacility.set(v.facilityId, list);
     });
 
-    return districts
+    const filteredDistricts = selectedProvince
+      ? districts.filter((d: any) => Number(d.provinceId) === selectedProvince.id)
+      : districts;
+
+    return filteredDistricts
       .map((d: any) => {
         const facs = facByDistrict.get(Number(d.id)) || [];
         const total = facs.length;
@@ -423,7 +451,7 @@ function SupervisionCoverageByDistrictCard() {
       })
       .filter((r) => r.total > 0)
       .sort((a, b) => a.visitedPct - b.visitedPct || b.overduePct - a.overduePct);
-  }, [facilities, districts, visits, qStart.getTime(), qEnd.getTime()]);
+  }, [facilities, districts, visits, qStart.getTime(), qEnd.getTime(), selectedProvince]);
 
   const totals = useMemo(() => {
     const totalFac = rows.reduce((s, r) => s + r.total, 0);
@@ -465,6 +493,7 @@ function SupervisionCoverageByDistrictCard() {
     }
     const lines: string[] = [];
     lines.push(`Supervision coverage by district — ${quarterLabel}`);
+    lines.push(`Province,${provinceLabel}`);
     lines.push(`Quarter window,${qStartIso} to ${qEndIso}`);
     lines.push(`Overdue threshold,No conducted visit in last 90 days`);
     lines.push(`Generated,${new Date().toISOString()}`);
@@ -508,7 +537,10 @@ function SupervisionCoverageByDistrictCard() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `supervision-by-district-Q${CURRENT_QUARTER}-${CURRENT_YEAR}.csv`;
+    const provinceSlug = selectedProvince
+      ? `-${selectedProvince.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")}`
+      : "";
+    a.download = `supervision-by-district-Q${CURRENT_QUARTER}-${CURRENT_YEAR}${provinceSlug}.csv`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -579,6 +611,7 @@ function SupervisionCoverageByDistrictCard() {
   <div class="print-hint">Use your browser's <strong>Print</strong> dialog and choose "Save as PDF" to export.</div>
   <div class="header">
     <h1>Supervision coverage by district</h1>
+    <div class="meta">Province: <strong>${escapeHtml(provinceLabel)}</strong></div>
     <div class="meta">Quarter: <strong>${escapeHtml(quarterLabel)}</strong> (${escapeHtml(qStartIso)} to ${escapeHtml(qEndIso)})</div>
     <div class="meta">Generated: ${escapeHtml(generatedAt)}</div>
   </div>
@@ -642,7 +675,29 @@ function SupervisionCoverageByDistrictCard() {
               · {quarterLabel}
             </span>
           </CardTitle>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Select value={provinceFilter} onValueChange={setProvinceFilter}>
+              <SelectTrigger
+                className="h-8 w-[180px] text-xs"
+                data-testid="select-supervision-province"
+              >
+                <SelectValue placeholder="All provinces" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all" data-testid="option-supervision-province-all">
+                  All provinces
+                </SelectItem>
+                {provinceOptions.map((p) => (
+                  <SelectItem
+                    key={p.id}
+                    value={String(p.id)}
+                    data-testid={`option-supervision-province-${p.id}`}
+                  >
+                    {p.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Button
               size="sm"
               variant="outline"
