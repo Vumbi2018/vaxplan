@@ -39,7 +39,7 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { User, Province, District, Facility } from "@shared/schema";
-import { ROLE_PERMISSIONS, Permission } from "../../../server/auth/authorization";
+import { ROLE_PERMISSIONS, type Permission } from "@shared/permissions";
 
 function csvEscape(v: any): string {
   if (v === null || v === undefined) return "";

@@ -1,1 +1,2 @@
 - [Cross-tenant write enforcement](cross-tenant-writes.md) — replit.md claims a `crossTenantWriteGuard` middleware exists; it does not. Real isolation is tenantContext scoping + audit `crossTenant` flag only.
+- [Client must never import from server/](client-server-import-boundary.md) — any client import of `server/*` drags pg into the browser bundle and crashes with "process is not defined". Put shared constants in `shared/`.
