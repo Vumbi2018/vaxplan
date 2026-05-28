@@ -15,10 +15,9 @@ import {
 } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-// @ts-ignore
-import parseGeoraster from "georaster";
-// @ts-ignore
-// import GeoRasterLayer from "georaster-layer-for-leaflet";
+// georaster is dynamically imported inside the raster-loading effect below
+// to keep the ~500KB gzipped vendor chunk out of the initial map bundle.
+// GeoRasterLayer is also dynamically imported there.
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { offlineDb } from "@/lib/offlineDb";
@@ -1497,7 +1496,8 @@ function GeoTIFFOverlay({ url, opacity = 0.65, onRasterLoaded, cacheScope, autoF
 
       if (!active || !arrayBuffer) return;
 
-      const parseFn = (parseGeoraster as any).default || parseGeoraster;
+      const parseGeorasterModule = await import("georaster");
+      const parseFn = (parseGeorasterModule as any).default || parseGeorasterModule;
       const georaster = await parseFn(arrayBuffer);
 
       if (!active || !georaster) return;
