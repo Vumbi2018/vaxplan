@@ -3993,6 +3993,7 @@ export async function registerRoutes(
           completedAt: s.completedAt,
           scheduledDate: s.scheduledDate,
           facilityId: s.facilityId,
+          microplanId: (s as any).microplanId ?? null,
           targetPopulation: s.targetPopulation,
           vaccinatedTotal: vc?.totals ?? null,
           isAchieved: s.isAchieved,

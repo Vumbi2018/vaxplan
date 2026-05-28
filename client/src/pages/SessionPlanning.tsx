@@ -172,6 +172,7 @@ export default function SessionPlanning({
       lat: Number.isFinite(lat) ? lat : null,
       lng: Number.isFinite(lng) ? lng : null,
       isHardToReach: sp.get("unservedHtr") === "1",
+      kind: (sp.get("prefillKind") as "village" | "followup" | "unserved" | null) ?? "unserved",
     };
   }, []);
   const preserveUnservedQs = useMemo(() => {
@@ -412,7 +413,11 @@ export default function SessionPlanning({
     if (autoPrefillRanRef.current) return;
     if (!lockedParentForPrefill) return;
     autoPrefillRanRef.current = true;
-    form.setValue("name", `Outreach — ${unservedPrefill.name}`);
+    const prefix =
+      unservedPrefill.kind === "followup"
+        ? "Follow-up"
+        : "Outreach";
+    form.setValue("name", `${prefix} — ${unservedPrefill.name}`);
     form.setValue("sessionType", "outreach" as any);
     setDialogOpen(true);
   }, [unservedPrefill, isDetailMode, isCreator, lockedParentForPrefill]);

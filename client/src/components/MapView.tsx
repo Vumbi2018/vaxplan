@@ -4880,6 +4880,34 @@ export function MapView({
                           }
                         })()}
                       </div>
+
+                      {/* Task #84 — Plan a session straight from any village pin */}
+                      <Button
+                        size="sm"
+                        className="w-full h-7 text-[11px] font-semibold mt-2 bg-primary hover:bg-primary/90 text-primary-foreground"
+                        onClick={() => {
+                          const mp = (masterMicroplans ?? []).find(
+                            (m: any) =>
+                              Number(m.facilityId) === Number(village.assignedFacilityId) &&
+                              m.planType === "facility_routine",
+                          );
+                          const qs = new URLSearchParams({
+                            unservedVillageId: String(village.id),
+                            unservedName: village.name ?? "",
+                            unservedLat: String(village.latitude),
+                            unservedLng: String(village.longitude),
+                            unservedHtr: village.isHardToReach ? "1" : "0",
+                            prefillKind: "village",
+                            autoOpen: "1",
+                          });
+                          const path = mp ? `/sessions/microplan/${mp.id}` : "/sessions";
+                          window.location.assign(`${path}?${qs.toString()}`);
+                        }}
+                        data-testid={`button-plan-session-village-${village.id}`}
+                      >
+                        <Plus className="h-3 w-3 mr-1" />
+                        Plan a session here
+                      </Button>
                     </div>
                   </div>
                 </Popup>
@@ -4918,6 +4946,28 @@ export function MapView({
                     <div className="mt-2 pt-1.5 border-t border-border/40 flex gap-1.5">
                       <a className="text-primary underline text-[11px]" href={s.planType === "campaign" ? "/microplans/campaigns" : "/microplans/routine"} data-testid="link-open-session-planner">Open in planner</a>
                     </div>
+                    <Button
+                      size="sm"
+                      className="w-full h-7 text-[11px] font-semibold mt-2"
+                      onClick={() => {
+                        const qs = new URLSearchParams({
+                          unservedName: s.name ?? "",
+                          unservedLat: String(s.lat),
+                          unservedLng: String(s.lng),
+                          prefillKind: "followup",
+                          autoOpen: "1",
+                        });
+                        const planSeg = s.planType === "campaign" ? "campaign" : "microplan";
+                        const path = s.microplanId
+                          ? `/sessions/${planSeg}/${s.microplanId}`
+                          : "/sessions";
+                        window.location.assign(`${path}?${qs.toString()}`);
+                      }}
+                      data-testid={`button-plan-followup-${s.id}`}
+                    >
+                      <Plus className="h-3 w-3 mr-1" />
+                      Plan follow-up
+                    </Button>
                   </div>
                 </Popup>
               </CircleMarker>
