@@ -37,6 +37,12 @@ import {
   ArrowLeft,
   AlertCircle,
   X,
+  ZoomIn,
+  ZoomOut,
+  Locate,
+  Satellite,
+  Map as MapIcon,
+  Maximize2,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
@@ -2464,6 +2470,9 @@ function Step2Map({
     return [-13.13, 27.85]; // Zambia fallback
   }, [facilityLat, facilityLng, communities]);
 
+  const [basemap, setBasemap] = useState<"osm" | "satellite">("osm");
+  const mapRef = useRef<any>(null);
+
   if (!leaflet) {
     return (
       <div className="h-[360px] w-full rounded-xl border border-dashed border-border bg-muted/30 flex items-center justify-center text-sm text-muted-foreground">
@@ -2481,6 +2490,46 @@ function Step2Map({
     }, [center[0], center[1]]);
     return null;
   }
+
+  function MapRefCatcher() {
+    const map = useMap();
+    useEffect(() => {
+      mapRef.current = map;
+    }, [map]);
+    return null;
+  }
+
+  const geocodedPoints: [number, number][] = [];
+  if (facilityLat != null && facilityLng != null && !isNaN(facilityLat) && !isNaN(facilityLng)) {
+    geocodedPoints.push([facilityLat, facilityLng]);
+  }
+  for (const c of communities) {
+    if (!c.latitude || !c.longitude) continue;
+    const lat = parseFloat(c.latitude);
+    const lng = parseFloat(c.longitude);
+    if (isNaN(lat) || isNaN(lng)) continue;
+    geocodedPoints.push([lat, lng]);
+  }
+  const canFitBounds = geocodedPoints.length > 0;
+
+  const handleZoomIn = () => mapRef.current?.zoomIn();
+  const handleZoomOut = () => mapRef.current?.zoomOut();
+  const handleLocate = () => {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => mapRef.current?.setView([pos.coords.latitude, pos.coords.longitude], 14),
+      (err) => console.error("Geolocation error:", err),
+    );
+  };
+  const handleFitBounds = () => {
+    if (!canFitBounds || !mapRef.current) return;
+    if (geocodedPoints.length === 1) {
+      mapRef.current.setView(geocodedPoints[0], 14);
+      return;
+    }
+    const bounds = leaflet.L.latLngBounds(geocodedPoints);
+    mapRef.current.fitBounds(bounds, { padding: [40, 40] });
+  };
   const L = leaflet.L;
   const { createFilledPinIcon, createFacilityCircleIcon } = leaflet.icons;
 
@@ -2518,11 +2567,18 @@ function Step2Map({
 
   return (
     <div className="h-[360px] w-full rounded-xl overflow-hidden border border-border shadow-inner relative">
-      <MapContainer center={center} zoom={11} className="h-full w-full z-0">
-        <TileLayer
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          attribution='&copy; OpenStreetMap contributors'
-        />
+      <MapContainer center={center} zoom={11} className="h-full w-full z-0" zoomControl={false}>
+        {basemap === "osm" ? (
+          <TileLayer
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            attribution='&copy; OpenStreetMap contributors'
+          />
+        ) : (
+          <TileLayer
+            url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+            attribution='Imagery &copy; Esri'
+          />
+        )}
         {showPopulation && !populationUnavailable && (
           <WMSTileLayer
             url="https://ogc.worldpop.org/geoserver/wpGlobal/ows"
@@ -2547,6 +2603,7 @@ function Step2Map({
             }}
           />
         )}
+        <MapRefCatcher />
         <ClickCatcher />
         <Recenter center={center} />
 
@@ -2601,31 +2658,86 @@ function Step2Map({
         {/* Unused colour locals kept for tree-shaking-friendly variable usage */}
         <span style={{ display: "none" }}>{[pinBlue, pinGreen, pinAmber].length}</span>
       </MapContainer>
-      <button
-        type="button"
-        onClick={() => {
-          if (populationUnavailable) return;
-          setShowPopulation((v) => !v);
-        }}
-        disabled={populationUnavailable}
-        title={
-          populationUnavailable
-            ? "Population layer unavailable offline."
-            : showPopulation
-            ? "Hide population density"
-            : "Show population density"
-        }
-        className={`absolute top-2 right-2 z-[400] rounded-full px-3 py-1 text-xs font-medium shadow transition-colors ${
-          populationUnavailable
-            ? "bg-muted text-muted-foreground cursor-not-allowed opacity-70"
-            : showPopulation
-            ? "bg-orange-600 text-white hover:bg-orange-700"
-            : "bg-background/90 text-foreground hover:bg-background"
-        }`}
-        data-testid="button-toggle-population"
-      >
-        Population
-      </button>
+      <div className="absolute top-2 right-2 z-[400] flex flex-col items-end gap-2">
+        <button
+          type="button"
+          onClick={() => {
+            if (populationUnavailable) return;
+            setShowPopulation((v) => !v);
+          }}
+          disabled={populationUnavailable}
+          title={
+            populationUnavailable
+              ? "Population layer unavailable offline."
+              : showPopulation
+              ? "Hide population density"
+              : "Show population density"
+          }
+          className={`rounded-full px-3 py-1 text-xs font-medium shadow transition-colors ${
+            populationUnavailable
+              ? "bg-muted text-muted-foreground cursor-not-allowed opacity-70"
+              : showPopulation
+              ? "bg-orange-600 text-white hover:bg-orange-700"
+              : "bg-background/90 text-foreground hover:bg-background"
+          }`}
+          data-testid="button-toggle-population"
+        >
+          Population
+        </button>
+        <div className="flex flex-col gap-1 rounded-lg bg-background/90 p-1 shadow border border-border">
+          <button
+            type="button"
+            onClick={handleZoomIn}
+            title="Zoom in"
+            aria-label="Zoom in"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-foreground hover:bg-accent hover:text-accent-foreground"
+            data-testid="button-step2-zoom-in"
+          >
+            <ZoomIn className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={handleZoomOut}
+            title="Zoom out"
+            aria-label="Zoom out"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-foreground hover:bg-accent hover:text-accent-foreground"
+            data-testid="button-step2-zoom-out"
+          >
+            <ZoomOut className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={handleLocate}
+            title="Locate me"
+            aria-label="Locate me"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-foreground hover:bg-accent hover:text-accent-foreground"
+            data-testid="button-step2-locate"
+          >
+            <Locate className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={handleFitBounds}
+            disabled={!canFitBounds}
+            title="Fit all pins"
+            aria-label="Fit all pins"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-foreground hover:bg-accent hover:text-accent-foreground disabled:opacity-40 disabled:pointer-events-none"
+            data-testid="button-step2-fit-bounds"
+          >
+            <Maximize2 className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setBasemap((b) => (b === "osm" ? "satellite" : "osm"))}
+            title={basemap === "osm" ? "Switch to satellite" : "Switch to street map"}
+            aria-label={basemap === "osm" ? "Switch to satellite" : "Switch to street map"}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-foreground hover:bg-accent hover:text-accent-foreground"
+            data-testid="button-step2-basemap-toggle"
+          >
+            {basemap === "osm" ? <Satellite className="h-4 w-4" /> : <MapIcon className="h-4 w-4" />}
+          </button>
+        </div>
+      </div>
       {showPopulation && !populationUnavailable && (
         <div className="absolute bottom-2 right-2 z-[400] rounded-lg bg-background/90 px-2 py-1 text-[10px] shadow">
           <div className="mb-1 font-medium">Population density</div>
