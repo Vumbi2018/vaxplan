@@ -312,6 +312,32 @@ export default function SessionPlanning({
 
   const doseStages = useMemo(() => expandVaccineSchedule(vaccineConfigs), [vaccineConfigs]);
 
+  // Task #128 — Tenant village list (used by the edit dialog's village picker).
+  const { data: tenantVillages } = useQuery<Village[]>({
+    queryKey: ["/api/villages"],
+    queryFn: async () => {
+      if (!navigator.onLine) {
+        return (await offlineDb.villages.toArray()) as unknown as Village[];
+      }
+      const res = await fetch("/api/villages");
+      if (!res.ok) throw new Error("Failed to load villages");
+      return res.json();
+    },
+  });
+
+  // Task #128 — All session↔village links for this tenant. We filter client-side
+  // by sessionId when opening the edit dialog. The endpoint is already used by
+  // other pages, so we share the cache key.
+  const { data: allSessionVillages } = useQuery<Array<{ sessionId: number; villageId: number }>>({
+    queryKey: ["/api/sessions/villages"],
+    queryFn: async () => {
+      if (!navigator.onLine) return [];
+      const res = await fetch("/api/sessions/villages");
+      if (!res.ok) throw new Error("Failed to load session-village links");
+      return res.json();
+    },
+  });
+
   // Master microplans of the route's planType. Required for the cascade:
   // a session must belong to a parent microplan of matching planType.
   const { data: allMicroplans } = useQuery<Microplan[]>({
@@ -614,6 +640,14 @@ export default function SessionPlanning({
   const [editProvinceId, setEditProvinceId] = useState<number | null>(null);
   const [editDistrictId, setEditDistrictId] = useState<number | null>(null);
   const [editFacilityId, setEditFacilityId] = useState<number | null>(null);
+  // Task #128 — Editable list of villages linked to this session. Reconciled
+  // server-side on PATCH /api/sessions/:id. `editVillagesLoaded` flips true
+  // only once we've actually seen the link list for *this* session — if we
+  // saved before that, the server would treat an empty array as authoritative
+  // and wipe existing rows.
+  const [editVillageIds, setEditVillageIds] = useState<number[]>([]);
+  const [editVillagesLoaded, setEditVillagesLoaded] = useState(false);
+  const [addVillagePick, setAddVillagePick] = useState<string>("");
 
   const isLocked = editingPlan?.approvalStatus === "approved" || editingPlan?.approvalStatus === "locked";
 
@@ -623,6 +657,7 @@ export default function SessionPlanning({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/sessions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sessions/villages"] });
       setIsEditOpen(false);
       setEditingPlan(null);
       toast({
@@ -664,6 +699,23 @@ export default function SessionPlanning({
     setEditStatus(plan.status || "planned");
     setEditHR((plan as any).humanResources || "");
     setEditStakeholders((plan as any).keyStakeholders || "");
+
+    // Task #128 — Seed the editable village list from the session_villages
+    // links we already loaded for this tenant. If the query hasn't resolved
+    // yet, leave `editVillagesLoaded` false; the effect below will refill
+    // once the data arrives, and the Save button stays disabled until then
+    // so we can never PATCH an empty array over real links.
+    if (allSessionVillages !== undefined) {
+      const linkedIds = allSessionVillages
+        .filter((sv) => Number(sv.sessionId) === Number(plan.id))
+        .map((sv) => Number(sv.villageId));
+      setEditVillageIds(linkedIds);
+      setEditVillagesLoaded(true);
+    } else {
+      setEditVillageIds([]);
+      setEditVillagesLoaded(false);
+    }
+    setAddVillagePick("");
 
     const fac = (facilities ?? []).find((f) => f.id === plan.facilityId);
     if (fac) {
@@ -711,15 +763,52 @@ export default function SessionPlanning({
       keyStakeholders: editStakeholders,
       facilityId: editFacilityId,
     };
+    // Task #128 — Only include villageIds when we've actually loaded the
+    // current link set. Otherwise the server would treat an unsaved [] as
+    // "remove all linked villages" and silently wipe existing rows.
+    if (editVillagesLoaded) {
+      (payload as any).villageIds = editVillageIds;
+    }
 
     updateMutation.mutate({ id: editingPlan.id, data: payload });
   };
+
+  // Task #128 — If the dialog opens before /api/sessions/villages has
+  // resolved, refill the editable list as soon as the query lands so the
+  // user can edit (and save) without losing the existing village links.
+  useEffect(() => {
+    if (!isEditOpen || !editingPlan) return;
+    if (editVillagesLoaded) return;
+    if (allSessionVillages === undefined) return;
+    const linkedIds = allSessionVillages
+      .filter((sv) => Number(sv.sessionId) === Number(editingPlan.id))
+      .map((sv) => Number(sv.villageId));
+    setEditVillageIds(linkedIds);
+    setEditVillagesLoaded(true);
+  }, [isEditOpen, editingPlan, allSessionVillages, editVillagesLoaded]);
 
   const facilityNameById = useMemo(() => {
     const m = new Map<number, string>();
     (facilities ?? []).forEach((f) => m.set(f.id, f.name));
     return m;
   }, [facilities]);
+
+  // Task #128 — Village lookups used by the edit dialog: by id (chip labels)
+  // and the candidate list scoped to the session's facility for the picker.
+  const villageNameById = useMemo(() => {
+    const m = new Map<number, string>();
+    (tenantVillages ?? []).forEach((v) => m.set(v.id, v.name));
+    return m;
+  }, [tenantVillages]);
+
+  const facilityVillageOptions = useMemo(() => {
+    if (!editFacilityId) return [] as Village[];
+    const linkedSet = new Set(editVillageIds);
+    return (tenantVillages ?? [])
+      .filter((v) => Number((v as any).assignedFacilityId) === Number(editFacilityId))
+      .filter((v) => !linkedSet.has(v.id))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [tenantVillages, editFacilityId, editVillageIds]);
 
   const geoMaps = useMemo(
     () => buildGeoMaps({ provinces, districts, villages: [], facilities }),
@@ -1995,6 +2084,97 @@ export default function SessionPlanning({
               </div>
             </div>
 
+            {/* Task #128 — Linked Villages editor */}
+            <div className="border border-border rounded-2xl p-4 bg-muted/10 space-y-3" data-testid="edit-villages-panel">
+              <div className="flex items-center justify-between gap-2">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-indigo-500 flex items-center gap-1.5">
+                  <MapPin className="h-4 w-4" /> Linked Villages
+                </h4>
+                <Badge variant="outline" className="text-xs">{editVillageIds.length} attached</Badge>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                These villages will receive this session. Remove a chip to unlink, or add another from the picker. Only villages assigned to this facility appear.
+              </p>
+
+              {!editVillagesLoaded ? (
+                <div className="text-xs text-muted-foreground italic">Loading current village links…</div>
+              ) : editVillageIds.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {editVillageIds.map((vid) => (
+                    <Badge
+                      key={vid}
+                      variant="secondary"
+                      className="gap-1 pl-2 pr-1 py-1"
+                      data-testid={`edit-village-chip-${vid}`}
+                    >
+                      <span>{villageNameById.get(vid) ?? `Village #${vid}`}</span>
+                      {!isLocked && (
+                        <button
+                          type="button"
+                          className="ml-0.5 rounded-sm hover:bg-muted-foreground/20 p-0.5"
+                          aria-label={`Remove village ${villageNameById.get(vid) ?? vid}`}
+                          data-testid={`edit-village-remove-${vid}`}
+                          onClick={() => setEditVillageIds((prev) => prev.filter((id) => id !== vid))}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      )}
+                    </Badge>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-xs text-muted-foreground italic">No villages linked yet.</div>
+              )}
+
+              {!isLocked && (
+                <div className="flex items-end gap-2">
+                  <div className="flex-1 space-y-1">
+                    <Label className="text-xs font-semibold text-muted-foreground uppercase">Add a village</Label>
+                    <Select
+                      value={addVillagePick}
+                      onValueChange={(v) => setAddVillagePick(v)}
+                      disabled={!editFacilityId || facilityVillageOptions.length === 0}
+                    >
+                      <SelectTrigger className="bg-background rounded-xl text-xs h-9" data-testid="edit-village-add-select">
+                        <SelectValue
+                          placeholder={
+                            !editFacilityId
+                              ? "Pick a facility first"
+                              : facilityVillageOptions.length === 0
+                                ? "No more villages assigned to this facility"
+                                : "Select a village to add"
+                          }
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {facilityVillageOptions.map((v) => (
+                          <SelectItem key={v.id} value={String(v.id)}>
+                            {v.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="rounded-xl h-9"
+                    data-testid="edit-village-add-button"
+                    disabled={!addVillagePick}
+                    onClick={() => {
+                      const vid = Number(addVillagePick);
+                      if (!Number.isFinite(vid)) return;
+                      setEditVillageIds((prev) => (prev.includes(vid) ? prev : [...prev, vid]));
+                      setAddVillagePick("");
+                    }}
+                  >
+                    <Plus className="h-3.5 w-3.5 mr-1" /> Add
+                  </Button>
+                </div>
+              )}
+            </div>
+
             {/* Danger Zone: Delete Plan */}
             {isCreator && (
               <div className="border border-red-500/20 bg-red-500/5 rounded-2xl p-4 space-y-3">
@@ -2091,10 +2271,15 @@ export default function SessionPlanning({
             <Button
               type="button"
               onClick={handleUpdatePlan}
-              disabled={updateMutation.isPending || isLocked}
+              disabled={updateMutation.isPending || isLocked || !editVillagesLoaded}
               className="bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl disabled:opacity-50 disabled:cursor-not-allowed"
+              data-testid="button-save-session-edit"
             >
-              {updateMutation.isPending ? "Saving..." : "Save Changes"}
+              {updateMutation.isPending
+                ? "Saving..."
+                : !editVillagesLoaded
+                  ? "Loading villages…"
+                  : "Save Changes"}
             </Button>
           </DialogFooter>
         </DialogContent>

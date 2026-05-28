@@ -4237,11 +4237,88 @@ export async function registerRoutes(
       }
       // Strip override flag — never persisted as a column.
       delete (body as any).override;
+      // Task #128 — Pull villageIds out of the body so the column update below
+      // ignores it; we reconcile session_villages separately after the update.
+      const incomingVillageIds = req.body?.villageIds;
       delete (body as any).villageIds;
 
       const session = await storage.updateSessionPlan(req.tenantId, entityId, body);
       if (!session) return res.status(404).json({ message: "Session not found" });
-      await logAudit(req, "update", "session_plan", entityId, oldSession, session);
+
+      // Task #128 — Reconcile session_villages when the client provides a
+      // villageIds array. The array is the *complete* new set of links for
+      // this session; we insert anything new and delete anything removed,
+      // scoped to the tenant. Audit log captures the before/after sets.
+      let villageLinkChange: { before: number[]; after: number[] } | null = null;
+      if (Array.isArray(incomingVillageIds)) {
+        const sanitized = Array.from(new Set(
+          incomingVillageIds
+            .map((x: any) => Number(x))
+            .filter((n: number) => Number.isFinite(n) && n > 0),
+        )) as number[];
+
+        // Validate every id belongs to this tenant before touching the table.
+        let validIds: number[] = [];
+        if (sanitized.length > 0) {
+          const tenantVillages = await db
+            .select({ id: villages.id })
+            .from(villages)
+            .where(and(eq(villages.tenantId, req.tenantId), inArray(villages.id, sanitized)));
+          validIds = tenantVillages.map((v) => v.id);
+        }
+
+        const existingRows = await db
+          .select({ villageId: sessionVillages.villageId })
+          .from(sessionVillages)
+          .where(
+            and(
+              eq(sessionVillages.tenantId, String(req.tenantId)),
+              eq(sessionVillages.sessionId, entityId),
+            ),
+          );
+        const before = existingRows.map((r) => r.villageId);
+        const beforeSet = new Set(before);
+        const afterSet = new Set(validIds);
+
+        const toAdd = validIds.filter((id) => !beforeSet.has(id));
+        const toRemove = before.filter((id) => !afterSet.has(id));
+
+        if (toRemove.length > 0) {
+          await db
+            .delete(sessionVillages)
+            .where(
+              and(
+                eq(sessionVillages.tenantId, String(req.tenantId)),
+                eq(sessionVillages.sessionId, entityId),
+                inArray(sessionVillages.villageId, toRemove),
+              ),
+            );
+        }
+        if (toAdd.length > 0) {
+          const baseIdx = before.length;
+          await db.insert(sessionVillages).values(
+            toAdd.map((vid, idx) => ({
+              tenantId: req.tenantId,
+              sessionId: entityId,
+              villageId: vid,
+              orderIndex: baseIdx + idx,
+            })),
+          );
+        }
+
+        if (toAdd.length > 0 || toRemove.length > 0) {
+          villageLinkChange = { before, after: validIds };
+        }
+      }
+
+      await logAudit(
+        req,
+        "update",
+        "session_plan",
+        entityId,
+        villageLinkChange ? { ...oldSession, villageIds: villageLinkChange.before } : oldSession,
+        villageLinkChange ? { ...session, villageIds: villageLinkChange.after } : session,
+      );
       res.json(session);
     } catch (error) {
       console.error("Error updating session:", error);
