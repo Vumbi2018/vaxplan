@@ -21,7 +21,10 @@ import {
   Activity,
   Syringe,
   ClipboardCheck,
+  Download,
+  FileText,
 } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation, useSearch } from "wouter";
 import {
   Select,
@@ -348,6 +351,7 @@ function quarterEnd(year: number, quarter: number) {
 
 function SupervisionCoverageByDistrictCard() {
   const [, setLocation] = useLocation();
+  const { toast } = useToast();
   const { data: visits, isLoading: loadingVisits } = useQuery<SupervisionVisitLite[]>({
     queryKey: ["/api/supervision-visits"],
   });
@@ -439,24 +443,236 @@ function SupervisionCoverageByDistrictCard() {
     };
   }, [rows]);
 
+  const quarterLabel = `Q${CURRENT_QUARTER} ${CURRENT_YEAR}`;
+  const qStartIso = qStart.toISOString().slice(0, 10);
+  const qEndIso = qEnd.toISOString().slice(0, 10);
+
+  const escapeCsv = (val: any): string => {
+    if (val === null || val === undefined) return "";
+    const s = String(val);
+    if (/[",\r\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+    return s;
+  };
+
+  const handleExportCsv = () => {
+    if (rows.length === 0) {
+      toast({
+        title: "Nothing to export",
+        description: "No districts with facilities yet.",
+        variant: "destructive",
+      });
+      return;
+    }
+    const lines: string[] = [];
+    lines.push(`Supervision coverage by district — ${quarterLabel}`);
+    lines.push(`Quarter window,${qStartIso} to ${qEndIso}`);
+    lines.push(`Overdue threshold,No conducted visit in last 90 days`);
+    lines.push(`Generated,${new Date().toISOString()}`);
+    lines.push("");
+    lines.push(
+      ["District", "Facilities", `Visited ${quarterLabel} (count)`, `Visited ${quarterLabel} (%)`, "Overdue (count)", "Overdue (%)", "Avg last score (%)"]
+        .map(escapeCsv)
+        .join(","),
+    );
+    for (const r of rows) {
+      lines.push(
+        [
+          r.districtName,
+          r.total,
+          r.visitedThisQuarter,
+          `${r.visitedPct}%`,
+          r.overdue,
+          `${r.overduePct}%`,
+          r.avgScore === null ? "" : `${r.avgScore}%`,
+        ]
+          .map(escapeCsv)
+          .join(","),
+      );
+    }
+    lines.push(
+      [
+        "TOTAL",
+        totals.totalFac,
+        totals.visited,
+        `${totals.visitedPct}%`,
+        totals.overdue,
+        `${totals.overduePct}%`,
+        totals.avg === null ? "" : `${totals.avg}%`,
+      ]
+        .map(escapeCsv)
+        .join(","),
+    );
+
+    const csv = "\uFEFF" + lines.join("\r\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `supervision-by-district-Q${CURRENT_QUARTER}-${CURRENT_YEAR}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    toast({
+      title: "Export ready",
+      description: `${quarterLabel} supervision scorecard downloaded.`,
+    });
+  };
+
+  const handleExportPdf = () => {
+    if (rows.length === 0) {
+      toast({
+        title: "Nothing to export",
+        description: "No districts with facilities yet.",
+        variant: "destructive",
+      });
+      return;
+    }
+    const escapeHtml = (val: any): string => {
+      if (val === null || val === undefined) return "";
+      return String(val)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    };
+
+    const generatedAt = new Date().toLocaleString();
+    const bodyRows = rows
+      .map(
+        (r) => `<tr>
+          <td>${escapeHtml(r.districtName)}</td>
+          <td class="num">${r.total}</td>
+          <td class="num">${r.visitedThisQuarter} / ${r.total} (${r.visitedPct}%)</td>
+          <td class="num">${r.overdue} (${r.overduePct}%)</td>
+          <td class="num">${r.avgScore === null ? "—" : `${r.avgScore}%`}</td>
+        </tr>`,
+      )
+      .join("");
+
+    const html = `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Supervision coverage by district — ${escapeHtml(quarterLabel)}</title>
+<style>
+  @page { size: A4; margin: 18mm 14mm; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #111; font-size: 11px; margin: 0; padding: 16px; }
+  h1 { font-size: 18px; margin: 0 0 4px 0; }
+  .meta { color: #444; font-size: 10px; margin-bottom: 2px; }
+  .header { border-bottom: 2px solid #333; padding-bottom: 8px; margin-bottom: 12px; }
+  table { width: 100%; border-collapse: collapse; margin-top: 4px; page-break-inside: auto; }
+  thead { display: table-header-group; }
+  tr { page-break-inside: avoid; }
+  th, td { border: 1px solid #bbb; padding: 5px 7px; text-align: left; vertical-align: top; }
+  th { background: #f1f1f1; font-weight: 600; }
+  td.num, th.num { text-align: right; white-space: nowrap; }
+  .total-row td { font-weight: 600; background: #f7f7f7; }
+  .note { color: #555; font-size: 10px; margin-top: 8px; }
+  .print-hint { background: #fffbe6; border: 1px solid #ffe58f; padding: 8px 12px; margin-bottom: 12px; font-size: 11px; }
+  @media print { .print-hint { display: none; } }
+</style>
+</head>
+<body>
+  <div class="print-hint">Use your browser's <strong>Print</strong> dialog and choose "Save as PDF" to export.</div>
+  <div class="header">
+    <h1>Supervision coverage by district</h1>
+    <div class="meta">Quarter: <strong>${escapeHtml(quarterLabel)}</strong> (${escapeHtml(qStartIso)} to ${escapeHtml(qEndIso)})</div>
+    <div class="meta">Generated: ${escapeHtml(generatedAt)}</div>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>District</th>
+        <th class="num">Facilities</th>
+        <th class="num">Visited ${escapeHtml(quarterLabel)}</th>
+        <th class="num">Overdue (&gt;90d)</th>
+        <th class="num">Avg last score</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${bodyRows}
+      <tr class="total-row">
+        <td>Total</td>
+        <td class="num">${totals.totalFac}</td>
+        <td class="num">${totals.visited} / ${totals.totalFac} (${totals.visitedPct}%)</td>
+        <td class="num">${totals.overdue} (${totals.overduePct}%)</td>
+        <td class="num">${totals.avg === null ? "—" : `${totals.avg}%`}</td>
+      </tr>
+    </tbody>
+  </table>
+  <p class="note">"Visited this quarter" counts facilities with at least one conducted visit in the quarter window above. "Overdue" = no conducted visit in the last 90 days.</p>
+  <script>
+    window.addEventListener("load", function () {
+      setTimeout(function () { window.focus(); window.print(); }, 250);
+    });
+  </script>
+</body>
+</html>`;
+
+    const w = window.open("", "_blank");
+    if (!w) {
+      toast({
+        title: "Pop-up blocked",
+        description: "Allow pop-ups for this site to export the PDF.",
+        variant: "destructive",
+      });
+      return;
+    }
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+
+    toast({
+      title: "PDF ready to print",
+      description: `Use your browser's print dialog and choose "Save as PDF".`,
+    });
+  };
+
   return (
     <Card data-testid="card-supervision-by-district">
       <CardHeader className="pb-2">
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
           <CardTitle className="text-lg flex items-center gap-2">
             <ClipboardCheck className="h-5 w-5 text-indigo-500" />
             Supervision coverage by district
             <span className="text-xs font-normal text-muted-foreground ml-1">
-              · Q{CURRENT_QUARTER} {CURRENT_YEAR}
+              · {quarterLabel}
             </span>
           </CardTitle>
-          <Link
-            href="/supervision"
-            className="text-xs font-semibold text-primary hover:underline"
-            data-testid="link-supervision-all"
-          >
-            Open supervision →
-          </Link>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleExportCsv}
+              disabled={rows.length === 0}
+              data-testid="button-export-supervision-csv"
+              title="Download as CSV"
+            >
+              <Download className="h-4 w-4 mr-1" />
+              CSV
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleExportPdf}
+              disabled={rows.length === 0}
+              data-testid="button-export-supervision-pdf"
+              title="Open printable PDF view"
+            >
+              <FileText className="h-4 w-4 mr-1" />
+              PDF
+            </Button>
+            <Link
+              href="/supervision"
+              className="text-xs font-semibold text-primary hover:underline"
+              data-testid="link-supervision-all"
+            >
+              Open supervision →
+            </Link>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-3 pt-2">
