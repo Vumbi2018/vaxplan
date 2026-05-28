@@ -349,6 +349,8 @@ function quarterEnd(year: number, quarter: number) {
   return new Date(Date.UTC(year, quarter * 3, 1));
 }
 
+interface TenantSummary { id: string; name: string; code: string; settings?: Record<string, any> | null }
+
 function SupervisionCoverageByDistrictCard() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
@@ -364,6 +366,10 @@ function SupervisionCoverageByDistrictCard() {
   });
   const { data: provinces } = useQuery<any[]>({
     queryKey: ["/api/provinces"],
+  });
+  const { data: tenant } = useQuery<TenantSummary>({
+    queryKey: ["/api/me/tenant"],
+    retry: false,
   });
 
   const provinceOptions = useMemo(() => {
@@ -475,6 +481,26 @@ function SupervisionCoverageByDistrictCard() {
   const qStartIso = qStart.toISOString().slice(0, 10);
   const qEndIso = qEnd.toISOString().slice(0, 10);
 
+  const tenantBrand = useMemo(() => {
+    const tenantSettings = (tenant?.settings || {}) as Record<string, any>;
+    const rawColor =
+      typeof tenantSettings.brandColor === "string" ? tenantSettings.brandColor.trim() : "";
+    const brandColor = /^#[0-9a-fA-F]{3,8}$/.test(rawColor) ? rawColor : "";
+    const rawLogo =
+      typeof tenantSettings.brandLogoDataUrl === "string"
+        ? tenantSettings.brandLogoDataUrl.trim()
+        : "";
+    const brandLogo = /^data:image\/(png|jpe?g|svg\+xml|webp|gif);base64,/.test(rawLogo)
+      ? rawLogo
+      : "";
+    return {
+      tenantName: tenant?.name ?? "VaxPlan",
+      brandColor,
+      brandLogo,
+      headingColor: brandColor || "#333",
+    };
+  }, [tenant?.name, tenant?.settings]);
+
   const escapeCsv = (val: any): string => {
     if (val === null || val === undefined) return "";
     const s = String(val);
@@ -492,6 +518,7 @@ function SupervisionCoverageByDistrictCard() {
       return;
     }
     const lines: string[] = [];
+    lines.push(escapeCsv(tenantBrand.tenantName));
     lines.push(`Supervision coverage by district — ${quarterLabel}`);
     lines.push(`Province,${provinceLabel}`);
     lines.push(`Quarter window,${qStartIso} to ${qEndIso}`);
@@ -592,14 +619,16 @@ function SupervisionCoverageByDistrictCard() {
 <style>
   @page { size: A4; margin: 18mm 14mm; }
   body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #111; font-size: 11px; margin: 0; padding: 16px; }
-  h1 { font-size: 18px; margin: 0 0 4px 0; }
+  h1 { font-size: 18px; margin: 0 0 4px 0; color: ${tenantBrand.headingColor}; }
   .meta { color: #444; font-size: 10px; margin-bottom: 2px; }
-  .header { border-bottom: 2px solid #333; padding-bottom: 8px; margin-bottom: 12px; }
+  .header { border-bottom: 3px solid ${tenantBrand.headingColor}; padding-bottom: 8px; margin-bottom: 12px; display: flex; align-items: center; gap: 14px; }
+  .header .brand-logo { max-height: 56px; max-width: 120px; object-fit: contain; }
+  .header .header-text { flex: 1; }
   table { width: 100%; border-collapse: collapse; margin-top: 4px; page-break-inside: auto; }
   thead { display: table-header-group; }
   tr { page-break-inside: avoid; }
   th, td { border: 1px solid #bbb; padding: 5px 7px; text-align: left; vertical-align: top; }
-  th { background: #f1f1f1; font-weight: 600; }
+  th { background: ${tenantBrand.brandColor || "#f1f1f1"}; color: ${tenantBrand.brandColor ? "#fff" : "#111"}; font-weight: 600; }
   td.num, th.num { text-align: right; white-space: nowrap; }
   .total-row td { font-weight: 600; background: #f7f7f7; }
   .note { color: #555; font-size: 10px; margin-top: 8px; }
@@ -610,10 +639,14 @@ function SupervisionCoverageByDistrictCard() {
 <body>
   <div class="print-hint">Use your browser's <strong>Print</strong> dialog and choose "Save as PDF" to export.</div>
   <div class="header">
-    <h1>Supervision coverage by district</h1>
-    <div class="meta">Province: <strong>${escapeHtml(provinceLabel)}</strong></div>
-    <div class="meta">Quarter: <strong>${escapeHtml(quarterLabel)}</strong> (${escapeHtml(qStartIso)} to ${escapeHtml(qEndIso)})</div>
-    <div class="meta">Generated: ${escapeHtml(generatedAt)}</div>
+    ${tenantBrand.brandLogo ? `<img class="brand-logo" src="${escapeHtml(tenantBrand.brandLogo)}" alt="${escapeHtml(tenantBrand.tenantName)} logo" />` : ""}
+    <div class="header-text">
+      <h1>Supervision coverage by district</h1>
+      <div class="meta"><strong>${escapeHtml(tenantBrand.tenantName)}</strong></div>
+      <div class="meta">Province: <strong>${escapeHtml(provinceLabel)}</strong></div>
+      <div class="meta">Quarter: <strong>${escapeHtml(quarterLabel)}</strong> (${escapeHtml(qStartIso)} to ${escapeHtml(qEndIso)})</div>
+      <div class="meta">Generated: ${escapeHtml(generatedAt)}</div>
+    </div>
   </div>
   <table>
     <thead>
