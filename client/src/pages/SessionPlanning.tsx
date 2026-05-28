@@ -182,6 +182,10 @@ export default function SessionPlanning({
   // Geo cascade filter (separate from create-dialog selection)
   const [geoFilterProvinceId, setGeoFilterProvinceId] = useState<number | null>(null);
   const [geoFilterDistrictId, setGeoFilterDistrictId] = useState<number | null>(null);
+  // Task #197 — Filter chip on the session list: narrow to defaulter
+  // follow-up sessions only. Driven by the persisted `outreachPurpose`
+  // column so it survives planners renaming the session.
+  const [defaulterOnly, setDefaulterOnly] = useState<boolean>(false);
   const [geoFilterFacilityId, setGeoFilterFacilityId] = useState<number | null>(() => {
     if (typeof window === "undefined") return null;
     const f = new URLSearchParams(window.location.search).get("facility");
@@ -650,6 +654,9 @@ export default function SessionPlanning({
           status: data.status ?? "planned",
           approvalStatus: data.approvalStatus ?? "draft",
           notes: data.notes ?? null,
+          // Task #197 — Carry the intent through offline saves so the badge
+          // and filter chip work before the row syncs to the server.
+          outreachPurpose: (data as any).outreachPurpose ?? null,
           _syncedAt: 0,
           _localOnly: true,
         };
@@ -1022,9 +1029,36 @@ export default function SessionPlanning({
       if (geoFilterProvinceId !== null && item._geoProvinceId !== geoFilterProvinceId) return false;
       if (geoFilterDistrictId !== null && item._geoDistrictId !== geoFilterDistrictId) return false;
       if (geoFilterFacilityId !== null && Number((item as any).facilityId) !== geoFilterFacilityId) return false;
+      // Task #197 — Defaulter-only filter chip.
+      if (defaulterOnly && (item as any).outreachPurpose !== "defaulter_followup") return false;
       return true;
     });
-  }, [sessions, allMicroplans, geoMaps, geoFilterProvinceId, geoFilterDistrictId, geoFilterFacilityId, planTypeFilter]);
+  }, [sessions, allMicroplans, geoMaps, geoFilterProvinceId, geoFilterDistrictId, geoFilterFacilityId, planTypeFilter, defaulterOnly]);
+
+  // Task #197 — Count how many defaulter-follow-up sessions are visible under
+  // the current geo filters (ignoring the defaulter-only chip itself) so the
+  // chip can show a live count.
+  const defaulterCount = useMemo(() => {
+    const microplanTypeById = new Map<number, string>();
+    (allMicroplans ?? []).forEach((m) => microplanTypeById.set(m.id, m.planType));
+    const enriched = withGeoColumns((sessions ?? []) as any[], geoMaps);
+    return enriched.filter((item) => {
+      if ((item as any).outreachPurpose !== "defaulter_followup") return false;
+      const parentType = item.microplanId ? microplanTypeById.get(Number(item.microplanId)) : undefined;
+      const sessionPlanType: string =
+        parentType === "sia_campaign"
+          ? "campaign"
+          : parentType === "facility_routine"
+            ? "routine"
+            : (item as any).planType || "routine";
+      if (sessionPlanType !== planTypeFilter) return false;
+      if (lockedMicroplanId != null && Number(item.microplanId) !== Number(lockedMicroplanId)) return false;
+      if (geoFilterProvinceId !== null && item._geoProvinceId !== geoFilterProvinceId) return false;
+      if (geoFilterDistrictId !== null && item._geoDistrictId !== geoFilterDistrictId) return false;
+      if (geoFilterFacilityId !== null && Number((item as any).facilityId) !== geoFilterFacilityId) return false;
+      return true;
+    }).length;
+  }, [sessions, allMicroplans, geoMaps, geoFilterProvinceId, geoFilterDistrictId, geoFilterFacilityId, planTypeFilter, lockedMicroplanId]);
 
   const columns = [
     {
@@ -1070,6 +1104,21 @@ export default function SessionPlanning({
                 >
                   <CloudOff className="h-3 w-3" />
                   Pending sync
+                </Badge>
+              )}
+              {/* Task #197 — Surface defaulter follow-up intent even if the
+                  planner renamed the auto-prefilled session name. Driven by
+                  the persisted outreachPurpose column. */}
+              {(item as any).outreachPurpose === "defaulter_followup" && (
+                <Badge
+                  variant="outline"
+                  className="gap-1 border-red-500/40 bg-red-500/10 text-red-700 dark:text-red-300 text-[10px] font-medium px-1.5 py-0 h-5"
+                  data-testid={`badge-defaulter-followup-${item.id}`}
+                  title="Created from the under-immunized / zero-dose map pin as a defaulter follow-up."
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <AlertTriangle className="h-3 w-3" />
+                  Defaulter follow-up
                 </Badge>
               )}
             </div>
@@ -1290,6 +1339,20 @@ export default function SessionPlanning({
     // they're written into session_villages on create.
     if (attachedVillages.length > 0) {
       (data as any).villageIds = attachedVillages.map((v) => v.id);
+    }
+    // Task #197 — When the dialog was opened from a map prefill, persist the
+    // intent as a structured column. Survives the planner renaming the
+    // session — downstream views filter on this, not the name prefix.
+    if (unservedPrefill) {
+      const purpose =
+        unservedPrefill.kind === "defaulter"
+          ? "defaulter_followup"
+          : unservedPrefill.kind === "unserved"
+            ? "unserved"
+            : unservedPrefill.kind === "followup"
+              ? "routine_outreach"
+              : null;
+      if (purpose) (data as any).outreachPurpose = purpose;
     }
     createMutation.mutate(data);
   };
@@ -2001,6 +2064,56 @@ export default function SessionPlanning({
             facilityLabel={adminLabels.level3 || "Facility"}
             testIdPrefix="session"
           />
+          {/* Task #197 — Filter chip: narrow the list to defaulter
+              follow-up sessions only. The count comes from the persisted
+              outreachPurpose column, so it stays correct even if planners
+              renamed the auto-prefilled session name. */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <Badge
+              role="button"
+              tabIndex={0}
+              data-testid="chip-filter-defaulter-followup"
+              aria-pressed={defaulterOnly}
+              onClick={() => setDefaulterOnly((v) => !v)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  setDefaulterOnly((v) => !v);
+                }
+              }}
+              variant={defaulterOnly ? "default" : "outline"}
+              className={
+                "gap-1 cursor-pointer select-none h-7 px-2 text-xs " +
+                (defaulterOnly
+                  ? "bg-red-600 hover:bg-red-700 text-white border-red-600"
+                  : "border-red-500/40 text-red-700 dark:text-red-300 hover:bg-red-500/10")
+              }
+            >
+              <AlertTriangle className="h-3 w-3" />
+              Defaulter follow-up only
+              <span
+                className={
+                  "ml-1 rounded-full px-1.5 text-[10px] font-semibold " +
+                  (defaulterOnly
+                    ? "bg-white/20 text-white"
+                    : "bg-red-500/15 text-red-700 dark:text-red-300")
+                }
+                data-testid="chip-filter-defaulter-followup-count"
+              >
+                {defaulterCount}
+              </span>
+            </Badge>
+            {defaulterOnly && (
+              <button
+                type="button"
+                className="text-xs text-muted-foreground hover:underline"
+                onClick={() => setDefaulterOnly(false)}
+                data-testid="chip-filter-defaulter-followup-clear"
+              >
+                Clear
+              </button>
+            )}
+          </div>
           <DataTable
             data={filteredSessions}
             columns={columns}

@@ -148,6 +148,9 @@ export interface LocalSessionPlan {
   sessionType?: string;
   scheduledDate?: string;
   status: string;
+  // Task #197 — Mirror the server column so offline-created defaulter
+  // follow-up sessions surface their badge/filter before they sync.
+  outreachPurpose?: string | null;
   _syncedAt: number;
   _localOnly?: boolean;
 }

@@ -4281,6 +4281,22 @@ export async function registerRoutes(
         }
       }
 
+      // Task #197 — outreachPurpose is a small whitelist so older offline
+      // clients can't smuggle arbitrary values into the column.
+      const ALLOWED_OUTREACH_PURPOSES = new Set([
+        "defaulter_followup",
+        "unserved",
+        "routine_outreach",
+      ]);
+      if (
+        (req.body as any)?.outreachPurpose != null &&
+        !ALLOWED_OUTREACH_PURPOSES.has(String((req.body as any).outreachPurpose))
+      ) {
+        return res.status(400).json({
+          message: `outreachPurpose must be one of: ${[...ALLOWED_OUTREACH_PURPOSES].join(", ")}`,
+        });
+      }
+
       // Coerce client-supplied ISO scheduledDate string into a Date object
       // so the Drizzle/Zod timestamp validator accepts it.
       if (req.body?.scheduledDate && typeof req.body.scheduledDate === "string") {
@@ -4479,6 +4495,23 @@ export async function registerRoutes(
       delete body.year;
       delete body.quarter;
       delete body.tenantId;
+
+      // Task #197 — Whitelist outreachPurpose on edit too. We let planners
+      // change it (e.g. mis-tagged from the map) but only to allowed values.
+      const ALLOWED_OUTREACH_PURPOSES = new Set([
+        "defaulter_followup",
+        "unserved",
+        "routine_outreach",
+      ]);
+      if (
+        body.outreachPurpose !== undefined &&
+        body.outreachPurpose !== null &&
+        !ALLOWED_OUTREACH_PURPOSES.has(String(body.outreachPurpose))
+      ) {
+        return res.status(400).json({
+          message: `outreachPurpose must be one of: ${[...ALLOWED_OUTREACH_PURPOSES].join(", ")}`,
+        });
+      }
 
       // Reject the write if the parent microplan is locked.
       const parentCheck = await validateParentMicroplan(req.tenantId, oldSession.microplanId);

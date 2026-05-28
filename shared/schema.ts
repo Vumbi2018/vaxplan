@@ -507,6 +507,13 @@ export const sessionPlans = pgTable("session_plans", {
   teamType: varchar("team_type", { length: 100 }),
   geojson: jsonb("geojson"), // Georeferenced custom geofence plotted by the health worker
   isAchieved: boolean("is_achieved").default(false).notNull(), // real-time map checklist progress tracking
+  // Outreach intent — set automatically when a session is created from a map
+  // prefill (e.g. the "Plan defaulter follow-up here" button on the zero-dose /
+  // under-immunized pins). Persisting an explicit purpose keeps the signal
+  // alive even if a planner renames the session, so downstream views can
+  // filter and badge defaulter follow-ups reliably. Null for sessions created
+  // through the normal flow.
+  outreachPurpose: varchar("outreach_purpose", { length: 32 }),
   // Completion tracking — set when the facility marks the session done. Drives the
   // 1-month auto-archive from the live map and powers the Session History view.
   completedAt: timestamp("completed_at"),
