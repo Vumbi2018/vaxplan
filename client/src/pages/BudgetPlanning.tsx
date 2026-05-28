@@ -116,9 +116,12 @@ const fundingSourceOptions: Array<{ value: string; label: string; color: string 
   { value: "other", label: "Other", color: "bg-slate-500/15 text-slate-700 dark:text-slate-300 border-slate-500/30" },
 ];
 
+interface TenantSummary { id: string; name: string; code: string }
+
 export default function BudgetPlanning() {
   const { toast } = useToast();
   const { user } = useAuth();
+  const { data: tenant } = useQuery<TenantSummary>({ queryKey: ["/api/me/tenant"], retry: false });
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<BudgetItem | null>(null);
   const [bulkOpen, setBulkOpen] = useState(false);
@@ -617,6 +620,199 @@ export default function BudgetPlanning() {
     });
   };
 
+  const handleExportPdf = () => {
+    const year = selectedYear;
+    const escapeHtml = (val: any): string => {
+      if (val === null || val === undefined) return "";
+      return String(val)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    };
+
+    const geoBits: string[] = [];
+    if (geoProvinceId !== null) {
+      const p = provinces?.find((x) => x.id === geoProvinceId);
+      if (p) geoBits.push(`Province: ${p.name}`);
+    }
+    if (geoDistrictId !== null) {
+      const d = districts?.find((x) => x.id === geoDistrictId);
+      if (d) geoBits.push(`District: ${d.name}`);
+    }
+    if (geoFacilityId !== null) {
+      const f = facilities?.find((x) => x.id === geoFacilityId);
+      if (f) geoBits.push(`Facility: ${f.name}`);
+    }
+    const geoLabel = geoBits.length ? geoBits.join(" / ") : "All geographies";
+    const tenantName = tenant?.name ?? "VaxPlan";
+    const generatedAt = new Date().toLocaleString();
+
+    const sourceOrder = ["government", "gavi", "who", "unicef", "other"];
+
+    // Section 1
+    const classifiedTotal = fundingGrandTotal - (fundingTotals["unspecified"] || 0);
+    const summaryRows = sourceOrder
+      .map((src) => ({ src, amount: fundingTotals[src] || 0 }))
+      .filter((r) => r.amount > 0)
+      .map(
+        (r) => `<tr><td>${escapeHtml(fundingSourceLabel(r.src))}</td><td class="num">K${r.amount.toFixed(2)}</td><td class="num">${fundingGrandTotal > 0 ? ((r.amount / fundingGrandTotal) * 100).toFixed(1) : "0.0"}%</td></tr>`,
+      )
+      .join("");
+
+    // Section 2
+    const breakdownRows = sourceOrder
+      .map((src) => {
+        const rows = quarterItems.filter(
+          (i: any) => (i.fundingSource || "unspecified") === src,
+        );
+        if (rows.length === 0) return "";
+        const byCat: Record<string, number> = {};
+        for (const r of rows) {
+          const cat = (r as any).category || "Uncategorized";
+          byCat[cat] = (byCat[cat] || 0) + parseFloat((r as any).totalCost || "0");
+        }
+        return Object.entries(byCat)
+          .sort((a, b) => b[1] - a[1])
+          .map(
+            ([cat, total]) =>
+              `<tr><td>${escapeHtml(fundingSourceLabel(src))}</td><td>${escapeHtml(cat)}</td><td class="num">K${total.toFixed(2)}</td></tr>`,
+          )
+          .join("");
+      })
+      .join("");
+
+    // Section 3
+    const detailHeader = `<tr><th>Province</th><th>District</th><th>Facility</th><th>Funding Source</th><th>Category</th><th>Description</th><th class="num">Qty</th><th class="num">Unit (K)</th><th class="num">Total (K)</th><th>Status</th></tr>`;
+    const renderDetailRow = (item: any, sourceLabel: string) => {
+      const facName = facilities?.find((f) => f.id === item.facilityId)?.name || "";
+      return `<tr>
+        <td>${escapeHtml(item._geoProvinceName || "")}</td>
+        <td>${escapeHtml(item._geoDistrictName || "")}</td>
+        <td>${escapeHtml(facName)}</td>
+        <td>${escapeHtml(sourceLabel)}</td>
+        <td>${escapeHtml(item.category)}</td>
+        <td>${escapeHtml(item.description)}</td>
+        <td class="num">${escapeHtml(item.quantity)}</td>
+        <td class="num">${parseFloat(item.unitCost || "0").toFixed(2)}</td>
+        <td class="num">${parseFloat(item.totalCost || "0").toFixed(2)}</td>
+        <td>${escapeHtml(item.approvalStatus || "draft")}</td>
+      </tr>`;
+    };
+    const classified = quarterItems.filter(
+      (i: any) => i.fundingSource && i.fundingSource !== "unspecified",
+    );
+    const detailRows = classified
+      .map((item: any) =>
+        renderDetailRow(
+          item,
+          fundingSourceLabel(item.fundingSource, item.fundingSourceOther),
+        ),
+      )
+      .join("");
+
+    // Section 4
+    const unspecifiedItems = quarterItems.filter(
+      (i: any) => !i.fundingSource || i.fundingSource === "unspecified",
+    );
+    const unspecifiedTotal = unspecifiedItems.reduce(
+      (s, i: any) => s + parseFloat(i.totalCost || "0"),
+      0,
+    );
+    const unspecifiedBody =
+      unspecifiedItems.length === 0
+        ? `<p class="muted">None — every line in scope has a funding source.</p>`
+        : `<table><thead>${detailHeader}</thead><tbody>${unspecifiedItems
+            .map((item: any) => renderDetailRow(item, "Unspecified"))
+            .join("")}</tbody></table>`;
+
+    const html = `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Gavi HSS Funding Report — Q${selectedQuarter} ${year}</title>
+<style>
+  @page { size: A4; margin: 18mm 14mm; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #111; font-size: 11px; margin: 0; padding: 16px; }
+  h1 { font-size: 18px; margin: 0 0 4px 0; }
+  h2 { font-size: 13px; margin: 18px 0 6px 0; border-bottom: 1px solid #999; padding-bottom: 2px; }
+  .meta { color: #444; font-size: 10px; margin-bottom: 4px; }
+  .muted { color: #666; font-style: italic; }
+  table { width: 100%; border-collapse: collapse; margin-top: 4px; page-break-inside: auto; }
+  thead { display: table-header-group; }
+  tr { page-break-inside: avoid; }
+  th, td { border: 1px solid #bbb; padding: 4px 6px; text-align: left; vertical-align: top; }
+  th { background: #f1f1f1; font-weight: 600; }
+  td.num, th.num { text-align: right; white-space: nowrap; }
+  .header { border-bottom: 2px solid #333; padding-bottom: 8px; margin-bottom: 12px; }
+  .total-row td { font-weight: 600; background: #f7f7f7; }
+  .print-hint { background: #fffbe6; border: 1px solid #ffe58f; padding: 8px 12px; margin-bottom: 12px; font-size: 11px; }
+  @media print { .print-hint { display: none; } }
+</style>
+</head>
+<body>
+  <div class="print-hint">Use your browser's <strong>Print</strong> dialog and choose "Save as PDF" to export.</div>
+  <div class="header">
+    <h1>Gavi HSS Funding Report</h1>
+    <div class="meta"><strong>${escapeHtml(tenantName)}</strong></div>
+    <div class="meta">Quarter: Q${selectedQuarter} ${year}</div>
+    <div class="meta">Filter: ${escapeHtml(geoLabel)}</div>
+    <div class="meta">Generated: ${escapeHtml(generatedAt)}</div>
+  </div>
+
+  <h2>Summary by Funding Source</h2>
+  <table>
+    <thead><tr><th>Funding Source</th><th class="num">Total (K)</th><th class="num">% of Total</th></tr></thead>
+    <tbody>
+      ${summaryRows || `<tr><td colspan="3" class="muted">No classified funding in this quarter.</td></tr>`}
+      <tr class="total-row"><td>Total (classified)</td><td class="num">K${classifiedTotal.toFixed(2)}</td><td></td></tr>
+    </tbody>
+  </table>
+
+  <h2>Breakdown by Funding Source and Category</h2>
+  <table>
+    <thead><tr><th>Funding Source</th><th>Category</th><th class="num">Total (K)</th></tr></thead>
+    <tbody>${breakdownRows || `<tr><td colspan="3" class="muted">No data.</td></tr>`}</tbody>
+  </table>
+
+  <h2>Line Item Detail (Classified)</h2>
+  ${
+    classified.length === 0
+      ? `<p class="muted">No classified line items in this quarter / filter.</p>`
+      : `<table><thead>${detailHeader}</thead><tbody>${detailRows}</tbody></table>`
+  }
+
+  <h2>Unspecified / Needs Classification (${unspecifiedItems.length} line${unspecifiedItems.length === 1 ? "" : "s"}, K${unspecifiedTotal.toFixed(2)})</h2>
+  ${unspecifiedBody}
+
+  <script>
+    window.addEventListener("load", function () {
+      setTimeout(function () { window.focus(); window.print(); }, 250);
+    });
+  </script>
+</body>
+</html>`;
+
+    const w = window.open("", "_blank");
+    if (!w) {
+      toast({
+        title: "Pop-up blocked",
+        description: "Allow pop-ups for this site to export the PDF.",
+        variant: "destructive",
+      });
+      return;
+    }
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+
+    toast({
+      title: "PDF ready to print",
+      description: `Use your browser's print dialog and choose "Save as PDF".`,
+    });
+  };
+
   const columns = [
     {
       key: "_geoProvinceName",
@@ -912,7 +1108,22 @@ export default function BudgetPlanning() {
             }
           >
             <Download className="h-4 w-4 mr-1" />
-            Export
+            Export CSV
+          </Button>
+
+          <Button
+            variant="outline"
+            data-testid="button-export-budget-pdf"
+            onClick={handleExportPdf}
+            disabled={quarterItems.length === 0}
+            title={
+              quarterItems.length === 0
+                ? "No budget items in the current quarter / filter to export"
+                : "Open printable Gavi HSS funding report (Save as PDF)"
+            }
+          >
+            <FileText className="h-4 w-4 mr-1" />
+            Export PDF
           </Button>
 
           <Dialog
