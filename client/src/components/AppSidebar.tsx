@@ -35,6 +35,7 @@ import {
   ShieldCheck,
   Target,
   TrendingUp,
+  Wrench,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useQuery } from "@tanstack/react-query";
@@ -85,6 +86,7 @@ const adminNavItems = [
 const systemNavItems = [
   { title: "Supervision", path: "/supervision", icon: ClipboardCheck },
   { title: "Standards Alignment", path: "/standards-alignment", icon: ShieldCheck },
+  { title: "Reconcile Vaccines", path: "/admin/reconcile-vaccines", icon: Wrench, reconcileOnly: true },
   { title: "Settings", path: "/settings", icon: Settings },
   { title: "Help", path: "/help", icon: HelpCircle },
 ];
@@ -96,6 +98,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
   const isNationalAdmin = user.role === "national_admin";
   const canAccessHis = user.role === "national_admin" || user.role === "gis_specialist";
   const canAccessAdmin = isNationalAdmin || user.role === "provincial_coordinator";
+  const canReconcile = user.role === "national_admin" || user.role === "district_manager";
   const { data: tenant } = useQuery<TenantSummary>({ queryKey: ["/api/me/tenant"], retry: false });
 
   return (
@@ -236,7 +239,9 @@ export function AppSidebar({ user }: AppSidebarProps) {
           <SidebarGroupLabel>System</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {systemNavItems.map((item) => (
+              {systemNavItems
+                .filter((item) => !(item as any).reconcileOnly || canReconcile)
+                .map((item) => (
                 <SidebarMenuItem key={item.path}>
                   <SidebarMenuButton
                     asChild

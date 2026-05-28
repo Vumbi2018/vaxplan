@@ -1,5 +1,8 @@
 import { Fragment, useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "wouter";
+import { useAuth } from "@/hooks/useAuth";
+import { canReconcileUnmappedVaccines } from "@/lib/permissions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -108,6 +111,8 @@ function toCsv(rows: HistoryRow[], codeToLabel: (code: string) => string) {
 }
 
 export default function SessionHistory() {
+  const { user } = useAuth();
+  const canReconcile = canReconcileUnmappedVaccines(user as any);
   const [q, setQ] = useState("");
   const [expanded, setExpanded] = useState<Record<number, boolean>>({});
 
@@ -181,6 +186,16 @@ export default function SessionHistory() {
               className="pl-8 w-64"
             />
           </div>
+          {canReconcile && (
+            <Link
+              href="/admin/reconcile-vaccines"
+              className="text-sm text-amber-700 dark:text-amber-300 hover:underline inline-flex items-center gap-1"
+              data-testid="link-reconcile-vaccines"
+            >
+              <AlertTriangle className="h-3.5 w-3.5" />
+              Reconcile unmapped vaccines
+            </Link>
+          )}
           <Button data-testid="button-export-history" variant="outline" size="sm" onClick={handleExport} disabled={!filtered.length}>
             <Download className="h-4 w-4 mr-1.5" /> Export CSV
           </Button>

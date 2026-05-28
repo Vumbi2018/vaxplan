@@ -159,6 +159,14 @@ export function isAdmin(user: User | null | undefined): boolean {
   return user.role === "national_admin" || user.role === "gis_specialist";
 }
 
+// Task #142 — reconciliation of stale per-antigen codes is destructive across
+// every historical session in the tenant, so we limit it to national and
+// district admins (matches the server-side gate in routes.ts).
+export function canReconcileUnmappedVaccines(user: User | null | undefined): boolean {
+  if (!user) return false;
+  return user.role === "national_admin" || user.role === "district_manager";
+}
+
 // Bulk reclassifying funding sources rewrites donor reporting attribution
 // across every legacy budget line in the tenant, so it's restricted to
 // national administrators (the same gate enforced by the server endpoint).

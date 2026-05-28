@@ -4707,6 +4707,135 @@ export async function registerRoutes(
     }
   });
 
+  // Task #142 — Reconcile stale per-antigen codes saved under
+  // vaccinatedCounts.perAntigenUnmapped (see mark-done above). Admins
+  // (national + district) get a summary of every distinct unmapped code
+  // currently in use and can point it at a canonical schedule code in one
+  // click, which rebuckets the doses across every affected session.
+  const reconcileRoles = new Set(["national_admin", "district_manager"]);
+
+  app.get("/api/sessions/unmapped-antigens", ...auth, async (req: any, res) => {
+    try {
+      const dbUser = req.dbUser;
+      if (!dbUser) return res.status(401).json({ message: "Unauthorized" });
+      if (!reconcileRoles.has(dbUser.role)) {
+        return res.status(403).json({ message: "Forbidden: admin only." });
+      }
+      const tenantConfigs = await storage.getVaccineConfigs(req.tenantId);
+      const stages = expandVaccineSchedule(tenantConfigs);
+      const rows = await db
+        .select({ id: sessionPlans.id, vc: sessionPlans.vaccinatedCounts })
+        .from(sessionPlans)
+        .where(eq(sessionPlans.tenantId, String(req.tenantId)));
+
+      const byCode = new Map<string, { code: string; sessionCount: number; totalDoses: number }>();
+      for (const r of rows) {
+        const pa = (r.vc as any)?.perAntigenUnmapped;
+        if (!pa || typeof pa !== "object") continue;
+        for (const [code, n] of Object.entries(pa)) {
+          const val = Number(n);
+          if (!Number.isFinite(val) || val <= 0) continue;
+          const key = String(code).trim();
+          if (!key) continue;
+          const prev = byCode.get(key) ?? { code: key, sessionCount: 0, totalDoses: 0 };
+          prev.sessionCount += 1;
+          prev.totalDoses += val;
+          byCode.set(key, prev);
+        }
+      }
+      const unmapped = (Array.from(byCode.values()) as Array<{ code: string; sessionCount: number; totalDoses: number }>)
+        .sort((a, b) => b.totalDoses - a.totalDoses);
+      const canonical = stages.map((s) => ({ code: s.code, label: s.label, antigen: s.antigen, doseNumber: s.doseNumber }));
+      res.json({ unmapped, canonical });
+    } catch (err) {
+      console.error("GET /api/sessions/unmapped-antigens failed:", err);
+      res.status(500).json({ message: "Failed to load unmapped antigens" });
+    }
+  });
+
+  app.post("/api/sessions/reconcile-unmapped-antigens", ...auth, async (req: any, res) => {
+    try {
+      const dbUser = req.dbUser;
+      if (!dbUser) return res.status(401).json({ message: "Unauthorized" });
+      if (!reconcileRoles.has(dbUser.role)) {
+        return res.status(403).json({ message: "Forbidden: admin only." });
+      }
+      const { fromCode, toCode } = req.body || {};
+      const from = typeof fromCode === "string" ? fromCode.trim() : "";
+      const to = typeof toCode === "string" ? toCode.trim() : "";
+      if (!from || !to) {
+        return res.status(400).json({ message: "fromCode and toCode are required." });
+      }
+      const tenantConfigs = await storage.getVaccineConfigs(req.tenantId);
+      const stages = expandVaccineSchedule(tenantConfigs);
+      const canonical = stages.find((s) => s.code === to);
+      if (!canonical) {
+        return res.status(400).json({ message: `toCode '${to}' is not in the tenant vaccine schedule.` });
+      }
+
+      const rows = await db
+        .select({ id: sessionPlans.id, vc: sessionPlans.vaccinatedCounts })
+        .from(sessionPlans)
+        .where(eq(sessionPlans.tenantId, String(req.tenantId)));
+
+      const updatedSessionIds: number[] = [];
+      let totalDosesMoved = 0;
+      for (const r of rows) {
+        const vc = r.vc as any;
+        const pa = vc?.perAntigenUnmapped;
+        if (!pa || typeof pa !== "object") continue;
+        if (!Object.prototype.hasOwnProperty.call(pa, from)) continue;
+        const moveRaw = Number(pa[from]);
+        if (!Number.isFinite(moveRaw) || moveRaw <= 0) {
+          // Drop the orphan key but skip the audit/move accounting.
+          const nextUnmapped = { ...pa };
+          delete nextUnmapped[from];
+          const nextVc = { ...vc };
+          if (Object.keys(nextUnmapped).length === 0) {
+            delete nextVc.perAntigenUnmapped;
+          } else {
+            nextVc.perAntigenUnmapped = nextUnmapped;
+          }
+          await storage.updateSessionPlan(req.tenantId, r.id, { vaccinatedCounts: nextVc } as any);
+          continue;
+        }
+        const nextPerAntigen = { ...(vc.perAntigen && typeof vc.perAntigen === "object" ? vc.perAntigen : {}) };
+        nextPerAntigen[to] = Number(nextPerAntigen[to] ?? 0) + moveRaw;
+        const nextUnmapped = { ...pa };
+        delete nextUnmapped[from];
+        const nextVc: Record<string, any> = { ...vc, perAntigen: nextPerAntigen };
+        if (Object.keys(nextUnmapped).length === 0) {
+          delete nextVc.perAntigenUnmapped;
+        } else {
+          nextVc.perAntigenUnmapped = nextUnmapped;
+        }
+        const before = await storage.getSessionPlan(req.tenantId, r.id);
+        const updated = await storage.updateSessionPlan(req.tenantId, r.id, { vaccinatedCounts: nextVc } as any);
+        if (updated) {
+          updatedSessionIds.push(r.id);
+          totalDosesMoved += moveRaw;
+          await logAudit(req, "reconcile_unmapped_antigens", "session_plan", r.id, before, {
+            fromCode: from,
+            toCode: to,
+            dosesMoved: moveRaw,
+          });
+        }
+      }
+
+      res.json({
+        fromCode: from,
+        toCode: to,
+        canonicalLabel: canonical.label,
+        updatedSessionCount: updatedSessionIds.length,
+        totalDosesMoved,
+        updatedSessionIds,
+      });
+    } catch (err) {
+      console.error("POST /api/sessions/reconcile-unmapped-antigens failed:", err);
+      res.status(500).json({ message: "Failed to reconcile unmapped antigens" });
+    }
+  });
+
   // Unserved populated places: villages with no session plan ever AND no
   // administered doses. Heuristic for outreach gap discovery on the map.
   app.get("/api/unserved-places", ...auth, async (req: any, res) => {
