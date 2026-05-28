@@ -3673,8 +3673,6 @@ export async function registerRoutes(
   // ─── Master Microplans (Routine & Campaign) ───────────────────────────
   app.get("/api/microplans", ...auth, async (req: any, res) => {
     try {
-      const dbUser = req.dbUser;
-      if (!dbUser) return res.status(401).json({ message: "Unauthorized" });
       const list = await storage.getMicroplans(req.tenantId);
       res.json(list);
     } catch (error) {
@@ -3696,8 +3694,6 @@ export async function registerRoutes(
 
   app.post("/api/microplans", ...auth, async (req: any, res) => {
     try {
-      const dbUser = req.dbUser;
-      if (!dbUser) return res.status(401).json({ message: "Unauthorized" });
       const data = insertMicroplanSchema.parse(req.body);
       const plan = await storage.createMicroplan(req.tenantId, data);
       await logAudit(req, "create", "microplan", plan.id, null, plan);
