@@ -6758,7 +6758,6 @@ export function MapView({
                   microplanId: newSessionMicroplanId === "none" ? null : Number(newSessionMicroplanId),
                   name: newSessionName,
                   sessionType: newSessionType,
-                  planType: newSessionStrategy,
                   scheduledDate: new Date().toISOString(),
                   transportMode: newSessionTransport,
                   estimatedDuration: 180,
@@ -6768,7 +6767,6 @@ export function MapView({
                   status: "planned",
                   quarter: newSessionQuarter,
                   year: newSessionYear,
-                  campaignScope: newSessionScope,
                   teamType: newSessionTeamType
                 });
               }}
