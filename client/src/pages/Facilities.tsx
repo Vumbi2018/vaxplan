@@ -66,6 +66,9 @@ import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
+import { ToastAction } from "@/components/ui/toast";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { useLocation } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 /* Original Code: Lucide icons without Download / Upload
@@ -97,6 +100,17 @@ function MapResizer() {
 
 export default function Facilities() {
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
+
+  // Whether the current tenant has any administrative boundary maps seeded.
+  // Used to gate the "Extract Communities from Map" action — without
+  // boundaries the server returns a 400 and the action will never succeed,
+  // so we disable the button up-front and direct the user to the Boundary
+  // Manager instead of letting them click into a red error toast.
+  const { data: boundaries = [] } = useQuery<any[]>({
+    queryKey: ["/api/boundaries"],
+  });
+  const hasBoundaries = Array.isArray(boundaries) && boundaries.length > 0;
   const { user } = useAuth();
   const populationOverlay = usePopulationOverlay();
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -389,10 +403,24 @@ export default function Facilities() {
       });
     },
     onError: (error: any) => {
+      const msg = String(error?.message || "");
+      const missingBoundaries = /no administrative boundary/i.test(msg);
       toast({
-        title: "GIS Extraction Failed",
-        description: error.message,
-        variant: "destructive",
+        title: missingBoundaries
+          ? "No boundary maps for this country yet"
+          : "GIS Extraction Failed",
+        description: missingBoundaries
+          ? "Upload an administrative boundary map (or use Import Communities with a CSV) before extracting villages from the map."
+          : msg,
+        variant: missingBoundaries ? "default" : "destructive",
+        action: missingBoundaries ? (
+          <ToastAction
+            altText="Open Boundary Manager"
+            onClick={() => setLocation("/admin/boundaries")}
+          >
+            Open Boundary Manager
+          </ToastAction>
+        ) : undefined,
       });
     },
   });
@@ -2444,16 +2472,31 @@ export default function Facilities() {
                 <Upload className="h-4 w-4" />
                 {importMutation.isPending ? "Importing..." : "Import Communities"}
               </Button>
-              <Button
-                variant="outline"
-                onClick={() => globalExtractMutation.mutate()}
-                disabled={globalExtractMutation.isPending}
-                className="gap-1 border-emerald-500/20 hover:bg-emerald-500/5 text-emerald-600 dark:text-emerald-500"
-                data-testid="button-global-extract-communities"
-              >
-                <Building2 className="h-4 w-4" />
-                {globalExtractMutation.isPending ? "Extracting..." : "Extract Communities from Map"}
-              </Button>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span>
+                      <Button
+                        variant="outline"
+                        onClick={() => globalExtractMutation.mutate()}
+                        disabled={globalExtractMutation.isPending || !hasBoundaries}
+                        className="gap-1 border-emerald-500/20 hover:bg-emerald-500/5 text-emerald-600 dark:text-emerald-500"
+                        data-testid="button-global-extract-communities"
+                      >
+                        <Building2 className="h-4 w-4" />
+                        {globalExtractMutation.isPending ? "Extracting..." : "Extract Communities from Map"}
+                      </Button>
+                    </span>
+                  </TooltipTrigger>
+                  {!hasBoundaries && (
+                    <TooltipContent side="bottom" className="max-w-xs text-xs">
+                      No administrative boundary maps are seeded for this
+                      country yet. Upload one in the Boundary Manager, then
+                      come back here to auto-extract village centroids.
+                    </TooltipContent>
+                  )}
+                </Tooltip>
+              </TooltipProvider>
               {canCreate && (
                 <Button onClick={handleAddCommunity} className="gap-1" data-testid="button-add-community">
                   <Plus className="h-4 w-4" />
