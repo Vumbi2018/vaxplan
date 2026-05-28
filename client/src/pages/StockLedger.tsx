@@ -69,6 +69,17 @@ import { z } from "zod";
 import { format } from "date-fns";
 import { useAuth } from "@/hooks/useAuth";
 import { offlineDb, enqueueOutbox } from "@/lib/offlineDb";
+import {
+  classifyWastage,
+  getWastageThreshold,
+  wastageChipClasses,
+} from "@/lib/wastageThresholds";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 const transactionFormSchema = z.object({
   facilityId: z.number({ required_error: "Pick a facility" }),
@@ -758,7 +769,38 @@ export default function StockLedger() {
                       <th className="px-4 py-3">Province</th>
                       <th className="px-4 py-3">District</th>
                       <th className="px-4 py-3">Immunizations Count</th>
-                      <th className="px-4 py-3">Stock Wastage Summaries</th>
+                      <th className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <span>Stock Wastage Summaries</span>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <button
+                                  type="button"
+                                  className="inline-flex items-center gap-1 text-[10px] font-normal normal-case text-muted-foreground border border-border/60 rounded px-1.5 py-0.5 hover:bg-muted/50"
+                                  data-testid="button-wastage-legend"
+                                >
+                                  <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
+                                  <span className="inline-block h-2 w-2 rounded-full bg-amber-500" />
+                                  <span className="inline-block h-2 w-2 rounded-full bg-destructive" />
+                                  <span>WHO</span>
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent side="bottom" className="max-w-xs text-xs">
+                                <div className="font-semibold mb-1">WHO wastage thresholds</div>
+                                <div className="space-y-0.5">
+                                  <div><span className="text-emerald-600 font-semibold">Green</span> — below warning level</div>
+                                  <div><span className="text-amber-600 font-semibold">Amber</span> — approaching WHO max</div>
+                                  <div><span className="text-destructive font-semibold">Red</span> — exceeds WHO max</div>
+                                </div>
+                                <div className="mt-2 text-muted-foreground">
+                                  Examples (warn / max): BCG 40% / 50%, Measles 20% / 25%, OPV 15% / 20%, Penta · PCV · IPV 8% / 10%.
+                                </div>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        </div>
+                      </th>
                       <th className="px-4 py-3">Surveillance Status</th>
                       <th className="px-4 py-3">Approval Status</th>
                       <th className="px-4 py-3">Submission Details</th>
@@ -799,17 +841,42 @@ export default function StockLedger() {
                             </div>
                           </td>
                           <td className="px-4 py-3">
-                            <div className="text-xs space-y-1 max-w-[200px]">
-                              {Object.entries(stock).slice(0, 2).map(([k, v]: [string, any]) => (
-                                <div key={k} className="flex justify-between gap-4">
-                                  <span className="text-muted-foreground">{k}:</span>
-                                  <span className="font-bold">
-                                    Wasted: {v.wasted} (Rate: {v.wastageRate}%)
-                                  </span>
-                                </div>
-                              ))}
+                            <div className="text-xs space-y-1 max-w-[260px]">
+                              {Object.entries(stock).slice(0, 2).map(([k, v]: [string, any]) => {
+                                const rate = Number(v.wastageRate ?? 0);
+                                const status = classifyWastage(k, rate);
+                                const t = getWastageThreshold(k);
+                                const label =
+                                  status === "breach"
+                                    ? `Above WHO max (${t.max}%)`
+                                    : status === "warn"
+                                      ? `Near WHO max (warn ${t.warn}%, max ${t.max}%)`
+                                      : `Within WHO limits (max ${t.max}%)`;
+                                return (
+                                  <div key={k} className="flex justify-between items-center gap-2">
+                                    <span className="text-muted-foreground">{k}:</span>
+                                    <div className="flex items-center gap-1">
+                                      <span className="font-bold">W:{v.wasted}</span>
+                                      <TooltipProvider>
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <span
+                                              className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${wastageChipClasses(status)}`}
+                                              data-testid={`chip-wastage-${rep.id}-${k}`}
+                                              data-status={status}
+                                            >
+                                              {rate}%
+                                            </span>
+                                          </TooltipTrigger>
+                                          <TooltipContent className="text-xs">{label}</TooltipContent>
+                                        </Tooltip>
+                                      </TooltipProvider>
+                                    </div>
+                                  </div>
+                                );
+                              })}
                               {Object.keys(stock).length > 2 && (
-                                <div className="text-[10px] text-muted-foreground col-span-2">
+                                <div className="text-[10px] text-muted-foreground">
                                   + {Object.keys(stock).length - 2} other stocks
                                 </div>
                               )}
@@ -1187,7 +1254,9 @@ export default function StockLedger() {
                   </thead>
                   <tbody className="divide-y">
                     {Object.entries(compiledStock).map(([name, details]: [string, any]) => {
-                      const lowRate = details.wastageRate < 10;
+                      const rate = Number(details.wastageRate ?? 0);
+                      const status = classifyWastage(name, rate);
+                      const t = getWastageThreshold(name);
                       return (
                         <tr key={name}>
                           <td className="px-3 py-2 font-medium">{name}</td>
@@ -1196,8 +1265,15 @@ export default function StockLedger() {
                           <td className="px-3 py-2 text-center text-primary">{details.administered}</td>
                           <td className="px-3 py-2 text-center text-destructive">{details.wasted}</td>
                           <td className="px-3 py-2 text-center font-bold">{details.closing}</td>
-                          <td className={`px-3 py-2 text-right font-bold ${lowRate ? "text-emerald-600" : "text-amber-500"}`}>
-                            {details.wastageRate}%
+                          <td className="px-3 py-2 text-right">
+                            <span
+                              className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${wastageChipClasses(status)}`}
+                              title={`WHO max ${t.max}% (warn ${t.warn}%)`}
+                              data-testid={`chip-wizard-wastage-${name}`}
+                              data-status={status}
+                            >
+                              {rate}%
+                            </span>
                           </td>
                         </tr>
                       );
