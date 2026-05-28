@@ -186,9 +186,13 @@ export async function estimateCatchmentPopulation(opts: {
   const sampledCells = cachedCells + liveCells;
   if (sampledCells === 0) {
     if (offline) {
+      const reallyOffline =
+        typeof navigator !== "undefined" && navigator.onLine === false;
       return {
         status: "error",
-        message: "Offline and no cached cells for this area yet.",
+        message: reallyOffline
+          ? "Offline and no cached cells for this area yet."
+          : "WorldPop live lookups are temporarily unavailable, and this area has no cached cells yet. Enter the population manually or try again once tiles are cached.",
         offline: true,
         cells,
       };

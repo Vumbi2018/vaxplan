@@ -2962,9 +2962,15 @@ function Step2({
       setCommunities(next);
     }
     setBulkEstimate((prev) => (prev ? { ...prev, phase: "done" } : prev));
+    const allFailed = okCount === 0 && errorCount > 0;
     toast({
-      title: "Bulk estimate complete",
+      title: allFailed
+        ? "Bulk estimate failed"
+        : errorCount > 0
+        ? "Bulk estimate finished with errors"
+        : "Bulk estimate complete",
       description: `${okCount} updated · ${nodataCount} no-data · ${errorCount} failed`,
+      variant: allFailed ? "destructive" : undefined,
     });
   };
 
@@ -3430,9 +3436,24 @@ function Step2({
               {bulkEstimate && bulkEstimate.phase === "running" && (
                 <>Sampling WorldPop cells for each community…</>
               )}
-              {bulkEstimate && bulkEstimate.phase === "done" && (
-                <>Done. Successful rows now use WorldPop as their source.</>
-              )}
+              {bulkEstimate && bulkEstimate.phase === "done" && (() => {
+                const okN = bulkEstimate.rows.filter((r) => r.status.state === "ok").length;
+                const errN = bulkEstimate.rows.filter((r) => r.status.state === "error").length;
+                if (okN === 0 && errN > 0) {
+                  return (
+                    <>No rows could be estimated. See the per-row reason below — you can enter populations manually for now.</>
+                  );
+                }
+                if (okN === 0) {
+                  return <>No rows were updated.</>;
+                }
+                if (errN > 0) {
+                  return (
+                    <>Done — {okN} row{okN === 1 ? "" : "s"} updated from WorldPop. {errN} failed (see below).</>
+                  );
+                }
+                return <>Done. Successful rows now use WorldPop as their source.</>;
+              })()}
             </DialogDescription>
           </DialogHeader>
 
