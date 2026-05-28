@@ -3,6 +3,12 @@ import { getCachedPopulation, setCachedPopulation } from "./populationCache";
 const EARTH_RADIUS_M = 6378137;
 const WORLDPOP_WMS_URL = "https://ogc.worldpop.org/geoserver/wpGlobal/ows";
 const WORLDPOP_LAYER = "wpGlobal:ppp_2020_1km_Aggregated";
+// WorldPop retired the `wpGlobal` workspace from their public GeoServer in
+// 2025 — every GetFeatureInfo request returns 404 (and is CORS-blocked in
+// the browser). Until a replacement raster is wired up, treat live lookups
+// as disabled and serve only what's already in the local cache. Flip this
+// to `false` once a working endpoint is plugged into fetchCellValue.
+const WORLDPOP_LIVE_LOOKUPS_ENABLED = false;
 
 function project3857(lat: number, lng: number): { x: number; y: number } {
   const x = (lng * Math.PI) / 180 * EARTH_RADIUS_M;
@@ -118,7 +124,9 @@ export async function estimateCatchmentPopulation(opts: {
     cells.push({ lat, lng, latStepDeg, lngStepDeg, status: "nodata" });
   }
 
-  const offline = typeof navigator !== "undefined" && navigator.onLine === false;
+  const offline =
+    !WORLDPOP_LIVE_LOOKUPS_ENABLED ||
+    (typeof navigator !== "undefined" && navigator.onLine === false);
   const signal = opts.signal ?? new AbortController().signal;
   const queue: number[] = cells.map((_, i) => i);
   let done = 0;
