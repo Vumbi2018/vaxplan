@@ -173,6 +173,44 @@ export function registerPasswordAuthRoutes(app: Express) {
     }
   });
 
+  // Forgot-password request. No email provider is wired up in this deployment,
+  // so this records the request as an audit-log entry against the user's tenant
+  // (visible to that tenant's admins, who can then reset via /api/auth/set-password)
+  // and always returns a generic success so it can't be used to enumerate which
+  // emails have accounts.
+  app.post("/api/auth/request-password-reset", async (req: Request, res: Response) => {
+    const emailRaw = String((req.body && req.body.email) || "").trim().toLowerCase();
+    try {
+      if (emailRaw && /.+@.+\..+/.test(emailRaw)) {
+        const dbUser = await storage.getUserByEmail(emailRaw);
+        if (dbUser && dbUser.isActive && dbUser.tenantId) {
+          await storage
+            .createAuditLog(dbUser.tenantId, {
+              userId: dbUser.id,
+              action: "password_reset_requested",
+              entityType: "user",
+              entityId: null,
+              oldValue: null,
+              newValue: { email: emailRaw },
+              ipAddress:
+                (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ||
+                req.ip ||
+                null,
+            } as any)
+            .catch((e) => console.error("[password-auth] reset audit log failed:", e));
+        }
+      }
+    } catch (err) {
+      console.error("[password-auth] request-password-reset failed:", err);
+    }
+    // Always the same response regardless of whether the account exists.
+    return res.json({
+      ok: true,
+      message:
+        "If an account exists for that email, your VaxPlan administrator has been notified to help you reset your password.",
+    });
+  });
+
   app.post("/api/auth/set-password", isAuthenticated, async (req: any, res: Response) => {
     try {
       const caller = await storage.getUser(req.user?.claims?.sub ?? req.user?.id);

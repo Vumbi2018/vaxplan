@@ -21,6 +21,8 @@ import {
   Pill,
   Building2,
   ArrowRight,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { versionLabel } from "@/lib/version";
@@ -91,10 +93,19 @@ const trustPoints = [
 ];
 
 function PasswordLoginDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
+  const [mode, setMode] = useState<"login" | "forgot">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  function resetState() {
+    setError(null);
+    setNotice(null);
+    setBusy(false);
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -120,51 +131,226 @@ function PasswordLoginDialog({ open, onOpenChange }: { open: boolean; onOpenChan
     }
   }
 
+  async function submitForgot(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const res = await fetch("/api/auth/request-password-reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ email: email.trim() }),
+      });
+      const data = await res.json().catch(() => ({}));
+      setNotice(
+        data?.message ||
+          "If an account exists for that email, your administrator has been notified to help you reset your password.",
+      );
+    } catch (err) {
+      setError("Network error. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-sm">
-        <DialogHeader>
-          <DialogTitle>Sign in</DialogTitle>
-          <DialogDescription>
-            Use the email and password your VaxPlan admin gave you.
-          </DialogDescription>
-        </DialogHeader>
-        <form onSubmit={submit} className="space-y-3">
-          <div className="space-y-1">
-            <Label htmlFor="pw-email">Email</Label>
-            <Input
-              id="pw-email"
-              type="email"
-              autoComplete="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              data-testid="input-email"
-            />
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        onOpenChange(v);
+        if (!v) {
+          setMode("login");
+          resetState();
+        }
+      }}
+    >
+      <DialogContent className="p-0 overflow-hidden sm:max-w-3xl gap-0">
+        <DialogTitle className="sr-only">Sign in to VaxPlan</DialogTitle>
+        <DialogDescription className="sr-only">
+          Sign in with the email and password your VaxPlan administrator gave you.
+        </DialogDescription>
+        <div className="grid md:grid-cols-2">
+          {/* Brand panel */}
+          <div className="relative hidden md:flex flex-col justify-between p-8 bg-gradient-to-br from-primary via-primary to-blue-700 text-primary-foreground overflow-hidden">
+            <div className="pointer-events-none absolute inset-0 opacity-10">
+              <Syringe className="absolute top-6 left-6 h-24 w-24 -rotate-12" />
+              <HeartPulse className="absolute bottom-10 left-10 h-28 w-28" />
+              <Stethoscope className="absolute top-1/2 right-4 h-32 w-32 rotate-12" />
+            </div>
+            <div className="relative flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-white/15 backdrop-blur">
+                <HeartPulse className="h-6 w-6" />
+              </div>
+              <div className="flex flex-col leading-tight">
+                <span className="font-semibold">VaxPlan</span>
+                <span className="text-xs text-primary-foreground/80">
+                  Health microplanning for Ministries
+                </span>
+              </div>
+            </div>
+            <div className="relative space-y-3">
+              <h2 className="text-2xl font-bold leading-snug">
+                Reach every child.
+                <br />
+                Plan every session.
+              </h2>
+              <p className="text-sm text-primary-foreground/85 max-w-xs">
+                Secure, country-isolated microplanning for national immunization
+                programs — from the capital down to the last village.
+              </p>
+            </div>
+            <div className="relative flex items-center gap-2 text-xs text-primary-foreground/80">
+              <Shield className="h-4 w-4" />
+              Encrypted · Audit-logged · Per-country data isolation
+            </div>
           </div>
-          <div className="space-y-1">
-            <Label htmlFor="pw-password">Password</Label>
-            <Input
-              id="pw-password"
-              type="password"
-              autoComplete="current-password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              data-testid="input-password"
-            />
+
+          {/* Form panel */}
+          <div className="p-8 flex flex-col justify-center">
+            {mode === "login" ? (
+              <>
+                <div className="mb-6 space-y-1">
+                  <h3 className="text-xl font-semibold tracking-tight">Welcome back</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Sign in to your VaxPlan account to continue.
+                  </p>
+                </div>
+                <form onSubmit={submit} className="space-y-4">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="pw-email">Email</Label>
+                    <Input
+                      id="pw-email"
+                      type="email"
+                      autoComplete="email"
+                      placeholder="you@ministry.gov"
+                      required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      data-testid="input-email"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="pw-password">Password</Label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          resetState();
+                          setMode("forgot");
+                        }}
+                        className="text-xs text-primary hover:underline"
+                        data-testid="button-forgot-password"
+                      >
+                        Forgot password?
+                      </button>
+                    </div>
+                    <div className="relative">
+                      <Input
+                        id="pw-password"
+                        type={showPassword ? "text" : "password"}
+                        autoComplete="current-password"
+                        required
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        className="pr-10"
+                        data-testid="input-password"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword((s) => !s)}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        aria-label={showPassword ? "Hide password" : "Show password"}
+                        data-testid="button-toggle-password"
+                      >
+                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                  </div>
+                  {error && (
+                    <div className="text-sm text-destructive" data-testid="text-login-error">
+                      {error}
+                    </div>
+                  )}
+                  <Button
+                    type="submit"
+                    size="lg"
+                    className="w-full"
+                    disabled={busy}
+                    data-testid="button-submit-login"
+                  >
+                    {busy ? "Signing in…" : "Sign in"}
+                  </Button>
+                </form>
+                <p className="mt-6 text-center text-sm text-muted-foreground">
+                  Need access?{" "}
+                  <a href="/signup" className="text-primary font-medium hover:underline">
+                    Request an account
+                  </a>
+                </p>
+              </>
+            ) : (
+              <>
+                <div className="mb-6 space-y-1">
+                  <h3 className="text-xl font-semibold tracking-tight">Reset your password</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Enter your email and we'll notify your VaxPlan administrator to
+                    help you regain access.
+                  </p>
+                </div>
+                <form onSubmit={submitForgot} className="space-y-4">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="forgot-email">Email</Label>
+                    <Input
+                      id="forgot-email"
+                      type="email"
+                      autoComplete="email"
+                      placeholder="you@ministry.gov"
+                      required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      data-testid="input-forgot-email"
+                    />
+                  </div>
+                  {notice && (
+                    <div
+                      className="text-sm rounded-md bg-primary/10 text-foreground px-3 py-2"
+                      data-testid="text-forgot-notice"
+                    >
+                      {notice}
+                    </div>
+                  )}
+                  {error && (
+                    <div className="text-sm text-destructive" data-testid="text-forgot-error">
+                      {error}
+                    </div>
+                  )}
+                  <Button
+                    type="submit"
+                    size="lg"
+                    className="w-full"
+                    disabled={busy}
+                    data-testid="button-submit-forgot"
+                  >
+                    {busy ? "Sending…" : "Send reset request"}
+                  </Button>
+                </form>
+                <button
+                  type="button"
+                  onClick={() => {
+                    resetState();
+                    setMode("login");
+                  }}
+                  className="mt-6 text-center text-sm text-primary hover:underline mx-auto"
+                  data-testid="button-back-to-login"
+                >
+                  ← Back to sign in
+                </button>
+              </>
+            )}
           </div>
-          {error && <div className="text-sm text-destructive" data-testid="text-login-error">{error}</div>}
-          <Button type="submit" className="w-full" disabled={busy} data-testid="button-submit-login">
-            {busy ? "Signing in…" : "Sign in"}
-          </Button>
-          <div className="text-center text-xs text-muted-foreground pt-2">
-            Replit team member?{" "}
-            <a href="/api/login" className="underline hover:text-foreground" data-testid="link-replit-login">
-              Sign in with Replit
-            </a>
-          </div>
-        </form>
+        </div>
       </DialogContent>
     </Dialog>
   );

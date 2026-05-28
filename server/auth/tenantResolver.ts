@@ -36,27 +36,53 @@ export async function resolveTenantByEmail(email: string) {
   return tenant ? { tenant, idpConfig: cfg } : null;
 }
 
+// Tenant ids are UUIDs. The client occasionally sends a tenant *code*
+// (e.g. "ZMB") in the x-tenant-id header; passing that to a uuid column makes
+// Postgres throw 22P02. Guard every lookup with this so a bad header can never
+// crash a request or poison the session.
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export const tenantContext: RequestHandler = async (req, _res, next) => {
   if (!req.isAuthenticated?.()) return next();
 
-  // Extract custom active tenant override header or query parameters
+  // Extract custom active tenant override header or query parameters. Only
+  // accept a well-formed UUID — a tenant *code* or any other garbage is ignored
+  // so it can never be persisted to the session or reach a uuid column.
   const headerTenantId = req.headers["x-tenant-id"] || req.query["x-tenant-id"];
-  if (headerTenantId && typeof headerTenantId === "string") {
-    req.session.viewTenantId = headerTenantId;
+  if (
+    headerTenantId &&
+    typeof headerTenantId === "string" &&
+    UUID_RE.test(headerTenantId)
+  ) {
+    try {
+      const t = await storage.getTenant(headerTenantId);
+      if (t?.status === "active") {
+        req.session.viewTenantId = t.id;
+      }
+    } catch (err) {
+      console.error("tenantContext header tenant lookup failed:", err);
+    }
   }
 
   // viewTenantId override: any authenticated user may "visit" another active
   // tenant. Reads and writes both scope to that tenant.
-  if (req.session.viewTenantId) {
+  if (req.session.viewTenantId && UUID_RE.test(req.session.viewTenantId)) {
     try {
       const t = await storage.getTenant(req.session.viewTenantId);
       if (t?.status === "active") {
         req.tenantId = t.id;
         return next();
       }
+      // Stale / inactive override — drop it so we fall back to the home tenant.
+      delete req.session.viewTenantId;
     } catch (err) {
       console.error("tenantContext viewTenantId lookup failed:", err);
+      delete req.session.viewTenantId;
     }
+  } else if (req.session.viewTenantId) {
+    // Non-UUID value left over from an older client — purge it.
+    delete req.session.viewTenantId;
   }
 
   if (req.session.tenantId) {
