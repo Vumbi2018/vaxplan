@@ -18,6 +18,7 @@ import {
   insertMobilizationActivitySchema,
   insertSupervisionVisitSchema,
   supervisionVisits,
+  insertQuarterlyReviewSchema,
   insertApprovalRequestSchema,
   insertProvinceSchema,
   insertDistrictSchema,
@@ -8055,7 +8056,8 @@ export async function registerRoutes(
 
   // GET /api/indicators/defaulter-review-status
   // Returns whether the tenant has opened a defaulter review this quarter,
-  // and the most recent open. Drives the Step-12 completion check.
+  // whether a written quarterly review note has been saved this quarter, and
+  // the most recent open. Drives the Step-12 completion check.
   app.get(
     "/api/indicators/defaulter-review-status",
     isAuthenticated,
@@ -8064,10 +8066,10 @@ export async function registerRoutes(
       try {
         const tenantId = req.tenantId as string;
         const now = new Date();
-        const quarter = Math.floor(now.getUTCMonth() / 3);
-        const quarterStart = new Date(
-          Date.UTC(now.getUTCFullYear(), quarter * 3, 1),
-        );
+        const quarterIdx = Math.floor(now.getUTCMonth() / 3);
+        const year = now.getUTCFullYear();
+        const quarter = quarterIdx + 1;
+        const quarterStart = new Date(Date.UTC(year, quarterIdx * 3, 1));
         const logs = await storage.listAuditLogs(tenantId, {
           entityType: "defaulters",
           limit: 50,
@@ -8080,11 +8082,21 @@ export async function registerRoutes(
         );
         const latest =
           logs.find((l) => l.action === "defaulter_review_opened") ?? null;
+        const reviewNotes = await storage.listQuarterlyReviews(tenantId, {
+          year,
+          quarter,
+        });
+        const latestNote = reviewNotes[0] ?? null;
         res.json({
           reviewedThisQuarter: inQuarter.length > 0,
           reviewsThisQuarter: inQuarter.length,
           lastReviewedAt: latest?.createdAt ?? null,
           quarterStart: quarterStart.toISOString(),
+          reviewNoteSavedThisQuarter: reviewNotes.length > 0,
+          reviewNotesThisQuarter: reviewNotes.length,
+          lastReviewNoteAt: latestNote?.updatedAt ?? null,
+          year,
+          quarter,
         });
       } catch (err: any) {
         console.error(
@@ -8094,6 +8106,100 @@ export async function registerRoutes(
         res
           .status(500)
           .json({ message: "Failed to compute defaulter review status" });
+      }
+    },
+  );
+
+  // GET /api/quarterly-reviews?facilityId=&year=&quarter=
+  // Returns saved quarterly review notes for the tenant, optionally scoped to
+  // a facility / year / quarter. Used by the Defaulter List page to show the
+  // current quarter's note (or list past notes for context).
+  app.get(
+    "/api/quarterly-reviews",
+    isAuthenticated,
+    requireTenant,
+    async (req: any, res) => {
+      try {
+        const tenantId = req.tenantId as string;
+        const facilityId = req.query.facilityId
+          ? parseInt(String(req.query.facilityId), 10)
+          : undefined;
+        const year = req.query.year
+          ? parseInt(String(req.query.year), 10)
+          : undefined;
+        const quarter = req.query.quarter
+          ? parseInt(String(req.query.quarter), 10)
+          : undefined;
+        const rows = await storage.listQuarterlyReviews(tenantId, {
+          facilityId: Number.isFinite(facilityId as number) ? facilityId : undefined,
+          year: Number.isFinite(year as number) ? year : undefined,
+          quarter: Number.isFinite(quarter as number) ? quarter : undefined,
+        });
+        res.json(rows);
+      } catch (err: any) {
+        console.error("GET /api/quarterly-reviews failed:", err);
+        res.status(500).json({ message: "Failed to load quarterly reviews" });
+      }
+    },
+  );
+
+  // POST /api/quarterly-reviews
+  // Upserts a quarterly review note for (tenant, facility, year, quarter).
+  // Facility staff write for their own facility; higher roles (district /
+  // provincial / national) may write for any facility in the tenant.
+  app.post(
+    "/api/quarterly-reviews",
+    isAuthenticated,
+    requireTenant,
+    async (req: any, res) => {
+      try {
+        const tenantId = req.tenantId as string;
+        const userId = getCurrentUserId(req);
+        const parsed = insertQuarterlyReviewSchema.safeParse(req.body);
+        if (!parsed.success) {
+          return res.status(400).json({
+            message: "Invalid quarterly review",
+            errors: parsed.error.flatten(),
+          });
+        }
+        const data = parsed.data;
+        const facility = await storage.getFacility(tenantId, data.facilityId);
+        if (!facility) {
+          return res
+            .status(400)
+            .json({ message: "Facility does not belong to this tenant" });
+        }
+        const dbUser = await storage.getUser(userId);
+        if (!dbUser) {
+          return res.status(401).json({ message: "Unauthorized" });
+        }
+        const roles = new Set<string>([
+          dbUser.role,
+          ...((Array.isArray(dbUser.roles) ? dbUser.roles : []) as string[]),
+        ]);
+        const isFacilityStaff =
+          roles.has("facility_clerk") || roles.has("facility_in_charge");
+        if (isFacilityStaff && dbUser.facilityId !== data.facilityId) {
+          return res.status(403).json({
+            message:
+              "Facility staff can only save a quarterly review for their own facility",
+          });
+        }
+        const saved = await storage.upsertQuarterlyReview(tenantId, userId, data);
+        await logAudit(
+          req,
+          "upsert",
+          "quarterly_review",
+          saved.id,
+          null,
+          saved,
+        );
+        res.status(201).json(saved);
+      } catch (err: any) {
+        console.error("POST /api/quarterly-reviews failed:", err);
+        res
+          .status(500)
+          .json({ message: err?.message || "Failed to save quarterly review" });
       }
     },
   );

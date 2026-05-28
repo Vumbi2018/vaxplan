@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { DataTable } from "@/components/DataTable";
@@ -11,9 +11,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { AlertTriangle, ExternalLink } from "lucide-react";
+import { AlertTriangle, ExternalLink, CheckCircle2, ClipboardEdit } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import { Link } from "wouter";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
 
 interface DefaulterRow {
   id: string;
@@ -34,6 +40,17 @@ interface DefaulterRow {
   daysOverdue: number;
   lastDoseAntigen: string | null;
   lastDoseDate: string | null;
+}
+
+interface QuarterlyReview {
+  id: number;
+  facilityId: number;
+  year: number;
+  quarter: number;
+  topDrivers: string[];
+  correctiveActions: string;
+  nextSurveyDate: string | null;
+  updatedAt: string;
 }
 
 const ANTIGEN_OPTIONS = [
@@ -58,8 +75,17 @@ const ANTIGEN_OPTIONS = [
   { value: "MR_2", label: "Measles-Rubella 2" },
 ];
 
+function currentYearQuarter() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const quarter = Math.floor(now.getMonth() / 3) + 1;
+  return { year, quarter };
+}
+
 export default function Defaulters() {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const { user } = useAuth() as { user: any };
   const [provinceId, setProvinceId] = useState<number | null>(null);
   const [districtId, setDistrictId] = useState<number | null>(null);
   const [facilityId, setFacilityId] = useState<number | null>(null);
@@ -67,7 +93,7 @@ export default function Defaulters() {
 
   // Record that the user opened a defaulter review. The audit_log entry is
   // what the guided workflow Step 12 (RED 4 / RED-Q Measure) reads to mark
-  // the quarterly review as done.
+  // the quarterly review as opened.
   useEffect(() => {
     fetch("/api/indicators/defaulters/review", {
       method: "POST",
@@ -106,6 +132,112 @@ export default function Defaulters() {
   const totalOverdue = defaulters.length;
   // >=56 days past due date = >4 weeks beyond the 4-week grace cutoff
   const severe = defaulters.filter((d) => d.daysOverdue >= 56).length;
+
+  // ─── Quarterly review note ───
+  // The note is per-facility. Facility staff can only write their own facility;
+  // higher roles can pick any facility via the scope filter above.
+  const { year, quarter } = currentYearQuarter();
+  const roles = useMemo(() => {
+    const list = new Set<string>();
+    if (user?.role) list.add(user.role);
+    if (Array.isArray(user?.roles)) (user.roles as string[]).forEach((r) => list.add(r));
+    return list;
+  }, [user]);
+  const isFacilityStaff = roles.has("facility_clerk") || roles.has("facility_in_charge");
+  const reviewFacilityId = isFacilityStaff ? (user?.facilityId ?? null) : facilityId;
+  const canWriteReview = !!reviewFacilityId && (
+    !isFacilityStaff || reviewFacilityId === user?.facilityId
+  );
+
+  const reviewQueryString = useMemo(() => {
+    if (!reviewFacilityId) return "";
+    const p = new URLSearchParams();
+    p.set("facilityId", String(reviewFacilityId));
+    p.set("year", String(year));
+    p.set("quarter", String(quarter));
+    return `?${p.toString()}`;
+  }, [reviewFacilityId, year, quarter]);
+
+  const { data: reviewRows = [] } = useQuery<QuarterlyReview[]>({
+    queryKey: ["/api/quarterly-reviews", reviewQueryString],
+    queryFn: async () => {
+      if (!reviewFacilityId) return [];
+      const res = await fetch(`/api/quarterly-reviews${reviewQueryString}`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to load review");
+      return (await res.json()) as QuarterlyReview[];
+    },
+    enabled: !!reviewFacilityId,
+  });
+  const existingReview = reviewRows[0] ?? null;
+
+  const [driver1, setDriver1] = useState("");
+  const [driver2, setDriver2] = useState("");
+  const [driver3, setDriver3] = useState("");
+  const [correctiveActions, setCorrectiveActions] = useState("");
+  const [nextSurveyDate, setNextSurveyDate] = useState("");
+
+  // Rehydrate the form whenever the loaded review or selected facility changes.
+  useEffect(() => {
+    if (existingReview) {
+      const d = existingReview.topDrivers || [];
+      setDriver1(d[0] ?? "");
+      setDriver2(d[1] ?? "");
+      setDriver3(d[2] ?? "");
+      setCorrectiveActions(existingReview.correctiveActions ?? "");
+      setNextSurveyDate(
+        existingReview.nextSurveyDate
+          ? new Date(existingReview.nextSurveyDate).toISOString().slice(0, 10)
+          : "",
+      );
+    } else {
+      setDriver1("");
+      setDriver2("");
+      setDriver3("");
+      setCorrectiveActions("");
+      setNextSurveyDate("");
+    }
+  }, [existingReview?.id, reviewFacilityId]);
+
+  const saveReview = useMutation({
+    mutationFn: async () => {
+      const drivers = [driver1, driver2, driver3]
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
+      return await apiRequest("POST", "/api/quarterly-reviews", {
+        facilityId: reviewFacilityId,
+        year,
+        quarter,
+        topDrivers: drivers,
+        correctiveActions: correctiveActions.trim(),
+        nextSurveyDate: nextSurveyDate ? nextSurveyDate : null,
+      });
+    },
+    onSuccess: () => {
+      toast({
+        title: "Quarterly review saved",
+        description: `Saved for Q${quarter} ${year}. Step 12 will reflect the update.`,
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/quarterly-reviews"] });
+      queryClient.invalidateQueries({
+        queryKey: ["/api/indicators/defaulter-review-status"],
+      });
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Could not save review",
+        description: err?.message || "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const driversFilled = [driver1, driver2, driver3].filter((s) => s.trim().length > 0).length;
+  const formValid =
+    canWriteReview &&
+    driversFilled >= 1 &&
+    correctiveActions.trim().length >= 5;
 
   return (
     <div className="p-6 space-y-6">
@@ -188,6 +320,123 @@ export default function Defaulters() {
             onFacilityChange={(id) => setFacilityId(id)}
             testIdPrefix="defaulters"
           />
+        </CardContent>
+      </Card>
+
+      <Card data-testid="card-quarterly-review">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <ClipboardEdit className="h-4 w-4" />
+            Quarterly review note — Q{quarter} {year}
+            {existingReview && (
+              <Badge variant="outline" className="ml-2 gap-1 border-emerald-500 text-emerald-600">
+                <CheckCircle2 className="h-3 w-3" />
+                Saved
+              </Badge>
+            )}
+          </CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Record what the facility / district is doing about dropout this
+            quarter — the top drivers, the corrective actions planned, and when
+            the next coverage survey will run. This is what Step 12 of the RED
+            workflow looks for, not just opening this page.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {!reviewFacilityId ? (
+            <div className="text-sm text-muted-foreground">
+              Pick a facility in the Scope filter above to write a review note
+              for it.
+            </div>
+          ) : !canWriteReview ? (
+            <div className="text-sm text-rose-600">
+              You can only write a review note for your own facility.
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="space-y-1">
+                  <Label htmlFor="driver1">Top dropout driver #1</Label>
+                  <Input
+                    id="driver1"
+                    value={driver1}
+                    onChange={(e) => setDriver1(e.target.value)}
+                    placeholder="e.g. caregiver travel"
+                    maxLength={255}
+                    data-testid="input-review-driver-1"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="driver2">Top dropout driver #2</Label>
+                  <Input
+                    id="driver2"
+                    value={driver2}
+                    onChange={(e) => setDriver2(e.target.value)}
+                    placeholder="e.g. stockouts in May"
+                    maxLength={255}
+                    data-testid="input-review-driver-2"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="driver3">Top dropout driver #3</Label>
+                  <Input
+                    id="driver3"
+                    value={driver3}
+                    onChange={(e) => setDriver3(e.target.value)}
+                    placeholder="e.g. session day clashes with market"
+                    maxLength={255}
+                    data-testid="input-review-driver-3"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <Label htmlFor="corrective">Planned corrective actions</Label>
+                <Textarea
+                  id="corrective"
+                  rows={4}
+                  value={correctiveActions}
+                  onChange={(e) => setCorrectiveActions(e.target.value)}
+                  placeholder="What will the team change next quarter? Outreach to specific villages, defaulter tracing days, mobilizer follow-ups, restock plan…"
+                  maxLength={4000}
+                  data-testid="input-review-corrective"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label htmlFor="nextSurvey">Date of the next coverage survey</Label>
+                  <Input
+                    id="nextSurvey"
+                    type="date"
+                    value={nextSurveyDate}
+                    onChange={(e) => setNextSurveyDate(e.target.value)}
+                    data-testid="input-review-next-survey"
+                  />
+                </div>
+                <div className="flex items-end justify-end">
+                  <Button
+                    onClick={() => saveReview.mutate()}
+                    disabled={!formValid || saveReview.isPending}
+                    data-testid="button-save-review"
+                  >
+                    {saveReview.isPending
+                      ? "Saving…"
+                      : existingReview
+                        ? "Update review"
+                        : "Save review"}
+                  </Button>
+                </div>
+              </div>
+
+              {existingReview && (
+                <div className="text-xs text-muted-foreground">
+                  Last saved{" "}
+                  {new Date(existingReview.updatedAt).toLocaleString()}.
+                </div>
+              )}
+            </>
+          )}
         </CardContent>
       </Card>
 

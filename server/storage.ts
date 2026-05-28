@@ -16,6 +16,7 @@ import {
   vaccineRequirements,
   mobilizationActivities,
   supervisionVisits,
+  quarterlyReviews,
   approvalRequests,
   auditLogs,
   htrScores,
@@ -59,6 +60,8 @@ import {
   type InsertMobilizationActivity,
   type SupervisionVisit,
   type InsertSupervisionVisit,
+  type QuarterlyReview,
+  type InsertQuarterlyReview,
   type ApprovalRequest,
   type InsertApprovalRequest,
   type AuditLog,
@@ -206,6 +209,10 @@ export interface IStorage {
   createSupervisionVisit(tenantId: string, data: InsertSupervisionVisit): Promise<SupervisionVisit>;
   updateSupervisionVisit(tenantId: string, id: number, data: Partial<InsertSupervisionVisit>): Promise<SupervisionVisit | undefined>;
   deleteSupervisionVisit(tenantId: string, id: number): Promise<boolean>;
+
+  listQuarterlyReviews(tenantId: string, filters?: { facilityId?: number; year?: number; quarter?: number }): Promise<QuarterlyReview[]>;
+  getQuarterlyReview(tenantId: string, facilityId: number, year: number, quarter: number): Promise<QuarterlyReview | undefined>;
+  upsertQuarterlyReview(tenantId: string, userId: string | null, data: InsertQuarterlyReview): Promise<QuarterlyReview>;
 
   listAuditLogs(tenantId: string, filters?: { userId?: string; entityType?: string; entityId?: string; limit?: number }): Promise<AuditLog[]>;
 
@@ -1067,6 +1074,80 @@ export class DatabaseStorage implements IStorage {
       .where(and(eq(supervisionVisits.id, id), eq(supervisionVisits.tenantId, tenantId)))
       .returning({ id: supervisionVisits.id });
     return r.length > 0;
+  }
+
+  // --- Quarterly reviews (RED 4 / Step 12) ---
+  async listQuarterlyReviews(
+    tenantId: string,
+    filters?: { facilityId?: number; year?: number; quarter?: number },
+  ): Promise<QuarterlyReview[]> {
+    const conds: any[] = [];
+    if (filters?.facilityId) conds.push(eq(quarterlyReviews.facilityId, filters.facilityId));
+    if (filters?.year) conds.push(eq(quarterlyReviews.year, filters.year));
+    if (filters?.quarter) conds.push(eq(quarterlyReviews.quarter, filters.quarter));
+    return await db
+      .select()
+      .from(quarterlyReviews)
+      .where(withTenant(quarterlyReviews, tenantId, conds.length ? and(...conds) : undefined))
+      .orderBy(desc(quarterlyReviews.updatedAt));
+  }
+
+  async getQuarterlyReview(
+    tenantId: string,
+    facilityId: number,
+    year: number,
+    quarter: number,
+  ): Promise<QuarterlyReview | undefined> {
+    const [r] = await db
+      .select()
+      .from(quarterlyReviews)
+      .where(and(
+        eq(quarterlyReviews.tenantId, tenantId),
+        eq(quarterlyReviews.facilityId, facilityId),
+        eq(quarterlyReviews.year, year),
+        eq(quarterlyReviews.quarter, quarter),
+      ));
+    return r;
+  }
+
+  async upsertQuarterlyReview(
+    tenantId: string,
+    userId: string | null,
+    data: InsertQuarterlyReview,
+  ): Promise<QuarterlyReview> {
+    const existing = await this.getQuarterlyReview(tenantId, data.facilityId, data.year, data.quarter);
+    const nextSurveyDate = data.nextSurveyDate
+      ? (data.nextSurveyDate instanceof Date ? data.nextSurveyDate : new Date(data.nextSurveyDate as string))
+      : null;
+    if (existing) {
+      const [r] = await db
+        .update(quarterlyReviews)
+        .set({
+          topDrivers: data.topDrivers as any,
+          correctiveActions: data.correctiveActions,
+          nextSurveyDate,
+          updatedByUserId: userId,
+          updatedAt: new Date(),
+        })
+        .where(and(eq(quarterlyReviews.id, existing.id), eq(quarterlyReviews.tenantId, tenantId)))
+        .returning();
+      return r;
+    }
+    const [r] = await db
+      .insert(quarterlyReviews)
+      .values({
+        tenantId,
+        facilityId: data.facilityId,
+        year: data.year,
+        quarter: data.quarter,
+        topDrivers: data.topDrivers as any,
+        correctiveActions: data.correctiveActions,
+        nextSurveyDate,
+        createdByUserId: userId,
+        updatedByUserId: userId,
+      } as typeof quarterlyReviews.$inferInsert)
+      .returning();
+    return r;
   }
 
   // --- Audit logs ---

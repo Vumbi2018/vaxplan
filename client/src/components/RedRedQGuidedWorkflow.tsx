@@ -98,6 +98,11 @@ export default function RedRedQGuidedWorkflow() {
     reviewsThisQuarter: number;
     lastReviewedAt: string | null;
     quarterStart: string;
+    reviewNoteSavedThisQuarter: boolean;
+    reviewNotesThisQuarter: number;
+    lastReviewNoteAt: string | null;
+    year: number;
+    quarter: number;
   }>({ queryKey: ["/api/indicators/defaulter-review-status"] });
   const { data: dayPlans = [] } = useQuery<any[]>({ queryKey: ["/api/session-day-plans"] });
 
@@ -479,38 +484,51 @@ export default function RedRedQGuidedWorkflow() {
       },
       (() => {
         const reviewed = !!defaulterReview?.reviewedThisQuarter;
-        const step12Done = sessionsConducted > 0 && reviewed;
+        const noteSaved = !!defaulterReview?.reviewNoteSavedThisQuarter;
+        const step12Done = sessionsConducted > 0 && reviewed && noteSaved;
         const lastReviewedAt = defaulterReview?.lastReviewedAt
           ? new Date(defaulterReview.lastReviewedAt).toLocaleDateString()
           : null;
+        const lastNoteAt = defaulterReview?.lastReviewNoteAt
+          ? new Date(defaulterReview.lastReviewNoteAt).toLocaleDateString()
+          : null;
+        let statusDetail: string;
+        if (step12Done) {
+          statusDetail = `${sessionsConducted} session(s) conducted this quarter; defaulter list opened${
+            lastReviewedAt ? ` (last ${lastReviewedAt})` : ""
+          }; quarterly review note saved${lastNoteAt ? ` (last ${lastNoteAt})` : ""}`;
+        } else if (sessionsConducted === 0) {
+          statusDetail = "No sessions conducted yet this quarter";
+        } else if (!reviewed) {
+          statusDetail = "Open the Defaulter List this quarter and save a written review note";
+        } else if (!noteSaved) {
+          statusDetail =
+            "Defaulter list opened — now save the quarterly review note (top 3 dropout drivers, corrective actions, next coverage survey date)";
+        } else {
+          statusDetail = "Quarterly review pending";
+        }
         return {
           num: 12,
           title: "Execution, monitoring & quarterly review",
           redComponent: "RED 4 — Monitoring for action",
           redQLayer: "RED-Q Measure",
-          purpose: "Record doses given, run defaulter review, re-rank missed communities, feed back into Step 1.",
+          purpose: "Record doses given, run defaulter review, document the action plan, re-rank missed communities, feed back into Step 1.",
           whatToDo: [
             "Record doses given per session in the Client Logbook.",
             "Open the Defaulter List at least once this quarter and follow up overdue children.",
+            "Save a quarterly review note: top 3 dropout drivers, planned corrective actions, and the date of the next coverage survey.",
             "Re-rank missed communities every quarter; trigger a coverage survey after every SIA.",
           ],
           outputs: [
             "Sessions for the current quarter are marked conducted with actual doses recorded.",
             "A defaulter review has been opened this quarter (audit-logged when the Defaulter List page loads).",
+            "A written quarterly review note is saved for the current facility (drivers, actions, next survey date).",
           ],
-          module: "Defaulter List + Dropout Rates",
+          module: "Defaulter List + Quarterly review note",
           href: "/clients/defaulters",
           icon: Activity,
           status: step12Done ? "done" : "todo",
-          statusDetail: step12Done
-            ? `${sessionsConducted} session(s) conducted this quarter; defaulter review opened${
-                lastReviewedAt ? ` (last ${lastReviewedAt})` : ""
-              }`
-            : sessionsConducted === 0
-              ? "No sessions conducted yet this quarter"
-              : reviewed
-                ? "Sessions conducted but defaulter review not yet opened this quarter"
-                : "Open the Defaulter List this quarter to complete the quarterly review",
+          statusDetail,
         } as Step;
       })(),
     ];

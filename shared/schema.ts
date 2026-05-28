@@ -1418,6 +1418,41 @@ export const supervisionVisits = pgTable(
   }),
 );
 
+// Quarterly review notes (RED 4 / RED-Q Measure — Step 12).
+// A facility (or higher-level user acting on its behalf) records what action
+// is being taken on dropout / zero-dose / defaulters each quarter: the top
+// drivers, the corrective actions planned, and when the next coverage survey
+// will run. One row per (tenant, facility, year, quarter) — re-saves update
+// the same row so the latest note is always the current quarter's plan.
+export const quarterlyReviews = pgTable(
+  "quarterly_reviews",
+  {
+    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+    tenantId: varchar("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    facilityId: integer("facility_id")
+      .notNull()
+      .references(() => facilities.id, { onDelete: "cascade" }),
+    year: integer("year").notNull(),
+    quarter: integer("quarter").notNull(),
+    topDrivers: jsonb("top_drivers").default([]).notNull(),
+    correctiveActions: text("corrective_actions").notNull(),
+    nextSurveyDate: timestamp("next_survey_date"),
+    createdByUserId: varchar("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    updatedByUserId: varchar("updated_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    tenantIdx: index("idx_quarterly_reviews_tenant").on(table.tenantId),
+    facilityIdx: index("idx_quarterly_reviews_facility").on(table.tenantId, table.facilityId),
+    uqFacilityPeriod: unique("uq_quarterly_reviews_facility_period").on(
+      table.tenantId, table.facilityId, table.year, table.quarter,
+    ),
+  }),
+);
+
 // ============================================================================
 // RELATIONS
 // ============================================================================
@@ -1686,6 +1721,24 @@ export const insertSupervisionVisitSchema = createInsertSchema(supervisionVisits
 });
 export type InsertSupervisionVisit = z.infer<typeof insertSupervisionVisitSchema>;
 export type SupervisionVisit = typeof supervisionVisits.$inferSelect;
+
+export const insertQuarterlyReviewSchema = createInsertSchema(quarterlyReviews).omit({
+  id: true,
+  tenantId: true,
+  createdByUserId: true,
+  updatedByUserId: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  facilityId: z.number().int().positive(),
+  year: z.number().int().min(2000).max(2100),
+  quarter: z.number().int().min(1).max(4),
+  topDrivers: z.array(z.string().trim().min(1).max(255)).min(1).max(3),
+  correctiveActions: z.string().trim().min(5).max(4000),
+  nextSurveyDate: z.union([z.string(), z.date()]).nullable().optional(),
+});
+export type InsertQuarterlyReview = z.infer<typeof insertQuarterlyReviewSchema>;
+export type QuarterlyReview = typeof quarterlyReviews.$inferSelect;
 export type PopulationRefreshJob = typeof populationRefreshJobs.$inferSelect;
 export type InsertPopulationRefreshJob = typeof populationRefreshJobs.$inferInsert;
 export type HtrScore = typeof htrScores.$inferSelect;
