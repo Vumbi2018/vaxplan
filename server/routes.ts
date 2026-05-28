@@ -6472,6 +6472,65 @@ export async function registerRoutes(
     }
   });
 
+  // POST /api/stock/transfer — Atomically record a paired issue (source) + receipt (dest)
+  // for a suggested stock transfer between two facilities in the same tenant.
+  app.post("/api/stock/transfer", isAuthenticated, requireTenant, async (req: any, res) => {
+    try {
+      const transferSchema = z.object({
+        sourceFacilityId: z.number().int().positive(),
+        destFacilityId: z.number().int().positive(),
+        vaccineName: z.string().min(1),
+        batchNumber: z.string().min(1),
+        expiryDate: z.string().min(1),
+        vvmStatus: z.number().int().min(1).max(4).default(1),
+        quantityDoses: z.number().int().positive(),
+        sourceFacilityName: z.string().optional(),
+        destFacilityName: z.string().optional(),
+        reason: z.string().optional(),
+      });
+      const parsed = transferSchema.parse(req.body);
+      if (parsed.sourceFacilityId === parsed.destFacilityId) {
+        return res.status(400).json({ message: "Source and destination facilities must differ" });
+      }
+      const sourceName = parsed.sourceFacilityName ?? `Facility ${parsed.sourceFacilityId}`;
+      const destName = parsed.destFacilityName ?? `Facility ${parsed.destFacilityId}`;
+      const reason = parsed.reason ?? "Suggested transfer (batch near expiry)";
+
+      const pair = await storage.createStockTransferPair(req.tenantId, {
+        sourceFacilityId: parsed.sourceFacilityId,
+        destFacilityId: parsed.destFacilityId,
+        vaccineName: parsed.vaccineName,
+        batchNumber: parsed.batchNumber,
+        expiryDate: new Date(parsed.expiryDate),
+        vvmStatus: parsed.vvmStatus,
+        quantityDoses: parsed.quantityDoses,
+        sourceSupplierOrRecipient: destName,
+        destSupplierOrRecipient: sourceName,
+        sourceNotes: `Transfer to ${destName}: ${reason}`,
+        destNotes: `Transfer from ${sourceName}: ${reason}`,
+        recordedByUserId: req.user?.id ?? req.user?.claims?.sub ?? null,
+      });
+
+      await logAudit(req, "create_stock_transfer", "stock_transaction", pair.issue.id, null, {
+        sourceFacilityId: parsed.sourceFacilityId,
+        destFacilityId: parsed.destFacilityId,
+        vaccineName: parsed.vaccineName,
+        batchNumber: parsed.batchNumber,
+        quantityDoses: parsed.quantityDoses,
+        issueId: pair.issue.id,
+        receiptId: pair.receipt.id,
+      });
+
+      res.status(201).json(pair);
+    } catch (err: any) {
+      if (err?.name === "ZodError") {
+        return res.status(400).json({ message: "Invalid payload details", errors: err.errors });
+      }
+      console.error("POST /api/stock/transfer failed:", err);
+      res.status(500).json({ message: "Failed to record stock transfer" });
+    }
+  });
+
   // DELETE /api/stock/transaction/:id — Revert/delete a stock card entry
   app.delete("/api/stock/transaction/:id", isAuthenticated, requireTenant, async (req: any, res) => {
     try {

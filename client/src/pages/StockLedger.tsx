@@ -84,10 +84,12 @@ import {
 import {
   computeAntigenStatus,
   computeNearExpiryReceipts,
+  computeTransferSuggestions,
   getExpiryStatus,
   loadStockThreshold,
   saveStockThreshold,
   DEFAULT_MONTHS_OF_STOCK_THRESHOLD,
+  type TransferSuggestion,
 } from "@/lib/stockAlerts";
 
 const transactionFormSchema = z.object({
@@ -290,6 +292,81 @@ export default function StockLedger() {
 
   const lowStockCount = antigenStatus.filter((s) => s.isLowStock).length;
   const nearExpiryCount = nearExpiry.length;
+
+  // Cross-facility transfer suggestions — compute against the full tenant ledger
+  // (so a low source facility can still receive doses), but filter the
+  // displayed list to pairs touching the current geo cascade.
+  const geoFilteredAllTransactions = useMemo(() => {
+    const list = allTransactions ?? [];
+    if (geoProvinceId === null && geoDistrictId === null) return list;
+    return list.filter((tx) => {
+      const g = resolveRowGeo(tx.facilityId);
+      if (geoProvinceId !== null && g.provinceId !== geoProvinceId) return false;
+      if (geoDistrictId !== null && g.districtId !== geoDistrictId) return false;
+      return true;
+    });
+  }, [allTransactions, geoMaps, geoProvinceId, geoDistrictId]);
+
+  const transferSuggestions = useMemo(
+    () => computeTransferSuggestions(geoFilteredAllTransactions, vaccineConfigs, mosThreshold),
+    [geoFilteredAllTransactions, vaccineConfigs, mosThreshold],
+  );
+
+  // Hide suggestions the user has already actioned this session.
+  const [actionedSuggestionKeys, setActionedSuggestionKeys] = useState<Set<string>>(new Set());
+  const suggestionKey = (s: TransferSuggestion) =>
+    `${s.sourceFacilityId}::${s.destFacilityId}::${s.antigen}::${s.batchNumber}`;
+  const visibleSuggestions = useMemo(
+    () => transferSuggestions.filter((s) => !actionedSuggestionKeys.has(suggestionKey(s))),
+    [transferSuggestions, actionedSuggestionKeys],
+  );
+
+  const facilityNameById = useMemo(() => {
+    const m = new Map<number, string>();
+    for (const f of facilities ?? []) m.set(f.id, f.name);
+    return m;
+  }, [facilities]);
+
+  const actionTransferMutation = useMutation({
+    mutationFn: async (s: TransferSuggestion) => {
+      const sourceName = facilityNameById.get(s.sourceFacilityId) ?? `Facility ${s.sourceFacilityId}`;
+      const destName = facilityNameById.get(s.destFacilityId) ?? `Facility ${s.destFacilityId}`;
+      // Atomic paired write — server records both issue and receipt in one DB
+      // transaction so the ledger can't be left half-updated if anything fails.
+      await apiRequest("POST", "/api/stock/transfer", {
+        sourceFacilityId: s.sourceFacilityId,
+        destFacilityId: s.destFacilityId,
+        vaccineName: s.antigen,
+        batchNumber: s.batchNumber,
+        expiryDate: new Date(s.expiryDate).toISOString(),
+        vvmStatus: 1,
+        quantityDoses: s.suggestedDoses,
+        sourceFacilityName: sourceName,
+        destFacilityName: destName,
+        reason: "Suggested transfer (batch near expiry)",
+      });
+      return s;
+    },
+    onSuccess: (s) => {
+      setActionedSuggestionKeys((prev) => {
+        const next = new Set<string>(prev);
+        next.add(suggestionKey(s));
+        return next;
+      });
+      queryClient.invalidateQueries({ queryKey: [`/api/stock/ledger`, { facilityId: null }] });
+      toast({
+        title: "Transfer Logged",
+        description: `Issued ${s.suggestedDoses} ${s.antigen} doses (batch ${s.batchNumber}) and recorded the matching receipt.`,
+      });
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Failed to log transfer",
+        description: err?.message ?? "Could not record the transfer transactions.",
+        variant: "destructive",
+      });
+    },
+  });
 
   // Calculate dynamic Stock on Hand (SOH) per antigen
   const stockOnHand = useMemo(() => {
@@ -712,6 +789,115 @@ export default function StockLedger() {
               </div>
             </CardContent>
           </Card>
+
+          {/* Suggested Transfers Panel */}
+          {visibleSuggestions.length > 0 && (
+            <Card
+              className="border-amber-500/30 bg-amber-500/5 backdrop-blur-md shadow-xl"
+              data-testid="card-transfer-suggestions"
+            >
+              <CardHeader className="border-b border-amber-500/20 px-6 py-4">
+                <CardTitle className="text-sm font-semibold tracking-wider uppercase text-amber-700 dark:text-amber-300 flex items-center gap-2">
+                  <ArrowRight className="h-4 w-4" />
+                  <span>Suggested Transfers</span>
+                  <Badge
+                    variant="outline"
+                    className="border-amber-500/40 text-amber-700 dark:text-amber-300 bg-amber-500/10 ml-1"
+                    data-testid="badge-transfer-suggestion-count"
+                  >
+                    {visibleSuggestions.length}
+                  </Badge>
+                </CardTitle>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Move soon-to-expire doses from facilities with surplus to facilities running below {mosThreshold} mo of stock for the same antigen. Ranked by urgency.
+                </p>
+              </CardHeader>
+              <CardContent className="p-0 overflow-x-auto">
+                <table className="w-full text-sm text-left border-collapse min-w-[900px]">
+                  <thead className="text-xs uppercase text-muted-foreground bg-amber-500/10 font-semibold border-b border-amber-500/20">
+                    <tr>
+                      <th className="px-4 py-3">Antigen</th>
+                      <th className="px-4 py-3">Batch</th>
+                      <th className="px-4 py-3">Expiry</th>
+                      <th className="px-4 py-3">From</th>
+                      <th className="px-4 py-3">To</th>
+                      <th className="px-4 py-3 text-center">Suggested Doses</th>
+                      <th className="px-4 py-3">Destination Status</th>
+                      <th className="px-4 py-3 text-right">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-amber-500/20">
+                    {visibleSuggestions.slice(0, 20).map((s) => {
+                      const sourceName = facilityNameById.get(s.sourceFacilityId) ?? `Facility ${s.sourceFacilityId}`;
+                      const destName = facilityNameById.get(s.destFacilityId) ?? `Facility ${s.destFacilityId}`;
+                      const key = suggestionKey(s);
+                      const isPending = actionTransferMutation.isPending && actionTransferMutation.variables && suggestionKey(actionTransferMutation.variables as TransferSuggestion) === key;
+                      const expiryBadge =
+                        s.expiryStatus === "expiring-30" ? (
+                          <Badge variant="outline" className="border-rose-500 text-rose-600 bg-rose-500/10 text-[10px] px-1.5 py-0 h-5">
+                            ≤30d ({s.daysUntilExpiry}d)
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="border-amber-500 text-amber-600 bg-amber-500/10 text-[10px] px-1.5 py-0 h-5">
+                            ≤60d ({s.daysUntilExpiry}d)
+                          </Badge>
+                        );
+                      return (
+                        <tr
+                          key={key}
+                          className="hover:bg-amber-500/5 transition-colors"
+                          data-testid={`row-transfer-suggestion-${key}`}
+                        >
+                          <td className="px-4 py-3 font-semibold text-primary">{s.antigen}</td>
+                          <td className="px-4 py-3 font-mono text-xs">{s.batchNumber}</td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-1.5">
+                              <span>{format(new Date(s.expiryDate), "yyyy-MM-dd")}</span>
+                              {expiryBadge}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-muted-foreground">{sourceName}</td>
+                          <td className="px-4 py-3 text-muted-foreground">{destName}</td>
+                          <td className="px-4 py-3 text-center font-bold">{s.suggestedDoses.toLocaleString()}</td>
+                          <td className="px-4 py-3">
+                            {s.destBalance <= 0 ? (
+                              <Badge variant="outline" className="border-rose-500/30 text-rose-600 bg-rose-500/10 text-[10px]">
+                                Out of stock
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="border-amber-500/30 text-amber-600 bg-amber-500/10 text-[10px]">
+                                {s.destMonthsOfStock === null
+                                  ? `${s.destBalance.toLocaleString()} doses on hand`
+                                  : `${s.destMonthsOfStock.toFixed(1)} mo of stock`}
+                              </Badge>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={isPending}
+                              onClick={() => actionTransferMutation.mutate(s)}
+                              className="gap-1.5 border-amber-500/40 text-amber-700 hover:bg-amber-500/10"
+                              data-testid={`button-action-transfer-${key}`}
+                            >
+                              <Check className="h-3.5 w-3.5" />
+                              <span>{isPending ? "Logging…" : "Mark Actioned"}</span>
+                            </Button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                {visibleSuggestions.length > 20 && (
+                  <div className="px-4 py-2 text-xs text-muted-foreground border-t border-amber-500/20 bg-amber-500/5">
+                    Showing top 20 of {visibleSuggestions.length} suggestions, ranked by urgency.
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           {/* Active Balances SOH Cards */}
           <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-4">

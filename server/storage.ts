@@ -268,6 +268,23 @@ export interface IStorage {
   // --- 5. Stock Transactions ---
   getStockTransactions(tenantId: string, facilityId?: number): Promise<StockTransaction[]>;
   createStockTransaction(tenantId: string, data: InsertStockTransaction): Promise<StockTransaction>;
+  createStockTransferPair(
+    tenantId: string,
+    args: {
+      sourceFacilityId: number;
+      destFacilityId: number;
+      vaccineName: string;
+      batchNumber: string;
+      expiryDate: Date;
+      vvmStatus: number;
+      quantityDoses: number;
+      sourceSupplierOrRecipient: string;
+      destSupplierOrRecipient: string;
+      sourceNotes?: string | null;
+      destNotes?: string | null;
+      recordedByUserId: string | null;
+    },
+  ): Promise<{ issue: StockTransaction; receipt: StockTransaction }>;
   deleteStockTransaction(tenantId: string, id: number): Promise<boolean>;
 
   // --- 6. Monthly Reports ---
@@ -1565,6 +1582,61 @@ export class DatabaseStorage implements IStorage {
       .values({ ...cleanData, tenantId } as typeof stockTransactions.$inferInsert)
       .returning();
     return row;
+  }
+
+  async createStockTransferPair(
+    tenantId: string,
+    args: {
+      sourceFacilityId: number;
+      destFacilityId: number;
+      vaccineName: string;
+      batchNumber: string;
+      expiryDate: Date;
+      vvmStatus: number;
+      quantityDoses: number;
+      sourceSupplierOrRecipient: string;
+      destSupplierOrRecipient: string;
+      sourceNotes?: string | null;
+      destNotes?: string | null;
+      recordedByUserId: string | null;
+    },
+  ): Promise<{ issue: StockTransaction; receipt: StockTransaction }> {
+    // Atomic: either both rows are written or neither is.
+    return await db.transaction(async (tx) => {
+      const [issue] = await tx
+        .insert(stockTransactions)
+        .values({
+          tenantId,
+          facilityId: args.sourceFacilityId,
+          vaccineName: args.vaccineName,
+          transactionType: "issue",
+          quantityDoses: args.quantityDoses,
+          batchNumber: args.batchNumber,
+          expiryDate: args.expiryDate,
+          vvmStatus: args.vvmStatus,
+          supplierOrRecipient: args.sourceSupplierOrRecipient,
+          notes: args.sourceNotes ?? null,
+          recordedByUserId: args.recordedByUserId,
+        } as typeof stockTransactions.$inferInsert)
+        .returning();
+      const [receipt] = await tx
+        .insert(stockTransactions)
+        .values({
+          tenantId,
+          facilityId: args.destFacilityId,
+          vaccineName: args.vaccineName,
+          transactionType: "receipt",
+          quantityDoses: args.quantityDoses,
+          batchNumber: args.batchNumber,
+          expiryDate: args.expiryDate,
+          vvmStatus: args.vvmStatus,
+          supplierOrRecipient: args.destSupplierOrRecipient,
+          notes: args.destNotes ?? null,
+          recordedByUserId: args.recordedByUserId,
+        } as typeof stockTransactions.$inferInsert)
+        .returning();
+      return { issue, receipt };
+    });
   }
 
   async deleteStockTransaction(tenantId: string, id: number): Promise<boolean> {
