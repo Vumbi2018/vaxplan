@@ -4005,22 +4005,89 @@ function Step2Map({
           </button>
         </div>
       </div>
-      {showPopulation && !populationUnavailable && (
-        <div className="absolute bottom-2 right-2 z-[400] rounded-lg bg-background/90 px-2 py-1 text-[10px] shadow">
-          <div className="mb-1 font-medium">Population density</div>
-          <div
-            className="h-2 w-32 rounded"
-            style={{
-              background:
-                "linear-gradient(to right, #ffffcc, #ffeda0, #fed976, #feb24c, #fd8d3c, #fc4e2a, #e31a1c, #b10026)",
-            }}
-          />
-          <div className="mt-0.5 flex justify-between text-muted-foreground">
-            <span>Low</span>
-            <span>High</span>
-          </div>
-        </div>
-      )}
+      {(() => {
+        const cells = catchmentPreview?.cells ?? [];
+        const hasCells = cells.length > 0;
+        const okValues = hasCells
+          ? cells
+              .filter((c) => c.status === "ok" && typeof c.value === "number")
+              .map((c) => c.value as number)
+          : [];
+        const hasNoData = hasCells && cells.some((c) => c.status === "nodata");
+        const hasError = hasCells && cells.some((c) => c.status === "error");
+        const minV = okValues.length > 0 ? Math.min(...okValues) : null;
+        const maxV = okValues.length > 0 ? Math.max(...okValues) : null;
+        const ramp = ["#fee5d9", "#fcae91", "#fb6a4a", "#de2d26", "#a50f15"];
+        const popDensityBottom = hasCells ? "bottom-[88px]" : "bottom-2";
+        return (
+          <>
+            {showPopulation && !populationUnavailable && (
+              <div
+                className={`absolute ${popDensityBottom} right-2 z-[400] rounded-lg bg-background/90 px-2 py-1 text-[10px] shadow`}
+              >
+                <div className="mb-1 font-medium">Population density</div>
+                <div
+                  className="h-2 w-32 rounded"
+                  style={{
+                    background:
+                      "linear-gradient(to right, #ffffcc, #ffeda0, #fed976, #feb24c, #fd8d3c, #fc4e2a, #e31a1c, #b10026)",
+                  }}
+                />
+                <div className="mt-0.5 flex justify-between text-muted-foreground">
+                  <span>Low</span>
+                  <span>High</span>
+                </div>
+              </div>
+            )}
+            {hasCells && (
+              <div
+                className="absolute bottom-2 right-2 z-[400] rounded-lg bg-background/90 px-2 py-1 text-[10px] shadow"
+                data-testid="legend-catchment-cells"
+              >
+                <div className="mb-1 font-medium">Catchment cells (people/km²)</div>
+                {minV != null && maxV != null ? (
+                  <>
+                    <div
+                      className="h-2 w-32 rounded"
+                      style={{
+                        background: `linear-gradient(to right, ${ramp.join(", ")})`,
+                      }}
+                    />
+                    <div className="mt-0.5 flex justify-between text-muted-foreground">
+                      <span>{Math.round(minV).toLocaleString()}</span>
+                      <span>{Math.round(maxV).toLocaleString()}</span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-muted-foreground">No sampled values</div>
+                )}
+                {(hasNoData || hasError) && (
+                  <div className="mt-1 flex flex-col gap-0.5">
+                    {hasNoData && (
+                      <span className="flex items-center gap-1">
+                        <span
+                          className="inline-block h-3 w-4 rounded-sm border border-dashed"
+                          style={{ borderColor: "#6b7280", background: "#9ca3af66" }}
+                        />
+                        No data
+                      </span>
+                    )}
+                    {hasError && (
+                      <span className="flex items-center gap-1">
+                        <span
+                          className="inline-block h-3 w-4 rounded-sm border border-dashed"
+                          style={{ borderColor: "#7f1d1d", background: "#dc262640" }}
+                        />
+                        Lookup failed
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        );
+      })()}
       <div className="absolute bottom-2 left-2 z-[400] flex flex-wrap gap-2 rounded-lg bg-background/90 px-2 py-1 text-[10px] shadow">
         <span className="flex items-center gap-1">
           <span className="inline-block h-2 w-2 rounded-full bg-green-600" />
