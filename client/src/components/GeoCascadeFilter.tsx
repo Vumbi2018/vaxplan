@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { X, MapPin } from "lucide-react";
+import { pluralize } from "@/lib/utils";
 import type { Province, District, Facility, Region } from "@shared/schema";
 
 export interface GeoCascadeFilterProps {
@@ -274,10 +275,10 @@ export function GeoCascadeFilter({
             disabled={filteredFacilities.length === 0}
           >
             <SelectTrigger data-testid={`${testIdPrefix}-select-facility`}>
-              <SelectValue placeholder={`All ${facilityLabel.toLowerCase()}s`} />
+              <SelectValue placeholder={`All ${pluralize(facilityLabel).toLowerCase()}`} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All {facilityLabel.toLowerCase()}s</SelectItem>
+              <SelectItem value="all">All {pluralize(facilityLabel).toLowerCase()}</SelectItem>
               {filteredFacilities.map((f) => (
                 <SelectItem key={f.id} value={f.id.toString()}>
                   {f.name}

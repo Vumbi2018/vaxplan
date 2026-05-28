@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Check, ChevronsUpDown } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, pluralize } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import {
@@ -168,7 +168,7 @@ export function FacilityCascadePicker({
                   ? selectedProvince.name
                   : sortedProvinces.length
                   ? `Pick a ${provinceLabel.toLowerCase()}`
-                  : `No ${provinceLabel.toLowerCase()}s available`}
+                  : `No ${pluralize(provinceLabel).toLowerCase()} available`}
               </span>
               <ChevronsUpDown className="h-4 w-4 opacity-50 shrink-0" />
             </Button>
@@ -237,7 +237,7 @@ export function FacilityCascadePicker({
                   ? `Pick a ${provinceLabel.toLowerCase()} first`
                   : filteredDistricts.length
                   ? `Pick a ${districtLabel.toLowerCase()}`
-                  : `No ${districtLabel.toLowerCase()}s in this ${provinceLabel.toLowerCase()}`}
+                  : `No ${pluralize(districtLabel).toLowerCase()} in this ${provinceLabel.toLowerCase()}`}
               </span>
               <ChevronsUpDown className="h-4 w-4 opacity-50 shrink-0" />
             </Button>
@@ -309,7 +309,7 @@ export function FacilityCascadePicker({
                   ? `Pick a ${districtLabel.toLowerCase()} first`
                   : filteredFacilities.length
                   ? `Pick a ${facilityLabel.toLowerCase()}`
-                  : `No ${facilityLabel.toLowerCase()}s in this ${districtLabel.toLowerCase()}`}
+                  : `No ${pluralize(facilityLabel).toLowerCase()} in this ${districtLabel.toLowerCase()}`}
               </span>
               <ChevronsUpDown className="h-4 w-4 opacity-50 shrink-0" />
             </Button>
