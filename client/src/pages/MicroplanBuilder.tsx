@@ -22,6 +22,11 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { offlineDb } from "../lib/offlineDb";
+import {
+  extractRoster,
+  ratesByField,
+  personnelCostForDay,
+} from "@/lib/personnelCost";
 import { AddCommunityDialog } from "@/components/AddCommunityDialog";
 import RedRedQGuidedWorkflow from "@/components/RedRedQGuidedWorkflow";
 import {
@@ -3225,6 +3230,83 @@ export default function MicroplanBuilder({ prePlanType }: MicroplanBuilderProps 
                   );
                 })()}
               </div>
+
+              {/* Per-day personnel cost breakdown — mirrors the planning grid
+                  so reviewers can spot outlier days without leaving this page. */}
+              {(() => {
+                const roster = extractRoster(activeMicroplan);
+                const rates = ratesByField(roster);
+                const days = (dayPlans || []).slice().sort(
+                  (a: any, b: any) => (a.dayNumber || 0) - (b.dayNumber || 0),
+                );
+                if (days.length === 0) return null;
+                const perDay = days.map((d: any) => ({
+                  d,
+                  cost: personnelCostForDay(rates, {
+                    vaccinatorsCount: d.vaccinatorsCount,
+                    volunteersCount: d.volunteersCount,
+                    supervisorsCount: d.supervisorsCount,
+                    recordersCount: d.recordersCount,
+                  }),
+                }));
+                const total = perDay.reduce((s, r) => s + r.cost, 0);
+                const hasRates = Object.values(rates).some((v) => v > 0);
+                return (
+                  <div className="space-y-2 rounded-2xl border p-4 bg-background shadow-xs">
+                    <h3 className="font-extrabold text-sm border-b pb-1.5 flex items-center gap-1.5">
+                      <Coins className="h-4.5 w-4.5 text-amber-500 shrink-0" />
+                      Personnel Cost per Session-Day
+                    </h3>
+                    {!hasRates && (
+                      <div className="text-[11px] text-amber-700 dark:text-amber-400 font-semibold">
+                        No per-diem rates set on the workforce roster — personnel costs show as 0. Add rates in Step 7 (Budget) to populate this breakdown.
+                      </div>
+                    )}
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs">
+                        <thead className="border-b text-left uppercase text-muted-foreground">
+                          <tr>
+                            <th className="p-1.5">Day</th>
+                            <th className="p-1.5">Date</th>
+                            <th className="p-1.5 text-right">Vacc.</th>
+                            <th className="p-1.5 text-right">Vol.</th>
+                            <th className="p-1.5 text-right">Sup.</th>
+                            <th className="p-1.5 text-right">Rec.</th>
+                            <th className="p-1.5 text-right">Personnel Cost</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {perDay.map(({ d, cost }) => (
+                            <tr key={d.id} className="border-b">
+                              <td className="p-1.5 font-semibold">Day {d.dayNumber}</td>
+                              <td className="p-1.5">
+                                {d.sessionDate ? new Date(d.sessionDate).toLocaleDateString() : "—"}
+                              </td>
+                              <td className="p-1.5 text-right font-mono">{d.vaccinatorsCount ?? 0}</td>
+                              <td className="p-1.5 text-right font-mono">{d.volunteersCount ?? 0}</td>
+                              <td className="p-1.5 text-right font-mono">{d.supervisorsCount ?? 0}</td>
+                              <td className="p-1.5 text-right font-mono">{d.recordersCount ?? 0}</td>
+                              <td className="p-1.5 text-right font-mono font-semibold">
+                                K{cost.toLocaleString()}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot>
+                          <tr className="border-t-2 border-border bg-muted/30">
+                            <td className="p-1.5 font-extrabold" colSpan={6}>
+                              Total Personnel Cost
+                            </td>
+                            <td className="p-1.5 text-right font-mono font-extrabold text-emerald-700 dark:text-emerald-400">
+                              K{total.toLocaleString()}
+                            </td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Automated Gap Review Audit Panel */}
               {auditGaps.length > 0 ? (

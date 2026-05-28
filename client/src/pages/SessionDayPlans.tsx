@@ -84,67 +84,12 @@ import {
   type Microplan,
 } from "@shared/schema";
 
-// Mirrors the staffing roster stored on microplans.staffing. Free-text role
-// labels are normalised to the matching session-day count field (vaccinators,
-// volunteers, supervisors, recorders) so per-diem rates flow through even
-// when the roster uses "Mobilizer" vs "Volunteer", etc.
-type StaffingRow = {
-  role: string;
-  headcount: number;
-  days: number;
-  perDiem: number;
-  fundingSource?: string;
-  fundingSourceOther?: string;
-};
-
-function rosterRoleToPlanCountField(
-  role: string,
-): "vaccinatorsCount" | "volunteersCount" | "supervisorsCount" | "recordersCount" | null {
-  const r = (role || "").toLowerCase();
-  if (r.includes("vaccinator")) return "vaccinatorsCount";
-  if (r.includes("supervisor")) return "supervisorsCount";
-  if (r.includes("recorder")) return "recordersCount";
-  if (r.includes("mobil") || r.includes("volunteer")) return "volunteersCount";
-  return null;
-}
-
-function extractRoster(microplan: Microplan | undefined | null): StaffingRow[] {
-  if (!microplan) return [];
-  const raw = (microplan as any).staffing;
-  if (Array.isArray(raw)) return raw as StaffingRow[];
-  if (raw && Array.isArray(raw.roster)) return raw.roster as StaffingRow[];
-  return [];
-}
-
-// Aggregate per-diem rates by mapped count field so multiple roster rows for
-// the same role (e.g. two vaccinator rows) take the highest rate rather than
-// silently dropping one.
-function ratesByField(roster: StaffingRow[]): Record<string, number> {
-  const out: Record<string, number> = {};
-  roster.forEach((r) => {
-    const f = rosterRoleToPlanCountField(r.role);
-    if (!f) return;
-    if ((r.perDiem || 0) > (out[f] || 0)) out[f] = r.perDiem || 0;
-  });
-  return out;
-}
-
-function personnelCostForDay(
-  rates: Record<string, number>,
-  counts: {
-    vaccinatorsCount?: number | null;
-    volunteersCount?: number | null;
-    supervisorsCount?: number | null;
-    recordersCount?: number | null;
-  },
-): number {
-  return (
-    (rates.vaccinatorsCount || 0) * (counts.vaccinatorsCount ?? 0) +
-    (rates.volunteersCount || 0) * (counts.volunteersCount ?? 0) +
-    (rates.supervisorsCount || 0) * (counts.supervisorsCount ?? 0) +
-    (rates.recordersCount || 0) * (counts.recordersCount ?? 0)
-  );
-}
+import {
+  extractRoster,
+  ratesByField,
+  personnelCostForDay,
+  rosterRoleToPlanCountField,
+} from "@/lib/personnelCost";
 import { z } from "zod";
 import { format } from "date-fns";
 import * as XLSX from "xlsx";
