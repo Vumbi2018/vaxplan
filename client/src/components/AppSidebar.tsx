@@ -37,6 +37,7 @@ import {
   Wrench,
   ChevronDown,
   ChevronRight,
+  FileText,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useQuery } from "@tanstack/react-query";
@@ -84,6 +85,7 @@ const adminNavItems = [
   { title: "Access Requests", path: "/admin/signups", icon: UserPlus },
   { title: "Country Onboarding", path: "/admin/countries", icon: Globe },
   { title: "Boundary Manager", path: "/admin/boundaries", icon: Map },
+  { title: "National Plan", path: "/national-plan", icon: FileText },
 ];
 
 const systemNavItems = [

@@ -1101,6 +1101,11 @@ export const vaccineConfigurations = pgTable("vaccine_configurations", {
   wastageFactor: decimal("wastage_factor", { precision: 5, scale: 2 }).notNull(), // e.g. 11.00, 40.00
   vialsPerDose: integer("vials_per_dose").notNull(), // e.g. 10, 20
   isActive: boolean("is_active").default(true).notNull(),
+  // WHO SMART Guidelines IMMZ alignment — standard codes for interoperability
+  // with HL7 FHIR Immunization.vaccineCode (CVX) and WHO ATC drug codes.
+  // Nullable until tenants run the backfill (/api/admin/vaccine-codes/backfill).
+  cvxCode: varchar("cvx_code", { length: 16 }),
+  whoAtcCode: varchar("who_atc_code", { length: 16 }),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => ({
   tenantIdx: index("vaccine_config_tenant_idx").on(table.tenantId),
@@ -1456,6 +1461,47 @@ export const supervisionVisits = pgTable(
     scheduledIdx: index("idx_supervision_scheduled").on(table.tenantId, table.scheduledDate),
   }),
 );
+
+// Annual national immunization plan (NIMP / cMYP). One row per (tenant, year).
+// Owned by national_admin / platform_admin. HF microplans inherit targets and
+// budget envelope from it.
+export const annualImmunizationPlans = pgTable(
+  "annual_immunization_plans",
+  {
+    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+    tenantId: varchar("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    year: integer("year").notNull(),
+    status: varchar("status", { length: 20 }).notNull().default("draft"), // draft | submitted | approved | superseded
+    totalTargetPopulation: integer("total_target_population"),
+    survivingInfants: integer("surviving_infants"),
+    pregnantWomen: integer("pregnant_women"),
+    budgetEnvelope: decimal("budget_envelope", { precision: 14, scale: 2 }),
+    fundingMix: jsonb("funding_mix").default({}), // { government: pct, gavi: pct, who: pct, unicef: pct, other: pct }
+    priorities: text("priorities"), // narrative — top strategic priorities for the year
+    targetsByAntigen: jsonb("targets_by_antigen").default({}), // { BCG: pct, DTP3: pct, MCV1: pct, ... }
+    narrative: text("narrative"), // long-form plan text / link to PDF
+    approvedAt: timestamp("approved_at"),
+    approvedByUserId: varchar("approved_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    createdByUserId: varchar("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    tenantIdx: index("idx_annual_plan_tenant").on(table.tenantId),
+    yearIdx: index("idx_annual_plan_tenant_year").on(table.tenantId, table.year),
+  }),
+);
+
+export const insertAnnualImmunizationPlanSchema = createInsertSchema(annualImmunizationPlans).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  approvedAt: true,
+});
+export type AnnualImmunizationPlan = typeof annualImmunizationPlans.$inferSelect;
+export type InsertAnnualImmunizationPlan = z.infer<typeof insertAnnualImmunizationPlanSchema>;
 
 // Quarterly review notes (RED 4 / RED-Q Measure — Step 12).
 // A facility (or higher-level user acting on its behalf) records what action

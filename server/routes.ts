@@ -63,6 +63,9 @@ import {
   clients,
   clientVaccinations,
   monthlyReports,
+  vaccineConfigurations,
+  annualImmunizationPlans,
+  insertAnnualImmunizationPlanSchema,
 } from "@shared/schema";
 import { expandVaccineSchedule, canonicalizePerAntigen } from "@shared/vaccineSchedule";
 import {
@@ -10456,6 +10459,535 @@ export async function registerRoutes(
       res.status(500).json({ message: err?.message || "Bulk save failed" });
     }
   });
+
+  // ==========================================================================
+  // GDPR — Right to Erasure (purge a client + all PII + vaccinations).
+  // Admin-only. Captures a redacted summary in the audit log so the action is
+  // traceable but the PII itself is not retained.
+  // ==========================================================================
+  app.post(
+    "/api/admin/clients/:id/purge",
+    isAuthenticated,
+    requireTenant,
+    requirePermission("manage_users"),
+    async (req: any, res) => {
+      try {
+        // GDPR erasure is irreversible — restrict to national_admin (the
+        // tenant's super-admin). manage_users alone is too broad because it
+        // is also granted to provincial_coordinator in the default role set.
+        const dbUser = await storage.getUser(req.user?.claims?.sub);
+        const isNationalAdmin =
+          dbUser?.role === "national_admin" ||
+          (Array.isArray(dbUser?.roles) && (dbUser!.roles as string[]).includes("national_admin")) ||
+          dbUser?.isPlatformAdmin === true;
+        if (!isNationalAdmin) {
+          return res.status(403).json({ message: "Only national_admin can perform GDPR erasure." });
+        }
+        const clientId = req.params.id;
+        const reason = (req.body?.reason || "").toString().trim().slice(0, 500);
+        if (!reason) {
+          return res.status(400).json({ message: "A reason for the erasure is required (GDPR audit trail)." });
+        }
+        const existing = await db
+          .select()
+          .from(clients)
+          .where(and(eq(clients.id, clientId), eq(clients.tenantId, req.tenantId)))
+          .limit(1);
+        if (existing.length === 0) {
+          return res.status(404).json({ message: "Client not found in this tenant" });
+        }
+        const c = existing[0];
+        const vaxCount = (await db
+          .select({ id: clientVaccinations.id })
+          .from(clientVaccinations)
+          .where(eq(clientVaccinations.clientId, clientId))).length;
+        // Cascade delete via FK (client_vaccinations.clientId ON DELETE CASCADE).
+        await db.delete(clients).where(and(eq(clients.id, clientId), eq(clients.tenantId, req.tenantId)));
+        // Redacted audit summary — keep what's needed for the trail, drop PII.
+        await logAudit(req, "gdpr_purge_client", "clients", null, null, {
+          purgedClientId: clientId,
+          facilityId: c.facilityId,
+          villageId: c.villageId,
+          clientType: c.clientType,
+          isCrossBorder: c.isCrossBorder,
+          vaccinationsRemoved: vaxCount,
+          reason,
+          purgedAt: new Date().toISOString(),
+        });
+        res.json({ ok: true, purgedClientId: clientId, vaccinationsRemoved: vaxCount });
+      } catch (err: any) {
+        console.error("POST /api/admin/clients/:id/purge failed:", err);
+        res.status(500).json({ message: err?.message || "Failed to purge client" });
+      }
+    },
+  );
+
+  // ==========================================================================
+  // GeoJSON / KML export — facilities, villages, sessions, catchments.
+  // Any authenticated user in the tenant can export their tenant's geodata.
+  // ==========================================================================
+  async function buildGeoJson(tenantId: string, type: string) {
+    const features: any[] = [];
+    if (type === "facilities") {
+      const rows = await db.select().from(facilities).where(eq(facilities.tenantId, tenantId));
+      for (const f of rows) {
+        const lat = f.latitude != null ? Number(f.latitude) : null;
+        const lng = f.longitude != null ? Number(f.longitude) : null;
+        if (lat == null || lng == null || isNaN(lat) || isNaN(lng)) continue;
+        features.push({
+          type: "Feature",
+          geometry: { type: "Point", coordinates: [lng, lat] },
+          properties: {
+            id: f.id,
+            name: f.name,
+            type: f.facilityType,
+            districtId: f.districtId,
+            provinceId: f.provinceId,
+            isHardToReach: f.isHardToReach,
+            hasRefrigerator: f.hasRefrigerator,
+          },
+        });
+      }
+    } else if (type === "villages") {
+      const rows = await db.select().from(villages).where(eq(villages.tenantId, tenantId));
+      for (const v of rows) {
+        const lat = v.latitude != null ? Number(v.latitude) : null;
+        const lng = v.longitude != null ? Number(v.longitude) : null;
+        if (lat == null || lng == null || isNaN(lat) || isNaN(lng)) continue;
+        features.push({
+          type: "Feature",
+          geometry: { type: "Point", coordinates: [lng, lat] },
+          properties: {
+            id: v.id,
+            name: v.name,
+            facilityId: v.facilityId,
+            population: v.population,
+            isHardToReach: v.isHardToReach,
+          },
+        });
+      }
+    } else if (type === "sessions") {
+      const rows = await db.select().from(sessionPlans).where(eq(sessionPlans.tenantId, tenantId));
+      for (const s of rows) {
+        if (s.geojson && typeof s.geojson === "object") {
+          const g = s.geojson as any;
+          // Accept either a raw Geometry or a Feature
+          const geom = g.type === "Feature" ? g.geometry : g;
+          if (geom?.type) {
+            features.push({
+              type: "Feature",
+              geometry: geom,
+              properties: {
+                id: s.id,
+                name: s.name,
+                sessionType: s.sessionType,
+                quarter: s.quarter,
+                year: s.year,
+                facilityId: s.facilityId,
+              },
+            });
+          }
+        }
+      }
+    } else if (type === "catchments") {
+      const rows = await db
+        .select()
+        .from(facilityCatchments)
+        .where(eq(facilityCatchments.tenantId, tenantId));
+      for (const c of rows) {
+        if (c.geojson && typeof c.geojson === "object") {
+          const g = c.geojson as any;
+          const geom = g.type === "Feature" ? g.geometry : g;
+          if (geom?.type) {
+            features.push({
+              type: "Feature",
+              geometry: geom,
+              properties: {
+                id: c.id,
+                facilityId: c.facilityId,
+                isOfficial: c.isOfficial,
+                source: c.source,
+              },
+            });
+          }
+        }
+      }
+    } else {
+      throw new Error(`Unknown export type: ${type}`);
+    }
+    return { type: "FeatureCollection", features };
+  }
+
+  function geoJsonToKml(fc: any, layerName: string): string {
+    const xmlEscape = (s: any) =>
+      String(s ?? "").replace(/[<>&'"]/g, (ch) =>
+        ch === "<" ? "&lt;" : ch === ">" ? "&gt;" : ch === "&" ? "&amp;" : ch === "'" ? "&apos;" : "&quot;",
+      );
+    const placemarks: string[] = [];
+    for (const feat of fc.features || []) {
+      const props = feat.properties || {};
+      const name = xmlEscape(props.name || `#${props.id ?? ""}`);
+      const desc = xmlEscape(
+        Object.entries(props)
+          .filter(([, v]) => v != null && v !== "")
+          .map(([k, v]) => `${k}: ${v}`)
+          .join("\n"),
+      );
+      const g = feat.geometry || {};
+      let geomXml = "";
+      // Numeric coercion guards against XML injection: any non-finite or
+      // non-numeric coord causes us to skip the whole feature rather than
+      // interpolate untrusted text into the KML output.
+      const num = (v: any): number | null => {
+        const n = Number(v);
+        return Number.isFinite(n) ? n : null;
+      };
+      const ptStr = (p: any): string | null => {
+        if (!Array.isArray(p)) return null;
+        const lng = num(p[0]);
+        const lat = num(p[1]);
+        if (lng == null || lat == null) return null;
+        return `${lng},${lat},0`;
+      };
+      const ringStr = (ring: any): string | null => {
+        if (!Array.isArray(ring) || ring.length === 0) return null;
+        const pts: string[] = [];
+        for (const p of ring) {
+          const s = ptStr(p);
+          if (s == null) return null;
+          pts.push(s);
+        }
+        return pts.join(" ");
+      };
+      if (g.type === "Point") {
+        const s = ptStr(g.coordinates);
+        if (!s) continue;
+        geomXml = `<Point><coordinates>${s}</coordinates></Point>`;
+      } else if (g.type === "Polygon") {
+        const ring = ringStr(g.coordinates?.[0]);
+        if (!ring) continue;
+        geomXml = `<Polygon><outerBoundaryIs><LinearRing><coordinates>${ring}</coordinates></LinearRing></outerBoundaryIs></Polygon>`;
+      } else if (g.type === "MultiPolygon") {
+        const polys: string[] = [];
+        for (const poly of g.coordinates || []) {
+          const ring = ringStr(poly?.[0]);
+          if (!ring) continue;
+          polys.push(`<Polygon><outerBoundaryIs><LinearRing><coordinates>${ring}</coordinates></LinearRing></outerBoundaryIs></Polygon>`);
+        }
+        if (polys.length === 0) continue;
+        geomXml = `<MultiGeometry>${polys.join("")}</MultiGeometry>`;
+      } else {
+        continue; // unsupported geometry
+      }
+      placemarks.push(
+        `<Placemark><name>${name}</name><description>${desc}</description>${geomXml}</Placemark>`,
+      );
+    }
+    return `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>${xmlEscape(layerName)}</name>${placemarks.join("")}</Document></kml>`;
+  }
+
+  app.get(
+    "/api/export/geojson/:type",
+    isAuthenticated,
+    requireTenant,
+    async (req: any, res) => {
+      try {
+        const type = req.params.type;
+        if (!["facilities", "villages", "sessions", "catchments"].includes(type)) {
+          return res.status(400).json({ message: "type must be one of: facilities, villages, sessions, catchments" });
+        }
+        const fc = await buildGeoJson(req.tenantId, type);
+        res.setHeader("Content-Type", "application/geo+json");
+        res.setHeader("Content-Disposition", `attachment; filename="vaxplan-${type}.geojson"`);
+        res.send(JSON.stringify(fc));
+      } catch (err: any) {
+        console.error(`GET /api/export/geojson/${req.params.type} failed:`, err);
+        res.status(500).json({ message: err?.message || "Export failed" });
+      }
+    },
+  );
+
+  app.get(
+    "/api/export/kml/:type",
+    isAuthenticated,
+    requireTenant,
+    async (req: any, res) => {
+      try {
+        const type = req.params.type;
+        if (!["facilities", "villages", "sessions", "catchments"].includes(type)) {
+          return res.status(400).json({ message: "type must be one of: facilities, villages, sessions, catchments" });
+        }
+        const fc = await buildGeoJson(req.tenantId, type);
+        const kml = geoJsonToKml(fc, `VaxPlan ${type}`);
+        res.setHeader("Content-Type", "application/vnd.google-earth.kml+xml");
+        res.setHeader("Content-Disposition", `attachment; filename="vaxplan-${type}.kml"`);
+        res.send(kml);
+      } catch (err: any) {
+        console.error(`GET /api/export/kml/${req.params.type} failed:`, err);
+        res.status(500).json({ message: err?.message || "Export failed" });
+      }
+    },
+  );
+
+  // ==========================================================================
+  // WHO SMART Guidelines IMMZ — CVX + WHO ATC code backfill.
+  // Maps tenant vaccine_configurations.name → standard CVX + WHO ATC codes for
+  // FHIR Immunization interoperability. Idempotent; skips rows that already
+  // have codes (unless ?force=1).
+  // ==========================================================================
+  const VACCINE_CODE_MAP: Record<string, { cvx: string; atc: string; aliases: string[] }> = {
+    BCG: { cvx: "19", atc: "J07AN01", aliases: ["bcg"] },
+    HEPB: { cvx: "08", atc: "J07BC01", aliases: ["hepb", "hep b", "hepatitis b", "hep-b", "hepb0", "hepb birth"] },
+    OPV: { cvx: "89", atc: "J07BF02", aliases: ["opv", "opv0", "opv1", "opv2", "opv3", "bopv"] },
+    IPV: { cvx: "10", atc: "J07BF03", aliases: ["ipv", "ipv1", "ipv2"] },
+    PENTA: { cvx: "110", atc: "J07CA06", aliases: ["penta", "penta1", "penta2", "penta3", "pentavalent", "dtp-hepb-hib", "dpt-hepb-hib"] },
+    DTP: { cvx: "20", atc: "J07AJ52", aliases: ["dtp", "dpt"] },
+    PCV: { cvx: "133", atc: "J07AL02", aliases: ["pcv", "pcv1", "pcv2", "pcv3", "pcv10", "pcv13"] },
+    ROTA: { cvx: "116", atc: "J07BH02", aliases: ["rota", "rota1", "rota2", "rotavirus", "rotarix", "rotateq"] },
+    MEASLES: { cvx: "05", atc: "J07BD01", aliases: ["measles", "mv", "mcv", "mcv1", "mcv2"] },
+    MR: { cvx: "94", atc: "J07BD52", aliases: ["mr", "mr1", "mr2", "measles-rubella"] },
+    MMR: { cvx: "03", atc: "J07BD52", aliases: ["mmr", "mmr1", "mmr2"] },
+    YF: { cvx: "37", atc: "J07BL01", aliases: ["yf", "yellow fever", "yellowfever"] },
+    HPV: { cvx: "165", atc: "J07BM01", aliases: ["hpv", "hpv1", "hpv2"] },
+    TD: { cvx: "113", atc: "J07AM51", aliases: ["td", "td1", "td2"] },
+    TT: { cvx: "35", atc: "J07AM01", aliases: ["tt", "tt1", "tt2", "tetanus"] },
+    JE: { cvx: "39", atc: "J07BA02", aliases: ["je", "japanese encephalitis"] },
+    MEN: { cvx: "147", atc: "J07AH09", aliases: ["mena", "mena-c", "menafrivac", "meningococcal"] },
+    COVID: { cvx: "208", atc: "J07BX03", aliases: ["covid", "covid-19", "covid19", "sars-cov-2"] },
+  };
+
+  function lookupVaccineCode(name: string): { cvx: string; atc: string } | null {
+    const norm = name.toLowerCase().replace(/[\s_]+/g, " ").trim();
+    const stripped = norm.replace(/[-\s]?\d+$/, "").trim(); // drop trailing dose number (penta-1 → penta)
+    for (const entry of Object.values(VACCINE_CODE_MAP)) {
+      for (const alias of entry.aliases) {
+        if (norm === alias || stripped === alias) return { cvx: entry.cvx, atc: entry.atc };
+      }
+    }
+    return null;
+  }
+
+  app.post(
+    "/api/admin/vaccine-codes/backfill",
+    isAuthenticated,
+    requireTenant,
+    requirePermission("manage_users"),
+    async (req: any, res) => {
+      try {
+        const force = req.query.force === "1" || req.body?.force === true;
+        const rows = await db
+          .select()
+          .from(vaccineConfigurations)
+          .where(eq(vaccineConfigurations.tenantId, req.tenantId));
+        let updated = 0;
+        const unmapped: string[] = [];
+        for (const row of rows) {
+          if (!force && row.cvxCode && row.whoAtcCode) continue;
+          const codes = lookupVaccineCode(row.name);
+          if (!codes) {
+            unmapped.push(row.name);
+            continue;
+          }
+          await db
+            .update(vaccineConfigurations)
+            .set({
+              cvxCode: force ? codes.cvx : row.cvxCode || codes.cvx,
+              whoAtcCode: force ? codes.atc : row.whoAtcCode || codes.atc,
+            })
+            .where(eq(vaccineConfigurations.id, row.id));
+          updated++;
+        }
+        await logAudit(req, "vaccine_codes_backfill", "vaccine_configurations", null, null, {
+          total: rows.length,
+          updated,
+          unmapped,
+          force,
+        });
+        res.json({ total: rows.length, updated, unmapped });
+      } catch (err: any) {
+        console.error("POST /api/admin/vaccine-codes/backfill failed:", err);
+        res.status(500).json({ message: err?.message || "Backfill failed" });
+      }
+    },
+  );
+
+  // ==========================================================================
+  // Annual National Immunization Plan (NIMP / cMYP) — one per (tenant, year).
+  // Owned by national_admin. HF microplans inherit targets and budget envelope.
+  // ==========================================================================
+  app.get("/api/annual-plans", isAuthenticated, requireTenant, async (req: any, res) => {
+    try {
+      const rows = await db
+        .select()
+        .from(annualImmunizationPlans)
+        .where(eq(annualImmunizationPlans.tenantId, req.tenantId))
+        .orderBy(desc(annualImmunizationPlans.year));
+      res.json(rows);
+    } catch (err: any) {
+      console.error("GET /api/annual-plans failed:", err);
+      res.status(500).json({ message: "Failed to load annual plans" });
+    }
+  });
+
+  app.post(
+    "/api/annual-plans",
+    isAuthenticated,
+    requireTenant,
+    requirePermission("manage_users"),
+    async (req: any, res) => {
+      try {
+        const parsed = insertAnnualImmunizationPlanSchema.parse({
+          ...req.body,
+          tenantId: req.tenantId,
+          createdByUserId: req.user?.claims?.sub,
+        });
+        // Only national_admin can create the country-level annual plan.
+        const dbUser = await storage.getUser(req.user?.claims?.sub);
+        const isNationalAdmin =
+          dbUser?.role === "national_admin" ||
+          (Array.isArray(dbUser?.roles) && (dbUser!.roles as string[]).includes("national_admin")) ||
+          dbUser?.isPlatformAdmin === true;
+        if (!isNationalAdmin) {
+          return res.status(403).json({ message: "Only national_admin can create the national annual plan." });
+        }
+        // Uniqueness enforced by DB constraint uniq_annual_plan_tenant_year;
+        // we still pre-check so the common case returns a friendly 409.
+        try {
+          const [created] = await db
+            .insert(annualImmunizationPlans)
+            .values(parsed as any)
+            .returning();
+          await logAudit(req, "create", "annual_immunization_plan", created.id, null, created);
+          return res.status(201).json(created);
+        } catch (dbErr: any) {
+          if (dbErr?.code === "23505") {
+            return res
+              .status(409)
+              .json({ message: `An annual plan for ${parsed.year} already exists. Edit the existing one.` });
+          }
+          throw dbErr;
+        }
+      } catch (err: any) {
+        console.error("POST /api/annual-plans failed:", err);
+        const msg = err?.issues ? err.issues.map((i: any) => `${i.path?.join(".")}: ${i.message}`).join("; ") : err?.message;
+        res.status(400).json({ message: msg || "Failed to create annual plan" });
+      }
+    },
+  );
+
+  app.patch(
+    "/api/annual-plans/:id",
+    isAuthenticated,
+    requireTenant,
+    requirePermission("manage_users"),
+    async (req: any, res) => {
+      try {
+        const id = parseInt(req.params.id, 10);
+        if (isNaN(id)) return res.status(400).json({ message: "Invalid id" });
+        const [existing] = await db
+          .select()
+          .from(annualImmunizationPlans)
+          .where(and(eq(annualImmunizationPlans.id, id), eq(annualImmunizationPlans.tenantId, req.tenantId)))
+          .limit(1);
+        if (!existing) return res.status(404).json({ message: "Annual plan not found" });
+        // Only national_admin can edit. status/approval go through their own
+        // controlled actions (submit / approve), never via PATCH.
+        const dbUser = await storage.getUser(req.user?.claims?.sub);
+        const isNationalAdmin =
+          dbUser?.role === "national_admin" ||
+          (Array.isArray(dbUser?.roles) && (dbUser!.roles as string[]).includes("national_admin")) ||
+          dbUser?.isPlatformAdmin === true;
+        if (!isNationalAdmin) {
+          return res.status(403).json({ message: "Only national_admin can edit the national annual plan." });
+        }
+        if (existing.status === "approved") {
+          return res.status(409).json({ message: "Approved plans are locked. Create a new plan year or supersede it." });
+        }
+        // Whitelist editable fields only. status + approval columns are
+        // intentionally excluded so the workflow can only advance via the
+        // /submit and /approve actions.
+        const allowed: any = {};
+        for (const k of [
+          "totalTargetPopulation",
+          "survivingInfants",
+          "pregnantWomen",
+          "budgetEnvelope",
+          "fundingMix",
+          "priorities",
+          "targetsByAntigen",
+          "narrative",
+        ]) {
+          if (req.body[k] !== undefined) allowed[k] = req.body[k];
+        }
+        // Controlled status transition: only draft <-> submitted via PATCH.
+        if (req.body.status === "submitted" && existing.status === "draft") {
+          allowed.status = "submitted";
+        } else if (req.body.status === "draft" && existing.status === "submitted") {
+          allowed.status = "draft";
+        } else if (req.body.status !== undefined && req.body.status !== existing.status) {
+          return res.status(400).json({
+            message: `Invalid status transition ${existing.status} -> ${req.body.status}. Use /approve to approve.`,
+          });
+        }
+        allowed.updatedAt = new Date();
+        const [updated] = await db
+          .update(annualImmunizationPlans)
+          .set(allowed)
+          .where(eq(annualImmunizationPlans.id, id))
+          .returning();
+        await logAudit(req, "update", "annual_immunization_plan", id, existing, updated);
+        res.json(updated);
+      } catch (err: any) {
+        console.error("PATCH /api/annual-plans/:id failed:", err);
+        res.status(500).json({ message: err?.message || "Update failed" });
+      }
+    },
+  );
+
+  app.post(
+    "/api/annual-plans/:id/approve",
+    isAuthenticated,
+    requireTenant,
+    requirePermission("manage_users"),
+    async (req: any, res) => {
+      try {
+        const id = parseInt(req.params.id, 10);
+        const [existing] = await db
+          .select()
+          .from(annualImmunizationPlans)
+          .where(and(eq(annualImmunizationPlans.id, id), eq(annualImmunizationPlans.tenantId, req.tenantId)))
+          .limit(1);
+        if (!existing) return res.status(404).json({ message: "Annual plan not found" });
+        const dbUser = await storage.getUser(req.user?.claims?.sub);
+        const isNationalAdmin =
+          dbUser?.role === "national_admin" ||
+          (Array.isArray(dbUser?.roles) && (dbUser!.roles as string[]).includes("national_admin")) ||
+          dbUser?.isPlatformAdmin === true;
+        if (!isNationalAdmin) {
+          return res.status(403).json({ message: "Only national_admin can approve the national annual plan." });
+        }
+        if (existing.status !== "draft" && existing.status !== "submitted") {
+          return res.status(409).json({ message: `Cannot approve a plan in status '${existing.status}'.` });
+        }
+        const [updated] = await db
+          .update(annualImmunizationPlans)
+          .set({
+            status: "approved",
+            approvedAt: new Date(),
+            approvedByUserId: req.user?.claims?.sub,
+            updatedAt: new Date(),
+          })
+          .where(eq(annualImmunizationPlans.id, id))
+          .returning();
+        await logAudit(req, "approve", "annual_immunization_plan", id, existing, updated);
+        res.json(updated);
+      } catch (err: any) {
+        console.error("POST /api/annual-plans/:id/approve failed:", err);
+        res.status(500).json({ message: err?.message || "Approve failed" });
+      }
+    },
+  );
 
   return httpServer;
 }

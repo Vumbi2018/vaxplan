@@ -60,10 +60,8 @@ const SECTIONS: Section[] = [
     rows: [
       {
         area: "National / sub-national annual EPI plan (cMYP / NIMP)",
-        status: "gap",
-        evidence: "No distinct entity for the country-level annual immunization plan.",
-        recommendation:
-          "Add an `annual_immunization_plans` table at tenant or province level, owned by national_admin. HF microplans inherit targets and budget envelope from it.",
+        status: "aligned",
+        evidence: "annual_immunization_plans table (one per tenant + year) with target population, surviving infants, pregnant women, budget envelope, funding mix %, per-antigen coverage targets, strategic priorities, narrative, and draft → submitted → approved status. Editable by national_admin at /national-plan. HF microplans can read targets and budget envelope from it.",
       },
       {
         area: "HF routine microplan as parent of sessions",
@@ -316,8 +314,9 @@ const SECTIONS: Section[] = [
       },
       {
         area: "WHO SMART Guidelines IMMZ (DAK → L2 → L3 computable)",
-        status: "gap",
-        recommendation: "Adopt IMMZ data dictionary; map vaccines to CVX + WHO ATC; align ages to IMMZ schedule.",
+        status: "partial",
+        evidence: "vaccine_configurations now carry cvx_code + who_atc_code columns. Admin backfill endpoint (POST /api/admin/vaccine-codes/backfill) maps tenant vaccine names to standard CVX + WHO ATC codes (BCG, HepB, OPV, IPV, Pentavalent, PCV, Rota, Measles, MR, MMR, YF, HPV, Td, TT, JE, MenA, COVID-19) for FHIR Immunization.vaccineCode interoperability.",
+        recommendation: "Align recommended ages and dose intervals to IMMZ L2 decision tables; surface IMMZ-formatted exports on the HIS Integrations page.",
       },
       { area: "GS1 GTIN + lot + expiry (2D barcode)", status: "gap", recommendation: "Add gtin to vaccine_configs + barcode scan on stock entry. Gavi traceability." },
       { area: "ICD-11 / SNOMED CT / LOINC", status: "gap", recommendation: "Map AEFI events to SNOMED CT or ICD-11." },
@@ -352,9 +351,9 @@ const SECTIONS: Section[] = [
       { area: "Hard-to-reach classification", status: "aligned", evidence: "is_hard_to_reach, insecurity_level, distance, travel time." },
       {
         area: "OSM-compatible export (GeoJSON / KML / Shapefile)",
-        status: "partial",
-        evidence: "Excel export only.",
-        recommendation: "Add GeoJSON + KML export of catchments, sessions, facilities.",
+        status: "aligned",
+        evidence: "GET /api/export/geojson/:type and /api/export/kml/:type for facilities, villages, sessions, catchments. GeoJSON returns standard FeatureCollection in WGS84; KML opens directly in Google Earth / QGIS.",
+        recommendation: "Shapefile export still pending — most GIS users can ingest GeoJSON / KML directly.",
       },
       { area: "CRS = WGS84 / EPSG:4326", status: "aligned" },
     ],
@@ -373,7 +372,7 @@ const SECTIONS: Section[] = [
       { area: "Encryption at rest", status: "partial", recommendation: "Document in SECURITY.md; confirm provider setting." },
       { area: "Encryption in transit", status: "aligned" },
       { area: "PII minimization", status: "partial", recommendation: "Add per-tenant PII redaction toggle for analytics exports." },
-      { area: "Right to erasure (GDPR Art. 17)", status: "gap", recommendation: "Add 'purge client' admin action that cascades to vaccinations and writes audit entry." },
+      { area: "Right to erasure (GDPR Art. 17)", status: "aligned", evidence: "POST /api/admin/clients/:id/purge (admin-only) requires a stated reason, cascades the delete to client_vaccinations via FK, and writes a redacted audit entry (no PII retained — only facilityId, villageId, clientType, vaccination count, and reason)." },
       { area: "Data residency", status: "partial", recommendation: "Document in-country hosting options for MoH procurement." },
       { area: "Backups + RPO/RTO documentation", status: "gap", recommendation: "Document backup schedule + restore drill cadence." },
       { area: "ISO 27799 mapping", status: "partial" },
@@ -421,16 +420,18 @@ const STATUS_META: Record<Status, { label: string; icon: React.ComponentType<{ c
 };
 
 const TOP_ACTIONS: { n: number; title: string; standard: string; effort: "S" | "M" | "L" }[] = [
-  { n: 1, title: "AEFI reports entity + DHIS2 push", standard: "JRF; IHR 2005; Gavi safety", effort: "M" },
-  { n: 2, title: "Cold-chain equipment + temperature logs with PQS codes", standard: "EVM 2.0 E2–E4", effort: "M" },
-  { n: 3, title: "Stockout days + actual wastage in monthly reports", standard: "JRF; EVM 2.0 E6", effort: "M" },
-  { n: 4, title: "GTIN + lot/expiry on stock; barcode-scan UI", standard: "GS1; Gavi traceability", effort: "M" },
-  { n: 5, title: "Microplan lock cascade — block POST/PATCH /api/sessions when parent microplan.status='locked'", standard: "WHO/UNICEF Microplanning §1.3", effort: "S" },
-  { n: 6, title: "Per-district disaggregation export for dropout (/indicators/dropout) — WUENIC submission CSV", standard: "WUENIC; RED/REC monitoring", effort: "S" },
-  { n: 7, title: "Budget actual-spent capture (actualSpent + payment status on budget_items) for planned-vs-actual by funding source", standard: "Gavi HSS; WHO core element 8", effort: "S" },
-  { n: 8, title: "Campaign independent monitoring + post-campaign coverage survey entities", standard: "WHO SIA field guide; IA2030 SP5", effort: "M" },
-  { n: 9, title: "Service Worker Background Sync for outbox", standard: "Principles for Digital Development", effort: "M" },
-  { n: 10, title: "Extend FHIR adapter (Encounter + MedicationAdministration + Location + Practitioner)", standard: "WHO SMART Guidelines IMMZ", effort: "M" },
+  { n: 1, title: "Service Worker Background Sync for the offline outbox", standard: "Principles for Digital Development", effort: "M" },
+  { n: 2, title: "DHIS2 Tracker adapter for individual-level client + vaccination push (parallel to the existing aggregate adapter)", standard: "DHIS2 Tracker; WHO SMART IMMZ", effort: "M" },
+  { n: 3, title: "AccessMod-style isochrone catchments (friction surface + travel time)", standard: "WHO AccessMod 5; UNICEF MicroPlan", effort: "L" },
+  { n: 4, title: "AEFI reports entity + DHIS2 push", standard: "JRF; IHR 2005; Gavi safety", effort: "M" },
+  { n: 5, title: "Cold-chain equipment + temperature logs with PQS codes", standard: "EVM 2.0 E2–E4", effort: "M" },
+  { n: 6, title: "Stockout days + actual wastage in monthly reports", standard: "JRF; EVM 2.0 E6", effort: "M" },
+  { n: 7, title: "GTIN + lot/expiry on stock; barcode-scan UI", standard: "GS1; Gavi traceability", effort: "M" },
+  { n: 8, title: "Microplan lock cascade — block POST/PATCH /api/sessions when parent microplan.status='locked'", standard: "WHO/UNICEF Microplanning §1.3", effort: "S" },
+  { n: 9, title: "Per-district disaggregation export for dropout (/indicators/dropout) — WUENIC submission CSV", standard: "WUENIC; RED/REC monitoring", effort: "S" },
+  { n: 10, title: "Budget actual-spent capture (actualSpent + payment status on budget_items) for planned-vs-actual by funding source", standard: "Gavi HSS; WHO core element 8", effort: "S" },
+  { n: 11, title: "Campaign independent monitoring + post-campaign coverage survey entities", standard: "WHO SIA field guide; IA2030 SP5", effort: "M" },
+  { n: 12, title: "Extend FHIR adapter (Encounter + MedicationAdministration + Location + Practitioner)", standard: "WHO SMART Guidelines IMMZ", effort: "M" },
 ];
 
 function StatusBadge({ status }: { status: Status }) {
