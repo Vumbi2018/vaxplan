@@ -20,6 +20,7 @@ import NotFound from "@/pages/not-found";
 import { TenantSwitcher } from "@/components/TenantSwitcher";
 import { InstallPrompt } from "@/components/InstallPrompt";
 import { OfflineBanner } from "@/components/OfflineBanner";
+import { useUnmappedAntigenWarnings } from "@/hooks/useUnmappedAntigenWarnings";
 
 const MapPage = lazy(() => import("@/pages/MapPage"));
 const Facilities = lazy(() => import("@/pages/Facilities"));
@@ -175,6 +176,9 @@ function AuthenticatedRouter() {
 
 function AuthenticatedLayout() {
   const { user, isLoading } = useAuth();
+  // Task #106 — surface a toast when the offline outbox replays a mark-done
+  // and the server reports antigen codes outside the tenant's vaccine schedule.
+  useUnmappedAntigenWarnings();
 
   if (isLoading) {
     return (

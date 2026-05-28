@@ -55,7 +55,7 @@ import {
   clientVaccinations,
   monthlyReports,
 } from "@shared/schema";
-import { expandVaccineSchedule } from "@shared/vaccineSchedule";
+import { expandVaccineSchedule, canonicalizePerAntigen } from "@shared/vaccineSchedule";
 import {
   runMissingSettlementDetection,
   assignAdminBoundaries,
@@ -4550,32 +4550,7 @@ export async function registerRoutes(
       // they remain visible in reports without polluting the per-antigen rollups.
       const tenantConfigs = await storage.getVaccineConfigs(req.tenantId);
       const scheduleStages = expandVaccineSchedule(tenantConfigs);
-      // Map any case/whitespace variant back to the canonical schedule code so
-      // per-antigen rollups stay keyed consistently regardless of what the
-      // client submitted (e.g. "opv-1" and "OPV-1" both normalize to "OPV-1").
-      const canonicalByLookup = new Map<string, string>();
-      for (const stage of scheduleStages) {
-        canonicalByLookup.set(stage.code, stage.code);
-        canonicalByLookup.set(stage.code.toUpperCase(), stage.code);
-        canonicalByLookup.set(stage.code.replace(/\s+/g, "_").toUpperCase(), stage.code);
-      }
-      const perAntigen: Record<string, number> = {};
-      const perAntigenUnmapped: Record<string, number> = {};
-      for (const [rawKey, rawVal] of Object.entries(rawPerAntigen)) {
-        const key = String(rawKey).trim();
-        if (!key) continue;
-        const val = Number(rawVal);
-        if (!Number.isFinite(val) || val < 0) continue;
-        const canonical =
-          canonicalByLookup.get(key) ??
-          canonicalByLookup.get(key.toUpperCase()) ??
-          canonicalByLookup.get(key.replace(/\s+/g, "_").toUpperCase());
-        if (canonical) {
-          perAntigen[canonical] = (perAntigen[canonical] ?? 0) + val;
-        } else {
-          perAntigenUnmapped[key] = (perAntigenUnmapped[key] ?? 0) + val;
-        }
-      }
+      const { perAntigen, perAntigenUnmapped } = canonicalizePerAntigen(rawPerAntigen, tenantConfigs);
 
       const totals = Number(
         body.totals != null

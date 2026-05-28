@@ -67,7 +67,29 @@ interface PullPayload {
 // ─── Outbox flush result (mirrors POST /api/sync/batch response) ─────────────
 
 interface BatchResult {
-  results: { outboxId: number; success: boolean; error?: string; serverId?: string | number }[];
+  results: {
+    outboxId: number;
+    success: boolean;
+    error?: string;
+    serverId?: string | number;
+    /** Populated by the server's mark-done outbox handler (Task #106). */
+    unmappedAntigenCodes?: string[];
+  }[];
+}
+
+/**
+ * Dispatched on `window` whenever an offline-queued mark-done is replayed
+ * and the server reports antigen codes outside the tenant's vaccine
+ * schedule. A root-level listener (see useUnmappedAntigenWarnings) converts
+ * this into a toast so health workers see the warning even though the
+ * original mark-done UI is long gone.
+ */
+export const UNMAPPED_ANTIGENS_EVENT = "vaxplan:unmapped-antigens";
+
+export interface UnmappedAntigensEventDetail {
+  source: "outbox-replay";
+  sessionId: number | string | null;
+  unmappedAntigenCodes: string[];
 }
 
 // ─── Sync Engine ─────────────────────────────────────────────────────────────
@@ -209,9 +231,21 @@ class SyncEngine {
       });
 
       // Process results
+      const unmappedEvents: UnmappedAntigensEventDetail[] = [];
       await offlineDb.transaction("rw", offlineDb.outbox, async () => {
         for (const result of results) {
           if (result.success) {
+            // Task #106: surface unmapped antigen warning even though the
+            // original mark-done UI is long gone by the time the outbox
+            // replays. Collect now, dispatch after the tx commits.
+            if (result.unmappedAntigenCodes && result.unmappedAntigenCodes.length > 0) {
+              const item = pending.find((p) => p.id === result.outboxId);
+              unmappedEvents.push({
+                source: "outbox-replay",
+                sessionId: item?.serverId ?? result.serverId ?? null,
+                unmappedAntigenCodes: result.unmappedAntigenCodes,
+              });
+            }
             await offlineDb.outbox.delete(result.outboxId);
           } else {
             const item = pending.find((p) => p.id === result.outboxId);
@@ -224,6 +258,13 @@ class SyncEngine {
           }
         }
       });
+      if (unmappedEvents.length > 0 && typeof window !== "undefined") {
+        for (const detail of unmappedEvents) {
+          window.dispatchEvent(
+            new CustomEvent<UnmappedAntigensEventDetail>(UNMAPPED_ANTIGENS_EVENT, { detail }),
+          );
+        }
+      }
 
       const pendingCount = await offlineDb.outbox
         .where("tenantId")

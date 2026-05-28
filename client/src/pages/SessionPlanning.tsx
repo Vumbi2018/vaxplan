@@ -883,6 +883,23 @@ export default function SessionPlanning({
         title: res?.queued ? "Queued offline" : "Session marked done",
         description: res?.queued ? "Will sync when back online." : "Moved to history.",
       });
+      // Task #106: when the server reports antigen codes outside the tenant's
+      // configured vaccine schedule, surface a warning so the health worker
+      // knows those counts went into an "unmapped" bucket and a sync/refresh
+      // is needed.
+      const unmapped: string[] = Array.isArray(res?.unmappedAntigenCodes)
+        ? res.unmappedAntigenCodes
+        : [];
+      if (unmapped.length > 0) {
+        toast({
+          title: "Some vaccines weren't recognised",
+          description:
+            `These codes are not in your current schedule and were saved as "unmapped": ` +
+            `${unmapped.join(", ")}. Refresh the app or sync your vaccine schedule so future ` +
+            `sessions record them correctly.`,
+          variant: "destructive",
+        });
+      }
       setMarkDoneSession(null);
       setVaccinatedCounts({});
     },

@@ -19,6 +19,54 @@ function normalizeCode(s: string): string {
   return s.trim().toUpperCase().replace(/\s+/g, "_");
 }
 
+export interface CanonicalizePerAntigenResult {
+  perAntigen: Record<string, number>;
+  perAntigenUnmapped: Record<string, number>;
+  unmappedCodes: string[];
+}
+
+/**
+ * Validate a perAntigen payload against the tenant's vaccine schedule.
+ * Known codes are canonicalized to the schedule's exact code (case- and
+ * whitespace-insensitive). Unknown codes are kept under `perAntigenUnmapped`
+ * so older offline-outbox entries / stale clients still count toward totals
+ * without polluting per-antigen rollups.
+ */
+export function canonicalizePerAntigen(
+  raw: Record<string, unknown> | null | undefined,
+  configs: VaccineConfig[] | undefined | null,
+): CanonicalizePerAntigenResult {
+  const stages = expandVaccineSchedule(configs);
+  const lookup = new Map<string, string>();
+  for (const s of stages) {
+    lookup.set(s.code, s.code);
+    lookup.set(s.code.toUpperCase(), s.code);
+    lookup.set(s.code.replace(/\s+/g, "_").toUpperCase(), s.code);
+  }
+  const perAntigen: Record<string, number> = {};
+  const perAntigenUnmapped: Record<string, number> = {};
+  for (const [rawKey, rawVal] of Object.entries(raw ?? {})) {
+    const key = String(rawKey).trim();
+    if (!key) continue;
+    const val = Number(rawVal);
+    if (!Number.isFinite(val) || val < 0) continue;
+    const canonical =
+      lookup.get(key) ??
+      lookup.get(key.toUpperCase()) ??
+      lookup.get(key.replace(/\s+/g, "_").toUpperCase());
+    if (canonical) {
+      perAntigen[canonical] = (perAntigen[canonical] ?? 0) + val;
+    } else {
+      perAntigenUnmapped[key] = (perAntigenUnmapped[key] ?? 0) + val;
+    }
+  }
+  return {
+    perAntigen,
+    perAntigenUnmapped,
+    unmappedCodes: Object.keys(perAntigenUnmapped),
+  };
+}
+
 export function expandVaccineSchedule(
   configs: VaccineConfig[] | undefined | null,
 ): DoseStage[] {

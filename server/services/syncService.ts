@@ -36,6 +36,7 @@ import {
   mobilizationActivities, // COMMENT: Added mobilizationActivities import for social mobilization offline sync
 } from "@shared/schema";
 import { eq, and, gt, sql } from "drizzle-orm";
+import { canonicalizePerAntigen } from "@shared/vaccineSchedule";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -56,6 +57,13 @@ export interface MutationResult {
   success: boolean;
   error?: string;
   serverId?: string | number;
+  /**
+   * Set by the mark-done sync handler when the queued perAntigen payload
+   * contained codes outside the tenant's configured vaccine schedule.
+   * The client surfaces a warning toast so health workers know their counts
+   * went into an "unmapped" bucket and need a schedule refresh / app update.
+   */
+  unmappedAntigenCodes?: string[];
 }
 
 export interface PullPayload {
@@ -288,6 +296,75 @@ export async function batchMutate(
         }
       */
       // Updated Code: Mapped both session-plans/sessions and session-day-plans/sessionDayPlans for comprehensive sync support
+      } else if (/^\/api\/sessions\/\d+\/mark-done\/?$/.test(mutation.url)) {
+        // Outbox replay for a session marked done while offline.
+        // Mirrors POST /api/sessions/:id/mark-done in routes.ts: validates
+        // perAntigen against the tenant's vaccine schedule, splits unknown
+        // codes into an "unmapped" bucket, and reports them back so the
+        // client can surface a warning toast (Task #106).
+        const m = mutation.url.match(/^\/api\/sessions\/(\d+)\/mark-done/);
+        const sessionId = m ? Number(m[1]) : NaN;
+        if (!Number.isFinite(sessionId)) {
+          throw new Error(`mark-done: invalid session id in URL ${mutation.url}`);
+        }
+        const old = await storage.getSessionPlan(tenantId, sessionId);
+        if (!old) throw new Error(`mark-done: session ${sessionId} not found`);
+        const rawPerAntigen =
+          payload.perAntigen && typeof payload.perAntigen === "object"
+            ? (payload.perAntigen as Record<string, unknown>)
+            : {};
+        const tenantConfigs = await storage.getVaccineConfigs(tenantId);
+        const { perAntigen, perAntigenUnmapped, unmappedCodes } =
+          canonicalizePerAntigen(rawPerAntigen, tenantConfigs);
+        const totals = Number(
+          payload.totals != null
+            ? payload.totals
+            : Object.values(perAntigen).reduce((s: number, n: any) => s + Number(n || 0), 0)
+              + Object.values(perAntigenUnmapped).reduce((s: number, n: any) => s + Number(n || 0), 0),
+        );
+        const vc: Record<string, any> = {
+          totals: Number.isFinite(totals) && totals >= 0 ? totals : 0,
+          perAntigen,
+          actualDate: payload.actualDate || new Date().toISOString(),
+          note: payload.note ?? null,
+        };
+        if (unmappedCodes.length > 0) {
+          vc.perAntigenUnmapped = perAntigenUnmapped;
+        }
+        const updated = await storage.updateSessionPlan(tenantId, sessionId, {
+          status: "completed",
+          isAchieved: true,
+          completedAt: new Date() as any,
+          vaccinatedCounts: vc as any,
+        } as any);
+        if (!updated) throw new Error(`mark-done: session ${sessionId} not found on update`);
+        serverId = sessionId;
+        if (unmappedCodes.length > 0) {
+          try {
+            await db.insert(auditLogs).values({
+              tenantId,
+              userId: performedById ?? "offline-sync",
+              action: "mark_done_unmapped_antigens",
+              entityType: "session_plan",
+              entityId: sessionId,
+              newValue: { unmappedCodes, perAntigenUnmapped, source: "offline_outbox" },
+            } as any);
+          } catch {
+            /* audit failure shouldn't block the mutation result */
+          }
+          console.warn(
+            `[sync/mark-done] session ${sessionId} (tenant ${tenantId}) replayed with antigen codes outside the configured schedule:`,
+            unmappedCodes,
+          );
+        }
+        results.push({
+          outboxId: mutation.id,
+          success: true,
+          serverId,
+          unmappedAntigenCodes: unmappedCodes,
+        });
+        continue;
+
       } else if (mutation.url.startsWith("/api/session-plans") || mutation.url.startsWith("/api/sessions")) {
         if (mutation.method === "POST") {
           const plan = await storage.createSessionPlan(tenantId, payload);

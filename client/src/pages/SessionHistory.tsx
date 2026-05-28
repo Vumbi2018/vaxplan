@@ -5,7 +5,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ChevronDown, ChevronRight, Download, History as HistoryIcon, Search } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronRight, Download, History as HistoryIcon, Search } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import type { VaccineConfig } from "@shared/schema";
 import { expandVaccineSchedule } from "@shared/vaccineSchedule";
 import { offlineDb } from "@/lib/offlineDb";
@@ -13,9 +18,25 @@ import { offlineDb } from "@/lib/offlineDb";
 type VaccinatedCounts = {
   totals?: number | null;
   perAntigen?: Record<string, number> | null;
+  /**
+   * Task #106 — codes the mark-done endpoint could not match against the
+   * tenant's vaccine schedule. Present (non-empty) means the session was
+   * saved with unrecognised vaccines and needs a sync / app refresh.
+   */
+  perAntigenUnmapped?: Record<string, number> | null;
   actualDate?: string | null;
   note?: string | null;
 };
+
+function unmappedAntigenEntries(
+  vc: VaccinatedCounts | null | undefined,
+): Array<[string, number]> {
+  const pa = vc?.perAntigenUnmapped;
+  if (!pa || typeof pa !== "object") return [];
+  return Object.entries(pa)
+    .map(([code, n]) => [code, Number(n) || 0] as [string, number])
+    .filter(([, n]) => n > 0);
+}
 
 type HistoryRow = {
   id: number;
@@ -197,13 +218,18 @@ export default function SessionHistory() {
                 <tbody>
                   {filtered.map((r) => {
                     const entries = perAntigenEntries(r.vaccinatedCounts);
+                    const unmappedEntries = unmappedAntigenEntries(r.vaccinatedCounts);
+                    const hasUnmapped = unmappedEntries.length > 0;
                     const total = vaccinatedTotal(r.vaccinatedCounts);
                     const isOpen = !!expanded[r.id];
-                    const canExpand = entries.length > 0;
+                    const canExpand = entries.length > 0 || hasUnmapped;
                     return (
                       <Fragment key={r.id}>
                         <tr
-                          className="border-b last:border-0 hover:bg-muted/30"
+                          className={
+                            "border-b last:border-0 hover:bg-muted/30" +
+                            (hasUnmapped ? " bg-amber-50/40 dark:bg-amber-900/10" : "")
+                          }
                           data-testid={`row-history-${r.id}`}
                         >
                           <td className="p-2 align-top">
@@ -223,7 +249,29 @@ export default function SessionHistory() {
                               </button>
                             ) : null}
                           </td>
-                          <td className="p-2 font-medium">{r.name}</td>
+                          <td className="p-2 font-medium">
+                            <div className="flex items-center gap-1.5">
+                              <span>{r.name}</span>
+                              {hasUnmapped && (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span
+                                      data-testid={`badge-unmapped-${r.id}`}
+                                      className="inline-flex items-center gap-1 rounded-md border border-amber-500/50 bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
+                                    >
+                                      <AlertTriangle className="h-3 w-3" />
+                                      Unrecognised vaccines
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent className="max-w-xs">
+                                    Saved with codes outside your vaccine schedule:{" "}
+                                    {unmappedEntries.map(([c]) => c).join(", ")}. Sync or
+                                    refresh the app so future sessions record them correctly.
+                                  </TooltipContent>
+                                </Tooltip>
+                              )}
+                            </div>
+                          </td>
                           <td className="p-2 capitalize">{r.planType ?? "—"} / {r.sessionType}</td>
                           <td className="p-2">
                             <Badge
@@ -266,6 +314,32 @@ export default function SessionHistory() {
                                   </div>
                                 ))}
                               </div>
+                              {hasUnmapped && (
+                                <div className="mt-3" data-testid={`block-unmapped-${r.id}`}>
+                                  <div className="text-xs font-semibold uppercase tracking-wider mb-1 text-amber-700 dark:text-amber-300 flex items-center gap-1">
+                                    <AlertTriangle className="h-3 w-3" />
+                                    Unrecognised vaccines (saved as unmapped)
+                                  </div>
+                                  <div className="flex flex-wrap gap-2">
+                                    {unmappedEntries.map(([code, n]) => (
+                                      <div
+                                        key={code}
+                                        data-testid={`chip-unmapped-${r.id}-${code.toLowerCase()}`}
+                                        className="inline-flex items-center gap-2 rounded-md border border-amber-500/50 bg-amber-50 px-2 py-1 dark:bg-amber-900/20"
+                                      >
+                                        <span className="text-xs font-medium text-amber-700 dark:text-amber-300">{code}</span>
+                                        <span className="text-xs font-semibold tabular-nums text-amber-700 dark:text-amber-300">
+                                          {n.toLocaleString()}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                  <div className="mt-1 text-[11px] text-muted-foreground">
+                                    These codes aren't in your current vaccine schedule. Sync or
+                                    refresh the app so future sessions record them under a known code.
+                                  </div>
+                                </div>
+                              )}
                               <div className="mt-2 text-xs text-muted-foreground">
                                 Sum of per-antigen counts: <span className="font-semibold">{total.toLocaleString()}</span>
                                 {r.vaccinatedCounts?.totals != null &&
