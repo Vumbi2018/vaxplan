@@ -99,6 +99,7 @@ export default function RedRedQGuidedWorkflow() {
     lastReviewedAt: string | null;
     quarterStart: string;
   }>({ queryKey: ["/api/indicators/defaulter-review-status"] });
+  const { data: dayPlans = [] } = useQuery<any[]>({ queryKey: ["/api/session-day-plans"] });
 
   const steps: Step[] = useMemo(() => {
     const currentYear = new Date().getFullYear();
@@ -135,10 +136,19 @@ export default function RedRedQGuidedWorkflow() {
     const currentMicroplans = microplans.filter((m: any) => m.year === currentYear && m.quarter === currentQuarter);
     const step4Done = currentMicroplans.length > 0 && coveredQuarters.length === requiredQuarters.length;
 
-    // Step 5 — Workforce: pending (structured staffing roster not yet on the microplan).
+    // Step 5 — Workforce: every session-day for current-quarter sessions has a named lead vaccinator.
+    const quarterSessions = sessions.filter((s: any) => s.year === currentYear && s.quarter === currentQuarter);
+    const quarterSessionIds = new Set(quarterSessions.map((s: any) => s.id));
+    const quarterDayPlans = (dayPlans || []).filter((d: any) => quarterSessionIds.has(d.sessionPlanId));
+    const dayPlansWithVaccinator = quarterDayPlans.filter(
+      (d: any) => typeof d.leadVaccinator === "string" && d.leadVaccinator.trim().length > 0
+    );
+    const step5Done =
+      quarterSessions.length > 0 &&
+      quarterDayPlans.length > 0 &&
+      dayPlansWithVaccinator.length === quarterDayPlans.length;
 
     // Step 6 — Vaccine forecast: every active antigen has a non-zero forecast across this-quarter's sessions.
-    const quarterSessions = sessions.filter((s: any) => s.year === currentYear && s.quarter === currentQuarter);
     const antigensSeen = new Set<string>();
     for (const s of quarterSessions) {
       const va = s.vaccineAdjustments;
@@ -168,12 +178,18 @@ export default function RedRedQGuidedWorkflow() {
       facilitiesWithSessions.size > 0 && facilitiesCovered.length === facilitiesWithSessions.size;
 
     // Step 8 — Logistics: every current-quarter session has transportMode + distance — pending until day-plan rollup exists.
-    // Step 9 — Budget: current quarter has at least Personnel + Transport + Supplies category lines.
+    // Step 9 — Budget: current quarter has Personnel + Transport + Supplies lines AND every line is tagged
+    // with a funding source (anything other than 'unspecified'). Both checks must pass.
     const quarterBudget = budgetItems.filter((b: any) => b.year === currentYear && b.quarter === currentQuarter);
     const cats: string[] = quarterBudget.map((b: any) => (b.category || "").toString().toLowerCase());
-    const step9Done = ["personnel", "transport", "supplies"].every((c) =>
+    const step9CategoriesOk = ["personnel", "transport", "supplies"].every((c) =>
       cats.some((k) => k.includes(c))
     );
+    const linesMissingFunder = quarterBudget.filter(
+      (b: any) => !b.fundingSource || b.fundingSource === "unspecified"
+    );
+    const step9FundersOk = quarterBudget.length > 0 && linesMissingFunder.length === 0;
+    const step9Done = step9CategoriesOk && step9FundersOk;
 
     // Step 10 — Supportive supervision: every facility with sessions this quarter has ≥1
     // supervisory visit whose scheduledDate falls in the current quarter.
@@ -313,9 +329,12 @@ export default function RedRedQGuidedWorkflow() {
         module: "Session Day Plans",
         href: "/sessions",
         icon: Users,
-        status: "pending",
-        statusDetail: "Not yet wired — completion check ships with the staffing roster",
-        pendingTask: "Staffing + funding source on microplan",
+        status: step5Done ? "done" : "todo",
+        statusDetail: quarterDayPlans.length === 0
+          ? quarterSessions.length === 0
+            ? "No current-quarter sessions to staff"
+            : "No session-day plans drafted yet for this quarter"
+          : `${dayPlansWithVaccinator.length} / ${quarterDayPlans.length} session-days have a named lead vaccinator`,
       },
       {
         num: 6,
@@ -400,10 +419,13 @@ export default function RedRedQGuidedWorkflow() {
         href: "/budget",
         icon: Wallet,
         status: step9Done ? "done" : "todo",
-        statusDetail: step9Done
-          ? `Personnel + Transport + Supplies budgeted for Q${currentQuarter}`
-          : `Missing one of Personnel / Transport / Supplies for Q${currentQuarter}`,
-        pendingTask: "Structured funding-source enum (Govt / Gavi / WHO / UNICEF / Other) is pending",
+        statusDetail: quarterBudget.length === 0
+          ? `No budget lines for Q${currentQuarter} yet`
+          : !step9CategoriesOk
+            ? `Missing one of Personnel / Transport / Supplies for Q${currentQuarter}`
+            : !step9FundersOk
+              ? `${linesMissingFunder.length} of ${quarterBudget.length} line(s) need a funding source`
+              : `All ${quarterBudget.length} line(s) tagged with a funder; Personnel + Transport + Supplies covered`,
       },
       {
         num: 10,
@@ -492,7 +514,7 @@ export default function RedRedQGuidedWorkflow() {
         } as Step;
       })(),
     ];
-  }, [microplans, sessions, villages, mobilization, budgetItems, populationRows, htrScores, supervisionVisits, canApprove, defaulterReview]);
+  }, [microplans, sessions, villages, mobilization, budgetItems, populationRows, htrScores, supervisionVisits, defaulterReview, dayPlans, canApprove]);
 
   const doneCount = steps.filter((s) => s.status === "done").length;
   const pendingCount = steps.filter((s) => s.status === "pending").length;

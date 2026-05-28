@@ -133,6 +133,7 @@ const dayPlanFormSchema = z.object({
   supervisorsCount: z.number().min(0).optional(),
   indelibleMarkers: z.number().min(0).optional(),
   coldBoxes: z.number().min(0).optional(),
+  leadVaccinator: z.string().trim().min(1, "Name a lead vaccinator for this session-day"),
 });
 
 type FormValues = z.infer<typeof dayPlanFormSchema>;
@@ -594,6 +595,7 @@ export default function SessionDayPlans() {
       supervisorsCount: values.supervisorsCount ?? 0,
       indelibleMarkers: values.indelibleMarkers ?? 0,
       coldBoxes: values.coldBoxes ?? 0,
+      leadVaccinator: values.leadVaccinator.trim(),
     };
 
     createMutation.mutate(payload);
@@ -624,6 +626,7 @@ export default function SessionDayPlans() {
       supervisorsCount: 1,
       indelibleMarkers: 2,
       coldBoxes: 1,
+      leadVaccinator: "",
     });
     setDialogOpen(true);
   };
@@ -1576,6 +1579,24 @@ export default function SessionDayPlans() {
                               type="number"
                               {...field}
                               onChange={(e) => field.onChange(parseInt(e.target.value) || 1)}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="leadVaccinator"
+                      render={({ field }) => (
+                        <FormItem className="col-span-2">
+                          <FormLabel className="text-xs">Lead Vaccinator (name) *</FormLabel>
+                          <FormControl>
+                            <Input
+                              {...field}
+                              placeholder="e.g. Nurse Mary Aluko"
+                              data-testid="input-lead-vaccinator"
                             />
                           </FormControl>
                           <FormMessage />

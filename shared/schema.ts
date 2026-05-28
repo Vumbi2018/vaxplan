@@ -957,6 +957,16 @@ export const insertBudgetItemSchema = createInsertSchema(budgetItems)
     createdAt: true,
   })
   .superRefine((data, ctx) => {
+    // Funding source is required on create — 'unspecified' is only allowed for
+    // legacy rows that pre-date the funding-source enum. WHO core element 8
+    // (Financing) and Gavi HSS reporting both require an explicit funder.
+    if (!data.fundingSource || data.fundingSource === "unspecified") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["fundingSource"],
+        message: "Pick a funding source (Govt / Gavi / WHO / UNICEF / Other).",
+      });
+    }
     if (data.fundingSource === "other") {
       const v = (data.fundingSourceOther ?? "").toString().trim();
       if (!v) {
@@ -1169,6 +1179,10 @@ export const sessionDayPlans = pgTable("session_day_plans", {
   volunteersCount: integer("volunteers_count").default(1),
   recordersCount: integer("recorders_count").default(0),
   supervisorsCount: integer("supervisors_count").default(0),
+  // Named lead vaccinator for this session-day. Required by WHO core element 6
+  // (Human Resources): every scheduled session-day must have a named accountable
+  // vaccinator. Drives Step 5 ("Workforce & teaming") completion in the guided workflow.
+  leadVaccinator: varchar("lead_vaccinator", { length: 255 }),
   indelibleMarkers: integer("indelible_markers").default(0),
   coldBoxes: integer("cold_boxes").default(0),
   createdAt: timestamp("created_at").defaultNow(),
