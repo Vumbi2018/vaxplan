@@ -1417,6 +1417,131 @@ export async function registerRoutes(
     }
   });
 
+  // ── Per-tenant wastage thresholds ──────────────────────────────────────
+  // National admins can tighten or loosen the warn/max wastage percentages
+  // used to colour the Monthly Report chips. Overrides are stored on
+  // `tenants.settings.wastageThresholds`; unset antigens fall back to the
+  // WHO defaults baked into the client lib.
+  const wastageThresholdEntrySchema = z.object({
+    warn: z.number().min(0).max(100),
+    max: z.number().min(0).max(100),
+  }).refine((v) => v.max >= v.warn, {
+    message: "max must be greater than or equal to warn",
+    path: ["max"],
+  });
+  const wastageThresholdsPayloadSchema = z.object({
+    thresholds: z.record(wastageThresholdEntrySchema.nullable()),
+  });
+
+  // Keep server-side defaults in sync with client/src/lib/wastageThresholds.ts
+  // so the GET endpoint can return them without importing client code.
+  const SERVER_DEFAULT_WASTAGE_THRESHOLDS: Record<string, { warn: number; max: number }> = {
+    BCG: { warn: 40, max: 50 },
+    Measles: { warn: 20, max: 25 },
+    MR: { warn: 20, max: 25 },
+    MMR: { warn: 20, max: 25 },
+    YellowFever: { warn: 20, max: 25 },
+    YF: { warn: 20, max: 25 },
+    OPV: { warn: 15, max: 20 },
+    bOPV: { warn: 15, max: 20 },
+    IPV: { warn: 8, max: 10 },
+    Penta: { warn: 8, max: 10 },
+    PCV: { warn: 8, max: 10 },
+    PCV13: { warn: 8, max: 10 },
+    Rota: { warn: 8, max: 10 },
+    Rotavirus: { warn: 8, max: 10 },
+    HepB: { warn: 8, max: 10 },
+    TT: { warn: 8, max: 10 },
+    Td: { warn: 8, max: 10 },
+    HPV: { warn: 8, max: 10 },
+    COVID: { warn: 8, max: 10 },
+    COVID19: { warn: 8, max: 10 },
+  };
+
+  function readTenantWastageOverrides(tenant: any): Record<string, { warn: number; max: number }> {
+    const raw = (tenant?.settings as any)?.wastageThresholds;
+    if (!raw || typeof raw !== "object") return {};
+    const out: Record<string, { warn: number; max: number }> = {};
+    for (const [k, v] of Object.entries(raw as Record<string, any>)) {
+      if (!v || typeof v !== "object") continue;
+      const warn = Number((v as any).warn);
+      const max = Number((v as any).max);
+      if (!Number.isFinite(warn) || !Number.isFinite(max)) continue;
+      if (warn < 0 || max < 0 || max < warn) continue;
+      out[k] = { warn, max };
+    }
+    return out;
+  }
+
+  app.get(
+    "/api/me/tenant/wastage-thresholds",
+    isAuthenticated,
+    requireTenant,
+    async (req: any, res) => {
+      try {
+        const tenant = await storage.getTenant(req.tenantId!);
+        if (!tenant) return res.status(404).json({ message: "Tenant not found" });
+        const overrides = readTenantWastageOverrides(tenant);
+        const effective = { ...SERVER_DEFAULT_WASTAGE_THRESHOLDS, ...overrides };
+        res.json({
+          defaults: SERVER_DEFAULT_WASTAGE_THRESHOLDS,
+          overrides,
+          effective,
+        });
+      } catch (err) {
+        console.error("GET /api/me/tenant/wastage-thresholds failed:", err);
+        res.status(500).json({ message: "Failed to load wastage thresholds" });
+      }
+    },
+  );
+
+  app.put(
+    "/api/me/tenant/wastage-thresholds",
+    isAuthenticated,
+    requireTenant,
+    loadRole,
+    requireAdmin,
+    async (req: any, res) => {
+      try {
+        const { thresholds } = wastageThresholdsPayloadSchema.parse(req.body);
+        const cleaned: Record<string, { warn: number; max: number }> = {};
+        for (const [k, v] of Object.entries(thresholds)) {
+          const key = String(k).trim();
+          if (!key) continue;
+          if (v === null) continue; // null means "remove override, use default"
+          cleaned[key] = { warn: v.warn, max: v.max };
+        }
+
+        const current = await storage.getTenant(req.tenantId!);
+        if (!current) return res.status(404).json({ message: "Tenant not found" });
+
+        const newSettings = {
+          ...((current.settings as Record<string, any>) ?? {}),
+          wastageThresholds: cleaned,
+        };
+        const updated = await storage.updateTenant(req.tenantId!, { settings: newSettings });
+        if (!updated) return res.status(500).json({ message: "Failed to save thresholds" });
+
+        await logAudit(req, "update_wastage_thresholds", "tenant", req.tenantId!, null, {
+          overrideCount: Object.keys(cleaned).length,
+        });
+
+        const effective = { ...SERVER_DEFAULT_WASTAGE_THRESHOLDS, ...cleaned };
+        res.json({
+          defaults: SERVER_DEFAULT_WASTAGE_THRESHOLDS,
+          overrides: cleaned,
+          effective,
+        });
+      } catch (err: any) {
+        if (err?.name === "ZodError") {
+          return res.status(400).json({ message: "Invalid payload", errors: err.errors });
+        }
+        console.error("PUT /api/me/tenant/wastage-thresholds failed:", err);
+        res.status(500).json({ message: "Failed to save wastage thresholds" });
+      }
+    },
+  );
+
   // ── Population data refresh (admin-only, tenant-scoped) ────────────────
   // A national admin can trigger and review WorldPop ETL refreshes for their
   // *own* tenant only. Cross-tenant refresh (every active tenant) is not

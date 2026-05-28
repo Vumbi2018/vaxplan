@@ -28,19 +28,51 @@ export const DEFAULT_WASTAGE_THRESHOLDS: Record<string, WastageThreshold> = {
 
 export const FALLBACK_WASTAGE_THRESHOLD: WastageThreshold = { warn: 8, max: 10 };
 
-export function getWastageThreshold(antigen: string): WastageThreshold {
-  if (DEFAULT_WASTAGE_THRESHOLDS[antigen]) return DEFAULT_WASTAGE_THRESHOLDS[antigen];
-  const norm = antigen.replace(/[-_\s]/g, "").toLowerCase();
-  for (const [key, val] of Object.entries(DEFAULT_WASTAGE_THRESHOLDS)) {
-    if (key.toLowerCase() === norm) return val;
+function normalizeAntigenKey(key: string): string {
+  return key.replace(/[-_\s]/g, "").toLowerCase();
+}
+
+/**
+ * Merge tenant-supplied overrides on top of the WHO defaults. Overrides whose
+ * values are missing, non-numeric, or otherwise invalid are ignored so a
+ * partially-edited tenant config can never break the chips.
+ */
+export function mergeWastageThresholds(
+  overrides?: Record<string, Partial<WastageThreshold>> | null,
+): Record<string, WastageThreshold> {
+  const merged: Record<string, WastageThreshold> = { ...DEFAULT_WASTAGE_THRESHOLDS };
+  if (!overrides) return merged;
+  for (const [key, val] of Object.entries(overrides)) {
+    if (!val) continue;
+    const warn = Number(val.warn);
+    const max = Number(val.max);
+    if (!Number.isFinite(warn) || !Number.isFinite(max)) continue;
+    if (warn < 0 || max < 0 || max < warn) continue;
+    merged[key] = { warn, max };
+  }
+  return merged;
+}
+
+export function getWastageThreshold(
+  antigen: string,
+  thresholds: Record<string, WastageThreshold> = DEFAULT_WASTAGE_THRESHOLDS,
+): WastageThreshold {
+  if (thresholds[antigen]) return thresholds[antigen];
+  const norm = normalizeAntigenKey(antigen);
+  for (const [key, val] of Object.entries(thresholds)) {
+    if (normalizeAntigenKey(key) === norm) return val;
   }
   return FALLBACK_WASTAGE_THRESHOLD;
 }
 
 export type WastageStatus = "ok" | "warn" | "breach";
 
-export function classifyWastage(antigen: string, rate: number): WastageStatus {
-  const t = getWastageThreshold(antigen);
+export function classifyWastage(
+  antigen: string,
+  rate: number,
+  thresholds: Record<string, WastageThreshold> = DEFAULT_WASTAGE_THRESHOLDS,
+): WastageStatus {
+  const t = getWastageThreshold(antigen, thresholds);
   if (rate > t.max) return "breach";
   if (rate >= t.warn) return "warn";
   return "ok";

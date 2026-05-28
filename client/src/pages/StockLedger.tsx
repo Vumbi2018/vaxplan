@@ -74,6 +74,7 @@ import {
   getWastageThreshold,
   wastageChipClasses,
 } from "@/lib/wastageThresholds";
+import { useWastageThresholds } from "@/hooks/useWastageThresholds";
 import {
   Tooltip,
   TooltipContent,
@@ -106,6 +107,7 @@ type TransactionFormValues = z.infer<typeof transactionFormSchema>;
 export default function StockLedger() {
   const { toast } = useToast();
   const { user } = useAuth();
+  const { thresholds: wastageThresholds } = useWastageThresholds();
   const [activeTab, setActiveTab] = useState("ledger");
   const [selectedFacilityId, setSelectedFacilityId] = useState<number | null>(null);
   const [geoProvinceId, setGeoProvinceId] = useState<number | null>(null);
@@ -955,14 +957,30 @@ export default function StockLedger() {
                                 </button>
                               </TooltipTrigger>
                               <TooltipContent side="bottom" className="max-w-xs text-xs">
-                                <div className="font-semibold mb-1">WHO wastage thresholds</div>
+                                <div className="font-semibold mb-1">Active wastage thresholds</div>
                                 <div className="space-y-0.5">
                                   <div><span className="text-emerald-600 font-semibold">Green</span> — below warning level</div>
-                                  <div><span className="text-amber-600 font-semibold">Amber</span> — approaching WHO max</div>
-                                  <div><span className="text-destructive font-semibold">Red</span> — exceeds WHO max</div>
+                                  <div><span className="text-amber-600 font-semibold">Amber</span> — approaching max</div>
+                                  <div><span className="text-destructive font-semibold">Red</span> — exceeds max</div>
                                 </div>
                                 <div className="mt-2 text-muted-foreground">
-                                  Examples (warn / max): BCG 40% / 50%, Measles 20% / 25%, OPV 15% / 20%, Penta · PCV · IPV 8% / 10%.
+                                  Current (warn / max):{" "}
+                                  {(() => {
+                                    const seen = new Set<string>();
+                                    const previewAntigens = ["BCG", "Measles", "OPV", "Penta", "PCV", "IPV"];
+                                    const parts: string[] = [];
+                                    for (const a of previewAntigens) {
+                                      const t = getWastageThreshold(a, wastageThresholds);
+                                      const sig = `${t.warn}/${t.max}`;
+                                      if (seen.has(`${a}:${sig}`)) continue;
+                                      seen.add(`${a}:${sig}`);
+                                      parts.push(`${a} ${t.warn}% / ${t.max}%`);
+                                    }
+                                    return parts.join(", ") + ".";
+                                  })()}
+                                </div>
+                                <div className="mt-1 text-muted-foreground">
+                                  National admins can customize these in Settings → Microplanning.
                                 </div>
                               </TooltipContent>
                             </Tooltip>
@@ -1012,8 +1030,8 @@ export default function StockLedger() {
                             <div className="text-xs space-y-1 max-w-[260px]">
                               {Object.entries(stock).slice(0, 2).map(([k, v]: [string, any]) => {
                                 const rate = Number(v.wastageRate ?? 0);
-                                const status = classifyWastage(k, rate);
-                                const t = getWastageThreshold(k);
+                                const status = classifyWastage(k, rate, wastageThresholds);
+                                const t = getWastageThreshold(k, wastageThresholds);
                                 const label =
                                   status === "breach"
                                     ? `Above WHO max (${t.max}%)`
@@ -1423,8 +1441,8 @@ export default function StockLedger() {
                   <tbody className="divide-y">
                     {Object.entries(compiledStock).map(([name, details]: [string, any]) => {
                       const rate = Number(details.wastageRate ?? 0);
-                      const status = classifyWastage(name, rate);
-                      const t = getWastageThreshold(name);
+                      const status = classifyWastage(name, rate, wastageThresholds);
+                      const t = getWastageThreshold(name, wastageThresholds);
                       return (
                         <tr key={name}>
                           <td className="px-3 py-2 font-medium">{name}</td>

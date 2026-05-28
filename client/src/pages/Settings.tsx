@@ -58,6 +58,7 @@ import UserManagement from "./UserManagement";
 import SignupRequests from "./SignupRequests";
 import CountryOnboarding from "./CountryOnboarding";
 import BoundaryManager from "./BoundaryManager";
+import { WastageThresholdsCard } from "@/components/WastageThresholdsCard";
 
 export default function Settings() {
   const { user } = useAuth();
@@ -1359,6 +1360,8 @@ export default function Settings() {
               </div>
             </CardContent>
           </Card>
+
+          <WastageThresholdsCard isNationalAdmin={isNationalAdmin} />
         </TabsContent>        <TabsContent value="data_import" className="space-y-6 mt-6">
           {/* SECTION 1: POPULATION DATASETS */}
           <Card className="border border-border/80 shadow-md bg-card/60 backdrop-blur-md">
