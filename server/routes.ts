@@ -5050,6 +5050,15 @@ export async function registerRoutes(
           body.fundingSourceOther = null;
         }
       }
+      // Provenance: clients may only convert a line *to* 'manual' (used when a
+      // reviewer edits a roster-synced row so the next Sync to Budget run skips
+      // it). Never let a client forge 'roster_sync' or any other value via PATCH
+      // — that flag is owned by the roster-sync job.
+      if (body.source !== undefined) {
+        if (body.source !== "manual") {
+          delete body.source;
+        }
+      }
       const item = await storage.updateBudgetItem(req.tenantId, entityId, body);
       if (!item) return res.status(404).json({ message: "Budget item not found" });
       await logAudit(req, "update", "budget_item", entityId, null, item);

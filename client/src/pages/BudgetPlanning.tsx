@@ -57,7 +57,9 @@ import {
   FileText,
   Download,
   Trash2,
+  AlertTriangle,
 } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useAuth } from "@/hooks/useAuth";
 import { canBulkClassifyBudget } from "@/lib/permissions";
 import {
@@ -314,14 +316,17 @@ export default function BudgetPlanning() {
     mutationFn: async ({ id, data }: { id: number; data: Partial<InsertBudgetItem> }) => {
       return apiRequest("PATCH", `/api/budget-items/${id}`, data);
     },
-    onSuccess: () => {
+    onSuccess: (_res, vars) => {
       queryClient.invalidateQueries({ queryKey: ["/api/budget-items"] });
       setDialogOpen(false);
       setEditingItem(null);
       form.reset();
+      const wasConvertedFromRoster = (vars?.data as any)?.source === "manual";
       toast({
-        title: "Budget item updated",
-        description: "Funding source and other fields saved.",
+        title: wasConvertedFromRoster ? "Budget item updated (converted to manual)" : "Budget item updated",
+        description: wasConvertedFromRoster
+          ? "This line is now manual and will no longer be overwritten by Sync to Budget."
+          : "Funding source and other fields saved.",
       });
     },
     onError: (error: any) => {
@@ -1017,10 +1022,17 @@ export default function BudgetPlanning() {
     },
   ];
 
+  const editingIsRoster = !!editingItem && isRosterSourced(editingItem);
+
   const onSubmit = (data: InsertBudgetItem) => {
     const totalCost = (parseFloat(data.unitCost as string) * data.quantity).toString();
     if (editingItem) {
-      updateMutation.mutate({ id: editingItem.id, data: { ...data, totalCost } });
+      // When a reviewer edits a roster-synced line, flip its provenance to
+      // 'manual' so the next "Sync to Budget" run skips it instead of
+      // silently overwriting their changes.
+      const payload: any = { ...data, totalCost };
+      if (editingIsRoster) payload.source = "manual";
+      updateMutation.mutate({ id: editingItem.id, data: payload });
     } else {
       createMutation.mutate({ ...data, totalCost });
     }
@@ -1202,6 +1214,20 @@ export default function BudgetPlanning() {
               <DialogHeader>
                 <DialogTitle>{editingItem ? "Edit Budget Item" : "Add Budget Item"}</DialogTitle>
               </DialogHeader>
+              {editingIsRoster && (
+                <Alert
+                  variant="default"
+                  className="border-amber-500/50 bg-amber-500/10 text-amber-900 dark:text-amber-200"
+                  data-testid="alert-roster-edit-warning"
+                >
+                  <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-300" />
+                  <AlertTitle>This line came from the roster</AlertTitle>
+                  <AlertDescription>
+                    Saving will convert it to a manual line so your edits stick. After that, the
+                    next "Sync to Budget" run will leave it alone instead of overwriting it.
+                  </AlertDescription>
+                </Alert>
+              )}
               <Form {...form}>
                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                   <FormField
