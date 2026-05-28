@@ -203,6 +203,7 @@ export interface IStorage {
   getMobilizationActivities(tenantId: string, facilityId?: number): Promise<MobilizationActivity[]>;
   createMobilizationActivity(tenantId: string, data: InsertMobilizationActivity): Promise<MobilizationActivity>;
   updateMobilizationActivity(tenantId: string, id: number, data: Partial<InsertMobilizationActivity>): Promise<MobilizationActivity | undefined>;
+  deleteMobilizationActivity(tenantId: string, id: number): Promise<boolean>;
 
   getSupervisionVisits(tenantId: string, filters?: { facilityId?: number; microplanId?: number; status?: string }): Promise<SupervisionVisit[]>;
   getSupervisionVisit(tenantId: string, id: number): Promise<SupervisionVisit | undefined>;
@@ -1052,6 +1053,13 @@ export class DatabaseStorage implements IStorage {
       .where(and(eq(mobilizationActivities.id, id), eq(mobilizationActivities.tenantId, tenantId)))
       .returning();
     return a;
+  }
+  async deleteMobilizationActivity(tenantId: string, id: number): Promise<boolean> {
+    const r = await db
+      .delete(mobilizationActivities)
+      .where(and(eq(mobilizationActivities.id, id), eq(mobilizationActivities.tenantId, tenantId)))
+      .returning({ id: mobilizationActivities.id });
+    return r.length > 0;
   }
 
   // --- Supervision visits ---

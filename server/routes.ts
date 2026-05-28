@@ -5001,6 +5001,19 @@ export async function registerRoutes(
     }
   });
 
+  app.delete("/api/mobilization/:id", ...auth, async (req: any, res) => {
+    try {
+      const entityId = parseInt(req.params.id);
+      const ok = await storage.deleteMobilizationActivity(req.tenantId, entityId);
+      if (!ok) return res.status(404).json({ message: "Mobilization activity not found" });
+      await logAudit(req, "delete", "mobilization_activity", entityId, null, null);
+      res.json({ ok: true });
+    } catch (error) {
+      console.error("Error deleting mobilization activity:", error);
+      res.status(500).json({ message: "Failed to delete mobilization activity" });
+    }
+  });
+
   // ─── Supportive Supervision ───────────────────────────
   app.get("/api/supervision-visits", ...auth, async (req: any, res) => {
     try {

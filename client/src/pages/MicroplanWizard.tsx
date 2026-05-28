@@ -1004,6 +1004,86 @@ export default function MicroplanWizard() {
   // ─── Per-step persistence ──────────────────────────────────────────────
   const [busy, setBusy] = useState(false);
 
+  // ─── Per-row deletion helpers ──────────────────────────────────────────
+  // Each helper removes the row from local state and, when the row has
+  // already been saved to the server, deletes the matching backend row so it
+  // doesn't reappear when the microplan is reopened.
+  async function deleteCommunity(index: number) {
+    const row = communities[index];
+    if (!row) return;
+    if (row.id) {
+      try {
+        await apiRequest("DELETE", `/api/population/${row.id}`);
+        queryClient.invalidateQueries({ queryKey: ["/api/population"] });
+      } catch (e: any) {
+        toast({
+          title: "Could not delete community",
+          description: e?.message ?? String(e),
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+    setCommunities(communities.filter((_, i) => i !== index));
+  }
+
+  async function deleteMobilizationRow(index: number) {
+    const row = mobilization[index];
+    if (!row) return;
+    if (row.id) {
+      try {
+        await apiRequest("DELETE", `/api/mobilization/${row.id}`);
+        queryClient.invalidateQueries({ queryKey: ["/api/mobilization"] });
+      } catch (e: any) {
+        toast({
+          title: "Could not delete mobilization row",
+          description: e?.message ?? String(e),
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+    setMobilization(mobilization.filter((_, i) => i !== index));
+  }
+
+  async function deleteBudgetRow(index: number) {
+    const row = budget[index];
+    if (!row) return;
+    if (row.id) {
+      try {
+        await apiRequest("DELETE", `/api/budget-items/${row.id}`);
+        queryClient.invalidateQueries({ queryKey: ["/api/budget-items"] });
+      } catch (e: any) {
+        toast({
+          title: "Could not delete budget line",
+          description: e?.message ?? String(e),
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+    setBudget(budget.filter((_, i) => i !== index));
+  }
+
+  async function deleteSupervisionRow(index: number) {
+    const row = supervision[index];
+    if (!row) return;
+    if (row.id) {
+      try {
+        await apiRequest("DELETE", `/api/supervision-visits/${row.id}`);
+        queryClient.invalidateQueries({ queryKey: ["/api/supervision-visits"] });
+      } catch (e: any) {
+        toast({
+          title: "Could not delete supervision visit",
+          description: e?.message ?? String(e),
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+    setSupervision(supervision.filter((_, i) => i !== index));
+  }
+
   async function persistStep(step: number): Promise<boolean> {
     setBusy(true);
     try {
@@ -1499,6 +1579,7 @@ export default function MicroplanWizard() {
                 <Step2
                   communities={communities}
                   setCommunities={setCommunities}
+                  onDelete={deleteCommunity}
                 />
               )}
               {active === 3 && <Step3 risk={risk} setRisk={setRisk} />}
@@ -1524,18 +1605,24 @@ export default function MicroplanWizard() {
                 <Step7
                   mobilization={mobilization}
                   setMobilization={setMobilization}
+                  onDelete={deleteMobilizationRow}
                 />
               )}
               {active === 8 && (
                 <Step8 transport={transport} setTransport={setTransport} />
               )}
               {active === 9 && (
-                <Step9 budget={budget} setBudget={setBudget} />
+                <Step9
+                  budget={budget}
+                  setBudget={setBudget}
+                  onDelete={deleteBudgetRow}
+                />
               )}
               {active === 10 && (
                 <Step10
                   supervision={supervision}
                   setSupervision={setSupervision}
+                  onDelete={deleteSupervisionRow}
                 />
               )}
               {active === 11 && (
@@ -1691,9 +1778,11 @@ function Step1({
 function Step2({
   communities,
   setCommunities,
+  onDelete,
 }: {
   communities: any[];
   setCommunities: (v: any[]) => void;
+  onDelete: (index: number) => void | Promise<void>;
 }) {
   const update = (i: number, patch: any) => {
     const next = [...communities];
@@ -1729,6 +1818,7 @@ function Step2({
               <th className="p-2">Target pop.</th>
               <th className="p-2">Source</th>
               <th className="p-2">Strategy</th>
+              <th className="p-2"></th>
             </tr>
           </thead>
           <tbody>
@@ -1773,11 +1863,22 @@ function Step2({
                     </SelectContent>
                   </Select>
                 </td>
+                <td className="p-1">
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => onDelete(i)}
+                    data-testid={`button-delete-community-${i}`}
+                    aria-label="Delete community"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </td>
               </tr>
             ))}
             {communities.length === 0 && (
               <tr>
-                <td colSpan={5} className="p-4 text-center text-sm text-muted-foreground">
+                <td colSpan={6} className="p-4 text-center text-sm text-muted-foreground">
                   No communities yet — pick a facility to load villages, or add one manually.
                 </td>
               </tr>
@@ -2034,9 +2135,11 @@ const IEC_MATERIALS = ["posters", "leaflets", "banners", "stickers"];
 function Step7({
   mobilization,
   setMobilization,
+  onDelete,
 }: {
   mobilization: any[];
   setMobilization: (v: any[]) => void;
+  onDelete: (index: number) => void | Promise<void>;
 }) {
   const upd = (i: number, patch: any) => {
     const next = [...mobilization];
@@ -2056,6 +2159,7 @@ function Step7({
             <th className="p-2">Focal point</th>
             <th className="p-2">Phone</th>
             <th className="p-2">IEC materials</th>
+            <th className="p-2"></th>
           </tr>
         </thead>
         <tbody>
@@ -2084,10 +2188,21 @@ function Step7({
                   ))}
                 </div>
               </td>
+              <td className="p-1">
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => onDelete(i)}
+                  data-testid={`button-delete-mobilization-${i}`}
+                  aria-label="Delete mobilization row"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </td>
             </tr>
           ))}
           {mobilization.length === 0 && (
-            <tr><td colSpan={5} className="p-4 text-center text-muted-foreground">Finish Step 4 first.</td></tr>
+            <tr><td colSpan={6} className="p-4 text-center text-muted-foreground">Finish Step 4 first.</td></tr>
           )}
         </tbody>
       </table>
@@ -2144,7 +2259,15 @@ function Step8({ transport, setTransport }: { transport: any[]; setTransport: (v
   );
 }
 
-function Step9({ budget, setBudget }: { budget: any[]; setBudget: (v: any[]) => void }) {
+function Step9({
+  budget,
+  setBudget,
+  onDelete,
+}: {
+  budget: any[];
+  setBudget: (v: any[]) => void;
+  onDelete: (index: number) => void | Promise<void>;
+}) {
   const upd = (i: number, patch: any) => {
     const next = [...budget];
     next[i] = { ...next[i], ...patch };
@@ -2162,7 +2285,7 @@ function Step9({ budget, setBudget }: { budget: any[]; setBudget: (v: any[]) => 
         fundingSource: "government",
       },
     ]);
-  const remove = (i: number) => setBudget(budget.filter((_, idx) => idx !== i));
+  const remove = (i: number) => onDelete(i);
   const total = budget.reduce(
     (s, b) => s + parseFloat(b.unitCost || "0") * parseInt(b.quantity || "0", 10),
     0,
@@ -2229,7 +2352,15 @@ function Step9({ budget, setBudget }: { budget: any[]; setBudget: (v: any[]) => 
   );
 }
 
-function Step10({ supervision, setSupervision }: { supervision: any[]; setSupervision: (v: any[]) => void }) {
+function Step10({
+  supervision,
+  setSupervision,
+  onDelete,
+}: {
+  supervision: any[];
+  setSupervision: (v: any[]) => void;
+  onDelete: (index: number) => void | Promise<void>;
+}) {
   const upd = (i: number, patch: any) => {
     const next = [...supervision];
     next[i] = { ...next[i], ...patch };
@@ -2247,7 +2378,7 @@ function Step10({ supervision, setSupervision }: { supervision: any[]; setSuperv
         followUp: "",
       },
     ]);
-  const remove = (i: number) => setSupervision(supervision.filter((_, idx) => idx !== i));
+  const remove = (i: number) => onDelete(i);
   return (
     <div className="space-y-3">
       <div className="flex justify-end">
