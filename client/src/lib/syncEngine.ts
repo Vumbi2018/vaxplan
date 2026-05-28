@@ -74,6 +74,15 @@ interface BatchResult {
     serverId?: string | number;
     /** Populated by the server's mark-done outbox handler (Task #106). */
     unmappedAntigenCodes?: string[];
+    /**
+     * Populated by the server's session PATCH outbox handler (Task #181)
+     * when a queued offline edit would have triggered the proximity/
+     * population guard had it been issued online. The edit is still applied
+     * (we can't lose offline work) — these warnings are surfaced as a
+     * review-toast so the clerk can sanity-check the result.
+     */
+    proximityWarnings?: string[];
+    proximityNearbySessions?: { id: number; name: string; scheduledDate: string; distanceKm: number; targetPopulation: number }[];
   }[];
 }
 
@@ -90,6 +99,22 @@ export interface UnmappedAntigensEventDetail {
   source: "outbox-replay";
   sessionId: number | string | null;
   unmappedAntigenCodes: string[];
+}
+
+/**
+ * Task #181 — Dispatched on `window` whenever an offline-queued session
+ * PATCH is replayed and the server reports that the change would have
+ * tripped the online proximity/population guard. A root-level listener
+ * (useProximityConflictWarnings) converts this into a toast so the clerk
+ * is told to review the synced edit.
+ */
+export const PROXIMITY_CONFLICT_EVENT = "vaxplan:proximity-conflict";
+
+export interface ProximityConflictEventDetail {
+  source: "outbox-replay";
+  sessionId: number | string | null;
+  warnings: string[];
+  nearbySessions: { id: number; name: string; scheduledDate: string; distanceKm: number; targetPopulation: number }[];
 }
 
 // ─── Sync Engine ─────────────────────────────────────────────────────────────
@@ -232,6 +257,7 @@ class SyncEngine {
 
       // Process results
       const unmappedEvents: UnmappedAntigensEventDetail[] = [];
+      const proximityEvents: ProximityConflictEventDetail[] = [];
       await offlineDb.transaction("rw", offlineDb.outbox, async () => {
         for (const result of results) {
           if (result.success) {
@@ -244,6 +270,17 @@ class SyncEngine {
                 source: "outbox-replay",
                 sessionId: item?.serverId ?? result.serverId ?? null,
                 unmappedAntigenCodes: result.unmappedAntigenCodes,
+              });
+            }
+            // Task #181: queued session edit was applied but tripped the
+            // proximity/population guard the online path would have blocked.
+            if (result.proximityWarnings && result.proximityWarnings.length > 0) {
+              const item = pending.find((p) => p.id === result.outboxId);
+              proximityEvents.push({
+                source: "outbox-replay",
+                sessionId: item?.serverId ?? result.serverId ?? null,
+                warnings: result.proximityWarnings,
+                nearbySessions: result.proximityNearbySessions ?? [],
               });
             }
             await offlineDb.outbox.delete(result.outboxId);
@@ -262,6 +299,13 @@ class SyncEngine {
         for (const detail of unmappedEvents) {
           window.dispatchEvent(
             new CustomEvent<UnmappedAntigensEventDetail>(UNMAPPED_ANTIGENS_EVENT, { detail }),
+          );
+        }
+      }
+      if (proximityEvents.length > 0 && typeof window !== "undefined") {
+        for (const detail of proximityEvents) {
+          window.dispatchEvent(
+            new CustomEvent<ProximityConflictEventDetail>(PROXIMITY_CONFLICT_EVENT, { detail }),
           );
         }
       }

@@ -95,6 +95,10 @@ import {
 } from "./services/hisInteropService";
 // Offline sync service
 import { pullChanges, batchMutate, getSyncStats, type OutboxMutation } from "./services/syncService";
+import {
+  checkProximityAndPopulation,
+  resolveSessionLocation,
+} from "./services/proximityCheck";
 // Scheduled population data refresh
 import {
   refreshTenantPopulation,
@@ -4588,50 +4592,10 @@ export async function registerRoutes(
   });
 
   // ─── Session map / history / unserved-places / mark-done ─────────────────
-  // Haversine distance in kilometres.
-  function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
-    const R = 6371;
-    const toRad = (d: number) => (d * Math.PI) / 180;
-    const dLat = toRad(lat2 - lat1);
-    const dLng = toRad(lng2 - lng1);
-    const a =
-      Math.sin(dLat / 2) ** 2 +
-      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
-    return 2 * R * Math.asin(Math.min(1, Math.sqrt(a)));
-  }
-
-  // Resolve a representative [lat, lng] for a session: geojson centroid → first
-  // linked village → parent facility. Returns null if no source has coords.
-  async function resolveSessionLocation(
-    tenantId: string,
-    session: any,
-    villageCache: Map<number, any>,
-    facilityCache: Map<number, any>,
-    svByPlan: Map<number, number[]>,
-  ): Promise<{ lat: number; lng: number } | null> {
-    const gj = session.geojson as any;
-    if (gj && gj.type === "Point" && Array.isArray(gj.coordinates)) {
-      return { lat: Number(gj.coordinates[1]), lng: Number(gj.coordinates[0]) };
-    }
-    if (gj && gj.type === "Polygon" && Array.isArray(gj.coordinates?.[0])) {
-      const ring = gj.coordinates[0] as number[][];
-      const lat = ring.reduce((s, p) => s + p[1], 0) / ring.length;
-      const lng = ring.reduce((s, p) => s + p[0], 0) / ring.length;
-      return { lat, lng };
-    }
-    const vIds = svByPlan.get(session.id) ?? [];
-    for (const vid of vIds) {
-      const v = villageCache.get(vid);
-      if (v?.latitude != null && v?.longitude != null) {
-        return { lat: Number(v.latitude), lng: Number(v.longitude) };
-      }
-    }
-    const f = facilityCache.get(session.facilityId);
-    if (f?.latitude != null && f?.longitude != null) {
-      return { lat: Number(f.latitude), lng: Number(f.longitude) };
-    }
-    return null;
-  }
+  // haversineKm and resolveSessionLocation are now imported from
+  // server/services/proximityCheck so the offline sync replay path can reuse
+  // the same logic. Local re-exports keep the existing closure call sites
+  // unchanged.
 
   // Sessions visible on the live map: not completed, OR completed within the
   // last 30 days. Completed-older-than-30d sessions auto-archive into history.
@@ -4708,124 +4672,6 @@ export async function registerRoutes(
       res.status(500).json({ message: "Failed to load session history" });
     }
   });
-
-  // Proximity + population validation: returns warnings the UI can show before
-  // commit. POST so it can run before a session exists.
-  // Body: { facilityId, scheduledDate, targetPopulation, villageIds?, lat?, lng?, excludeSessionId? }
-  async function checkProximityAndPopulation(
-    tenantId: string,
-    input: {
-      facilityId: number;
-      scheduledDate: string | Date;
-      targetPopulation: number;
-      villageIds?: number[];
-      lat?: number;
-      lng?: number;
-      excludeSessionId?: number;
-    },
-  ): Promise<{ warnings: string[]; nearbySessions: any[]; availablePopulation: number; committedPopulation: number }> {
-    const warnings: string[] = [];
-    const PROXIMITY_KM = 2;
-    const DAYS_WINDOW = 14;
-
-    const facList = await storage.getFacilities(tenantId);
-    const facMap = new Map<number, any>(facList.map((f: any) => [f.id, f]));
-    const vilList = await storage.getVillages(tenantId);
-    const vilMap = new Map<number, any>(vilList.map((v: any) => [v.id, v]));
-
-    let lat = input.lat;
-    let lng = input.lng;
-    if (lat == null || lng == null) {
-      const vIds = input.villageIds ?? [];
-      for (const vid of vIds) {
-        const v = vilMap.get(vid);
-        if (v?.latitude != null && v?.longitude != null) {
-          lat = Number(v.latitude);
-          lng = Number(v.longitude);
-          break;
-        }
-      }
-      if (lat == null || lng == null) {
-        const f = facMap.get(input.facilityId);
-        if (f?.latitude != null && f?.longitude != null) {
-          lat = Number(f.latitude);
-          lng = Number(f.longitude);
-        }
-      }
-    }
-    if (lat == null || lng == null) {
-      return { warnings: ["No coordinates available for this session — proximity check skipped."], nearbySessions: [], availablePopulation: 0, committedPopulation: 0 };
-    }
-
-    const target = new Date(input.scheduledDate);
-    const winStart = new Date(target.getTime() - DAYS_WINDOW * 24 * 60 * 60 * 1000);
-    const winEnd = new Date(target.getTime() + DAYS_WINDOW * 24 * 60 * 60 * 1000);
-
-    const all = await storage.getSessionPlans(tenantId);
-    const svRows = await db
-      .select()
-      .from(sessionVillages)
-      .where(eq(sessionVillages.tenantId, String(tenantId)));
-    const svByPlan = new Map<number, number[]>();
-    for (const r of svRows) {
-      const arr = svByPlan.get(r.sessionId) ?? [];
-      arr.push(r.villageId);
-      svByPlan.set(r.sessionId, arr);
-    }
-
-    const nearby: any[] = [];
-    let committed = 0;
-    for (const s of all as any[]) {
-      if (input.excludeSessionId && s.id === input.excludeSessionId) continue;
-      if (s.status === "cancelled" || s.status === "completed") continue;
-      if (!s.scheduledDate) continue;
-      const sd = new Date(s.scheduledDate);
-      if (sd < winStart || sd > winEnd) continue;
-      const loc = await resolveSessionLocation(tenantId, s, vilMap, facMap, svByPlan);
-      if (!loc) continue;
-      const d = haversineKm(lat, lng, loc.lat, loc.lng);
-      if (d <= PROXIMITY_KM) {
-        nearby.push({ id: s.id, name: s.name, scheduledDate: s.scheduledDate, distanceKm: Number(d.toFixed(2)), targetPopulation: s.targetPopulation ?? 0 });
-        committed += s.targetPopulation ?? 0;
-      }
-    }
-
-    // Available population: sum of villages within proximity (using village
-    // population_data current year, falling back to most recent year).
-    const year = new Date().getFullYear();
-    const nearbyVillages: any[] = [];
-    for (const v of vilList as any[]) {
-      if (v.latitude == null || v.longitude == null) continue;
-      const d = haversineKm(lat, lng, Number(v.latitude), Number(v.longitude));
-      if (d <= PROXIMITY_KM) nearbyVillages.push(v);
-    }
-    let available = 0;
-    if (nearbyVillages.length) {
-      const ids = nearbyVillages.map((v) => v.id);
-      const popRows = await db
-        .select()
-        .from(populationData)
-        .where(and(eq(populationData.tenantId, String(tenantId)), inArray(populationData.villageId, ids)));
-      const bestByVillage = new Map<number, any>();
-      for (const r of popRows as any[]) {
-        const cur = bestByVillage.get(r.villageId);
-        if (!cur || (r.year === year) || (cur.year < r.year && cur.year !== year)) {
-          bestByVillage.set(r.villageId, r);
-        }
-      }
-      for (const r of bestByVillage.values()) available += r.totalPopulation ?? 0;
-    }
-
-    if (nearby.length > 0) {
-      warnings.push(`${nearby.length} other session(s) already planned within ${PROXIMITY_KM} km and ±${DAYS_WINDOW} days. Possible duplicate outreach.`);
-    }
-    const totalAsk = committed + (input.targetPopulation ?? 0);
-    if (available > 0 && totalAsk > available) {
-      warnings.push(`Combined target population (${totalAsk}) exceeds population available within ${PROXIMITY_KM} km (${available}). Likely double-counted.`);
-    }
-
-    return { warnings, nearbySessions: nearby, availablePopulation: available, committedPopulation: committed };
-  }
 
   app.post("/api/sessions/validate-proximity", ...auth, async (req: any, res) => {
     try {

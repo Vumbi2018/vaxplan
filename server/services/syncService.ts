@@ -38,6 +38,7 @@ import {
 } from "@shared/schema";
 import { eq, and, gt, sql, inArray } from "drizzle-orm";
 import { canonicalizePerAntigen } from "@shared/vaccineSchedule";
+import { checkProximityAndPopulation } from "./proximityCheck";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -65,6 +66,15 @@ export interface MutationResult {
    * went into an "unmapped" bucket and need a schedule refresh / app update.
    */
   unmappedAntigenCodes?: string[];
+  /**
+   * Task #181 — Set by the session PATCH outbox-replay handler when the
+   * queued edit would have triggered a proximity/population warning had
+   * it been issued online. We still apply the edit (the clerk already
+   * committed it offline and we can't lose the work), but pass the
+   * warnings back so the client can show a toast asking them to review.
+   */
+  proximityWarnings?: string[];
+  proximityNearbySessions?: any[];
 }
 
 export interface PullPayload {
@@ -219,6 +229,11 @@ export async function batchMutate(
   const results: MutationResult[] = [];
 
   for (const mutation of mutations) {
+    // Task #181 — hoisted so the session PATCH replay branch can populate
+    // them and the common results.push at the bottom can attach them.
+    let proximityWarnings: string[] | undefined;
+    let proximityNearby: any[] | undefined;
+
     try {
       const body = mutation.body ? JSON.parse(mutation.body) : {};
       // Always stamp the server's tenantId — never trust client-provided tenantId
@@ -377,10 +392,56 @@ export async function batchMutate(
           // offline would silently lose those edits after sync, because
           // updateSessionPlan only touches the session_plans row.
           const incomingVillageIds = (payload as any)?.villageIds;
+          const overrideFlag = (payload as any)?.override === true;
           const planPayload: any = { ...payload };
           delete planPayload.villageIds;
           delete planPayload.override;
           const sessionId = Number(mutation.serverId);
+
+          // Task #181 — Re-run the same proximity/population guard that
+          // PATCH /api/sessions/:id runs online. The online path rejects
+          // with HTTP 409; we cannot reject here because the clerk already
+          // committed this edit offline and discarding it would silently
+          // lose work. Instead, we apply the edit and pass the warnings
+          // back through MutationResult.proximityWarnings so the client
+          // can surface a review-toast on the next sync. Skip when the
+          // queued payload carried override:true (the clerk consciously
+          // bypassed the warning while offline).
+          if (!overrideFlag) {
+            try {
+              const oldSession = await storage.getSessionPlan(tenantId, sessionId);
+              const effectiveDate =
+                (payload as any).scheduledDate ?? oldSession?.scheduledDate;
+              if (oldSession && effectiveDate) {
+                const villageIdsForCheck = Array.isArray(incomingVillageIds)
+                  ? incomingVillageIds
+                      .map((x: any) => Number(x))
+                      .filter((n: number) => Number.isFinite(n) && n > 0)
+                  : undefined;
+                const prox = await checkProximityAndPopulation(tenantId, {
+                  facilityId: oldSession.facilityId,
+                  scheduledDate: effectiveDate as any,
+                  targetPopulation: Number(
+                    (payload as any).targetPopulation ??
+                      oldSession.targetPopulation ??
+                      0,
+                  ),
+                  villageIds: villageIdsForCheck,
+                  excludeSessionId: sessionId,
+                });
+                proximityWarnings = prox.warnings;
+                proximityNearby = prox.nearbySessions;
+              }
+            } catch (proxErr) {
+              // Don't block the replay on a proximity-check failure;
+              // we still want the queued edit applied. Log and move on.
+              console.warn(
+                `[sync] proximity check failed for session ${sessionId} (tenant ${tenantId}):`,
+                proxErr,
+              );
+            }
+          }
+
           await storage.updateSessionPlan(tenantId, sessionId, planPayload);
           serverId = mutation.serverId;
           if (Array.isArray(incomingVillageIds)) {
@@ -518,7 +579,30 @@ export async function batchMutate(
         // Audit failure shouldn't block the mutation result
       }
 
-      results.push({ outboxId: mutation.id, success: true, serverId });
+      const result: MutationResult = { outboxId: mutation.id, success: true, serverId };
+      if (proximityWarnings && proximityWarnings.length > 0) {
+        result.proximityWarnings = proximityWarnings;
+        result.proximityNearbySessions = proximityNearby ?? [];
+        // Best-effort audit so reviewers can see the offline-sync replayed
+        // through a proximity warning the online path would have rejected.
+        try {
+          await db.insert(auditLogs).values({
+            tenantId,
+            userId: performedById ?? "offline-sync",
+            action: "offline_sync_proximity_warning",
+            entityType: "session_plan",
+            entityId: serverId ? Number(serverId) : null,
+            newValue: {
+              warnings: proximityWarnings,
+              nearbySessions: proximityNearby ?? [],
+              source: "offline_outbox",
+            },
+          } as any);
+        } catch {
+          /* audit failure shouldn't block the mutation result */
+        }
+      }
+      results.push(result);
     } catch (err: any) {
       console.error(`[syncService] mutation failed (outboxId=${mutation.id}):`, err);
       results.push({
