@@ -5761,7 +5761,11 @@ export async function registerRoutes(
   });
 
   // ─── Approvals ────────────────────────────────────────
-  app.get("/api/approvals", ...auth, async (req: any, res) => {
+  // Read + decision endpoints are restricted to roles that can actually
+  // approve (district/provincial/national). Submitting an approval request
+  // (POST) stays open to any authenticated tenant user so facility staff
+  // can hand work up the chain.
+  app.get("/api/approvals", ...auth, requirePermission("approve_plans"), async (req: any, res) => {
     try {
       const status = req.query.status as string | undefined;
       res.json(await storage.getApprovalRequests(req.tenantId, status));
@@ -5771,7 +5775,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/approvals/:id", ...auth, async (req: any, res) => {
+  app.get("/api/approvals/:id", ...auth, requirePermission("approve_plans"), async (req: any, res) => {
     try {
       const request = await storage.getApprovalRequest(req.tenantId, parseInt(req.params.id));
       if (!request) return res.status(404).json({ message: "Approval request not found" });
@@ -5797,7 +5801,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/approvals/:id", ...auth, async (req: any, res) => {
+  app.patch("/api/approvals/:id", ...auth, requirePermission("approve_plans"), async (req: any, res) => {
     try {
       const entityId = parseInt(req.params.id);
       const oldRequest = await storage.getApprovalRequest(req.tenantId, entityId);

@@ -396,6 +396,16 @@ export default function Supervision() {
         <CardContent>
           {facilities.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground text-sm">No facilities in this tenant yet.</div>
+          ) : provinceFilter === null && districtFilter === null && facilityFilter === null ? (
+            <div className="text-center py-8 px-4 text-sm text-muted-foreground border rounded-md bg-muted/30">
+              <div className="font-medium text-foreground mb-1">
+                {facilities.length.toLocaleString()} facilities in this tenant
+              </div>
+              <div>
+                Use the Province → District → Facility filters above to narrow the list.
+                Showing every facility at once would be overwhelming on most networks.
+              </div>
+            </div>
           ) : (
             <div className="divide-y border rounded-md">
               {filteredFacilityStatus.map((row) => {

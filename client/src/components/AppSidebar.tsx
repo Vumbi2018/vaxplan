@@ -1,4 +1,5 @@
 import { useLocation, Link } from "wouter";
+import { useState } from "react";
 import {
   Sidebar,
   SidebarContent,
@@ -33,10 +34,12 @@ import {
   Target,
   TrendingUp,
   Wrench,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useQuery } from "@tanstack/react-query";
-import type { User } from "@shared/schema";
+import type { User, ApprovalRequest } from "@shared/schema";
 
 interface TenantSummary { id: string; name: string; code: string }
 
@@ -89,6 +92,84 @@ const systemNavItems = [
   { title: "Help", path: "/help", icon: HelpCircle },
 ];
 
+/**
+ * A SidebarGroup whose label acts as a chevron toggle to collapse the
+ * section vertically. When the whole sidebar is in icon-collapse mode the
+ * label is hidden by the parent CSS, so this only kicks in for the
+ * expanded sidebar (where users want to hide sections they aren't using).
+ */
+function CollapsibleSection({
+  label,
+  storageKey,
+  badge,
+  children,
+}: {
+  label: string;
+  storageKey: string;
+  badge?: number;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    try {
+      const raw = window.localStorage.getItem(`vaxplan.sidebar.section.${storageKey}`);
+      return raw === null ? true : raw === "1";
+    } catch {
+      // Private mode / restricted storage — default to open.
+      return true;
+    }
+  });
+  const toggle = () => {
+    setOpen((prev) => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem(
+          `vaxplan.sidebar.section.${storageKey}`,
+          next ? "1" : "0",
+        );
+      } catch {
+        /* localStorage may be disabled */
+      }
+      return next;
+    });
+  };
+  return (
+    <SidebarGroup>
+      <SidebarGroupLabel asChild>
+        <button
+          type="button"
+          onClick={toggle}
+          aria-expanded={open}
+          className="flex w-full items-center justify-between gap-2 group-data-[collapsible=icon]:hidden"
+          data-testid={`sidebar-section-toggle-${storageKey}`}
+        >
+          <span className="flex items-center gap-2">
+            {open ? (
+              <ChevronDown className="h-3 w-3 shrink-0" />
+            ) : (
+              <ChevronRight className="h-3 w-3 shrink-0" />
+            )}
+            {label}
+          </span>
+          {badge !== undefined && badge > 0 && (
+            <Badge variant="secondary" className="h-4 px-1.5 text-[10px]">
+              {badge > 99 ? "99+" : badge}
+            </Badge>
+          )}
+        </button>
+      </SidebarGroupLabel>
+      {/* Keep content rendered when the sidebar is in icon-collapse mode
+          (so icons stay visible there), and hide it only when the user has
+          collapsed this section while the sidebar is fully expanded. */}
+      <SidebarGroupContent
+        className={open ? "" : "hidden group-data-[collapsible=icon]:block"}
+      >
+        {children}
+      </SidebarGroupContent>
+    </SidebarGroup>
+  );
+}
+
 export function AppSidebar({ user }: AppSidebarProps) {
   const [location] = useLocation();
 
@@ -99,14 +180,26 @@ export function AppSidebar({ user }: AppSidebarProps) {
   const canReconcile = user.role === "national_admin" || user.role === "district_manager";
   const { data: tenant } = useQuery<TenantSummary>({ queryKey: ["/api/me/tenant"], retry: false });
 
+  // Real pending-approvals count for the Workflow section badge. Only
+  // fetched for users who can actually see the Approvals page; falls back
+  // to undefined (no badge) for everyone else.
+  const { data: approvalRequests } = useQuery<ApprovalRequest[]>({
+    queryKey: ["/api/approvals"],
+    enabled: canAccessApprovals,
+    retry: false,
+  });
+  const pendingApprovalsCount = approvalRequests
+    ? approvalRequests.filter((r) => r.status === "pending").length
+    : undefined;
+
   return (
-    <Sidebar>
+    <Sidebar collapsible="icon">
       <SidebarHeader className="p-4">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-md bg-primary text-primary-foreground">
+          <div className="flex h-10 w-10 items-center justify-center rounded-md bg-primary text-primary-foreground shrink-0">
             <HeartPulse className="h-5 w-5" />
           </div>
-          <div className="flex flex-col min-w-0">
+          <div className="flex flex-col min-w-0 group-data-[collapsible=icon]:hidden">
             <span className="font-semibold text-sm truncate" data-testid="text-brand-name">VaxPlan</span>
             <span className="text-xs text-muted-foreground truncate" data-testid="text-tenant-name">
               {tenant?.name ?? "Health Microplanning"}
@@ -116,55 +209,52 @@ export function AppSidebar({ user }: AppSidebarProps) {
       </SidebarHeader>
 
       <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel>Main</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {mainNavItems.map((item) => (
-                <SidebarMenuItem key={item.path}>
-                  <SidebarMenuButton
-                    asChild
-                    isActive={location === item.path}
-                  >
-                    <Link href={item.path} data-testid={`nav-${item.title.toLowerCase().replace(/\s+/g, "-")}`}>
-                      <item.icon className="h-4 w-4" />
-                      <span>{item.title}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        <CollapsibleSection label="Main" storageKey="main">
+          <SidebarMenu>
+            {mainNavItems.map((item) => (
+              <SidebarMenuItem key={item.path}>
+                <SidebarMenuButton
+                  asChild
+                  isActive={location === item.path}
+                  tooltip={item.title}
+                >
+                  <Link href={item.path} data-testid={`nav-${item.title.toLowerCase().replace(/\s+/g, "-")}`}>
+                    <item.icon className="h-4 w-4" />
+                    <span>{item.title}</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ))}
+          </SidebarMenu>
+        </CollapsibleSection>
 
-        <SidebarGroup>
-          <SidebarGroupLabel>Planning</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {planningNavItems
-                .filter((item) => !(item as any).adminOnly || canAccessHis)
-                .filter((item) => {
-                  const modules = (tenant as any)?.settings?.modules || {
-                    budget: true,
-                    calculator: true,
-                    stock: true,
-                    mobilization: true,
-                    htr: true,
-                    interop: true,
-                  };
-                  if (item.path === "/budget") return modules.budget !== false;
-                  if (item.path === "/vaccines") return modules.calculator !== false;
-                  if (item.path === "/stock") return modules.stock !== false;
-                  if (item.path === "/mobilization") return modules.mobilization !== false;
-                  if (item.path === "/htr") return modules.htr !== false;
-                  if (item.path === "/his-integrations") return modules.interop !== false;
-                  return true;
-                })
-                .map((item) => (
+        <CollapsibleSection label="Planning" storageKey="planning">
+          <SidebarMenu>
+            {planningNavItems
+              .filter((item) => !(item as any).adminOnly || canAccessHis)
+              .filter((item) => {
+                const modules = (tenant as any)?.settings?.modules || {
+                  budget: true,
+                  calculator: true,
+                  stock: true,
+                  mobilization: true,
+                  htr: true,
+                  interop: true,
+                };
+                if (item.path === "/budget") return modules.budget !== false;
+                if (item.path === "/vaccines") return modules.calculator !== false;
+                if (item.path === "/stock") return modules.stock !== false;
+                if (item.path === "/mobilization") return modules.mobilization !== false;
+                if (item.path === "/htr") return modules.htr !== false;
+                if (item.path === "/his-integrations") return modules.interop !== false;
+                return true;
+              })
+              .map((item) => (
                 <SidebarMenuItem key={item.path}>
                   <SidebarMenuButton
                     asChild
                     isActive={location === item.path}
+                    tooltip={item.title}
                   >
                     <Link href={item.path} data-testid={`nav-${item.title.toLowerCase().replace(/\s+/g, "-")}`}>
                       <item.icon className="h-4 w-4" />
@@ -173,77 +263,80 @@ export function AppSidebar({ user }: AppSidebarProps) {
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+          </SidebarMenu>
+        </CollapsibleSection>
 
         {canAccessApprovals && (
-          <SidebarGroup>
-            <SidebarGroupLabel>Workflow</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {workflowNavItems.map((item) => (
+          <CollapsibleSection
+            label="Workflow"
+            storageKey="workflow"
+            badge={pendingApprovalsCount}
+          >
+            <SidebarMenu>
+              {workflowNavItems.map((item) => (
+                <SidebarMenuItem key={item.path}>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={location === item.path}
+                    tooltip={item.title}
+                  >
+                    <Link href={item.path} data-testid={`nav-${item.title.toLowerCase().replace(/\s+/g, "-")}`}>
+                      <item.icon className="h-4 w-4" />
+                      <span>{item.title}</span>
+                      {pendingApprovalsCount !== undefined && pendingApprovalsCount > 0 && (
+                        <Badge variant="secondary" className="ml-auto text-xs">
+                          {pendingApprovalsCount > 99 ? "99+" : pendingApprovalsCount}
+                        </Badge>
+                      )}
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </CollapsibleSection>
+        )}
+
+        {canAccessAdmin && (
+          <CollapsibleSection label="Administration" storageKey="admin">
+            <SidebarMenu>
+              {adminNavItems
+                .filter((item) => {
+                  // User Management + Access Requests are visible to any admin
+                  // (national_admin or provincial_coordinator). The deeper
+                  // tenant/boundary configuration tools stay national-only.
+                  if (item.path === "/admin/users" || item.path === "/admin/signups") {
+                    return true;
+                  }
+                  return isNationalAdmin;
+                })
+                .map((item) => (
                   <SidebarMenuItem key={item.path}>
                     <SidebarMenuButton
                       asChild
                       isActive={location === item.path}
+                      tooltip={item.title}
                     >
                       <Link href={item.path} data-testid={`nav-${item.title.toLowerCase().replace(/\s+/g, "-")}`}>
                         <item.icon className="h-4 w-4" />
                         <span>{item.title}</span>
-                        <Badge variant="secondary" className="ml-auto text-xs">
-                          3
-                        </Badge>
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 ))}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
+            </SidebarMenu>
+          </CollapsibleSection>
         )}
 
-        {canAccessAdmin && (
-          <SidebarGroup>
-            <SidebarGroupLabel>Administration</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {adminNavItems
-                  .filter((item) => {
-                    // User Management + Access Requests are visible to any admin
-                    // (national_admin or provincial_coordinator). The deeper
-                    // tenant/boundary configuration tools stay national-only.
-                    if (item.path === "/admin/users" || item.path === "/admin/signups") {
-                      return true;
-                    }
-                    return isNationalAdmin;
-                  })
-                  .map((item) => (
-                  <SidebarMenuItem key={item.path}>
-                    <SidebarMenuButton asChild isActive={location === item.path}>
-                      <Link href={item.path} data-testid={`nav-${item.title.toLowerCase().replace(/\s+/g, "-")}`}>
-                        <item.icon className="h-4 w-4" />
-                        <span>{item.title}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        )}
-
-        <SidebarGroup>
-          <SidebarGroupLabel>System</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {systemNavItems
-                .filter((item) => !(item as any).reconcileOnly || canReconcile)
-                .map((item) => (
+        <CollapsibleSection label="System" storageKey="system">
+          <SidebarMenu>
+            {systemNavItems
+              .filter((item) => !(item as any).reconcileOnly || canReconcile)
+              .map((item) => (
                 <SidebarMenuItem key={item.path}>
                   <SidebarMenuButton
                     asChild
                     isActive={location === item.path}
+                    tooltip={item.title}
                   >
                     <Link href={item.path} data-testid={`nav-${item.title.toLowerCase().replace(/\s+/g, "-")}`}>
                       <item.icon className="h-4 w-4" />
@@ -252,13 +345,12 @@ export function AppSidebar({ user }: AppSidebarProps) {
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+          </SidebarMenu>
+        </CollapsibleSection>
       </SidebarContent>
 
       <SidebarFooter className="p-4">
-        <div className="text-xs text-muted-foreground text-center">
+        <div className="text-xs text-muted-foreground text-center group-data-[collapsible=icon]:hidden">
           VaxPlan v1.0 · Health Microplanning
         </div>
       </SidebarFooter>
