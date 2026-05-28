@@ -2681,6 +2681,11 @@ function Step2({
           });
         }}
         onPinClick={(i) => setSelectedIdx(i)}
+        catchmentPreview={
+          estimate
+            ? { lat: estimate.lat, lng: estimate.lng, radiusKm: estimate.radiusKm }
+            : null
+        }
       />
 
       {excludedVillages.length > 0 && (
@@ -3012,6 +3017,7 @@ function Step2Map({
   onMapClick,
   onPinDrag,
   onPinClick,
+  catchmentPreview,
 }: {
   facility: Facility | null;
   communities: any[];
@@ -3019,6 +3025,7 @@ function Step2Map({
   onMapClick: (lat: number, lng: number) => void;
   onPinDrag: (i: number, lat: number, lng: number) => void;
   onPinClick: (i: number) => void;
+  catchmentPreview?: { lat: number; lng: number; radiusKm: number } | null;
 }) {
   // Lazy-load Leaflet so the wizard's earlier steps don't pay the bundle cost.
   const [leaflet, setLeaflet] = useState<any>(null);
@@ -3084,7 +3091,7 @@ function Step2Map({
     );
   }
 
-  const { MapContainer, TileLayer, WMSTileLayer, Marker, Popup, useMapEvents, useMap } = leaflet.rl;
+  const { MapContainer, TileLayer, WMSTileLayer, Marker, Popup, Circle: LCircle, useMapEvents, useMap } = leaflet.rl;
 
   function Recenter({ center }: { center: [number, number] }) {
     const map = useMap();
@@ -3329,6 +3336,19 @@ function Step2Map({
               )}
             </div>
           </Popup>
+        )}
+
+        {catchmentPreview && (
+          <LCircle
+            center={[catchmentPreview.lat, catchmentPreview.lng]}
+            radius={catchmentPreview.radiusKm * 1000}
+            pathOptions={{
+              color: "#2563eb",
+              weight: 2,
+              fillColor: "#2563eb",
+              fillOpacity: 0.15,
+            }}
+          />
         )}
 
         {facilityLat != null && facilityLng != null && !isNaN(facilityLat) && !isNaN(facilityLng) && (
