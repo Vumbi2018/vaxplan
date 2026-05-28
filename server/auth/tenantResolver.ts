@@ -13,8 +13,8 @@ declare module "express-session" {
   interface SessionData {
     tenantId?: string;
     // Per-user override of the active tenant. When set, the user is "visiting"
-    // a tenant other than their home tenant; reads succeed, but writes are
-    // blocked by crossTenantWriteGuard so foreign data stays clean.
+    // a tenant other than their home tenant; both reads and writes are scoped
+    // to that tenant.
     viewTenantId?: string;
     pendingIdpConfigId?: string;
     returnTo?: string;
@@ -46,7 +46,7 @@ export const tenantContext: RequestHandler = async (req, _res, next) => {
   }
 
   // viewTenantId override: any authenticated user may "visit" another active
-  // tenant (read-only). The cross-tenant write guard prevents mutations.
+  // tenant. Reads and writes both scope to that tenant.
   if (req.session.viewTenantId) {
     try {
       const t = await storage.getTenant(req.session.viewTenantId);
@@ -104,36 +104,3 @@ export function requireTenant(req: Request, res: Response, next: NextFunction) {
   }
   next();
 }
-
-const CROSS_TENANT_WRITE_ALLOWED_PATHS = new Set([
-  "/api/me/switch-tenant",
-  "/api/logout",
-]);
-
-// Settlement Intelligence is an analysis workspace, not a domain-data mutation
-// surface. It scans the viewed tenant's spatial layers (PostGIS) and lets the
-// user validate/dismiss the candidate clusters it finds. We allow these
-// explicit endpoints across tenants so a PNG-home admin can run detection in
-// Zambia (or vice versa) without being blocked by the foreign-write lock.
-// All other writes (clients, sessions, stock, facilities, etc.) remain
-// restricted to the user's home tenant.
-const CROSS_TENANT_WRITE_ALLOWED_PATH_PATTERNS: RegExp[] = [
-  /^\/api\/unmapped-settlements\/run-engine$/,
-  /^\/api\/unmapped-settlements\/\d+\/validate$/,
-  /^\/api\/unmapped-settlements\/\d+\/dismiss$/,
-];
-
-function isCrossTenantAnalysisPath(path: string): boolean {
-  return CROSS_TENANT_WRITE_ALLOWED_PATH_PATTERNS.some((re) => re.test(path));
-}
-
-// Cross-tenant write restriction is currently disabled. In production each
-// user only logs into their own country's tenant, so this guard is unnecessary.
-// The country switcher in the header is used for internal QA / testing and we
-// want writes to succeed in whichever tenant is currently being viewed.
-//
-// Kept as a pass-through (instead of being deleted) so the existing call sites
-// in server/routes.ts continue to compile without a sweeping refactor.
-export const crossTenantWriteGuard: RequestHandler = async (_req, _res, next) => {
-  return next();
-};

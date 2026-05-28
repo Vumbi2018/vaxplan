@@ -4,7 +4,7 @@ import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
 import { hasPermission, tenantRolesCache, ROLE_PERMISSIONS, type Permission } from "./auth/authorization";
 import { registerSsoRoutes } from "./auth/ssoRoutes";
-import { tenantContext, requireTenant, crossTenantWriteGuard } from "./auth/tenantResolver";
+import { tenantContext, requireTenant } from "./auth/tenantResolver";
 import { seedReplitIdpConfig } from "./auth/seedReplitIdpConfig";
 import {
   insertFacilitySchema,
@@ -304,7 +304,6 @@ export async function registerRoutes(
   );
 
   app.use(tenantContext);
-  app.use(crossTenantWriteGuard);
 
   // --- USER ACCESS MANAGEMENT ENDPOINTS ---
   app.get("/api/users", isAuthenticated, requireTenant, requirePermission("manage_users"), async (req: any, res) => {
@@ -1136,8 +1135,8 @@ export async function registerRoutes(
     }
   });
 
-  // Any authenticated user may "visit" another active tenant read-only.
-  // Writes outside their home tenant are blocked by crossTenantWriteGuard.
+  // Any authenticated user may "visit" another active tenant. Reads and
+  // writes both operate against the currently-viewed tenant.
   app.post("/api/me/switch-tenant", isAuthenticated, async (req: any, res) => {
     try {
       const { tenantId } = z.object({ tenantId: z.string().min(1) }).parse(req.body);
@@ -1147,8 +1146,8 @@ export async function registerRoutes(
       }
 
       // Resolve the caller's home tenant. If they're switching back to their
-      // home country, clear viewTenantId entirely so subsequent writes are
-      // not blocked by crossTenantWriteGuard on a stale override.
+      // home country, clear viewTenantId entirely so we fall back to the
+      // home-tenant lookup path.
       const userId = (req.user as any)?.claims?.sub;
       const dbUser = userId ? await storage.getUser(userId) : null;
       const homeTenantId = dbUser?.tenantId || null;
@@ -4795,7 +4794,7 @@ export async function registerRoutes(
   });
 
   // POST /api/boundaries/fetch — fetch + store from GeoBoundaries API (national_admin only)
-  app.post("/api/boundaries/fetch", isAuthenticated, requireTenant, crossTenantWriteGuard, loadRole, requireAdmin, async (req: any, res) => {
+  app.post("/api/boundaries/fetch", isAuthenticated, requireTenant, loadRole, requireAdmin, async (req: any, res) => {
     try {
       const tenantId = req.tenantId as string;
 
@@ -4837,7 +4836,7 @@ export async function registerRoutes(
   });
 
   // POST /api/boundaries/upload — upload custom GeoJSON file (national_admin only)
-  app.post("/api/boundaries/upload", isAuthenticated, requireTenant, crossTenantWriteGuard, loadRole, requireAdmin, async (req: any, res) => {
+  app.post("/api/boundaries/upload", isAuthenticated, requireTenant, loadRole, requireAdmin, async (req: any, res) => {
     try {
       const tenantId = req.tenantId as string;
 
@@ -4877,7 +4876,7 @@ export async function registerRoutes(
   });
 
   // DELETE /api/boundaries/:id
-  app.delete("/api/boundaries/:id", isAuthenticated, requireTenant, crossTenantWriteGuard, loadRole, requireAdmin, async (req: any, res) => {
+  app.delete("/api/boundaries/:id", isAuthenticated, requireTenant, loadRole, requireAdmin, async (req: any, res) => {
     const tenantId = req.tenantId as string;
     const deleted = await storage.deleteAdminBoundary(tenantId, req.params.id);
     if (!deleted) return res.status(404).json({ message: "Boundary not found" });
@@ -4912,7 +4911,7 @@ export async function registerRoutes(
   });
 
   // POST /api/facilities/:id/catchments — save a drawn catchment polygon
-  app.post("/api/facilities/:id/catchments", isAuthenticated, requireTenant, crossTenantWriteGuard, async (req: any, res) => {
+  app.post("/api/facilities/:id/catchments", isAuthenticated, requireTenant, async (req: any, res) => {
     try {
       const tenantId = req.tenantId as string;
       const facilityId = parseInt(req.params.id);
@@ -5169,7 +5168,7 @@ export async function registerRoutes(
   });
 
   // PATCH /api/facilities/:id/catchments/:cid
-  app.patch("/api/facilities/:id/catchments/:cid", isAuthenticated, requireTenant, crossTenantWriteGuard, async (req: any, res) => {
+  app.patch("/api/facilities/:id/catchments/:cid", isAuthenticated, requireTenant, async (req: any, res) => {
     try {
       const tenantId = req.tenantId as string;
       const schema = z.object({
@@ -5204,7 +5203,7 @@ export async function registerRoutes(
   });
 
   // POST /api/vaccines/config — Create a new vaccine configuration (national admin only)
-  app.post("/api/vaccines/config", isAuthenticated, requireTenant, crossTenantWriteGuard, loadRole, requireAdmin, async (req: any, res) => {
+  app.post("/api/vaccines/config", isAuthenticated, requireTenant, loadRole, requireAdmin, async (req: any, res) => {
     try {
       const parsed = insertVaccineConfigSchema.parse(req.body);
       const created = await storage.createVaccineConfig(req.tenantId, parsed);
@@ -5220,7 +5219,7 @@ export async function registerRoutes(
   });
 
   // PATCH /api/vaccines/config/:id — Update a vaccine configuration (national admin only)
-  app.patch("/api/vaccines/config/:id", isAuthenticated, requireTenant, crossTenantWriteGuard, loadRole, requireAdmin, async (req: any, res) => {
+  app.patch("/api/vaccines/config/:id", isAuthenticated, requireTenant, loadRole, requireAdmin, async (req: any, res) => {
     try {
       const configId = parseInt(req.params.id);
       if (isNaN(configId)) return res.status(400).json({ message: "Invalid configuration ID" });
@@ -5304,7 +5303,7 @@ export async function registerRoutes(
   // Updated POST /api/clients: Resolves or dynamically seeds a virtual village named "Cross-Border / Foreign Residence"
   // within the parent district of the client's assigned facility to maintain referential integrity.
   // Enforces justification screening constraints if the registering user is a national_admin.
-  app.post("/api/clients", isAuthenticated, requireTenant, crossTenantWriteGuard, loadRole, async (req: any, res) => {
+  app.post("/api/clients", isAuthenticated, requireTenant, loadRole, async (req: any, res) => {
     try {
       const user = req.user as any;
       const dbUser = await storage.getUser(user.id);
@@ -5402,7 +5401,7 @@ export async function registerRoutes(
 
   /*
   // Original PATCH /api/clients/:id route preserved for reference
-  app.patch("/api/clients/:id", isAuthenticated, requireTenant, crossTenantWriteGuard, async (req: any, res) => {
+  app.patch("/api/clients/:id", isAuthenticated, requireTenant, async (req: any, res) => {
     try {
       const parsed = insertClientSchema.partial().parse(req.body);
       const updated = await storage.updateClient(req.tenantId, req.params.id, parsed);
@@ -5421,7 +5420,7 @@ export async function registerRoutes(
 
   // Updated PATCH /api/clients/:id: Evaluates modifications, handles transitions, and resolves/seeds
   // virtual catchment village context if cross-border flag is toggled or facility is changed.
-  app.patch("/api/clients/:id", isAuthenticated, requireTenant, crossTenantWriteGuard, async (req: any, res) => {
+  app.patch("/api/clients/:id", isAuthenticated, requireTenant, async (req: any, res) => {
     try {
       let parsed = insertClientSchema.partial().parse(req.body);
       
@@ -5497,7 +5496,7 @@ export async function registerRoutes(
   });
 
   // DELETE /api/clients/:id — Delete client record
-  app.delete("/api/clients/:id", isAuthenticated, requireTenant, crossTenantWriteGuard, async (req: any, res) => {
+  app.delete("/api/clients/:id", isAuthenticated, requireTenant, async (req: any, res) => {
     try {
       const deleted = await storage.deleteClient(req.tenantId, req.params.id);
       if (!deleted) return res.status(404).json({ message: "Client not found" });
@@ -5511,7 +5510,7 @@ export async function registerRoutes(
 
   // POST /api/clients/share - Send client booklet via Email, SMS, or WhatsApp
   /* Original Code: Transmitted sharing message without returning digital booklet attachments details
-  app.post("/api/clients/share", isAuthenticated, requireTenant, crossTenantWriteGuard, async (req: any, res) => {
+  app.post("/api/clients/share", isAuthenticated, requireTenant, async (req: any, res) => {
     try {
       const { clientId, method, destination } = req.body;
       if (!clientId || !method || !destination) {
@@ -5549,7 +5548,7 @@ export async function registerRoutes(
   */
 
   // Updated Code: Transmits sharing details and returns full attachment metadata details
-  app.post("/api/clients/share", isAuthenticated, requireTenant, crossTenantWriteGuard, async (req: any, res) => {
+  app.post("/api/clients/share", isAuthenticated, requireTenant, async (req: any, res) => {
     try {
       const { clientId, method, destination } = req.body;
       if (!clientId || !method || !destination) {
@@ -5621,7 +5620,7 @@ export async function registerRoutes(
   // ─────────────────────────────────────────────────────────────────────────
 
   // POST /api/reminders/send — Send an individual SMS reminder and write persistent deletable logs in audit_logs
-  app.post("/api/reminders/send", isAuthenticated, requireTenant, crossTenantWriteGuard, async (req: any, res) => {
+  app.post("/api/reminders/send", isAuthenticated, requireTenant, async (req: any, res) => {
     try {
       const { clientId } = req.body;
       if (!clientId) {
@@ -5657,7 +5656,7 @@ export async function registerRoutes(
   });
 
   // POST /api/reminders/bulk — Send cohort-based reminders and log persistent deletable events in audit_logs
-  app.post("/api/reminders/bulk", isAuthenticated, requireTenant, crossTenantWriteGuard, async (req: any, res) => {
+  app.post("/api/reminders/bulk", isAuthenticated, requireTenant, async (req: any, res) => {
     try {
       const { daysToDue } = req.body;
       if (daysToDue === undefined) {
@@ -5757,7 +5756,7 @@ export async function registerRoutes(
   });
 
   // POST /api/clients/:id/vaccinate — Administer a vaccine dose to client
-  app.post("/api/clients/:id/vaccinate", isAuthenticated, requireTenant, crossTenantWriteGuard, async (req: any, res) => {
+  app.post("/api/clients/:id/vaccinate", isAuthenticated, requireTenant, async (req: any, res) => {
     try {
       const schema = insertClientVaccinationSchema.omit({ clientId: true });
       const parsed = schema.parse(req.body);
@@ -5782,7 +5781,7 @@ export async function registerRoutes(
   });
 
   // DELETE /api/client-vaccinations/:id — Remove vaccination entry (revert administration)
-  app.delete("/api/client-vaccinations/:id", isAuthenticated, requireTenant, crossTenantWriteGuard, async (req: any, res) => {
+  app.delete("/api/client-vaccinations/:id", isAuthenticated, requireTenant, async (req: any, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ message: "Invalid entry ID" });
@@ -5828,7 +5827,7 @@ export async function registerRoutes(
   });
 
   // POST /api/sessions/:sessionId/days — Create a day plan for a session microplan
-  app.post("/api/sessions/:sessionId/days", isAuthenticated, requireTenant, crossTenantWriteGuard, async (req: any, res) => {
+  app.post("/api/sessions/:sessionId/days", isAuthenticated, requireTenant, async (req: any, res) => {
     try {
       const sessionPlanId = parseInt(req.params.sessionId);
       if (isNaN(sessionPlanId)) return res.status(400).json({ message: "Invalid session plan ID" });
@@ -5864,7 +5863,7 @@ export async function registerRoutes(
   });
 
   // PATCH /api/sessions/days/:id — Update a session day plan
-  app.patch("/api/sessions/days/:id", isAuthenticated, requireTenant, crossTenantWriteGuard, async (req: any, res) => {
+  app.patch("/api/sessions/days/:id", isAuthenticated, requireTenant, async (req: any, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ message: "Invalid day plan ID" });
@@ -5909,7 +5908,7 @@ export async function registerRoutes(
   });
 
   // DELETE /api/sessions/days/:id — Delete a session day plan
-  app.delete("/api/sessions/days/:id", isAuthenticated, requireTenant, crossTenantWriteGuard, async (req: any, res) => {
+  app.delete("/api/sessions/days/:id", isAuthenticated, requireTenant, async (req: any, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ message: "Invalid day plan ID" });
@@ -5943,7 +5942,7 @@ export async function registerRoutes(
   });
 
   // POST /api/stock/transaction — Log a stock ledger card transaction (receipt, issue, loss, adjustment)
-  app.post("/api/stock/transaction", isAuthenticated, requireTenant, crossTenantWriteGuard, async (req: any, res) => {
+  app.post("/api/stock/transaction", isAuthenticated, requireTenant, async (req: any, res) => {
     try {
       /* ORIGINAL CODE:
       const parsed = insertStockTransactionSchema.parse(req.body);
@@ -5986,7 +5985,7 @@ export async function registerRoutes(
   });
 
   // DELETE /api/stock/transaction/:id — Revert/delete a stock card entry
-  app.delete("/api/stock/transaction/:id", isAuthenticated, requireTenant, crossTenantWriteGuard, async (req: any, res) => {
+  app.delete("/api/stock/transaction/:id", isAuthenticated, requireTenant, async (req: any, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ message: "Invalid transaction ID" });
@@ -6035,7 +6034,7 @@ export async function registerRoutes(
   });
 
   // POST /api/monthly-reports — Submit a compiled monthly facility report
-  app.post("/api/monthly-reports", isAuthenticated, requireTenant, crossTenantWriteGuard, async (req: any, res) => {
+  app.post("/api/monthly-reports", isAuthenticated, requireTenant, async (req: any, res) => {
     try {
       const parsed = insertMonthlyReportSchema.parse(req.body);
       const report = await storage.createMonthlyReport(req.tenantId, {
@@ -6058,7 +6057,7 @@ export async function registerRoutes(
   });
 
   // PATCH /api/monthly-reports/:id/approve — Sign off / Approve monthly report (managers only)
-  app.patch("/api/monthly-reports/:id/approve", isAuthenticated, requireTenant, crossTenantWriteGuard, loadRole, async (req: any, res) => {
+  app.patch("/api/monthly-reports/:id/approve", isAuthenticated, requireTenant, loadRole, async (req: any, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ message: "Invalid report ID" });
@@ -7060,7 +7059,7 @@ export async function registerRoutes(
    * Receives an array of offline mutations from the client outbox and applies them.
    * Body: { mutations: OutboxMutation[] }
    */
-  app.post("/api/sync/batch", isAuthenticated, requireTenant, crossTenantWriteGuard, async (req: any, res) => {
+  app.post("/api/sync/batch", isAuthenticated, requireTenant, async (req: any, res) => {
     try {
       const schema = z.object({
         mutations: z.array(z.object({

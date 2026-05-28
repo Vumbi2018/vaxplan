@@ -169,18 +169,6 @@ export default function Facilities() {
     queryKey: ["/api/me/tenant"],
   });
 
-  // Cross-tenant write restriction has been removed product-wide — Draw
-  // Catchment is always available regardless of which country is in view.
-  // Flag retained as `false` so the surrounding conditional UI keeps compiling.
-  const isCrossTenantView = false;
-  const crossTenantToast = () => {
-    toast({
-      title: "Read-only view",
-      description: `You're viewing ${tenantInfo?.name ?? "another country"} read-only. Switch back to your home country to draw or save catchments.`,
-      variant: "destructive",
-    });
-  };
-
   // Reset all geographic filters on tenant/country switch to prevent cross-tenant ID bleed
   useEffect(() => {
     if (tenantInfo?.id) {
@@ -1763,11 +1751,6 @@ export default function Facilities() {
                         {/* Right Column: GIS map editor & Real-time Geofencing */}
                         <div className="relative flex flex-col h-full bg-muted/20">
                           <div className="p-4 border-b bg-background flex flex-col gap-2 z-10">
-                            {isCrossTenantView && (
-                              <div className="text-xs text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded px-2 py-1.5">
-                                Read-only view of {tenantInfo?.name ?? "another country"}. Draw Catchment is disabled — switch back to your home country to edit.
-                              </div>
-                            )}
                             <div className="flex items-center justify-between gap-2 flex-wrap">
                               <div className="flex gap-2 items-center">
                                 <Button
@@ -1782,15 +1765,9 @@ export default function Facilities() {
                                   type="button"
                                   variant={facMapDrawMode === "polygon" ? "default" : "outline"}
                                   size="sm"
-                                  disabled={isCrossTenantView}
-                                  title={isCrossTenantView ? `Read-only view of ${tenantInfo?.name ?? "another country"}` : undefined}
-                                  onClick={() => {
-                                    if (isCrossTenantView) { crossTenantToast(); return; }
-                                    setFacMapDrawMode("polygon");
-                                  }}
-                                  className={isCrossTenantView ? "opacity-60 cursor-not-allowed" : ""}
+                                  onClick={() => setFacMapDrawMode("polygon")}
                                 >
-                                  {isCrossTenantView ? "Draw Catchment (read-only)" : "Draw Catchment"}
+                                  Draw Catchment
                                 </Button>
                                 {facilityCatchments && facilityCatchments.length > 0 && (
                                   <label className="flex items-center gap-1.5 text-xs text-muted-foreground ml-2 cursor-pointer">

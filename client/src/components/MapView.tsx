@@ -2037,19 +2037,6 @@ export function MapView({
     queryKey: ["/api/me/tenant"],
   });
 
-  // Cross-tenant write restriction has been removed product-wide — the server
-  // no longer rejects writes from a switched-tenant session, so draw tools are
-  // always enabled regardless of which country is in view. Flag retained as
-  // `false` so downstream conditional UI keeps compiling without a refactor.
-  const isCrossTenantView = false;
-  const crossTenantToast = () => {
-    toast({
-      title: "Read-only view",
-      description: `You're viewing ${tenantInfo?.name ?? "another country"} read-only. Switch back to your home country to draw or save catchments.`,
-      variant: "destructive",
-    });
-  };
-
   // Reset all geographic filters on tenant/country switch to prevent cross-tenant ID bleed
   /* Original Reset Effect (without resetting map selected raster):
   useEffect(() => {
@@ -5375,10 +5362,7 @@ export function MapView({
           <Button
             size="sm"
             variant={isDrawingCatchment ? "default" : "secondary"}
-            disabled={isCrossTenantView}
-            title={isCrossTenantView ? `Read-only view of ${tenantInfo?.name ?? "another country"}` : undefined}
             onClick={() => {
-              if (isCrossTenantView) { crossTenantToast(); return; }
               setIsDrawingCatchment(!isDrawingCatchment);
               if (!isDrawingCatchment) {
                 setDrawPoints([]);
@@ -5392,19 +5376,16 @@ export function MapView({
               isDrawingCatchment
                 ? "bg-emerald-600 hover:bg-emerald-700 text-white"
                 : "bg-background text-foreground hover:bg-muted"
-            } ${isCrossTenantView ? "opacity-60 cursor-not-allowed" : ""}`}
+            }`}
           >
             <PenLine className="h-4 w-4 mr-1" />
-            {isCrossTenantView ? "Draw Catchment (read-only)" : (isDrawingCatchment ? "Drawing..." : "Draw Catchment")}
+            {isDrawingCatchment ? "Drawing..." : "Draw Catchment"}
           </Button>
 
           <Button
             size="sm"
             variant={isDrawingSessionPolygon ? "default" : "secondary"}
-            disabled={isCrossTenantView}
-            title={isCrossTenantView ? `Read-only view of ${tenantInfo?.name ?? "another country"}` : undefined}
             onClick={() => {
-              if (isCrossTenantView) { crossTenantToast(); return; }
               setIsDrawingSessionPolygon(!isDrawingSessionPolygon);
               if (!isDrawingSessionPolygon) {
                 setSessionPolygonPoints([]);
@@ -5424,10 +5405,10 @@ export function MapView({
               isDrawingSessionPolygon
                 ? "bg-amber-600 hover:bg-amber-700 text-white"
                 : "bg-background text-foreground hover:bg-muted"
-            } ${isCrossTenantView ? "opacity-60 cursor-not-allowed" : ""}`}
+            }`}
           >
             <PenLine className="h-4 w-4 mr-1" />
-            {isCrossTenantView ? "Draw Geofence (read-only)" : (isDrawingSessionPolygon ? "Drawing Path..." : "Draw Geofence")}
+            {isDrawingSessionPolygon ? "Drawing Path..." : "Draw Geofence"}
           </Button>
 
           {showFacilityList && (

@@ -362,7 +362,7 @@ const SECTIONS: Section[] = [
     icon: Shield,
     rows: [
       { area: "OIDC + SAML SSO for MoH IdPs", status: "aligned", evidence: "oidcAdapter.ts + samlAdapter.ts." },
-      { area: "Multitenant isolation", status: "aligned", evidence: "tenantContext + crossTenantWriteGuard." },
+      { area: "Multitenant isolation", status: "aligned", evidence: "tenantContext scopes reads/writes to the viewed tenant." },
       { area: "Audit log (who/what/when/old/new + IP)", status: "aligned", evidence: "logAudit in server/routes.ts." },
       { area: "Encryption at rest", status: "partial", recommendation: "Document in SECURITY.md; confirm provider setting." },
       { area: "Encryption in transit", status: "aligned" },

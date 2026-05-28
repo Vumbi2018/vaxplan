@@ -543,22 +543,12 @@ export default function ClientLogbook() {
   const { toast } = useToast();
   const { user } = useAuth();
 
-  // Tenant context for cross-tenant read-only detection. The server's
-  // crossTenantWriteGuard rejects writes (e.g. POST /api/villages) with 403 when
-  // the active view tenant differs from the user's home tenant. We surface that
-  // in the UI so users see why "+ Add Village" is disabled instead of hitting
-  // silent failures behind the open dialog overlay.
+  // Tenant context — used for terminology / map defaults. Cross-tenant write
+  // restrictions have been removed product-wide, so writes succeed against
+  // whichever country is currently being viewed.
   const { data: tenantInfo } = useQuery<any>({
     queryKey: ["/api/me/tenant"],
   });
-  const isCrossTenantView = !!(user?.tenantId && tenantInfo?.id && user.tenantId !== tenantInfo.id);
-  const crossTenantToast = () => {
-    toast({
-      title: "Read-only view",
-      description: `You're viewing ${tenantInfo?.name ?? "another country"} read-only. Switch back to your home country to add villages.`,
-      variant: "destructive",
-    });
-  };
 
   // Active view states
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
@@ -2427,25 +2417,12 @@ export default function ClientLogbook() {
                             type="button"
                             variant="ghost"
                             size="sm"
-                            disabled={isCrossTenantView}
-                            title={isCrossTenantView ? `Read-only view of ${tenantInfo?.name ?? "another country"} — switch back to your home country to add villages.` : undefined}
-                            className="h-auto p-0 text-sky-500 font-semibold flex items-center gap-0.5 hover:text-sky-600 hover:bg-transparent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                            onClick={() => {
-                              if (isCrossTenantView) {
-                                crossTenantToast();
-                                return;
-                              }
-                              setIsAddVillageOpen(true);
-                            }}
+                            className="h-auto p-0 text-sky-500 font-semibold flex items-center gap-0.5 hover:text-sky-600 hover:bg-transparent transition-colors"
+                            onClick={() => setIsAddVillageOpen(true)}
                           >
                             <Plus className="h-3.5 w-3.5" /> Add Village
                           </Button>
                         </div>
-                        {isCrossTenantView && (
-                          <p className="text-[11px] text-muted-foreground mt-1">
-                            Read-only view of {tenantInfo?.name ?? "another country"}. Switch back to your home country to add villages.
-                          </p>
-                        )}
                         <Popover open={isVillageSelectOpen} onOpenChange={setIsVillageSelectOpen}>
                           <PopoverTrigger asChild>
                             <FormControl>
@@ -2476,14 +2453,8 @@ export default function ClientLogbook() {
                                   type="button"
                                   size="sm"
                                   variant="secondary"
-                                  disabled={isCrossTenantView}
-                                  title={isCrossTenantView ? `Read-only view of ${tenantInfo?.name ?? "another country"} — switch back to your home country to add villages.` : undefined}
-                                  className="h-8 text-xs font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                                  className="h-8 text-xs font-semibold"
                                   onClick={() => {
-                                    if (isCrossTenantView) {
-                                      crossTenantToast();
-                                      return;
-                                    }
                                     setIsVillageSelectOpen(false);
                                     setIsAddVillageOpen(true);
                                   }}
@@ -2991,25 +2962,12 @@ export default function ClientLogbook() {
                             type="button"
                             variant="ghost"
                             size="sm"
-                            disabled={isCrossTenantView}
-                            title={isCrossTenantView ? `Read-only view of ${tenantInfo?.name ?? "another country"} — switch back to your home country to add villages.` : undefined}
-                            className="h-auto p-0 text-sky-500 font-semibold flex items-center gap-0.5 hover:text-sky-600 hover:bg-transparent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                            onClick={() => {
-                              if (isCrossTenantView) {
-                                crossTenantToast();
-                                return;
-                              }
-                              setIsAddVillageOpen(true);
-                            }}
+                            className="h-auto p-0 text-sky-500 font-semibold flex items-center gap-0.5 hover:text-sky-600 hover:bg-transparent transition-colors"
+                            onClick={() => setIsAddVillageOpen(true)}
                           >
                             <Plus className="h-3.5 w-3.5" /> Add Village
                           </Button>
                         </div>
-                        {isCrossTenantView && (
-                          <p className="text-[11px] text-muted-foreground mt-1">
-                            Read-only view of {tenantInfo?.name ?? "another country"}. Switch back to your home country to add villages.
-                          </p>
-                        )}
                         <Popover open={isVillageSelectOpen} onOpenChange={setIsVillageSelectOpen}>
                           <PopoverTrigger asChild>
                             <FormControl>
@@ -3040,14 +2998,8 @@ export default function ClientLogbook() {
                                   type="button"
                                   size="sm"
                                   variant="secondary"
-                                  disabled={isCrossTenantView}
-                                  title={isCrossTenantView ? `Read-only view of ${tenantInfo?.name ?? "another country"} — switch back to your home country to add villages.` : undefined}
-                                  className="h-8 text-xs font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                                  className="h-8 text-xs font-semibold"
                                   onClick={() => {
-                                    if (isCrossTenantView) {
-                                      crossTenantToast();
-                                      return;
-                                    }
                                     setIsVillageSelectOpen(false);
                                     setIsAddVillageOpen(true);
                                   }}
@@ -3303,15 +3255,12 @@ export default function ClientLogbook() {
           {createVillageMutation.isError && (() => {
             const err: any = createVillageMutation.error;
             const rawMsg = err?.message ?? String(err ?? "");
-            const is403 = /^403:?\s/.test(rawMsg) || /viewing another country/i.test(rawMsg);
             return (
               <Alert variant="destructive" className="mt-2">
                 <AlertTriangle className="h-4 w-4" />
-                <AlertTitle>{is403 ? "Read-only view" : "Couldn't add village"}</AlertTitle>
+                <AlertTitle>Couldn't add village</AlertTitle>
                 <AlertDescription>
-                  {is403
-                    ? `You're viewing ${tenantInfo?.name ?? "another country"} read-only. Switch back to your home country to add villages.`
-                    : (rawMsg.replace(/^\d{3}:\s*/, "") || "Something went wrong. Please try again.")}
+                  {rawMsg.replace(/^\d{3}:\s*/, "") || "Something went wrong. Please try again."}
                 </AlertDescription>
               </Alert>
             );
