@@ -81,7 +81,70 @@ import {
   type VaccineConfig,
   type Facility,
   type InsertSessionDayPlan,
+  type Microplan,
 } from "@shared/schema";
+
+// Mirrors the staffing roster stored on microplans.staffing. Free-text role
+// labels are normalised to the matching session-day count field (vaccinators,
+// volunteers, supervisors, recorders) so per-diem rates flow through even
+// when the roster uses "Mobilizer" vs "Volunteer", etc.
+type StaffingRow = {
+  role: string;
+  headcount: number;
+  days: number;
+  perDiem: number;
+  fundingSource?: string;
+  fundingSourceOther?: string;
+};
+
+function rosterRoleToPlanCountField(
+  role: string,
+): "vaccinatorsCount" | "volunteersCount" | "supervisorsCount" | "recordersCount" | null {
+  const r = (role || "").toLowerCase();
+  if (r.includes("vaccinator")) return "vaccinatorsCount";
+  if (r.includes("supervisor")) return "supervisorsCount";
+  if (r.includes("recorder")) return "recordersCount";
+  if (r.includes("mobil") || r.includes("volunteer")) return "volunteersCount";
+  return null;
+}
+
+function extractRoster(microplan: Microplan | undefined | null): StaffingRow[] {
+  if (!microplan) return [];
+  const raw = (microplan as any).staffing;
+  if (Array.isArray(raw)) return raw as StaffingRow[];
+  if (raw && Array.isArray(raw.roster)) return raw.roster as StaffingRow[];
+  return [];
+}
+
+// Aggregate per-diem rates by mapped count field so multiple roster rows for
+// the same role (e.g. two vaccinator rows) take the highest rate rather than
+// silently dropping one.
+function ratesByField(roster: StaffingRow[]): Record<string, number> {
+  const out: Record<string, number> = {};
+  roster.forEach((r) => {
+    const f = rosterRoleToPlanCountField(r.role);
+    if (!f) return;
+    if ((r.perDiem || 0) > (out[f] || 0)) out[f] = r.perDiem || 0;
+  });
+  return out;
+}
+
+function personnelCostForDay(
+  rates: Record<string, number>,
+  counts: {
+    vaccinatorsCount?: number | null;
+    volunteersCount?: number | null;
+    supervisorsCount?: number | null;
+    recordersCount?: number | null;
+  },
+): number {
+  return (
+    (rates.vaccinatorsCount || 0) * (counts.vaccinatorsCount ?? 0) +
+    (rates.volunteersCount || 0) * (counts.volunteersCount ?? 0) +
+    (rates.supervisorsCount || 0) * (counts.supervisorsCount ?? 0) +
+    (rates.recordersCount || 0) * (counts.recordersCount ?? 0)
+  );
+}
 import { z } from "zod";
 import { format } from "date-fns";
 import * as XLSX from "xlsx";
@@ -199,6 +262,30 @@ export default function SessionDayPlans() {
     queryKey: [`/api/sessions/${id}`],
     enabled: !!id,
   });
+
+  // Fetch the parent microplan so we can reuse its staffing roster (per-diem
+  // rates + headcount) to compute personnel cost per session-day without
+  // making facility staff retype rates here.
+  const { data: parentMicroplan } = useQuery<Microplan>({
+    queryKey: [`/api/microplans/${sessionPlan?.microplanId}`],
+    enabled: !!sessionPlan?.microplanId,
+  });
+
+  const roster = useMemo(() => extractRoster(parentMicroplan), [parentMicroplan]);
+  const rosterRates = useMemo(() => ratesByField(roster), [roster]);
+  const rosterHeadcounts = useMemo(() => {
+    const out: Record<string, number> = {};
+    roster.forEach((r) => {
+      const f = rosterRoleToPlanCountField(r.role);
+      if (!f) return;
+      out[f] = (out[f] || 0) + (r.headcount || 0);
+    });
+    return out;
+  }, [roster]);
+  const hasRosterRates = useMemo(
+    () => Object.values(rosterRates).some((v) => v > 0),
+    [rosterRates],
+  );
 
   // Fetch Day Plans
   const { data: dayPlans, isLoading: loadingDays } = useQuery<SessionDayPlan[]>({
@@ -519,6 +606,21 @@ export default function SessionDayPlans() {
   });
 
   const targetPopInput = form.watch("targetPopulation");
+  const watchedVaccinators = form.watch("vaccinatorsCount");
+  const watchedVolunteers = form.watch("volunteersCount");
+  const watchedSupervisors = form.watch("supervisorsCount");
+  const watchedRecorders = form.watch("recordersCount");
+
+  const formPersonnelCost = useMemo(
+    () =>
+      personnelCostForDay(rosterRates, {
+        vaccinatorsCount: watchedVaccinators ?? 0,
+        volunteersCount: watchedVolunteers ?? 0,
+        supervisorsCount: watchedSupervisors ?? 0,
+        recordersCount: watchedRecorders ?? 0,
+      }),
+    [rosterRates, watchedVaccinators, watchedVolunteers, watchedSupervisors, watchedRecorders],
+  );
 
   // Automatically calculate dynamic dosages shown in the form as user types
   const calculatedFormDoses = useMemo(() => {
@@ -533,15 +635,97 @@ export default function SessionDayPlans() {
   }, [vaccineConfigs, targetPopInput]);
 
   const createMutation = useMutation({
-    mutationFn: async (data: any) => apiRequest("POST", `/api/sessions/${id}/days`, data),
-    onSuccess: () => {
+    mutationFn: async (data: any) => {
+      const created: any = await apiRequest("POST", `/api/sessions/${id}/days`, data);
+      // Snapshot personnel cost at creation time by writing one Personnel
+      // budget line per (day, role) using the parent microplan's roster
+      // rates. Matches the prefix used by the microplan-level
+      // "Sync to Budget" action so future re-syncs find and update the
+      // same rows instead of duplicating them.
+      const snapshotResult = { written: 0, skipped: 0, failed: 0 };
+      if (created?.id && sessionPlan && roster.length > 0) {
+        const dayNumber = created.dayNumber ?? data.dayNumber;
+        const roleSpecs: Array<{
+          field: "vaccinatorsCount" | "volunteersCount" | "supervisorsCount" | "recordersCount";
+        }> = [
+          { field: "vaccinatorsCount" },
+          { field: "volunteersCount" },
+          { field: "supervisorsCount" },
+          { field: "recordersCount" },
+        ];
+        for (const spec of roleSpecs) {
+          const count = Number((created as any)[spec.field] ?? 0);
+          const perDiem = rosterRates[spec.field] || 0;
+          if (count <= 0 || perDiem <= 0) continue;
+          // Use the same role normalization the rates table uses so
+          // "Mobilizer" rows correctly back the volunteersCount bucket
+          // (and any other free-text variants).
+          const sourceRow = roster.find(
+            (r) => rosterRoleToPlanCountField(r.role) === spec.field,
+          );
+          const fundingSource = sourceRow?.fundingSource || "unspecified";
+          const fundingSourceOther =
+            fundingSource === "other"
+              ? (sourceRow?.fundingSourceOther || "").trim() || null
+              : null;
+          // Server rejects "unspecified" and "other" without a descriptor —
+          // skip those lines and report so the user knows to classify.
+          if (
+            fundingSource === "unspecified" ||
+            (fundingSource === "other" && !fundingSourceOther)
+          ) {
+            snapshotResult.skipped++;
+            continue;
+          }
+          const roleLabel = sourceRow?.role || spec.field;
+          const description = `Personnel · Day ${dayNumber} · ${roleLabel} — ${count} × K${perDiem}`;
+          try {
+            await apiRequest("POST", "/api/budget-items", {
+              facilityId: sessionPlan.facilityId,
+              sessionId: sessionPlan.id,
+              category: "Personnel",
+              description,
+              unitCost: String(perDiem),
+              quantity: count,
+              totalCost: String(count * perDiem),
+              quarter: sessionPlan.quarter,
+              year: sessionPlan.year,
+              approvalStatus: "draft",
+              fundingSource,
+              fundingSourceOther,
+            });
+            snapshotResult.written++;
+          } catch (e) {
+            // Per-line failures don't roll back the day plan — surface
+            // them in the toast so the user can fix and re-sync.
+            console.warn("Personnel budget line snapshot failed", e);
+            snapshotResult.failed++;
+          }
+        }
+      }
+      return { created, snapshotResult };
+    },
+    onSuccess: ({ snapshotResult }) => {
       queryClient.invalidateQueries({ queryKey: [`/api/sessions/${id}/days`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/budget-items"] });
       setDialogOpen(false);
       form.reset();
-      toast({
-        title: "Day Plan Saved",
-        description: "Your session day-by-day plan has been registered successfully.",
-      });
+      const { written, skipped, failed } = snapshotResult;
+      let description = "Your session day-by-day plan has been registered successfully.";
+      let variant: "default" | "destructive" = "default";
+      if (hasRosterRates) {
+        if (written > 0 && failed === 0 && skipped === 0) {
+          description = `Day plan saved. Wrote ${written} Personnel budget line(s) from the roster.`;
+        } else if (written > 0 || skipped > 0 || failed > 0) {
+          const parts: string[] = [];
+          if (written > 0) parts.push(`${written} written`);
+          if (skipped > 0) parts.push(`${skipped} skipped (set funding source)`);
+          if (failed > 0) parts.push(`${failed} failed`);
+          description = `Day plan saved. Personnel budget: ${parts.join(", ")}.`;
+          if (failed > 0 || skipped > 0) variant = "destructive";
+        }
+      }
+      toast({ title: "Day Plan Saved", description, variant });
     },
     onError: (err: any) => {
       toast({ title: "Failed to save", description: err.message, variant: "destructive" });
@@ -610,10 +794,13 @@ export default function SessionDayPlans() {
       transportType: sessionPlan?.transportMode as any || "road",
       fuelLiters: 5,
       teamCount: 1,
-      vaccinatorsCount: 2,
-      volunteersCount: 2,
-      recordersCount: 1,
-      supervisorsCount: 1,
+      // Pre-fill role counts from the parent microplan's staffing roster
+      // headcount so facility staff don't retype what's already planned.
+      // Falls back to sensible defaults when no roster is attached.
+      vaccinatorsCount: rosterHeadcounts.vaccinatorsCount || 2,
+      volunteersCount: rosterHeadcounts.volunteersCount || 2,
+      recordersCount: rosterHeadcounts.recordersCount || 1,
+      supervisorsCount: rosterHeadcounts.supervisorsCount || 1,
       indelibleMarkers: 2,
       coldBoxes: 1,
       leadVaccinator: "",
@@ -1701,6 +1888,39 @@ export default function SessionDayPlans() {
                         </FormItem>
                       )}
                     />
+                  </div>
+
+                  {/* Live personnel cost preview — derived from the parent
+                      microplan's staffing roster per-diem × the role counts
+                      typed above. Surfaces what this session-day will cost
+                      before it's even saved. */}
+                  <div
+                    className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-3"
+                    data-testid="form-personnel-cost"
+                  >
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div className="text-[11px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
+                        Personnel cost (from microplan roster)
+                      </div>
+                      <div className="font-mono text-base font-extrabold text-emerald-700 dark:text-emerald-400">
+                        K{formPersonnelCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </div>
+                    </div>
+                    {!hasRosterRates ? (
+                      <div className="text-[10px] text-muted-foreground mt-1 italic">
+                        No per-diem rates set on the microplan staffing roster yet — open the microplan to add them.
+                      </div>
+                    ) : (
+                      <div className="text-[10px] text-muted-foreground mt-1">
+                        {(watchedVaccinators ?? 0)} vacc × K{rosterRates.vaccinatorsCount || 0}
+                        {" · "}
+                        {(watchedVolunteers ?? 0)} vol × K{rosterRates.volunteersCount || 0}
+                        {" · "}
+                        {(watchedSupervisors ?? 0)} sup × K{rosterRates.supervisorsCount || 0}
+                        {" · "}
+                        {(watchedRecorders ?? 0)} rec × K{rosterRates.recordersCount || 0}
+                      </div>
+                    )}
                   </div>
                 </div>
               )}

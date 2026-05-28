@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueries } from "@tanstack/react-query";
 import { useRoute, useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -66,7 +66,36 @@ type StaffingRow = {
   headcount: number;
   days: number;
   perDiem: number;
+  // Funding source pre-classification for this role's personnel cost. Pushed
+  // down to budget lines when the roster is synced to the budget. Legacy rows
+  // default to "unspecified" (matches the budget enum).
+  fundingSource?: string;
+  // Free-text descriptor required when `fundingSource === 'other'`. Mirrors
+  // the same field on budgetItems so sync can pass it through.
+  fundingSourceOther?: string;
 };
+
+// Map a roster role name to the count field on a session-day plan. Free-text
+// roster role labels are normalised so "Vaccinator", "vaccinators", and
+// "Lead Vaccinator" all bucket into the same plan column. Returns null when
+// the role doesn't map onto a tracked session-day count (e.g. "Driver").
+function rosterRoleToPlanCountField(
+  role: string,
+): "vaccinatorsCount" | "volunteersCount" | "supervisorsCount" | "recordersCount" | null {
+  const r = (role || "").toLowerCase();
+  if (r.includes("vaccinator")) return "vaccinatorsCount";
+  if (r.includes("supervisor")) return "supervisorsCount";
+  if (r.includes("recorder")) return "recordersCount";
+  if (r.includes("mobil") || r.includes("volunteer")) return "volunteersCount";
+  return null;
+}
+
+// Stable budget-line description prefix used to find-and-update an existing
+// per-day Personnel line on re-sync, instead of duplicating rows. Keep the
+// shape stable: anything before the trailing " — …" is the lookup key.
+function personnelLineKey(dayNumber: number, role: string): string {
+  return `Personnel · Day ${dayNumber} · ${role}`;
+}
 
 const STAFFING_ROLES = [
   "Vaccinator",
@@ -630,10 +659,57 @@ export default function MicroplanBuilder({ prePlanType }: MicroplanBuilderProps 
       : [];
     setStaffingRows(
       seed.length > 0
-        ? seed
-        : STAFFING_ROLES.map((role) => ({ role, headcount: 0, days: 0, perDiem: 0 })),
+        ? seed.map((r) => ({ fundingSource: "unspecified", ...r }))
+        : STAFFING_ROLES.map((role) => ({
+            role,
+            headcount: 0,
+            days: 0,
+            perDiem: 0,
+            fundingSource: "unspecified",
+          })),
     );
   }, [activeMicroplan]);
+
+  // ── Committed person-days vs roster capacity ───────────────────────────
+  // Walk every session that belongs to the active microplan and fetch its
+  // session-day plans. Each session-day contributes (role count) person-days
+  // for that role (one day per plan row). Compare against the roster's
+  // headcount × days per role to flag over-allocation.
+  const microplanSessions = useMemo(() => {
+    if (!sessions || !activeMicroplan) return [];
+    return sessions.filter((s) => s.microplanId === activeMicroplan.id);
+  }, [sessions, activeMicroplan]);
+
+  const microplanDayPlansQueries = useQueries({
+    queries: microplanSessions.map((s) => ({
+      queryKey: [`/api/sessions/${s.id}/days`],
+      enabled: !!s.id,
+    })),
+  });
+
+  const allMicroplanDayPlans = useMemo(() => {
+    const out: any[] = [];
+    microplanDayPlansQueries.forEach((q) => {
+      if (Array.isArray(q.data)) out.push(...(q.data as any[]));
+    });
+    return out;
+  }, [microplanDayPlansQueries]);
+
+  const committedByRole = useMemo(() => {
+    const totals: Record<string, number> = {
+      vaccinatorsCount: 0,
+      volunteersCount: 0,
+      supervisorsCount: 0,
+      recordersCount: 0,
+    };
+    allMicroplanDayPlans.forEach((p: any) => {
+      totals.vaccinatorsCount += p.vaccinatorsCount ?? 0;
+      totals.volunteersCount += p.volunteersCount ?? 0;
+      totals.supervisorsCount += p.supervisorsCount ?? 0;
+      totals.recordersCount += p.recordersCount ?? 0;
+    });
+    return totals;
+  }, [allMicroplanDayPlans]);
 
   const staffingTotal = useMemo(
     () =>
@@ -670,42 +746,156 @@ export default function MicroplanBuilder({ prePlanType }: MicroplanBuilderProps 
   });
 
   const syncStaffingToBudget = async () => {
-    if (!activeSessionId || !selectedFacilityId) {
+    if (!activeMicroplan) {
       toast({
-        title: "Select a session first",
-        description: "Draft or open a session plan before syncing staffing to budget.",
+        title: "No microplan to sync",
+        description: "Open or create a microplan before syncing staffing to budget.",
         variant: "destructive",
       });
       return;
     }
-    const q = Math.ceil((new Date().getMonth() + 1) / 3);
-    const y = new Date().getFullYear();
-    let added = 0;
-    for (const row of staffingRows) {
-      const total = (row.headcount || 0) * (row.days || 0);
-      if (total <= 0 || !row.perDiem) continue;
-      await apiRequest("POST", "/api/budget-items", {
-        facilityId: selectedFacilityId,
-        sessionId: activeSessionId,
-        category: "Per Diem",
-        description: `${row.role} per-diem (${row.headcount} × ${row.days}d)`,
-        unitCost: String(row.perDiem),
-        quantity: total,
-        totalCost: String(total * row.perDiem),
-        quarter: q,
-        year: y,
-        approvalStatus: "draft",
-        fundingSource: "unspecified",
+    if (microplanSessions.length === 0) {
+      toast({
+        title: "No session-day plans to cost",
+        description:
+          "Add at least one session plan with a session-day under this microplan first.",
+        variant: "destructive",
       });
-      added++;
+      return;
     }
+    const usableRoster = staffingRows.filter(
+      (r) =>
+        (r.perDiem || 0) > 0 && rosterRoleToPlanCountField(r.role) !== null,
+    );
+    if (usableRoster.length === 0) {
+      toast({
+        title: "Roster has no costable roles",
+        description:
+          "Set a per-diem rate on at least one Vaccinator / Volunteer / Supervisor / Recorder row first.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Server rejects budget items with `fundingSource === "unspecified"`,
+    // so catch that here — otherwise the very first POST would 400 and the
+    // sync would half-finish.
+    const unclassified = usableRoster.find(
+      (r) => !r.fundingSource || r.fundingSource === "unspecified",
+    );
+    if (unclassified) {
+      toast({
+        title: "Pick a funding source for every role",
+        description: `Role "${unclassified.role}" still shows "Unspecified". Choose Government / Gavi / WHO / UNICEF / Other before syncing.`,
+        variant: "destructive",
+      });
+      return;
+    }
+    // Server rejects "other" without a free-text specifier — catch it early
+    // so the sync can't half-finish.
+    const otherMissing = usableRoster.find(
+      (r) => r.fundingSource === "other" && !(r.fundingSourceOther || "").trim(),
+    );
+    if (otherMissing) {
+      toast({
+        title: "Specify the 'Other' funding source",
+        description: `Role "${otherMissing.role}" is set to Other — fill in the descriptor first.`,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const existingItems = (budgetItems || []).filter((b) =>
+      microplanSessions.some((s) => s.id === b.sessionId),
+    );
+    // Track which auto-generated Personnel lines we still want after this
+    // sync so we can prune the rest (zeroed-out roles, deleted session-days).
+    const keepIds = new Set<number>();
+
+    let upserts = 0;
+    let updates = 0;
+    let removed = 0;
+    for (const session of microplanSessions) {
+      // Pick day plans freshly fetched from cache (already loaded by the
+      // useQueries hook above). Fall back to a direct fetch when not yet
+      // cached so the very first sync after page-load still works.
+      let days: any[] = [];
+      const cached = microplanDayPlansQueries.find(
+        (q, idx) => microplanSessions[idx]?.id === session.id,
+      );
+      if (cached?.data && Array.isArray(cached.data)) {
+        days = cached.data as any[];
+      } else {
+        days = await apiRequest<any[]>("GET", `/api/sessions/${session.id}/days`);
+      }
+      for (const day of days) {
+        for (const row of usableRoster) {
+          const field = rosterRoleToPlanCountField(row.role)!;
+          const count = (day as any)[field] ?? 0;
+          const key = personnelLineKey(day.dayNumber, row.role);
+          const existing = existingItems.find(
+            (b) =>
+              b.sessionId === session.id &&
+              (b.description || "").startsWith(key),
+          );
+          // Skip rows with zero count, but mark any pre-existing line for
+          // pruning below (handled by absence from keepIds).
+          if (count <= 0) continue;
+          const totalCost = count * row.perDiem;
+          const description = `${key} — ${count} × K${row.perDiem}`;
+          const payload: any = {
+            facilityId: session.facilityId,
+            sessionId: session.id,
+            category: "Personnel",
+            description,
+            unitCost: String(row.perDiem),
+            quantity: count,
+            totalCost: String(totalCost),
+            quarter: session.quarter,
+            year: session.year,
+            approvalStatus: "draft",
+            fundingSource: row.fundingSource || "unspecified",
+            fundingSourceOther:
+              row.fundingSource === "other"
+                ? (row.fundingSourceOther || "").trim() || null
+                : null,
+          };
+          if (existing) {
+            await apiRequest("PATCH", `/api/budget-items/${existing.id}`, payload);
+            keepIds.add(existing.id);
+            updates++;
+          } else {
+            const created = await apiRequest<any>("POST", "/api/budget-items", payload);
+            if (created?.id) keepIds.add(created.id);
+            upserts++;
+          }
+        }
+      }
+    }
+
+    // Prune previously auto-generated Personnel lines that no longer match
+    // any live (session-day, role) pair with count > 0. This keeps the
+    // budget honest when staff edit role counts down to zero or delete a
+    // session-day plan after the first sync.
+    const orphans = existingItems.filter(
+      (b) =>
+        b.category === "Personnel" &&
+        (b.description || "").startsWith("Personnel · Day ") &&
+        !keepIds.has(b.id),
+    );
+    for (const orphan of orphans) {
+      await apiRequest("DELETE", `/api/budget-items/${orphan.id}`);
+      removed++;
+    }
+
     await refetchBudgets();
+    const totalChanged = upserts + updates + removed;
     toast({
-      title: added > 0 ? "Staffing pushed to budget" : "Nothing to push",
+      title: totalChanged > 0 ? "Personnel budget synced" : "Nothing to sync",
       description:
-        added > 0
-          ? `${added} Per Diem line(s) added. Classify funding source on the Budget Planning page.`
-          : "Set headcount, days, and per-diem on at least one role first.",
+        totalChanged > 0
+          ? `${upserts} new + ${updates} updated + ${removed} removed Personnel line(s) across ${microplanSessions.length} session(s).`
+          : "Add session-day plans with role counts under this microplan first.",
     });
   };
 
@@ -2451,13 +2641,14 @@ export default function MicroplanBuilder({ prePlanType }: MicroplanBuilderProps 
                 </div>
 
                 <div className="overflow-x-auto">
-                  <table className="w-full text-xs text-left border-collapse min-w-[520px]">
+                  <table className="w-full text-xs text-left border-collapse min-w-[640px]">
                     <thead>
                       <tr className="border-b border-border/40 text-muted-foreground uppercase font-bold text-[9px] tracking-wider">
                         <th className="py-2 px-1">Role</th>
                         <th className="py-2 px-1 w-20">Headcount</th>
                         <th className="py-2 px-1 w-16">Days</th>
                         <th className="py-2 px-1 w-24">Per-diem (K)</th>
+                        <th className="py-2 px-1 w-28">Funding Source</th>
                         <th className="py-2 px-1 w-24 text-right">Subtotal</th>
                         <th className="py-2 px-1 w-10 text-center">—</th>
                       </tr>
@@ -2505,6 +2696,41 @@ export default function MicroplanBuilder({ prePlanType }: MicroplanBuilderProps 
                                 className="bg-background rounded-lg text-xs h-8 px-2 font-mono"
                               />
                             </td>
+                            <td className="py-1.5 px-1">
+                              <Select
+                                value={row.fundingSource || "unspecified"}
+                                onValueChange={(v) =>
+                                  update({
+                                    fundingSource: v,
+                                    // Reset the free-text specifier when leaving "Other"
+                                    fundingSourceOther: v === "other" ? row.fundingSourceOther : "",
+                                  })
+                                }
+                              >
+                                <SelectTrigger
+                                  className="bg-background rounded-lg text-xs h-8 px-2"
+                                  data-testid={`select-staff-funding-${idx}`}
+                                >
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {FUNDING_SOURCES.map((opt) => (
+                                    <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                                      {opt.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              {row.fundingSource === "other" && (
+                                <Input
+                                  value={row.fundingSourceOther || ""}
+                                  onChange={(e) => update({ fundingSourceOther: e.target.value })}
+                                  placeholder="Specify…"
+                                  className="bg-background rounded-lg text-[10px] h-7 px-2 mt-1"
+                                  data-testid={`input-staff-funding-other-${idx}`}
+                                />
+                              )}
+                            </td>
                             <td className="py-1.5 px-1 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400">
                               K{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </td>
@@ -2530,7 +2756,10 @@ export default function MicroplanBuilder({ prePlanType }: MicroplanBuilderProps 
                     size="sm"
                     variant="outline"
                     onClick={() =>
-                      setStaffingRows([...staffingRows, { role: "", headcount: 0, days: 0, perDiem: 0 }])
+                      setStaffingRows([
+                        ...staffingRows,
+                        { role: "", headcount: 0, days: 0, perDiem: 0, fundingSource: "unspecified" },
+                      ])
                     }
                     className="rounded-xl text-xs font-bold border-indigo-600/30 text-indigo-600 hover:bg-indigo-50"
                     data-testid="button-add-staff-row"
@@ -2550,11 +2779,11 @@ export default function MicroplanBuilder({ prePlanType }: MicroplanBuilderProps 
                     size="sm"
                     variant="outline"
                     onClick={syncStaffingToBudget}
-                    disabled={!activeSessionId || staffingTotal <= 0}
+                    disabled={!activeMicroplan || staffingTotal <= 0 || microplanSessions.length === 0}
                     className="rounded-xl text-xs font-bold border-emerald-600/30 text-emerald-700 hover:bg-emerald-50"
                     data-testid="button-sync-staff-budget"
                   >
-                    <Wallet className="h-3.5 w-3.5 mr-1" /> Push to Budget as Per-Diem
+                    <Wallet className="h-3.5 w-3.5 mr-1" /> Sync to Budget (Personnel per session-day)
                   </Button>
                   {!activeMicroplan && (
                     <span className="text-[10px] text-muted-foreground italic">
@@ -2562,6 +2791,84 @@ export default function MicroplanBuilder({ prePlanType }: MicroplanBuilderProps 
                     </span>
                   )}
                 </div>
+
+                {/* Committed person-days vs roster capacity. Surfaces over-allocation
+                    by walking every session-day plan attached to this microplan and
+                    comparing the role counts against headcount × days on the roster. */}
+                {activeMicroplan && (
+                  <div className="rounded-xl border border-border/40 bg-background/60 p-3 space-y-2">
+                    <div className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground">
+                      Committed person-days vs roster capacity
+                    </div>
+                    {(() => {
+                      const trackedRows = staffingRows.filter(
+                        (r) => rosterRoleToPlanCountField(r.role) !== null,
+                      );
+                      if (trackedRows.length === 0) {
+                        return (
+                          <div className="text-[11px] text-muted-foreground italic">
+                            Roster has no Vaccinator / Volunteer / Supervisor / Recorder rows yet.
+                          </div>
+                        );
+                      }
+                      // Aggregate by mapped field so duplicate rows (e.g. two
+                      // "Vaccinator" entries) roll up to a single capacity figure.
+                      const capByField: Record<string, number> = {};
+                      trackedRows.forEach((r) => {
+                        const f = rosterRoleToPlanCountField(r.role)!;
+                        capByField[f] = (capByField[f] || 0) + (r.headcount || 0) * (r.days || 0);
+                      });
+                      const labels: Record<string, string> = {
+                        vaccinatorsCount: "Vaccinators",
+                        volunteersCount: "Volunteers / Mobilizers",
+                        supervisorsCount: "Supervisors",
+                        recordersCount: "Recorders",
+                      };
+                      return (
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                          {(Object.keys(labels) as Array<keyof typeof labels>).map((field) => {
+                            const cap = capByField[field] || 0;
+                            const committed = committedByRole[field] || 0;
+                            if (cap === 0 && committed === 0) return null;
+                            const over = cap > 0 && committed > cap;
+                            return (
+                              <div
+                                key={field}
+                                className={`rounded-lg border p-2 ${
+                                  over
+                                    ? "border-red-500/40 bg-red-500/5"
+                                    : "border-border/40 bg-muted/5"
+                                }`}
+                                data-testid={`staffing-capacity-${field}`}
+                              >
+                                <div className="text-[10px] font-bold uppercase text-muted-foreground">
+                                  {labels[field]}
+                                </div>
+                                <div className="font-mono text-[11px] mt-0.5">
+                                  <span
+                                    className={`font-extrabold ${
+                                      over
+                                        ? "text-red-600 dark:text-red-400"
+                                        : "text-emerald-600 dark:text-emerald-400"
+                                    }`}
+                                  >
+                                    {committed}
+                                  </span>
+                                  <span className="text-muted-foreground"> / {cap} pd</span>
+                                </div>
+                                {over && (
+                                  <div className="text-[9px] font-bold text-red-600 dark:text-red-400 mt-0.5">
+                                    Over-allocated by {committed - cap}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
               </div>
 
               <div className="min-w-[600px]">
