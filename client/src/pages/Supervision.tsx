@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { FacilityCascadePicker } from "@/components/FacilityCascadePicker";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -315,12 +316,13 @@ function ScheduleDialog({ facilities, microplans, onSubmit, isSubmitting }: { fa
       <div className="space-y-3 py-2">
         <div>
           <Label>Facility *</Label>
-          <Select value={facilityId} onValueChange={setFacilityId}>
-            <SelectTrigger data-testid="schedule-facility"><SelectValue placeholder="Select facility" /></SelectTrigger>
-            <SelectContent>
-              {facilities.map((f) => <SelectItem key={f.id} value={String(f.id)}>{f.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          <FacilityCascadePicker
+            value={facilityId ? Number(facilityId) : null}
+            onChange={(id) => setFacilityId(id ? String(id) : "")}
+            required
+            showLabels={false}
+            testIdPrefix="schedule-facility"
+          />
         </div>
         <div>
           <Label>Microplan (optional)</Label>

@@ -37,6 +37,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { FacilityCascadePicker } from "@/components/FacilityCascadePicker";
 import {
   Package,
   Plus,
@@ -538,23 +539,16 @@ export default function StockLedger() {
         <div className="flex items-center gap-3">
           {/* Facility Selector */}
           {!user?.facilityId && facilities && (
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-muted-foreground uppercase">Facility:</span>
-              <Select
-                value={selectedFacilityId?.toString() ?? ""}
-                onValueChange={(v) => setSelectedFacilityId(parseInt(v))}
-              >
-                <SelectTrigger className="w-[200px] bg-background">
-                  <SelectValue placeholder="Select Facility" />
-                </SelectTrigger>
-                <SelectContent>
-                  {facilities.map((f) => (
-                    <SelectItem key={f.id} value={f.id.toString()}>
-                      {f.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="flex items-center gap-2 min-w-[640px]">
+              <span className="text-xs font-semibold text-muted-foreground uppercase shrink-0">Facility:</span>
+              <div className="flex-1">
+                <FacilityCascadePicker
+                  value={selectedFacilityId ?? null}
+                  onChange={(id) => setSelectedFacilityId(id ?? undefined as any)}
+                  showLabels={false}
+                  testIdPrefix="stock-facility"
+                />
+              </div>
             </div>
           )}
 

@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { FacilityCascadePicker } from "@/components/FacilityCascadePicker";
 import type { PopulationData, Province, District, Village, Facility } from "@shared/schema";
 
 type PopulationSource = "nso" | "hmis" | "worldpop" | "survey" | "community_census";
@@ -557,23 +558,12 @@ export function PopulationDialog({
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Facility</FormLabel>
-                      <Select 
-                        value={field.value?.toString() || ""} 
-                        onValueChange={(v) => field.onChange(parseInt(v))}
-                      >
-                        <FormControl>
-                          <SelectTrigger data-testid="select-facility-form">
-                            <SelectValue placeholder="Select facility" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {facilities?.map((f) => (
-                            <SelectItem key={f.id} value={f.id.toString()}>
-                              {f.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <FacilityCascadePicker
+                        value={field.value ?? null}
+                        onChange={(id) => field.onChange(id)}
+                        showLabels={false}
+                        testIdPrefix="population-facility"
+                      />
                       <FormMessage />
                     </FormItem>
                   )}

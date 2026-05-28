@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { Link } from "wouter";
+import { FacilityCascadePicker } from "@/components/FacilityCascadePicker";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -973,98 +974,19 @@ export default function SessionPlanning({
                       Where is this microplan for?
                     </div>
 
-                    <div>
-                      <FormLabel className="text-xs">Province</FormLabel>
-                      <Select
-                        value={provinceId?.toString() ?? ""}
-                        onValueChange={(v) => {
-                          setProvinceId(parseInt(v));
-                          setDistrictId(null);
-                          form.setValue("facilityId", undefined as any);
-                        }}
-                      >
-                        <SelectTrigger data-testid="select-province" className="mt-1">
-                          <SelectValue placeholder="Pick a province" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {(provinces ?? []).map((p) => (
-                            <SelectItem
-                              key={p.id}
-                              value={p.id.toString()}
-                              data-testid={`option-province-${p.id}`}
-                            >
-                              {p.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div>
-                      <FormLabel className="text-xs">District</FormLabel>
-                      <Select
-                        value={districtId?.toString() ?? ""}
-                        onValueChange={(v) => {
-                          setDistrictId(parseInt(v));
-                          form.setValue("facilityId", undefined as any);
-                        }}
-                        disabled={!provinceId}
-                      >
-                        <SelectTrigger data-testid="select-district" className="mt-1">
-                          <SelectValue
-                            placeholder={provinceId ? "Pick a district" : "Pick a province first"}
-                          />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {filteredDistricts.map((d) => (
-                            <SelectItem
-                              key={d.id}
-                              value={d.id.toString()}
-                              data-testid={`option-district-${d.id}`}
-                            >
-                              {d.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
                     <FormField
                       control={form.control}
                       name="facilityId"
                       render={({ field }) => (
-                        <FormItem>
+                        <FormItem className="md:col-span-3">
                           <FormLabel className="text-xs">Facility *</FormLabel>
-                          <Select
-                            value={field.value?.toString() ?? ""}
-                            onValueChange={(v) => field.onChange(parseInt(v))}
-                            disabled={!districtId}
-                          >
-                            <FormControl>
-                              <SelectTrigger data-testid="select-facility" className="mt-1">
-                                <SelectValue
-                                  placeholder={
-                                    districtId
-                                      ? filteredFacilities.length
-                                        ? "Pick your facility"
-                                        : "No facilities in this district yet"
-                                      : "Pick a district first"
-                                  }
-                                />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              {filteredFacilities.map((f) => (
-                                <SelectItem
-                                  key={f.id}
-                                  value={f.id.toString()}
-                                  data-testid={`option-facility-${f.id}`}
-                                >
-                                  {f.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                          <FacilityCascadePicker
+                            value={field.value ?? null}
+                            onChange={(id) => field.onChange(id ?? undefined)}
+                            required
+                            showLabels={false}
+                            testIdPrefix="session-plan"
+                          />
                           <FormMessage />
                         </FormItem>
                       )}

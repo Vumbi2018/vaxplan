@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { FacilityCascadePicker } from "@/components/FacilityCascadePicker";
 import { MapPin, Plus, Sliders, Navigation, Footprints, AlertTriangle } from "lucide-react";
 import type { Facility, Llg } from "@shared/schema";
 
@@ -252,23 +253,15 @@ export function AddCommunityDialog({
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div className="space-y-1">
+              <div className="space-y-1 md:col-span-2">
                 <Label className="text-xs font-semibold">Assigned Health Facility *</Label>
-                <Select
-                  value={assignedFacilityId}
-                  onValueChange={setAssignedFacilityId}
-                >
-                  <SelectTrigger className="bg-background rounded-xl text-xs">
-                    <SelectValue placeholder="Select facility" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {facilities?.map((f) => (
-                      <SelectItem key={f.id} value={f.id.toString()}>
-                        {f.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <FacilityCascadePicker
+                  value={assignedFacilityId ? Number(assignedFacilityId) : null}
+                  onChange={(id) => setAssignedFacilityId(id ? String(id) : "")}
+                  required
+                  showLabels={false}
+                  testIdPrefix="add-community-facility"
+                />
               </div>
 
               <div className="space-y-1">

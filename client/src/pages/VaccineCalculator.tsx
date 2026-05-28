@@ -48,6 +48,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import type { Facility, PopulationData, Tenant, VaccineConfig } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
+import { FacilityCascadePicker } from "@/components/FacilityCascadePicker";
 import { offlineDb } from "../lib/offlineDb";
 import { MicroplanStepper } from "@/components/MicroplanStepper";
 
@@ -441,23 +442,14 @@ export default function VaccineCalculator() {
         </CardHeader>
         <CardContent>
           <div className="grid md:grid-cols-3 gap-4">
-            <div className="space-y-2">
+            <div className="space-y-2 md:col-span-2">
               <Label>Facility</Label>
-              <Select
-                value={selectedFacility || ""}
-                onValueChange={setSelectedFacility}
-              >
-                <SelectTrigger data-testid="select-calculator-facility">
-                  <SelectValue placeholder="Select facility" />
-                </SelectTrigger>
-                <SelectContent>
-                  {facilities?.map((f) => (
-                    <SelectItem key={f.id} value={f.id.toString()}>
-                      {f.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <FacilityCascadePicker
+                value={selectedFacility ? Number(selectedFacility) : null}
+                onChange={(id) => setSelectedFacility(id ? String(id) : "")}
+                showLabels={false}
+                testIdPrefix="calculator-facility"
+              />
             </div>
 
             <div className="space-y-2">

@@ -38,6 +38,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { FacilityCascadePicker } from "@/components/FacilityCascadePicker";
 import { offlineDb, enqueueOutbox } from "../lib/offlineDb";
 // Original icons (commented out to preserve working code):
 // import {
@@ -666,23 +667,13 @@ export default function BudgetPlanning() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Facility *</FormLabel>
-                        <Select
-                          onValueChange={(v) => field.onChange(parseInt(v))}
-                          value={field.value?.toString()}
-                        >
-                          <FormControl>
-                            <SelectTrigger data-testid="select-facility">
-                              <SelectValue placeholder="Select facility" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {facilities?.map((f) => (
-                              <SelectItem key={f.id} value={f.id.toString()}>
-                                {f.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <FacilityCascadePicker
+                          value={field.value ?? null}
+                          onChange={(id) => field.onChange(id ?? undefined)}
+                          required
+                          showLabels={false}
+                          testIdPrefix="budget-facility"
+                        />
                         <FormMessage />
                       </FormItem>
                     )}

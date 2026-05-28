@@ -31,6 +31,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { canApproveSessionPlan } from "@/lib/permissions";
+import { FacilityCascadePicker } from "@/components/FacilityCascadePicker";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type {
   Microplan,
@@ -697,7 +698,7 @@ export default function MicroplanWizard() {
       } else if (step === 8) {
         // Single day-plan write per session row; dedupe so step 5/8 cannot
         // produce duplicate session_day_plan rows when both are visited.
-        const written = new Set(dayPlansWritten);
+        const written = new Set<string>(dayPlansWritten);
         for (let i = 0; i < staffing.length; i++) {
           const s = staffing[i];
           const sid = sessionIdMap[s.rowId];
@@ -922,24 +923,15 @@ export default function MicroplanWizard() {
 
               {/* Facility & name (always available, drives ensureMicroplan) */}
               {!microplanId && (
-                <div className="grid grid-cols-1 gap-3 rounded-md border bg-muted/30 p-3 sm:grid-cols-2">
+                <div className="space-y-3 rounded-md border bg-muted/30 p-3">
                   <div>
-                    <Label>Facility</Label>
-                    <Select
-                      value={facilityId ? String(facilityId) : ""}
-                      onValueChange={(v) => setFacilityId(Number(v))}
-                    >
-                      <SelectTrigger data-testid="select-facility">
-                        <SelectValue placeholder="Pick facility" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {(facilities ?? []).map((f) => (
-                          <SelectItem key={f.id} value={String(f.id)}>
-                            {f.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <Label className="mb-2 block">Facility</Label>
+                    <FacilityCascadePicker
+                      value={facilityId}
+                      onChange={(id) => setFacilityId(id)}
+                      required
+                      testIdPrefix="wizard"
+                    />
                   </div>
                   <div>
                     <Label>Plan name</Label>
