@@ -146,89 +146,14 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
-    chunkSizeWarningLimit: 600,
-    rollupOptions: {
-      output: {
-        manualChunks(id) {
-          if (!id.includes("node_modules")) return undefined;
-
-          // Heavy mapping / geospatial libs (pure leaflet only — react-leaflet
-          // must stay with React to avoid cross-chunk CJS interop breaking
-          // `React.createContext` at load time).
-          if (
-            id.includes("/leaflet/") ||
-            id.includes("/leaflet.markercluster/") ||
-            id.includes("/leaflet-defaulticon-compatibility/")
-          ) {
-            return "vendor-leaflet";
-          }
-          if (
-            id.includes("/georaster") ||
-            id.includes("/geotiff") ||
-            id.includes("/proj4")
-          ) {
-            return "vendor-georaster";
-          }
-          if (id.includes("/@turf/")) {
-            return "vendor-turf";
-          }
-
-          // Charts
-          if (
-            id.includes("/recharts/") ||
-            id.includes("/d3-") ||
-            id.includes("/victory-vendor/")
-          ) {
-            return "vendor-charts";
-          }
-
-          // Document export libs (lazy-loaded callers + own chunk)
-          if (id.includes("/xlsx/")) return "vendor-xlsx";
-          if (id.includes("/docx/")) return "vendor-docx";
-          if (id.includes("/pptxgenjs/")) return "vendor-pptx";
-          if (id.includes("/jspdf") || id.includes("/html2canvas/")) {
-            return "vendor-pdf";
-          }
-
-          // Radix UI primitives
-          if (id.includes("/@radix-ui/")) {
-            return "vendor-radix";
-          }
-
-          // Icons
-          if (id.includes("/lucide-react/")) {
-            return "vendor-icons";
-          }
-
-          // Forms / validation
-          if (
-            id.includes("/react-hook-form/") ||
-            id.includes("/@hookform/") ||
-            id.includes("/zod/")
-          ) {
-            return "vendor-forms";
-          }
-
-          // React core & router / query. react-leaflet wrappers live here too
-          // — splitting them into a separate chunk causes
-          // `React.createContext` to be undefined at runtime due to CJS↔ESM
-          // interop across chunk boundaries.
-          if (
-            id.includes("/react/") ||
-            id.includes("/react-dom/") ||
-            id.includes("/scheduler/") ||
-            id.includes("/wouter/") ||
-            id.includes("/@tanstack/react-query/") ||
-            id.includes("/react-leaflet/") ||
-            id.includes("/@react-leaflet/")
-          ) {
-            return "vendor-react";
-          }
-
-          return "vendor";
-        },
-      },
-    },
+    chunkSizeWarningLimit: 1500,
+    // NOTE: do NOT add a `manualChunks` function here. Hand-rolled chunk
+    // groups for React + react-leaflet + leaflet kept producing circular
+    // imports between the resulting chunks (vendor-react ⇄ vendor-leaflet),
+    // which left `React.createContext` undefined at load time and gave a
+    // blank production screen. Rollup's automatic splitting handles the
+    // dependency graph correctly; leave it alone unless you have a verified
+    // reason and have re-tested the production build.
   },
   server: {
     fs: {
