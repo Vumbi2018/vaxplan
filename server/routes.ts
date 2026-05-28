@@ -74,7 +74,7 @@ import { z } from "zod";
 import { db, pool } from "./db";
 import { readFileSync, existsSync, readdirSync, createReadStream, createWriteStream } from "fs";
 import { join } from "path";
-import { eq, and, desc, ne, inArray, gte, lte, sql as dsql } from "drizzle-orm";
+import { eq, and, desc, ne, inArray, gte, lte, like, sql as dsql } from "drizzle-orm";
 import {
   fetchGeoBoundariesGeoJSON,
   calcBBox,
@@ -6592,9 +6592,32 @@ export async function registerRoutes(
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ message: "Invalid day plan ID" });
+      // Look up the day's (sessionPlanId, dayNumber) before deleting so we can
+      // prune the auto-generated Personnel budget lines that MicroplanBuilder's
+      // "Sync to Budget" action wrote for this specific day. Without this the
+      // budget would keep showing "Personnel · Day N · Role" rows pointing at a
+      // day-plan that no longer exists until the next manual re-sync.
+      const [dayRow] = await db
+        .select({ sessionPlanId: sessionDayPlans.sessionPlanId, dayNumber: sessionDayPlans.dayNumber })
+        .from(sessionDayPlans)
+        .where(and(eq(sessionDayPlans.id, id), eq(sessionDayPlans.tenantId, req.tenantId)));
       const deleted = await storage.deleteSessionDayPlan(req.tenantId, id);
       if (!deleted) return res.status(404).json({ message: "Session day plan not found" });
-      res.json({ success: true });
+      let prunedPersonnelLines = 0;
+      if (dayRow) {
+        const pruneRes = await db
+          .delete(budgetItems)
+          .where(
+            and(
+              eq(budgetItems.tenantId, req.tenantId),
+              eq(budgetItems.sessionId, dayRow.sessionPlanId),
+              eq(budgetItems.category, "Personnel"),
+              like(budgetItems.description, `Personnel · Day ${dayRow.dayNumber} · %`),
+            ),
+          );
+        prunedPersonnelLines = pruneRes.rowCount ?? 0;
+      }
+      res.json({ success: true, prunedPersonnelLines });
     } catch (err: any) {
       console.error("DELETE /api/sessions/days/:id failed:", err);
       res.status(500).json({ message: "Failed to delete session day plan" });
