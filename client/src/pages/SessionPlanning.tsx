@@ -763,6 +763,7 @@ export default function SessionPlanning({
   // Edit & Delete CRUD modal state & mutations
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editingPlan, setEditingPlan] = useState<SessionPlan | null>(null);
+  const [viewingPlan, setViewingPlan] = useState<SessionPlan | null>(null);
 
   const [editName, setEditName] = useState("");
   const [editSessionType, setEditSessionType] = useState<"static" | "outreach" | "mobile">("static");
@@ -1159,7 +1160,8 @@ export default function SessionPlanning({
       render: (item: SessionPlan) => (
         <div
           className="flex items-center gap-2 cursor-pointer group"
-          onClick={() => handleOpenEditModal(item)}
+          onClick={() => setViewingPlan(item)}
+          data-testid={`row-open-session-${item.id}`}
         >
           <div className="h-8 w-8 rounded bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
             <Calendar className="h-4 w-4 text-primary" />
@@ -2231,6 +2233,107 @@ export default function SessionPlanning({
           />
         </CardContent>
       </Card>
+
+      {/* View Session Details Dialog — opened by clicking a session row.
+          Read-only. Shows ONLY this session's details. The full edit form
+          is reachable via the "Edit" action button in the row's Actions
+          column. */}
+      <Dialog
+        open={!!viewingPlan}
+        onOpenChange={(open) => {
+          if (!open) setViewingPlan(null);
+        }}
+      >
+        <DialogContent
+          className="max-w-xl max-h-[85vh] overflow-y-auto bg-card border border-border text-foreground rounded-3xl shadow-2xl p-6 font-sans"
+          data-testid="dialog-session-details"
+        >
+          {viewingPlan && (() => {
+            const fac = (facilities ?? []).find((f) => f.id === viewingPlan.facilityId);
+            const dist = fac ? (districts ?? []).find((d) => d.id === fac.districtId) : undefined;
+            const prov = dist ? (provinces ?? []).find((p) => p.id === dist.provinceId) : undefined;
+            const linkedVillageIds = (allSessionVillages ?? [])
+              .filter((sv) => Number(sv.sessionId) === Number(viewingPlan.id))
+              .map((sv) => Number(sv.villageId));
+            const purposeLabel = ({
+              routine_outreach: "Routine outreach",
+              unserved: "Unserved area",
+              defaulter_followup: "Defaulter follow-up",
+            } as Record<string, string>)[(viewingPlan as any).outreachPurpose] || null;
+            const Row = ({ label, value, testId }: { label: string; value: React.ReactNode; testId?: string }) => (
+              <div className="grid grid-cols-3 gap-3 py-2 border-b border-border/40 last:border-b-0">
+                <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider col-span-1">{label}</div>
+                <div className="text-sm col-span-2" data-testid={testId}>{value ?? <span className="text-muted-foreground italic">—</span>}</div>
+              </div>
+            );
+
+            return (
+              <>
+                <DialogHeader>
+                  <DialogTitle className="text-xl font-bold flex items-center gap-2">
+                    <Calendar className="h-5 w-5 text-indigo-500" />
+                    <span data-testid="view-session-name">{viewingPlan.name}</span>
+                  </DialogTitle>
+                </DialogHeader>
+
+                <div className="pt-4">
+                  <Row label="Session type" value={<span className="capitalize">{viewingPlan.sessionType}</span>} testId="view-session-type" />
+                  <Row label="Period" value={`Q${viewingPlan.quarter} ${viewingPlan.year}`} testId="view-session-period" />
+                  <Row label="Status" value={<ApprovalBadge status={viewingPlan.approvalStatus || "draft"} />} />
+                  <Row
+                    label="Execution"
+                    value={<span className="capitalize">{viewingPlan.status || "planned"}</span>}
+                    testId="view-session-status"
+                  />
+                  <Row label={adminLabels.level1 || "Province"} value={prov?.name} testId="view-session-province" />
+                  <Row label={adminLabels.level2 || "District"} value={dist?.name} testId="view-session-district" />
+                  <Row label={adminLabels.level3 || "Facility"} value={fac?.name} testId="view-session-facility" />
+                  <Row
+                    label="Transport"
+                    value={viewingPlan.transportMode ? <span className="capitalize">{viewingPlan.transportMode}</span> : null}
+                  />
+                  <Row
+                    label="Target population"
+                    value={viewingPlan.targetPopulation != null ? viewingPlan.targetPopulation.toLocaleString() : null}
+                    testId="view-session-targetpop"
+                  />
+                  {purposeLabel && <Row label="Outreach purpose" value={purposeLabel} />}
+                  {(viewingPlan as any).humanResources && (
+                    <Row label="Staffing" value={<span className="whitespace-pre-wrap">{(viewingPlan as any).humanResources}</span>} />
+                  )}
+                  {(viewingPlan as any).keyStakeholders && (
+                    <Row label="Stakeholders" value={<span className="whitespace-pre-wrap">{(viewingPlan as any).keyStakeholders}</span>} />
+                  )}
+                  <Row
+                    label="Linked villages"
+                    value={
+                      linkedVillageIds.length > 0 ? (
+                        <div className="flex flex-wrap gap-1.5">
+                          {linkedVillageIds.map((vid) => (
+                            <Badge key={vid} variant="secondary" className="text-xs">
+                              {villageNameById.get(vid) ?? `Village #${vid}`}
+                            </Badge>
+                          ))}
+                        </div>
+                      ) : null
+                    }
+                  />
+                </div>
+
+                <DialogFooter className="pt-4">
+                  <Button
+                    variant="outline"
+                    onClick={() => setViewingPlan(null)}
+                    data-testid="btn-close-session-details"
+                  >
+                    Close
+                  </Button>
+                </DialogFooter>
+              </>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
 
       {/* Edit Plan Dialog CRUD Modal */}
       <Dialog
