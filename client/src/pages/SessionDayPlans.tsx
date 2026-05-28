@@ -383,59 +383,6 @@ export default function SessionDayPlans() {
     };
   }, [dayPlans]);
 
-  const tableTotals = useMemo(() => {
-    if (!dayPlans) return null;
-    
-    const totals: Record<string, number> = {
-      targetPop: 0,
-      vitaminA: 0,
-      deworming: 0,
-      carriers: 0,
-      icePacks: 0,
-      distance: 0,
-      fuel: 0,
-      actualVacc: 0,
-      vialsUsed: 0,
-      vialsWasted: 0,
-      teams: 0,
-      vaccinators: 0,
-      volunteers: 0,
-      recorders: 0,
-      supervisors: 0,
-      markers: 0,
-      coldBoxes: 0,
-    };
-
-    const vaccineTotals: Record<string, number> = {};
-
-    dayPlans.forEach((plan) => {
-      totals.targetPop += plan.targetPopulation || 0;
-      totals.vitaminA += plan.vitaminADoses || 0;
-      totals.deworming += plan.dewormingDoses || 0;
-      totals.carriers += plan.vaccineCarriers || 0;
-      totals.icePacks += plan.icePacks || 0;
-      totals.distance += parseFloat(plan.distanceKm?.toString() || "0");
-      totals.fuel += parseFloat(plan.fuelLiters?.toString() || "0");
-      totals.actualVacc += plan.actualVaccinated || 0;
-      totals.vialsUsed += plan.actualVialsUsed || 0;
-      totals.vialsWasted += plan.actualVialsWasted || 0;
-      totals.teams += plan.teamCount || 0;
-      totals.vaccinators += plan.vaccinatorsCount || 0;
-      totals.volunteers += plan.volunteersCount || 0;
-      totals.recorders += plan.recordersCount || 0;
-      totals.supervisors += plan.supervisorsCount || 0;
-      totals.markers += plan.indelibleMarkers || 0;
-      totals.coldBoxes += plan.coldBoxes || 0;
-
-      const vReq = (plan.vaccinesRequired || {}) as Record<string, number>;
-      Object.entries(vReq).forEach(([key, val]) => {
-        vaccineTotals[key] = (vaccineTotals[key] || 0) + val;
-      });
-    });
-
-    return { totals, vaccineTotals };
-  }, [dayPlans]);
-
   const isLocked = sessionPlan?.approvalStatus === "approved" || sessionPlan?.approvalStatus === "locked";
 
   const facilityName = useMemo(() => {
@@ -484,6 +431,66 @@ export default function SessionDayPlans() {
     if (geoFacilityId !== null && sessionFacilityGeo.facilityId !== geoFacilityId) return [];
     return dayPlans;
   }, [dayPlans, geoProvinceId, geoDistrictId, geoFacilityId, sessionFacilityGeo]);
+
+  const tableTotals = useMemo(() => {
+    if (!filteredDayPlans) return null;
+
+    const totals: Record<string, number> = {
+      targetPop: 0,
+      vitaminA: 0,
+      deworming: 0,
+      carriers: 0,
+      icePacks: 0,
+      distance: 0,
+      fuel: 0,
+      actualVacc: 0,
+      vialsUsed: 0,
+      vialsWasted: 0,
+      teams: 0,
+      vaccinators: 0,
+      volunteers: 0,
+      recorders: 0,
+      supervisors: 0,
+      markers: 0,
+      coldBoxes: 0,
+      personnelCost: 0,
+    };
+
+    const vaccineTotals: Record<string, number> = {};
+
+    filteredDayPlans.forEach((plan) => {
+      totals.targetPop += plan.targetPopulation || 0;
+      totals.vitaminA += plan.vitaminADoses || 0;
+      totals.deworming += plan.dewormingDoses || 0;
+      totals.carriers += plan.vaccineCarriers || 0;
+      totals.icePacks += plan.icePacks || 0;
+      totals.distance += parseFloat(plan.distanceKm?.toString() || "0");
+      totals.fuel += parseFloat(plan.fuelLiters?.toString() || "0");
+      totals.actualVacc += plan.actualVaccinated || 0;
+      totals.vialsUsed += plan.actualVialsUsed || 0;
+      totals.vialsWasted += plan.actualVialsWasted || 0;
+      totals.teams += plan.teamCount || 0;
+      totals.vaccinators += plan.vaccinatorsCount || 0;
+      totals.volunteers += plan.volunteersCount || 0;
+      totals.recorders += plan.recordersCount || 0;
+      totals.supervisors += plan.supervisorsCount || 0;
+      totals.markers += plan.indelibleMarkers || 0;
+      totals.coldBoxes += plan.coldBoxes || 0;
+      totals.personnelCost += personnelCostForDay(rosterRates, {
+        vaccinatorsCount: plan.vaccinatorsCount,
+        volunteersCount: plan.volunteersCount,
+        supervisorsCount: plan.supervisorsCount,
+        recordersCount: plan.recordersCount,
+      });
+
+      const vReq = (plan.vaccinesRequired || {}) as Record<string, number>;
+      Object.entries(vReq).forEach(([key, val]) => {
+        vaccineTotals[key] = (vaccineTotals[key] || 0) + val;
+      });
+    });
+
+    return { totals, vaccineTotals };
+  }, [filteredDayPlans, rosterRates]);
 
   const mapCenter = useMemo(() => {
     if (activeFacility && activeFacility.latitude && activeFacility.longitude) {
@@ -830,6 +837,7 @@ export default function SessionDayPlans() {
       "Distance (km)",
       "Transport Type",
       "Fuel (liters)",
+      "Personnel Cost (K)",
     ];
 
     // Prepare rows
@@ -867,6 +875,14 @@ export default function SessionDayPlans() {
         parseFloat(plan.distanceKm?.toString() || "0"),
         plan.transportType,
         parseFloat(plan.fuelLiters?.toString() || "0"),
+        hasRosterRates
+          ? personnelCostForDay(rosterRates, {
+              vaccinatorsCount: plan.vaccinatorsCount,
+              volunteersCount: plan.volunteersCount,
+              supervisorsCount: plan.supervisorsCount,
+              recordersCount: plan.recordersCount,
+            })
+          : 0,
       ];
     });
 
@@ -1098,6 +1114,7 @@ export default function SessionDayPlans() {
                   <th className="px-4 py-3 border-r border-border/40 text-center">Ice Packs</th>
                   <th className="px-4 py-3 border-r border-border/40 text-center">Distance</th>
                   <th className="px-4 py-3 border-r border-border/40 text-center">Fuel (L)</th>
+                  <th className="px-4 py-3 border-r border-border/40 text-center">Personnel Cost (K)</th>
                   {sessionPlan?.planType === "campaign" && (
                     <>
                       <th className="px-3 py-3 border-r border-border/40 text-center">Teams</th>
@@ -1174,6 +1191,16 @@ export default function SessionDayPlans() {
                       </td>
                       <td className="px-4 py-3 text-center border-r border-border/30 font-medium text-blue-600 dark:text-blue-400">
                         {plan.fuelLiters} L
+                      </td>
+                      <td className="px-4 py-3 text-center border-r border-border/30 font-semibold text-purple-600 dark:text-purple-400">
+                        {hasRosterRates
+                          ? `K ${personnelCostForDay(rosterRates, {
+                              vaccinatorsCount: plan.vaccinatorsCount,
+                              volunteersCount: plan.volunteersCount,
+                              supervisorsCount: plan.supervisorsCount,
+                              recordersCount: plan.recordersCount,
+                            }).toLocaleString()}`
+                          : "—"}
                       </td>
                       {sessionPlan?.planType === "campaign" && (
                         <>
@@ -1256,6 +1283,11 @@ export default function SessionDayPlans() {
                   </td>
                   <td className="px-4 py-3 text-center border-r border-border/30 text-blue-600 dark:text-blue-400">
                     {tableTotals?.totals.fuel.toFixed(1)} L
+                  </td>
+                  <td className="px-4 py-3 text-center border-r border-border/30 text-purple-600 dark:text-purple-400">
+                    {hasRosterRates
+                      ? `K ${(tableTotals?.totals.personnelCost ?? 0).toLocaleString()}`
+                      : "—"}
                   </td>
                   {sessionPlan?.planType === "campaign" && (
                     <>
