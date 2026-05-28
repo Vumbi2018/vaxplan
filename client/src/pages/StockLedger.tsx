@@ -80,6 +80,14 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  computeAntigenStatus,
+  computeNearExpiryReceipts,
+  getExpiryStatus,
+  loadStockThreshold,
+  saveStockThreshold,
+  DEFAULT_MONTHS_OF_STOCK_THRESHOLD,
+} from "@/lib/stockAlerts";
 
 const transactionFormSchema = z.object({
   facilityId: z.number({ required_error: "Pick a facility" }),
@@ -109,6 +117,12 @@ export default function StockLedger() {
 
   // Wizard Steps for Monthly Report
   const [wizardStep, setWizardStep] = useState(1);
+
+  // Configurable months-of-stock threshold for low-stock warnings
+  const [mosThreshold, setMosThreshold] = useState<number>(() => loadStockThreshold());
+  useEffect(() => {
+    saveStockThreshold(mosThreshold);
+  }, [mosThreshold]);
 
   const { data: provinces = [] } = useQuery<Province[]>({ queryKey: ["/api/provinces"] });
   const { data: districts = [] } = useQuery<District[]>({ queryKey: ["/api/districts"] });
@@ -249,6 +263,31 @@ export default function StockLedger() {
     },
     enabled: !!selectedFacilityId && reportDialogOpen,
   });
+
+  // Antigen-level low-stock status using configurable months-of-stock threshold
+  const antigenStatus = useMemo(
+    () => computeAntigenStatus(transactions ?? [], vaccineConfigs, mosThreshold),
+    [transactions, vaccineConfigs, mosThreshold],
+  );
+  const antigenStatusByName = useMemo(() => {
+    const map = new Map<string, typeof antigenStatus[number]>();
+    for (const s of antigenStatus) map.set(s.antigen, s);
+    return map;
+  }, [antigenStatus]);
+
+  // Per-transaction expiry highlighting (only meaningful for receipts with remaining batch stock)
+  const nearExpiry = useMemo(
+    () => computeNearExpiryReceipts(transactions ?? []),
+    [transactions],
+  );
+  const nearExpiryByTxId = useMemo(() => {
+    const map = new Map<number, typeof nearExpiry[number]>();
+    for (const e of nearExpiry) map.set(e.transactionId, e);
+    return map;
+  }, [nearExpiry]);
+
+  const lowStockCount = antigenStatus.filter((s) => s.isLowStock).length;
+  const nearExpiryCount = nearExpiry.length;
 
   // Calculate dynamic Stock on Hand (SOH) per antigen
   const stockOnHand = useMemo(() => {
@@ -615,18 +654,82 @@ export default function StockLedger() {
 
         {/* Tab 1: Stock Card Ledger */}
         <TabsContent value="ledger" className="space-y-6 outline-none">
+          {/* Stock Alert Banner + threshold control */}
+          <Card className="border-border/40 bg-card/45">
+            <CardContent className="p-4 flex flex-wrap items-center gap-4 justify-between">
+              <div className="flex items-center gap-3 flex-wrap">
+                <Badge
+                  variant="outline"
+                  className={
+                    lowStockCount > 0
+                      ? "border-amber-500 text-amber-600 bg-amber-500/10"
+                      : "border-emerald-500 text-emerald-600 bg-emerald-500/10"
+                  }
+                  data-testid="badge-low-stock-count"
+                >
+                  <AlertTriangle className="h-3.5 w-3.5 mr-1" />
+                  {lowStockCount} antigen{lowStockCount === 1 ? "" : "s"} below {mosThreshold} mo of stock
+                </Badge>
+                <Badge
+                  variant="outline"
+                  className={
+                    nearExpiryCount > 0
+                      ? "border-rose-500 text-rose-600 bg-rose-500/10"
+                      : "border-emerald-500 text-emerald-600 bg-emerald-500/10"
+                  }
+                  data-testid="badge-near-expiry-count"
+                >
+                  <Calendar className="h-3.5 w-3.5 mr-1" />
+                  {nearExpiryCount} batch{nearExpiryCount === 1 ? "" : "es"} expiring within 60 days
+                </Badge>
+              </div>
+              <div className="flex items-center gap-2">
+                <label
+                  htmlFor="mos-threshold"
+                  className="text-xs font-semibold text-muted-foreground uppercase"
+                >
+                  Low-stock threshold (months):
+                </label>
+                <Input
+                  id="mos-threshold"
+                  type="number"
+                  min={0.1}
+                  step={0.1}
+                  value={mosThreshold}
+                  onChange={(e) => {
+                    const v = parseFloat(e.target.value);
+                    setMosThreshold(
+                      Number.isFinite(v) && v > 0
+                        ? v
+                        : DEFAULT_MONTHS_OF_STOCK_THRESHOLD,
+                    );
+                  }}
+                  className="h-8 w-20"
+                  data-testid="input-mos-threshold"
+                />
+              </div>
+            </CardContent>
+          </Card>
+
           {/* Active Balances SOH Cards */}
           <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-4">
             {vaccineConfigs?.filter(c => c.isActive).map((config) => {
-              const balance = stockOnHand[config.name] ?? 0;
-              const lowStock = balance < 100;
+              const status = antigenStatusByName.get(config.name);
+              const balance = status?.balance ?? stockOnHand[config.name] ?? 0;
+              const mos = status?.monthsOfStock ?? null;
+              const isLow = status?.isLowStock ?? false;
+              const isOut = status?.isOutOfStock ?? false;
+              const cardTone = isOut
+                ? "border-rose-500/30 bg-rose-500/5"
+                : isLow
+                  ? "border-amber-500/30 bg-amber-500/5"
+                  : "";
 
               return (
                 <Card
                   key={config.id}
-                  className={`border-border/40 backdrop-blur-md bg-card/45 shadow transition-all hover:scale-[1.02] ${
-                    lowStock ? "border-amber-500/20 bg-amber-500/5" : ""
-                  }`}
+                  className={`border-border/40 backdrop-blur-md bg-card/45 shadow transition-all hover:scale-[1.02] ${cardTone}`}
+                  data-testid={`card-soh-${config.name}`}
                 >
                   <CardContent className="p-4 flex flex-col justify-between h-full">
                     <div>
@@ -634,14 +737,23 @@ export default function StockLedger() {
                         <span className="text-[10px] text-muted-foreground uppercase font-semibold tracking-wider truncate">
                           {config.name}
                         </span>
-                        {lowStock && (
-                          <Badge variant="outline" className="border-amber-500/20 text-amber-600 bg-amber-500/10 text-[9px] px-1 py-0 h-4">
-                            Low SOH
+                        {isOut ? (
+                          <Badge variant="outline" className="border-rose-500/30 text-rose-600 bg-rose-500/10 text-[9px] px-1 py-0 h-4">
+                            Out
                           </Badge>
-                        )}
+                        ) : isLow ? (
+                          <Badge variant="outline" className="border-amber-500/30 text-amber-600 bg-amber-500/10 text-[9px] px-1 py-0 h-4">
+                            Low
+                          </Badge>
+                        ) : null}
                       </div>
                       <p className="text-2xl font-bold tracking-tight text-foreground mt-1">
                         {balance.toLocaleString()}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                        {mos === null
+                          ? "No recent issues — MoS n/a"
+                          : `${mos.toFixed(1)} mo of stock`}
                       </p>
                     </div>
                     <div className="text-[10px] text-muted-foreground mt-2 border-t pt-1 border-border/20">
@@ -715,7 +827,63 @@ export default function StockLedger() {
                           </td>
                           <td className="px-4 py-3 text-center font-bold">{tx.quantityDoses}</td>
                           <td className="px-4 py-3 font-mono text-xs">{tx.batchNumber}</td>
-                          <td className="px-4 py-3">{format(new Date(tx.expiryDate), "yyyy-MM-dd")}</td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-1.5">
+                              <span>{format(new Date(tx.expiryDate), "yyyy-MM-dd")}</span>
+                              {(() => {
+                                const flagged = nearExpiryByTxId.get(tx.id);
+                                if (flagged) {
+                                  if (flagged.status === "expired") {
+                                    return (
+                                      <Badge
+                                        variant="outline"
+                                        className="border-rose-500 text-rose-600 bg-rose-500/10 text-[10px] px-1.5 py-0 h-5"
+                                        data-testid={`badge-expiry-${tx.id}`}
+                                      >
+                                        Expired {Math.abs(flagged.daysUntil)}d ago
+                                      </Badge>
+                                    );
+                                  }
+                                  if (flagged.status === "expiring-30") {
+                                    return (
+                                      <Badge
+                                        variant="outline"
+                                        className="border-rose-500 text-rose-600 bg-rose-500/10 text-[10px] px-1.5 py-0 h-5"
+                                        data-testid={`badge-expiry-${tx.id}`}
+                                      >
+                                        ≤30d
+                                      </Badge>
+                                    );
+                                  }
+                                  return (
+                                    <Badge
+                                      variant="outline"
+                                      className="border-amber-500 text-amber-600 bg-amber-500/10 text-[10px] px-1.5 py-0 h-5"
+                                      data-testid={`badge-expiry-${tx.id}`}
+                                    >
+                                      ≤60d
+                                    </Badge>
+                                  );
+                                }
+                                // Non-receipt rows: still show plain status if relevant
+                                if (tx.transactionType === "receipt") {
+                                  const { status, daysUntil } = getExpiryStatus(tx.expiryDate);
+                                  if (status === "expired") {
+                                    return (
+                                      <Badge
+                                        variant="outline"
+                                        className="border-muted-foreground/30 text-muted-foreground text-[10px] px-1.5 py-0 h-5"
+                                        title="Batch already exhausted"
+                                      >
+                                        Expired {Math.abs(daysUntil)}d ago
+                                      </Badge>
+                                    );
+                                  }
+                                }
+                                return null;
+                              })()}
+                            </div>
+                          </td>
                           <td className="px-4 py-3 text-center">
                             <Badge variant="outline" className={tx.vvmStatus > 2 ? "border-destructive text-destructive" : ""}>
                               {vvmStatuses[tx.vvmStatus] ?? tx.vvmStatus}

@@ -29,8 +29,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { Facility, Village, SessionPlan, BudgetItem, ApprovalRequest, PopulationData } from "@shared/schema";
+import type { Facility, Village, SessionPlan, BudgetItem, ApprovalRequest, PopulationData, StockTransaction, VaccineConfig } from "@shared/schema";
 import { deriveSessionLifecycle } from "@/lib/sessionStatus";
+import { summarizeFacilityAlerts, loadStockThreshold } from "@/lib/stockAlerts";
+import { Package } from "lucide-react";
 
 interface StatsData {
   totalFacilities: number;
@@ -447,6 +449,72 @@ export default function Dashboard() {
     queryKey: ["/api/provinces"],
   });
 
+  const { data: stockTransactions } = useQuery<StockTransaction[]>({
+    queryKey: ["/api/stock/ledger"],
+  });
+
+  const { data: vaccineConfigs } = useQuery<VaccineConfig[]>({
+    queryKey: ["/api/vaccines/config"],
+  });
+
+  const stockAlertSummaries = useMemo(() => {
+    if (!stockTransactions) return [];
+    const threshold = loadStockThreshold();
+    return summarizeFacilityAlerts(stockTransactions, vaccineConfigs, threshold);
+  }, [stockTransactions, vaccineConfigs]);
+
+  const scopedStockAlerts = useMemo(() => {
+    const list = user?.facilityId
+      ? stockAlertSummaries.filter(
+          (s) => s.facilityId === Number(user.facilityId),
+        )
+      : stockAlertSummaries;
+    const totals = list.reduce(
+      (acc, s) => {
+        acc.lowStock += s.lowStockAntigens.length;
+        acc.outOfStock += s.outOfStockAntigens.length;
+        acc.nearExpiry += s.nearExpiryBatches;
+        acc.expiringSoon += s.expiringSoonBatches;
+        acc.expired += s.expiredBatches;
+        if (
+          s.lowStockAntigens.length +
+            s.outOfStockAntigens.length +
+            s.nearExpiryBatches >
+          0
+        )
+          acc.facilitiesAtRisk++;
+        return acc;
+      },
+      {
+        lowStock: 0,
+        outOfStock: 0,
+        nearExpiry: 0,
+        expiringSoon: 0,
+        expired: 0,
+        facilitiesAtRisk: 0,
+      },
+    );
+    return { list, totals };
+  }, [stockAlertSummaries, user?.facilityId]);
+
+  const topAlertFacilities = useMemo(() => {
+    if (!facilities || user?.facilityId) return [];
+    const fmap = new Map(facilities.map((f) => [Number(f.id), f.name]));
+    return [...scopedStockAlerts.list]
+      .map((s) => ({
+        ...s,
+        name: fmap.get(s.facilityId) ?? `Facility #${s.facilityId}`,
+        score:
+          s.outOfStockAntigens.length * 3 +
+          s.lowStockAntigens.length * 2 +
+          s.expiringSoonBatches * 2 +
+          s.nearExpiryBatches,
+      }))
+      .filter((s) => s.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 5);
+  }, [scopedStockAlerts.list, facilities, user?.facilityId]);
+
   const coverageQueryString = useMemo(() => {
     const qs = new URLSearchParams();
     qs.set("quarter", String(coverageFilters.quarter));
@@ -858,9 +926,123 @@ export default function Dashboard() {
                 />
               </a>
             </Link>
+            <Link href="/stock">
+              <a className="block" data-testid="link-stock-alerts">
+                <StatsCard
+                  title="Stock Alerts"
+                  value={
+                    scopedStockAlerts.totals.lowStock +
+                    scopedStockAlerts.totals.outOfStock +
+                    scopedStockAlerts.totals.nearExpiry
+                  }
+                  subtitle={
+                    user?.facilityId
+                      ? `${scopedStockAlerts.totals.lowStock + scopedStockAlerts.totals.outOfStock} low/out · ${scopedStockAlerts.totals.nearExpiry} expiring ≤60d`
+                      : `${scopedStockAlerts.totals.facilitiesAtRisk} facilities at risk · ${scopedStockAlerts.totals.expiringSoon} batches ≤30d`
+                  }
+                  icon={Package}
+                />
+              </a>
+            </Link>
           </>
         )}
       </div>
+
+      {/* Stock Alerts detail panel */}
+      {(scopedStockAlerts.totals.lowStock +
+        scopedStockAlerts.totals.outOfStock +
+        scopedStockAlerts.totals.nearExpiry >
+        0) && (
+        <Card data-testid="card-stock-alerts">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between gap-2">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Package className="h-5 w-5 text-amber-500" />
+                Vaccine Stock Alerts
+              </CardTitle>
+              <Link
+                href="/stock"
+                className="text-xs font-semibold text-primary hover:underline"
+                data-testid="link-open-stock-ledger"
+              >
+                Open stock ledger →
+              </Link>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-2 space-y-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="rounded-xl border p-3">
+                <p className="text-[11px] uppercase text-muted-foreground font-semibold">Out of stock</p>
+                <p className="text-2xl font-bold text-rose-600" data-testid="text-stock-out">
+                  {scopedStockAlerts.totals.outOfStock}
+                </p>
+                <p className="text-[11px] text-muted-foreground">antigens at zero balance</p>
+              </div>
+              <div className="rounded-xl border p-3">
+                <p className="text-[11px] uppercase text-muted-foreground font-semibold">Low stock</p>
+                <p className="text-2xl font-bold text-amber-600" data-testid="text-stock-low">
+                  {scopedStockAlerts.totals.lowStock}
+                </p>
+                <p className="text-[11px] text-muted-foreground">below configured months of stock</p>
+              </div>
+              <div className="rounded-xl border p-3">
+                <p className="text-[11px] uppercase text-muted-foreground font-semibold">Expiring ≤30d</p>
+                <p className="text-2xl font-bold text-rose-600" data-testid="text-stock-expiring-30">
+                  {scopedStockAlerts.totals.expiringSoon}
+                </p>
+                <p className="text-[11px] text-muted-foreground">batches with remaining doses</p>
+              </div>
+              <div className="rounded-xl border p-3">
+                <p className="text-[11px] uppercase text-muted-foreground font-semibold">Expiring ≤60d</p>
+                <p className="text-2xl font-bold text-amber-600" data-testid="text-stock-expiring-60">
+                  {scopedStockAlerts.totals.nearExpiry}
+                </p>
+                <p className="text-[11px] text-muted-foreground">batches with remaining doses</p>
+              </div>
+            </div>
+            {topAlertFacilities.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                  Facilities with the most active stock issues
+                </p>
+                {topAlertFacilities.map((f) => (
+                  <div
+                    key={f.facilityId}
+                    className="flex items-center justify-between gap-3 rounded-lg border bg-muted/20 px-3 py-2"
+                    data-testid={`row-stock-alert-${f.facilityId}`}
+                  >
+                    <span className="text-sm font-medium truncate text-foreground">
+                      {f.name}
+                    </span>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {f.outOfStockAntigens.length > 0 && (
+                        <Badge variant="outline" className="border-rose-500 text-rose-600 bg-rose-500/10 text-[10px]">
+                          {f.outOfStockAntigens.length} out
+                        </Badge>
+                      )}
+                      {f.lowStockAntigens.length > 0 && (
+                        <Badge variant="outline" className="border-amber-500 text-amber-600 bg-amber-500/10 text-[10px]">
+                          {f.lowStockAntigens.length} low
+                        </Badge>
+                      )}
+                      {f.expiringSoonBatches > 0 && (
+                        <Badge variant="outline" className="border-rose-500 text-rose-600 bg-rose-500/10 text-[10px]">
+                          {f.expiringSoonBatches} ≤30d
+                        </Badge>
+                      )}
+                      {f.nearExpiryBatches > f.expiringSoonBatches && (
+                        <Badge variant="outline" className="border-amber-500 text-amber-600 bg-amber-500/10 text-[10px]">
+                          {f.nearExpiryBatches - f.expiringSoonBatches} ≤60d
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <ImmunizationIndicatorCards />
 
