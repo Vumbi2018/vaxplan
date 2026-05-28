@@ -224,11 +224,24 @@ export default function BoundaryManager() {
 
   const handleFileRead = async () => {
     if (!uploadFile) return;
+    const code = uploadCountryCode.trim().toUpperCase();
+    if (code.length !== 3) {
+      toast({
+        title: "Country code must be 3 letters",
+        description: `"${code || "(empty)"}" is not a valid ISO 3166-1 alpha-3 code. Use SSD for South Sudan, ZMB for Zambia, PNG for Papua New Guinea, KEN for Kenya, etc.`,
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!uploadLevelName.trim()) {
+      toast({ title: "Level label required", description: "Enter a label such as Country, Province, District.", variant: "destructive" });
+      return;
+    }
     try {
       const text = await uploadFile.text();
       const geojson = JSON.parse(text);
       uploadMutation.mutate({
-        countryCode: uploadCountryCode.trim().toUpperCase(),
+        countryCode: code,
         adminLevel: parseInt(uploadLevel),
         levelName: uploadLevelName.trim(),
         geojson,
@@ -482,16 +495,21 @@ export default function BoundaryManager() {
           <div className="space-y-4 py-2">
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label htmlFor="up-code" className="text-xs">ISO Country Code</Label>
+                <Label htmlFor="up-code" className="text-xs">
+                  ISO-3 Country Code <span className="text-muted-foreground">(3 letters)</span>
+                </Label>
                 <Input
                   id="up-code"
                   value={uploadCountryCode}
-                  onChange={(e) => setUploadCountryCode(e.target.value.toUpperCase())}
-                  placeholder="e.g. KEN"
+                  onChange={(e) => setUploadCountryCode(e.target.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 3))}
+                  placeholder="e.g. SSD, ZMB, PNG, KEN"
                   maxLength={3}
                   className="font-mono"
                   data-testid="input-upload-country-code"
                 />
+                <p className="text-[11px] text-muted-foreground">
+                  Use ISO 3166-1 alpha-3 (e.g. SSD for South Sudan, ZMB for Zambia, PNG for Papua New Guinea). Two-letter codes like SS will be rejected.
+                </p>
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="up-level" className="text-xs">Admin Level</Label>
