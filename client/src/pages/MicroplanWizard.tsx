@@ -495,6 +495,9 @@ export default function MicroplanWizard() {
     strategy: "static" | "outreach" | "mobile";
     saved?: boolean;
     rowId: string;
+    latitude?: string;
+    longitude?: string;
+    latLngDirty?: boolean;
   };
   const [communities, setCommunities] = useState<CommunityRow[]>([]);
   // Initial seed from facility villages (only when there are no saved
@@ -511,6 +514,8 @@ export default function MicroplanWizard() {
         strategy: v.isHardToReach ? "outreach" : "static",
         saved: false,
         rowId: `v${v.id}`,
+        latitude: v.latitude != null ? String(v.latitude) : undefined,
+        longitude: v.longitude != null ? String(v.longitude) : undefined,
       })),
     );
   }, [facilityVillages, communities.length]);
@@ -1100,6 +1105,10 @@ export default function MicroplanWizard() {
         for (let i = 0; i < nextRows.length; i++) {
           const row = nextRows[i];
           let vid = row.villageId;
+          const latNum =
+            row.latitude && row.latitude.trim() !== "" ? row.latitude.trim() : null;
+          const lngNum =
+            row.longitude && row.longitude.trim() !== "" ? row.longitude.trim() : null;
           // Persist newly added (manually typed) communities to villages first.
           if (!vid && row.name.trim() && districtId) {
             try {
@@ -1107,12 +1116,25 @@ export default function MicroplanWizard() {
                 name: row.name.trim(),
                 districtId,
                 assignedFacilityId: facilityId,
+                ...(latNum ? { latitude: latNum } : {}),
+                ...(lngNum ? { longitude: lngNum } : {}),
               });
               vid = v.id;
-              nextRows[i] = { ...row, villageId: vid };
+              nextRows[i] = { ...row, villageId: vid, latLngDirty: false };
             } catch (e) {
               console.warn("Could not create village:", e);
               continue;
+            }
+          } else if (vid && row.latLngDirty && (latNum || lngNum)) {
+            // User moved/typed coordinates for an existing village — persist them.
+            try {
+              await apiRequest("PATCH", `/api/villages/${vid}`, {
+                ...(latNum ? { latitude: latNum } : {}),
+                ...(lngNum ? { longitude: lngNum } : {}),
+              });
+              nextRows[i] = { ...row, latLngDirty: false };
+            } catch (e) {
+              console.warn("Could not update village coordinates:", e);
             }
           }
           if (!vid) continue;
@@ -1580,6 +1602,7 @@ export default function MicroplanWizard() {
                   communities={communities}
                   setCommunities={setCommunities}
                   onDelete={deleteCommunity}
+                  facility={facility}
                 />
               )}
               {active === 3 && <Step3 risk={risk} setRisk={setRisk} />}
@@ -1779,112 +1802,367 @@ function Step2({
   communities,
   setCommunities,
   onDelete,
+  facility,
 }: {
   communities: any[];
   setCommunities: (v: any[]) => void;
   onDelete: (index: number) => void | Promise<void>;
+  facility: Facility | null;
 }) {
+  const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
+
   const update = (i: number, patch: any) => {
     const next = [...communities];
     next[i] = { ...next[i], ...patch };
     setCommunities(next);
   };
-  const add = () => {
-    setCommunities([
-      ...communities,
-      {
-        name: "",
-        type: "village",
-        targetPopulation: "0",
-        source: "nso",
-        strategy: "static",
-        rowId: `new-${Date.now()}`,
-      },
-    ]);
+  const add = (lat?: number, lng?: number) => {
+    const newRow: any = {
+      name: "",
+      type: "village",
+      targetPopulation: "0",
+      source: "nso",
+      strategy: "static",
+      rowId: `new-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    };
+    if (lat != null && lng != null) {
+      newRow.latitude = lat.toFixed(6);
+      newRow.longitude = lng.toFixed(6);
+      newRow.latLngDirty = true;
+    }
+    const next = [...communities, newRow];
+    setCommunities(next);
+    setSelectedIdx(next.length - 1);
   };
+
   return (
     <div className="space-y-3">
-      <div className="flex justify-end">
-        <Button size="sm" variant="outline" onClick={add} data-testid="button-add-community">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs text-muted-foreground">
+          Click anywhere on the map to drop a new community. Drag pins to fine-tune coordinates.
+          Pin numbers match the rows below.
+        </p>
+        <Button size="sm" variant="outline" onClick={() => add()} data-testid="button-add-community">
           <Plus className="mr-1 h-4 w-4" /> Add community
         </Button>
       </div>
+
+      <Step2Map
+        facility={facility}
+        communities={communities}
+        selectedIdx={selectedIdx}
+        onMapClick={(lat, lng) => add(lat, lng)}
+        onPinDrag={(i, lat, lng) => {
+          update(i, {
+            latitude: lat.toFixed(6),
+            longitude: lng.toFixed(6),
+            latLngDirty: true,
+          });
+        }}
+        onPinClick={(i) => setSelectedIdx(i)}
+      />
+
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="border-b text-left text-xs uppercase text-muted-foreground">
             <tr>
+              <th className="p-2 w-8">#</th>
               <th className="p-2">Name</th>
               <th className="p-2">Type</th>
               <th className="p-2">Target pop.</th>
               <th className="p-2">Source</th>
               <th className="p-2">Strategy</th>
+              <th className="p-2">Coordinates</th>
               <th className="p-2"></th>
             </tr>
           </thead>
           <tbody>
-            {communities.map((c, i) => (
-              <tr key={c.rowId} className="border-b">
-                <td className="p-1">
-                  <Input value={c.name} onChange={(e) => update(i, { name: e.target.value })} />
-                </td>
-                <td className="p-1">
-                  <Select value={c.type} onValueChange={(v) => update(i, { type: v })}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="village">Village</SelectItem>
-                      <SelectItem value="hamlet">Hamlet</SelectItem>
-                      <SelectItem value="idp">IDP camp</SelectItem>
-                      <SelectItem value="school">School</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </td>
-                <td className="p-1">
-                  <Input type="number" value={c.targetPopulation} onChange={(e) => update(i, { targetPopulation: e.target.value })} />
-                </td>
-                <td className="p-1">
-                  <Select value={c.source} onValueChange={(v) => update(i, { source: v })}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="nso">NSO</SelectItem>
-                      <SelectItem value="hmis">HMIS</SelectItem>
-                      <SelectItem value="worldpop">WorldPop</SelectItem>
-                      <SelectItem value="survey">Survey</SelectItem>
-                      <SelectItem value="community_census">Community census</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </td>
-                <td className="p-1">
-                  <Select value={c.strategy} onValueChange={(v) => update(i, { strategy: v })}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="static">Fixed</SelectItem>
-                      <SelectItem value="outreach">Outreach</SelectItem>
-                      <SelectItem value="mobile">Mobile</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </td>
-                <td className="p-1">
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    onClick={() => onDelete(i)}
-                    data-testid={`button-delete-community-${i}`}
-                    aria-label="Delete community"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </td>
-              </tr>
-            ))}
+            {communities.map((c, i) => {
+              const hasCoords =
+                c.latitude && c.longitude &&
+                !isNaN(parseFloat(c.latitude)) && !isNaN(parseFloat(c.longitude));
+              return (
+                <tr
+                  key={c.rowId}
+                  className={`border-b cursor-pointer ${
+                    selectedIdx === i ? "bg-primary/5" : ""
+                  }`}
+                  onClick={() => setSelectedIdx(i)}
+                  data-testid={`row-community-${i}`}
+                >
+                  <td className="p-1 text-center text-xs font-mono text-muted-foreground">
+                    {i + 1}
+                  </td>
+                  <td className="p-1">
+                    <Input
+                      value={c.name}
+                      onChange={(e) => update(i, { name: e.target.value })}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  </td>
+                  <td className="p-1">
+                    <Select value={c.type} onValueChange={(v) => update(i, { type: v })}>
+                      <SelectTrigger onClick={(e) => e.stopPropagation()}><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="village">Village</SelectItem>
+                        <SelectItem value="hamlet">Hamlet</SelectItem>
+                        <SelectItem value="idp">IDP camp</SelectItem>
+                        <SelectItem value="school">School</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </td>
+                  <td className="p-1">
+                    <Input
+                      type="number"
+                      value={c.targetPopulation}
+                      onChange={(e) => update(i, { targetPopulation: e.target.value })}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  </td>
+                  <td className="p-1">
+                    <Select value={c.source} onValueChange={(v) => update(i, { source: v })}>
+                      <SelectTrigger onClick={(e) => e.stopPropagation()}><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="nso">NSO</SelectItem>
+                        <SelectItem value="hmis">HMIS</SelectItem>
+                        <SelectItem value="worldpop">WorldPop</SelectItem>
+                        <SelectItem value="survey">Survey</SelectItem>
+                        <SelectItem value="community_census">Community census</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </td>
+                  <td className="p-1">
+                    <Select value={c.strategy} onValueChange={(v) => update(i, { strategy: v })}>
+                      <SelectTrigger onClick={(e) => e.stopPropagation()}><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="static">Fixed</SelectItem>
+                        <SelectItem value="outreach">Outreach</SelectItem>
+                        <SelectItem value="mobile">Mobile</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </td>
+                  <td className="p-1 text-xs font-mono">
+                    {hasCoords ? (
+                      <span className="text-foreground" data-testid={`text-coords-${i}`}>
+                        {parseFloat(c.latitude).toFixed(4)}, {parseFloat(c.longitude).toFixed(4)}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground italic">no pin</span>
+                    )}
+                  </td>
+                  <td className="p-1">
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDelete(i);
+                      }}
+                      data-testid={`button-delete-community-${i}`}
+                      aria-label="Delete community"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </td>
+                </tr>
+              );
+            })}
             {communities.length === 0 && (
               <tr>
-                <td colSpan={6} className="p-4 text-center text-sm text-muted-foreground">
-                  No communities yet — pick a facility to load villages, or add one manually.
+                <td colSpan={8} className="p-4 text-center text-sm text-muted-foreground">
+                  No communities yet — click on the map to drop one, or use Add community.
                 </td>
               </tr>
             )}
           </tbody>
         </table>
+      </div>
+    </div>
+  );
+}
+
+// ─── Step 2 Map ───────────────────────────────────────────────────────────
+function Step2Map({
+  facility,
+  communities,
+  selectedIdx,
+  onMapClick,
+  onPinDrag,
+  onPinClick,
+}: {
+  facility: Facility | null;
+  communities: any[];
+  selectedIdx: number | null;
+  onMapClick: (lat: number, lng: number) => void;
+  onPinDrag: (i: number, lat: number, lng: number) => void;
+  onPinClick: (i: number) => void;
+}) {
+  // Lazy-load Leaflet so the wizard's earlier steps don't pay the bundle cost.
+  const [leaflet, setLeaflet] = useState<any>(null);
+  useEffect(() => {
+    let active = true;
+    Promise.all([
+      import("react-leaflet"),
+      import("leaflet"),
+      import("@/lib/mapIcons"),
+      // @ts-ignore - leaflet css
+      import("leaflet/dist/leaflet.css"),
+    ]).then(([rl, L, icons]) => {
+      if (!active) return;
+      icons.applyDefaultLeafletPinIcon();
+      setLeaflet({ rl, L: L.default ?? L, icons });
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const facilityLat = facility?.latitude != null ? parseFloat(String(facility.latitude)) : null;
+  const facilityLng = facility?.longitude != null ? parseFloat(String(facility.longitude)) : null;
+
+  const center = useMemo<[number, number]>(() => {
+    if (facilityLat != null && facilityLng != null && !isNaN(facilityLat) && !isNaN(facilityLng)) {
+      return [facilityLat, facilityLng];
+    }
+    const first = communities.find(
+      (c) => c.latitude && c.longitude && !isNaN(parseFloat(c.latitude)),
+    );
+    if (first) {
+      return [parseFloat(first.latitude), parseFloat(first.longitude)];
+    }
+    return [-13.13, 27.85]; // Zambia fallback
+  }, [facilityLat, facilityLng, communities]);
+
+  if (!leaflet) {
+    return (
+      <div className="h-[360px] w-full rounded-xl border border-dashed border-border bg-muted/30 flex items-center justify-center text-sm text-muted-foreground">
+        <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading map…
+      </div>
+    );
+  }
+
+  const { MapContainer, TileLayer, Marker, Popup, useMapEvents, useMap } = leaflet.rl;
+
+  function Recenter({ center }: { center: [number, number] }) {
+    const map = useMap();
+    useEffect(() => {
+      map.setView(center, map.getZoom());
+    }, [center[0], center[1]]);
+    return null;
+  }
+  const L = leaflet.L;
+  const { createFilledPinIcon, createFacilityCircleIcon } = leaflet.icons;
+
+  const facilityIcon = createFacilityCircleIcon();
+  const pinBlue = createFilledPinIcon("blue");
+  const pinGreen = createFilledPinIcon("green");
+  const pinAmber = createFilledPinIcon("amber");
+
+  function ClickCatcher() {
+    useMapEvents({
+      click(e: any) {
+        onMapClick(e.latlng.lat, e.latlng.lng);
+      },
+    });
+    return null;
+  }
+
+  // Build a numbered DivIcon for each community
+  const buildNumberedIcon = (n: number, color: string, highlighted: boolean) =>
+    L.divIcon({
+      className: "step2-pin",
+      html:
+        `<div style="position:relative;width:30px;height:38px;">` +
+        `<svg xmlns="http://www.w3.org/2000/svg" width="30" height="38" viewBox="0 0 24 32" style="${
+          highlighted ? "filter:drop-shadow(0 0 4px rgba(37,99,235,0.9));" : ""
+        }">` +
+        `<path d="M12 0C5.37 0 0 5.37 0 12c0 9.3 12 20 12 20s12-10.7 12-20c0-6.63-5.37-12-12-12z" fill="${color}"/>` +
+        `</svg>` +
+        `<span style="position:absolute;top:5px;left:0;right:0;text-align:center;color:#fff;font-size:11px;font-weight:700;font-family:sans-serif;">${n}</span>` +
+        `</div>`,
+      iconSize: [30, 38],
+      iconAnchor: [15, 38],
+      popupAnchor: [0, -38],
+    });
+
+  return (
+    <div className="h-[360px] w-full rounded-xl overflow-hidden border border-border shadow-inner relative">
+      <MapContainer center={center} zoom={11} className="h-full w-full z-0">
+        <TileLayer
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          attribution='&copy; OpenStreetMap contributors'
+        />
+        <ClickCatcher />
+        <Recenter center={center} />
+
+        {facilityLat != null && facilityLng != null && !isNaN(facilityLat) && !isNaN(facilityLng) && (
+          <Marker position={[facilityLat, facilityLng]} icon={facilityIcon}>
+            <Popup>
+              <strong>{facility?.name}</strong>
+              <div className="text-xs text-muted-foreground">Health facility</div>
+            </Popup>
+          </Marker>
+        )}
+
+        {communities.map((c, i) => {
+          if (!c.latitude || !c.longitude) return null;
+          const lat = parseFloat(c.latitude);
+          const lng = parseFloat(c.longitude);
+          if (isNaN(lat) || isNaN(lng)) return null;
+          const color =
+            c.strategy === "outreach"
+              ? "#f59e0b"
+              : c.strategy === "mobile"
+              ? "#10b981"
+              : "#2563eb";
+          const icon = buildNumberedIcon(i + 1, color, selectedIdx === i);
+          return (
+            <Marker
+              key={c.rowId}
+              position={[lat, lng]}
+              icon={icon}
+              draggable={true}
+              eventHandlers={{
+                dragend: (e: any) => {
+                  const ll = e.target.getLatLng();
+                  onPinDrag(i, ll.lat, ll.lng);
+                },
+                click: () => onPinClick(i),
+              }}
+            >
+              <Popup>
+                <div className="text-xs">
+                  <div className="font-semibold">{c.name || `Community #${i + 1}`}</div>
+                  <div className="text-muted-foreground">
+                    {lat.toFixed(5)}, {lng.toFixed(5)}
+                  </div>
+                  <div className="text-muted-foreground">Strategy: {c.strategy}</div>
+                </div>
+              </Popup>
+            </Marker>
+          );
+        })}
+
+        {/* Unused colour locals kept for tree-shaking-friendly variable usage */}
+        <span style={{ display: "none" }}>{[pinBlue, pinGreen, pinAmber].length}</span>
+      </MapContainer>
+      <div className="absolute bottom-2 left-2 z-[400] flex flex-wrap gap-2 rounded-lg bg-background/90 px-2 py-1 text-[10px] shadow">
+        <span className="flex items-center gap-1">
+          <span className="inline-block h-2 w-2 rounded-full bg-green-600" />
+          Facility
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="inline-block h-2 w-2 rounded-full bg-blue-600" />
+          Fixed
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="inline-block h-2 w-2 rounded-full bg-amber-500" />
+          Outreach
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
+          Mobile
+        </span>
       </div>
     </div>
   );
