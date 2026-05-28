@@ -732,7 +732,36 @@ async function ensureVaccineConfigs(tenantId: string): Promise<Map<string, numbe
  *      clients.village_id (NOT NULL) can always be anchored to a real row.
  */
 const MAX_VILLAGES_PER_FACILITY = 5;
-const MIN_VILLAGES_PER_FACILITY = 4;
+const MIN_VILLAGES_PER_FACILITY = 5;
+
+/**
+ * Realistic-sounding catchment village names rotated across demo facilities so
+ * the Client Logbook's "village" column shows visibly varied, plausible
+ * names instead of "Demo Catchment Village 1/2/3…". Names are intentionally
+ * suffixed with "(Demo)" so they cannot collide with real catchment villages
+ * imported from country data, and so anyone browsing the DB can see at a
+ * glance that the row is demo seed data.
+ *
+ * The pool covers names that read naturally in both ZMB (Bemba / Nyanja /
+ * Tonga roots) and SSD (Dinka / Nuer / Bari roots) contexts.
+ */
+const DEMO_VILLAGE_NAME_POOL = [
+  "Kabuyu", "Mwansa", "Chibwe", "Kanyama", "Lilanda",
+  "Mtenge", "Nkana", "Pemba", "Sikongo", "Tembwe",
+  "Chongwe", "Mazabuka", "Mpika", "Lundazi", "Petauke",
+  "Kasama", "Senanga", "Mufumbwe", "Kalulushi", "Itezhi",
+  "Bor Payam", "Yei Boma", "Torit Hills", "Aweil Plain", "Rumbek East",
+  "Wau Ridge", "Yambio Springs", "Maridi Crossing", "Kapoeta South", "Tonj Bend",
+  "Nimule Gate", "Mundri West", "Renk North", "Malakal East", "Pibor Flats",
+];
+
+function demoVillageName(facilityIndex: number, slot: number): string {
+  // Window the names so the 5 slots for the same facility are always distinct
+  // AND so adjacent facilities don't reuse the same names — keeping the
+  // Client Logbook visibly varied across facilities in the same district.
+  const idx = (facilityIndex * MIN_VILLAGES_PER_FACILITY + slot) % DEMO_VILLAGE_NAME_POOL.length;
+  return `${DEMO_VILLAGE_NAME_POOL[idx]} (Demo)`;
+}
 
 /**
  * Compute a clustered lat/lng offset from a facility location.
@@ -763,6 +792,7 @@ async function pickVillagesPerFacility(
     .select({
       id: villages.id,
       name: villages.name,
+      code: villages.code,
       districtId: villages.districtId,
       assignedFacilityId: villages.assignedFacilityId,
       latitude: villages.latitude,
@@ -790,7 +820,8 @@ async function pickVillagesPerFacility(
     }
   }
 
-  for (const p of picks) {
+  for (let pi = 0; pi < picks.length; pi++) {
+    const p = picks[pi];
     const pool: number[] = [];
     // Only count villages already assigned to THIS facility. We deliberately
     // do not fall back to same-district villages assigned to other facilities:
@@ -805,39 +836,53 @@ async function pickVillagesPerFacility(
 
     const base = facilityCoords.get(p.facilityId) ?? null;
 
-    // Top up to MIN_VILLAGES_PER_FACILITY so Missed Communities scoring has
-    // a meaningful ranked list. Create demo catchment villages as needed,
-    // reusing any prior demo rows from previous seed runs. Demo villages are
-    // anchored near the facility (clustered within ~5 km) so they appear as
-    // map pins on the Missed Communities view.
+    // Top up to MIN_VILLAGES_PER_FACILITY so the Client Logbook's village
+    // column varies across rows and Missed Communities scoring has a
+    // meaningful ranked list. Create demo catchment villages as needed,
+    // reusing any prior demo rows from previous seed runs (matched by the
+    // stable `DEMO-{facilityId}-{slot}` code). Demo villages are anchored
+    // near the facility (clustered within ~5 km) so they appear as map pins
+    // on the Missed Communities view.
     let topUpIndex = 1;
     while (pool.length < MIN_VILLAGES_PER_FACILITY) {
-      const demoName =
-        topUpIndex === 1
-          ? `Demo Catchment Village (${p.facilityName})`
-          : `Demo Catchment Village ${topUpIndex} (${p.facilityName})`;
-      const coord = base ? offsetCoord(base.lat, base.lng, topUpIndex) : null;
+      const slot = topUpIndex;
+      const demoCode = `DEMO-${p.facilityId}-${slot}`;
+      const demoName = demoVillageName(pi, slot - 1);
+      const coord = base ? offsetCoord(base.lat, base.lng, slot) : null;
       // The last village in each facility's cluster is flagged hard-to-reach
       // so the missed-community score gets an HTR boost and the demo
       // surfaces a realistic mix on the map.
-      const isHardToReach = topUpIndex === MIN_VILLAGES_PER_FACILITY;
-      const reused = rows.find(
-        (v) => v.name === demoName && v.districtId === p.districtId,
-      );
+      const isHardToReach = slot === MIN_VILLAGES_PER_FACILITY;
+      // Match by code first (stable across name changes); fall back to the
+      // legacy "Demo Catchment Village" naming so previously-seeded rows
+      // are picked up and renamed in place instead of being duplicated.
+      const reused =
+        rows.find((v) => v.code === demoCode && v.districtId === p.districtId) ??
+        rows.find(
+          (v) =>
+            v.districtId === p.districtId &&
+            (v.name === `Demo Catchment Village (${p.facilityName})` ||
+              v.name === `Demo Catchment Village ${slot} (${p.facilityName})`),
+        );
       if (reused) {
         if (!pool.includes(reused.id)) pool.push(reused.id);
-        // Backfill lat/lng on demo villages from earlier seed runs that
-        // were created before coordinates were tracked.
+        // Backfill / rename: bring legacy demo rows in line with the new
+        // realistic name + code, and fill in lat/lng if they were created
+        // before coordinates were tracked. Idempotent: a no-op once the
+        // row already matches.
+        const updates: Record<string, unknown> = {};
+        if (reused.name !== demoName) updates.name = demoName;
+        if (reused.code !== demoCode) updates.code = demoCode;
         if (coord && (reused.latitude == null || reused.longitude == null)) {
-          await db
-            .update(villages)
-            .set({
-              latitude: String(coord.lat.toFixed(7)),
-              longitude: String(coord.lng.toFixed(7)),
-              distanceToFacility: String(coord.distanceKm.toFixed(2)),
-              isHardToReach,
-            })
-            .where(eq(villages.id, reused.id));
+          updates.latitude = String(coord.lat.toFixed(7));
+          updates.longitude = String(coord.lng.toFixed(7));
+          updates.distanceToFacility = String(coord.distanceKm.toFixed(2));
+          updates.isHardToReach = isHardToReach;
+        }
+        if (Object.keys(updates).length > 0) {
+          await db.update(villages).set(updates).where(eq(villages.id, reused.id));
+          reused.name = demoName;
+          reused.code = demoCode;
         }
       } else {
         const [created] = await db
@@ -845,7 +890,7 @@ async function pickVillagesPerFacility(
           .values({
             tenantId,
             name: demoName,
-            code: `DEMO-${p.facilityId}-${topUpIndex}`,
+            code: demoCode,
             districtId: p.districtId,
             assignedFacilityId: p.facilityId,
             latitude: coord ? String(coord.lat.toFixed(7)) : null,
@@ -858,6 +903,7 @@ async function pickVillagesPerFacility(
         rows.push({
           id: created.id,
           name: demoName,
+          code: demoCode,
           districtId: p.districtId,
           assignedFacilityId: p.facilityId,
           latitude: coord ? String(coord.lat.toFixed(7)) : null,
