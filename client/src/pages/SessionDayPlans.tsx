@@ -9,6 +9,12 @@ import {
   applyDefaultLeafletPinIcon,
   createFilledPinIcon,
 } from "@/lib/mapIcons";
+import {
+  usePopulationOverlay,
+  PopulationWmsLayer,
+  PopulationOverlayToggle,
+  PopulationOverlayLegend,
+} from "@/components/PopulationOverlay";
 
 // Fix standard Leaflet default marker icon displacement/missing asset issues and replace with offline-available premium vector SVG pins
 applyDefaultLeafletPinIcon();
@@ -141,6 +147,7 @@ type FormValues = z.infer<typeof dayPlanFormSchema>;
 export default function SessionDayPlans() {
   const { id } = useParams<{ id: string }>();
   const { toast } = useToast();
+  const populationOverlay = usePopulationOverlay();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingPlan, setEditingPlan] = useState<SessionDayPlan | null>(null);
 
@@ -1553,7 +1560,7 @@ export default function SessionDayPlans() {
                       </div>
                     </div>
 
-                    <div className="h-[200px] w-full rounded-xl overflow-hidden border border-border/80 sticky z-10">
+                    <div className="relative h-[200px] w-full rounded-xl overflow-hidden border border-border/80 sticky z-10">
                       <MapContainer
                         center={mapCenter}
                         zoom={13}
@@ -1563,6 +1570,7 @@ export default function SessionDayPlans() {
                           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                           attribution="&copy; OpenStreetMap contributors"
                         />
+                        <PopulationWmsLayer overlay={populationOverlay} />
                         <QuickAddMapEvents />
                         {newVillageLat && newVillageLng && drawMode === "pin" && (
                           <Marker position={[parseFloat(newVillageLat), parseFloat(newVillageLng)]} icon={OFFLINE_VILLAGE_ICON} />
@@ -1576,6 +1584,14 @@ export default function SessionDayPlans() {
                           </>
                         )}
                       </MapContainer>
+                      <PopulationOverlayToggle
+                        overlay={populationOverlay}
+                        className="absolute top-2 right-2 z-[400]"
+                      />
+                      <PopulationOverlayLegend
+                        overlay={populationOverlay}
+                        className="absolute bottom-2 right-2 z-[400]"
+                      />
                     </div>
                     <p className="text-[10px] text-muted-foreground italic leading-relaxed">
                       {drawMode === "pin"

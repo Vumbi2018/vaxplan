@@ -8,6 +8,12 @@ import { MapContainer, TileLayer, Marker, Polygon as LeafletPolygon, Popup, useM
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { createOutlinePinIcon } from "@/lib/mapIcons";
+import {
+  usePopulationOverlay,
+  PopulationWmsLayer,
+  PopulationOverlayToggle,
+  PopulationOverlayLegend,
+} from "@/components/PopulationOverlay";
 
 // Fix Leaflet default marker icon asset pathways
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -92,6 +98,7 @@ function MapResizer() {
 export default function Facilities() {
   const { toast } = useToast();
   const { user } = useAuth();
+  const populationOverlay = usePopulationOverlay();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingFacility, setEditingFacility] = useState<Facility | null>(null);
   const [deletingFacility, setDeletingFacility] = useState<Facility | null>(null);
@@ -1797,6 +1804,7 @@ export default function Facilities() {
                                 attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
                                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                               />
+                              <PopulationWmsLayer overlay={populationOverlay} />
                               <MapResizer />
                               <FacilityMapEvents />
                               
@@ -1871,6 +1879,14 @@ export default function Facilities() {
                                 );
                               })}
                             </MapContainer>
+                            <PopulationOverlayToggle
+                              overlay={populationOverlay}
+                              className="absolute top-2 right-2 z-[1000]"
+                            />
+                            <PopulationOverlayLegend
+                              overlay={populationOverlay}
+                              className="absolute top-14 right-2 z-[1000]"
+                            />
                           </div>
 
                           {/* Catchment statistics overlay dashboard */}
@@ -2291,6 +2307,7 @@ export default function Facilities() {
                           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
                           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                         />
+                        <PopulationWmsLayer overlay={populationOverlay} />
                         <MapResizer />
                         
                         {/* Facility Pin (Draggable) */}
@@ -2376,6 +2393,14 @@ export default function Facilities() {
                           );
                         })}
                       </MapContainer>
+                      <PopulationOverlayToggle
+                        overlay={populationOverlay}
+                        className="absolute top-2 right-2 z-[1000]"
+                      />
+                      <PopulationOverlayLegend
+                        overlay={populationOverlay}
+                        className="absolute bottom-2 right-2 z-[1000]"
+                      />
                     </div>
                   </div>
                 )}

@@ -21,6 +21,12 @@ import "leaflet/dist/leaflet.css";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { offlineDb } from "@/lib/offlineDb";
+import {
+  usePopulationOverlay,
+  PopulationWmsLayer,
+  PopulationOverlayToggle,
+  PopulationOverlayLegend,
+} from "@/components/PopulationOverlay";
 import { useAuth } from "@/hooks/useAuth";
 import { usePersistedBasemap } from "@/hooks/usePersistedBasemap";
 import { canCreateSessionPlan } from "@/lib/permissions";
@@ -1597,6 +1603,9 @@ export function MapView({
   const geoJsonRefs = useRef<Record<string, any>>({});
   const fetchingRef = useRef<Record<string, boolean>>({});
   const [mapBounds, setMapBounds] = useState<L.LatLngBounds | null>(null);
+
+  // WorldPop population-density overlay (off by default, session-scoped).
+  const populationOverlay = usePopulationOverlay();
 
   // Map overlay visibility layers (moved to top of states block to be declared before query hooks dependent on them)
   const [layers, setLayers] = useState<MapOverlayLayers>({
@@ -4001,6 +4010,8 @@ export function MapView({
           />
         )}
 
+        <PopulationWmsLayer overlay={populationOverlay} />
+
         <MapEvents onClick={handleMapClick} />
 
         {/* explicit Ward (Level 3) boundary overlays */}
@@ -5343,6 +5354,19 @@ export function MapView({
         {/* Original Code: <MapController center={center} zoom={zoom} /> */}
         <MapController center={effectiveCenter} zoom={effectiveZoom} onZoomChange={setCurrentZoom} onBoundsChange={setMapBounds} />
       </MapContainer>
+
+      {!isPrinting && (
+        <>
+          <PopulationOverlayToggle
+            overlay={populationOverlay}
+            className="absolute right-4 top-16 z-[1000]"
+          />
+          <PopulationOverlayLegend
+            overlay={populationOverlay}
+            className="absolute left-4 bottom-20 z-[1000]"
+          />
+        </>
+      )}
 
       {/* Zero-dose / under-immunized graduated-pin legend.
           Renders when either overlay is on, anchored bottom-right above the
