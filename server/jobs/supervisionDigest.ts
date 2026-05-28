@@ -2,6 +2,7 @@ import { readFileSync } from "fs";
 import { join } from "path";
 import { and, eq, inArray } from "drizzle-orm";
 import { db, pool } from "../db";
+import { sendEmail } from "../services/mailer";
 import {
   tenants,
   users,
@@ -282,54 +283,6 @@ export function renderDigestText(
   };
 }
 
-type DeliveryResult = {
-  channel: "console" | "smtp" | "sendgrid";
-  ok: boolean;
-  detail?: string;
-};
-
-async function deliverDigest(
-  to: string,
-  subject: string,
-  body: string,
-): Promise<DeliveryResult> {
-  // Best-effort delivery. We avoid a hard dep on nodemailer/sendgrid: if
-  // SENDGRID_API_KEY is set we use Sendgrid's HTTP API; otherwise we log to
-  // the console (and the audit trail still records the digest content).
-  const apiKey = process.env.SENDGRID_API_KEY;
-  const from = process.env.SUPERVISION_DIGEST_FROM || "no-reply@vaxplan.app";
-  if (apiKey) {
-    try {
-      const resp = await fetch("https://api.sendgrid.com/v3/mail/send", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          personalizations: [{ to: [{ email: to }] }],
-          from: { email: from },
-          subject,
-          content: [{ type: "text/plain", value: body }],
-        }),
-      });
-      if (resp.ok) return { channel: "sendgrid", ok: true };
-      return {
-        channel: "sendgrid",
-        ok: false,
-        detail: `sendgrid http ${resp.status}`,
-      };
-    } catch (err: any) {
-      return { channel: "sendgrid", ok: false, detail: err?.message ?? String(err) };
-    }
-  }
-  console.log(
-    `[supervision-digest] (console-only delivery — set SENDGRID_API_KEY to email)\n` +
-      `  to: ${to}\n  subject: ${subject}\n${body}\n`,
-  );
-  return { channel: "console", ok: true };
-}
-
 export type DigestSendResult = {
   tenantId: string;
   tenantName: string;
@@ -453,7 +406,12 @@ export async function runSupervisionDigestForTenant(
         delivered++;
         continue;
       }
-      const result = await deliverDigest(recipient.email, subject, body);
+      const result = await sendEmail({
+        tenant,
+        to: recipient.email,
+        subject,
+        text: body,
+      });
       if (result.ok) {
         delivered++;
       } else {
