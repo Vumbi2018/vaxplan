@@ -18,6 +18,12 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Slider } from "@/components/ui/slider";
 import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import {
   ChevronLeft,
   ChevronRight,
   CheckCircle2,
@@ -27,6 +33,9 @@ import {
   Trash2,
   Plus,
   Loader2,
+  Pencil,
+  ArrowLeft,
+  AlertCircle,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
@@ -215,6 +224,7 @@ export default function MicroplanWizard() {
   const [, setLocation] = useLocation();
 
   const [active, setActive] = useState(1);
+  const [returnToSummary, setReturnToSummary] = useState(false);
   const [microplanId, setMicroplanId] = useState<number | null>(null);
   const [facilityId, setFacilityId] = useState<number | null>(
     user?.facilityId ?? null,
@@ -914,9 +924,24 @@ export default function MicroplanWizard() {
         <div className="flex flex-1 flex-col overflow-hidden">
           <Card className="flex flex-1 flex-col overflow-hidden">
             <CardHeader className="border-b">
-              <CardTitle className="text-base">
-                Step {stepDef.id} · {stepDef.title}
-              </CardTitle>
+              <div className="flex items-center justify-between gap-2">
+                <CardTitle className="text-base">
+                  Step {stepDef.id} · {stepDef.title}
+                </CardTitle>
+                {returnToSummary && active !== 11 && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setReturnToSummary(false);
+                      setActive(11);
+                    }}
+                    data-testid="button-back-to-summary"
+                  >
+                    <ArrowLeft className="mr-1 h-4 w-4" /> Back to summary
+                  </Button>
+                )}
+              </div>
             </CardHeader>
             <CardContent className="flex-1 space-y-4 overflow-y-auto p-4">
               <WhatToDo bullets={stepDef.whatToDo} />
@@ -1000,10 +1025,19 @@ export default function MicroplanWizard() {
                   facilityLabel={facilityLabel}
                   coverage={coverage}
                   communities={communities}
-                  calendarCount={calendar.length}
-                  vaccinesCount={vaccines.filter((v) => parseInt(v.target || "0", 10) > 0).length}
-                  budgetCount={budget.filter((b) => b.description.trim()).length}
-                  supCount={supervision.filter((s) => s.supervisorName.trim()).length}
+                  risk={risk}
+                  calendar={calendar}
+                  staffing={staffing}
+                  vaccines={vaccines}
+                  coldChain={coldChain}
+                  mobilization={mobilization}
+                  transport={transport}
+                  budget={budget}
+                  supervision={supervision}
+                  onEdit={(step) => {
+                    setReturnToSummary(true);
+                    setActive(step);
+                  }}
                 />
               )}
               {active === 12 && (
@@ -1749,54 +1783,510 @@ function Tick({ ok }: { ok: boolean }) {
   );
 }
 
+function SummaryCard({
+  step,
+  title,
+  filled,
+  onEdit,
+  children,
+}: {
+  step: number;
+  title: string;
+  filled: boolean;
+  onEdit: (step: number) => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <AccordionItem
+      value={`step-${step}`}
+      className="rounded-md border bg-card"
+      data-testid={`summary-card-${step}`}
+    >
+      <div className="flex items-center justify-between gap-2 pr-2">
+        <AccordionTrigger className="flex-1 px-3 py-2 hover:no-underline">
+          <span className="flex items-center gap-2 text-left">
+            <Tick ok={filled} />
+            <span className="text-sm font-medium">
+              Step {step} · {title}
+            </span>
+            {filled ? (
+              <Badge variant="outline" className="ml-2 text-xs">
+                Complete
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="ml-2 border-amber-400 text-xs text-amber-700">
+                Empty
+              </Badge>
+            )}
+          </span>
+        </AccordionTrigger>
+        <Button
+          size="sm"
+          variant="ghost"
+          className={filled ? undefined : "text-primary underline-offset-2 hover:underline"}
+          onClick={(e) => {
+            e.stopPropagation();
+            onEdit(step);
+          }}
+          data-testid={`button-edit-step-${step}`}
+        >
+          {filled ? (
+            <>
+              <Pencil className="mr-1 h-3.5 w-3.5" /> Edit
+            </>
+          ) : (
+            <>
+              <Plus className="mr-1 h-3.5 w-3.5" /> Add
+            </>
+          )}
+        </Button>
+      </div>
+      <AccordionContent className="px-3 pb-3">{children}</AccordionContent>
+    </AccordionItem>
+  );
+}
+
+function EmptyState() {
+  return (
+    <div className="flex items-center gap-2 rounded-md border border-dashed bg-muted/30 p-3 text-sm text-muted-foreground">
+      <AlertCircle className="h-4 w-4 text-amber-500" />
+      Nothing entered yet.
+    </div>
+  );
+}
+
 function Step11({
   microplan,
   facilityLabel,
   coverage,
   communities,
-  calendarCount,
-  vaccinesCount,
-  budgetCount,
-  supCount,
+  risk,
+  calendar,
+  staffing,
+  vaccines,
+  coldChain,
+  mobilization,
+  transport,
+  budget,
+  supervision,
+  onEdit,
 }: {
   microplan: Microplan | null;
   facilityLabel: string;
   coverage: any;
   communities: any[];
-  calendarCount: number;
-  vaccinesCount: number;
-  budgetCount: number;
-  supCount: number;
+  risk: any[];
+  calendar: any[];
+  staffing: any[];
+  vaccines: any[];
+  coldChain: any;
+  mobilization: any[];
+  transport: any[];
+  budget: any[];
+  supervision: any[];
+  onEdit: (step: number) => void;
 }) {
   const status = microplan?.status ?? "draft";
-  const lines = [
-    { label: "Coverage review entered", ok: !!parseFloat(coverage.dtp1 || "0") },
-    { label: "Communities listed", ok: communities.length > 0 },
-    { label: "Risk scores captured", ok: true },
-    { label: "Session calendar created", ok: calendarCount > 0 },
-    { label: "Staffing assigned", ok: calendarCount > 0 },
-    { label: "Vaccines forecasted", ok: vaccinesCount > 0 },
-    { label: "Mobilization planned", ok: calendarCount > 0 },
-    { label: "Transport planned", ok: calendarCount > 0 },
-    { label: "Budget entered", ok: budgetCount > 0 },
-    { label: "Supervision planned", ok: supCount > 0 },
-  ];
+
+  const dtp1 = parseFloat(coverage.dtp1 || "0");
+  const dtp3 = parseFloat(coverage.dtp3 || "0");
+  const mcv1 = parseFloat(coverage.mcv1 || "0");
+  const dropDtp = dtp1 > 0 ? Math.round(((dtp1 - dtp3) / dtp1) * 100) : 0;
+  const dropMcv = dtp1 > 0 ? Math.round(((dtp1 - mcv1) / dtp1) * 100) : 0;
+
+  const filledStep1 =
+    dtp1 > 0 ||
+    parseFloat(coverage.dtp3 || "0") > 0 ||
+    parseFloat(coverage.mcv1 || "0") > 0 ||
+    parseFloat(coverage.mcv2 || "0") > 0;
+  const filledStep2 = communities.length > 0;
+  const filledStep3 =
+    risk.length > 0 && risk.some((r) => r.missed || r.zeroDose || r.distance !== 3 || r.terrain !== 3 || r.season !== 3 || r.insecurity !== 1);
+  const filledStep4 = calendar.length > 0;
+  const filledStep5 =
+    staffing.length > 0 && staffing.some((s) => s.vaccinator || s.recorder || s.supervisor);
+  const filledStep6 = vaccines.some((v) => parseInt(v.target || "0", 10) > 0);
+  const filledStep7 =
+    mobilization.length > 0 &&
+    mobilization.some((m) => m.focalPoint || (m.channels && m.channels.length > 0));
+  const filledStep8 =
+    transport.length > 0 &&
+    transport.some(
+      (t) => parseFloat(t.distanceKm || "0") > 0 || parseFloat(t.fuelLitres || "0") > 0 || t.vehicle,
+    );
+  const filledStep9 = budget.some((b) => b.description && b.description.trim());
+  const filledStep10 = supervision.some((s) => s.supervisorName && s.supervisorName.trim());
+
+  const monthsCovered = new Set(
+    calendar.filter((c) => c.scheduledDate).map((c) => c.scheduledDate.slice(0, 7)),
+  ).size;
+  const sessionsByType = calendar.reduce<Record<string, number>>((acc, c) => {
+    acc[c.sessionType] = (acc[c.sessionType] || 0) + 1;
+    return acc;
+  }, {});
+
+  const budgetTotal = budget.reduce(
+    (s, b) => s + parseFloat(b.unitCost || "0") * parseInt(b.quantity || "0", 10),
+    0,
+  );
+
   return (
     <div className="space-y-3">
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm">{facilityLabel}</CardTitle>
         </CardHeader>
-        <CardContent>
-          <ul className="space-y-1.5 text-sm">
-            {lines.map((l, i) => (
-              <li key={i} className="flex items-center gap-2">
-                <Tick ok={l.ok} /> {l.label}
-              </li>
-            ))}
-          </ul>
+        <CardContent className="text-xs text-muted-foreground">
+          Review every step below before submitting. Click <b>Edit</b> on any card to fix it — use the
+          "Back to summary" button at the top of the step to return here.
         </CardContent>
       </Card>
+
+      <Accordion type="multiple" className="space-y-2">
+        <SummaryCard step={1} title="Coverage review" filled={filledStep1} onEdit={onEdit}>
+          {filledStep1 ? (
+            <div className="space-y-2 text-sm">
+              <table className="w-full">
+                <thead className="text-left text-xs uppercase text-muted-foreground">
+                  <tr>
+                    <th className="py-1">DTP1</th>
+                    <th className="py-1">DTP3</th>
+                    <th className="py-1">MCV1</th>
+                    <th className="py-1">MCV2</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td className="py-1">{coverage.dtp1 || "0"}%</td>
+                    <td className="py-1">{coverage.dtp3 || "0"}%</td>
+                    <td className="py-1">{coverage.mcv1 || "0"}%</td>
+                    <td className="py-1">{coverage.mcv2 || "0"}%</td>
+                  </tr>
+                </tbody>
+              </table>
+              <div className="text-xs text-muted-foreground">
+                Dropout DTP1→DTP3: <b>{dropDtp}%</b> · DTP1→MCV1: <b>{dropMcv}%</b>
+              </div>
+              <div className="text-xs text-muted-foreground">
+                Stockouts: <b>{coverage.stockouts || "0"}</b> · AEFI: <b>{coverage.aefi || "0"}</b> ·
+                Sessions planned/held: <b>{coverage.sessionsPlanned || "0"}</b>/
+                <b>{coverage.sessionsHeld || "0"}</b>
+              </div>
+            </div>
+          ) : (
+            <EmptyState />
+          )}
+        </SummaryCard>
+
+        <SummaryCard step={2} title="Catchment & communities" filled={filledStep2} onEdit={onEdit}>
+          {filledStep2 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead className="border-b text-left uppercase text-muted-foreground">
+                  <tr>
+                    <th className="p-1">Name</th>
+                    <th className="p-1">Type</th>
+                    <th className="p-1">Target</th>
+                    <th className="p-1">Source</th>
+                    <th className="p-1">Strategy</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {communities.map((c, i) => (
+                    <tr key={c.rowId || i} className="border-b">
+                      <td className="p-1">{c.name || <em className="text-muted-foreground">(unnamed)</em>}</td>
+                      <td className="p-1">{c.type}</td>
+                      <td className="p-1">{c.targetPopulation || "0"}</td>
+                      <td className="p-1">{c.source}</td>
+                      <td className="p-1">{c.strategy}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <EmptyState />
+          )}
+        </SummaryCard>
+
+        <SummaryCard step={3} title="Risk scoring" filled={filledStep3} onEdit={onEdit}>
+          {risk.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead className="border-b text-left uppercase text-muted-foreground">
+                  <tr>
+                    <th className="p-1">Community</th>
+                    <th className="p-1">Dist</th>
+                    <th className="p-1">Terr</th>
+                    <th className="p-1">Seas</th>
+                    <th className="p-1">Insec</th>
+                    <th className="p-1">Flags</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {risk.map((r, i) => (
+                    <tr key={i} className="border-b">
+                      <td className="p-1">{r.name}</td>
+                      <td className="p-1">{r.distance}</td>
+                      <td className="p-1">{r.terrain}</td>
+                      <td className="p-1">{r.season}</td>
+                      <td className="p-1">{r.insecurity}</td>
+                      <td className="p-1">
+                        {[r.missed && "missed", r.zeroDose && "zero-dose"].filter(Boolean).join(", ") || "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <EmptyState />
+          )}
+        </SummaryCard>
+
+        <SummaryCard step={4} title="Session calendar" filled={filledStep4} onEdit={onEdit}>
+          {filledStep4 ? (
+            <div className="space-y-2 text-sm">
+              <div className="text-xs text-muted-foreground">
+                <b>{calendar.length}</b> sessions across <b>{monthsCovered}</b> months ·{" "}
+                {Object.entries(sessionsByType)
+                  .map(([t, n]) => `${t}: ${n}`)
+                  .join(" · ")}
+              </div>
+              <div className="max-h-48 overflow-y-auto">
+                <table className="w-full text-xs">
+                  <thead className="sticky top-0 border-b bg-background text-left uppercase text-muted-foreground">
+                    <tr>
+                      <th className="p-1">Community</th>
+                      <th className="p-1">Date</th>
+                      <th className="p-1">Type</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {calendar.map((c, i) => (
+                      <tr key={c.rowId || i} className="border-b">
+                        <td className="p-1">{c.name}</td>
+                        <td className="p-1">{c.scheduledDate}</td>
+                        <td className="p-1">{c.sessionType}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : (
+            <EmptyState />
+          )}
+        </SummaryCard>
+
+        <SummaryCard step={5} title="Staffing per session day" filled={filledStep5} onEdit={onEdit}>
+          {staffing.length > 0 ? (
+            <div className="max-h-48 overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead className="border-b text-left uppercase text-muted-foreground">
+                  <tr>
+                    <th className="p-1">Session</th>
+                    <th className="p-1">Vaccinator</th>
+                    <th className="p-1">Recorder</th>
+                    <th className="p-1">Supervisor</th>
+                    <th className="p-1">Team</th>
+                    <th className="p-1">Target</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {staffing.map((s, i) => (
+                    <tr key={s.rowId || i} className="border-b">
+                      <td className="p-1">{s.sessionLabel}</td>
+                      <td className="p-1">{s.vaccinator || "—"}</td>
+                      <td className="p-1">{s.recorder || "—"}</td>
+                      <td className="p-1">{s.supervisor || "—"}</td>
+                      <td className="p-1">{s.teamType}</td>
+                      <td className="p-1">{s.target}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <EmptyState />
+          )}
+        </SummaryCard>
+
+        <SummaryCard step={6} title="Vaccine forecasting" filled={filledStep6} onEdit={onEdit}>
+          {filledStep6 ? (
+            <div className="space-y-2 text-sm">
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead className="border-b text-left uppercase text-muted-foreground">
+                    <tr>
+                      <th className="p-1">Antigen</th>
+                      <th className="p-1">Target</th>
+                      <th className="p-1">Doses</th>
+                      <th className="p-1">Wastage %</th>
+                      <th className="p-1">Vials</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {vaccines.map((v) => {
+                      const tgt = parseInt(v.target || "0", 10);
+                      const w = parseFloat(v.wastage || "0");
+                      const total = Math.ceil(tgt * v.doses * (1 + w / 100));
+                      const vials = Math.ceil(total / 10);
+                      return (
+                        <tr key={v.name} className="border-b">
+                          <td className="p-1 font-medium">{v.name}</td>
+                          <td className="p-1">{tgt}</td>
+                          <td className="p-1">{total.toLocaleString()}</td>
+                          <td className="p-1">{v.wastage}%</td>
+                          <td className="p-1">{vials.toLocaleString()}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <div className="text-xs text-muted-foreground">
+                Cold chain — boxes: <b>{coldChain.coldBoxes}</b> · ice packs: <b>{coldChain.icePacks}</b> ·
+                carriers/session: <b>{coldChain.carriers}</b>
+              </div>
+            </div>
+          ) : (
+            <EmptyState />
+          )}
+        </SummaryCard>
+
+        <SummaryCard step={7} title="Social mobilization" filled={filledStep7} onEdit={onEdit}>
+          {mobilization.length > 0 ? (
+            <div className="max-h-48 overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead className="border-b text-left uppercase text-muted-foreground">
+                  <tr>
+                    <th className="p-1">Session</th>
+                    <th className="p-1">Channels</th>
+                    <th className="p-1">Focal point</th>
+                    <th className="p-1">Phone</th>
+                    <th className="p-1">IEC</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {mobilization.map((m, i) => (
+                    <tr key={m.rowId || i} className="border-b">
+                      <td className="p-1">{m.sessionLabel}</td>
+                      <td className="p-1">{(m.channels || []).join(", ") || "—"}</td>
+                      <td className="p-1">{m.focalPoint || "—"}</td>
+                      <td className="p-1">{m.focalPhone || "—"}</td>
+                      <td className="p-1">{(m.iec || []).join(", ") || "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <EmptyState />
+          )}
+        </SummaryCard>
+
+        <SummaryCard step={8} title="Transport" filled={filledStep8} onEdit={onEdit}>
+          {transport.length > 0 ? (
+            <div className="max-h-48 overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead className="border-b text-left uppercase text-muted-foreground">
+                  <tr>
+                    <th className="p-1">Session</th>
+                    <th className="p-1">Mode</th>
+                    <th className="p-1">Distance km</th>
+                    <th className="p-1">Fuel L</th>
+                    <th className="p-1">Vehicle</th>
+                    <th className="p-1">Cleared</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {transport.map((t, i) => (
+                    <tr key={t.rowId || i} className="border-b">
+                      <td className="p-1">{t.sessionLabel}</td>
+                      <td className="p-1">{t.mode}</td>
+                      <td className="p-1">{t.distanceKm}</td>
+                      <td className="p-1">{t.fuelLitres}</td>
+                      <td className="p-1">{t.vehicle || "—"}</td>
+                      <td className="p-1">{t.cleared ? "yes" : "no"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <EmptyState />
+          )}
+        </SummaryCard>
+
+        <SummaryCard step={9} title="Budget" filled={filledStep9} onEdit={onEdit}>
+          {filledStep9 ? (
+            <div className="space-y-2 text-sm">
+              <div className="text-xs text-muted-foreground">
+                Grand total: <b>{budgetTotal.toLocaleString()}</b>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead className="border-b text-left uppercase text-muted-foreground">
+                    <tr>
+                      <th className="p-1">Category</th>
+                      <th className="p-1">Description</th>
+                      <th className="p-1">Qty</th>
+                      <th className="p-1">Unit</th>
+                      <th className="p-1">Funding</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {budget.map((b, i) => (
+                      <tr key={b.rowId || i} className="border-b">
+                        <td className="p-1">{b.category}</td>
+                        <td className="p-1">{b.description || "—"}</td>
+                        <td className="p-1">{b.quantity}</td>
+                        <td className="p-1">{b.unitCost}</td>
+                        <td className="p-1">{b.fundingSource}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : (
+            <EmptyState />
+          )}
+        </SummaryCard>
+
+        <SummaryCard step={10} title="Supervision plan" filled={filledStep10} onEdit={onEdit}>
+          {supervision.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead className="border-b text-left uppercase text-muted-foreground">
+                  <tr>
+                    <th className="p-1">Qtr</th>
+                    <th className="p-1">Date</th>
+                    <th className="p-1">Supervisor</th>
+                    <th className="p-1">Checklist</th>
+                    <th className="p-1">Follow-up</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {supervision.map((v, i) => (
+                    <tr key={v.rowId || i} className="border-b align-top">
+                      <td className="p-1">Q{v.quarter}</td>
+                      <td className="p-1">{v.scheduledDate}</td>
+                      <td className="p-1">{v.supervisorName || "—"}</td>
+                      <td className="p-1">{v.checklist}</td>
+                      <td className="p-1">{v.followUp || "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <EmptyState />
+          )}
+        </SummaryCard>
+      </Accordion>
+
       <div className="rounded-md border bg-muted/30 p-3 text-sm">
         <p>
           Current status: <Badge variant="outline">{status}</Badge>
