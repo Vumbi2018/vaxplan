@@ -651,6 +651,7 @@ export interface MapOverlayLayers {
   populationGeoTIFF: boolean;
   grid3Settlements: boolean;
   zeroDoseVillages: boolean; // Per-village zero-dose / under-immunized graduated pins
+  underImmunizedVillages: boolean; // Per-village under-immunized (DTP1 but no DTP3) graduated pins
 }
 
 interface LayerPanelProps {
@@ -809,6 +810,9 @@ function LayerPanel({
                   } else if (key === "zeroDoseVillages") {
                     displayName = "Zero-dose Villages";
                     subtext = "Graduated pins by missed-child count (DTP1 gap)";
+                  } else if (key === "underImmunizedVillages") {
+                    displayName = "Under-immunized Villages";
+                    subtext = "Graduated amber pins by under-immunized count (DTP1, no DTP3)";
                   }
 
                   // ── Data-availability dot color ──
@@ -1608,6 +1612,7 @@ export function MapView({
     populationGeoTIFF: true,
     grid3Settlements: false,
     zeroDoseVillages: false,
+    underImmunizedVillages: false,
   });
 
   // Advanced GIS-Microplanning States & Refs
@@ -1655,7 +1660,7 @@ export function MapView({
     }>;
   }>({
     queryKey: ["/api/indicators/zero-dose"],
-    enabled: layers.zeroDoseVillages,
+    enabled: layers.zeroDoseVillages || layers.underImmunizedVillages,
   });
 
   // Query all public tenants to allow synchronization between raster selection and planning context
@@ -5128,6 +5133,66 @@ export function MapView({
                     </div>
                     <div>
                       Under-imm: <strong>{v.underImmunized}</strong> ({v.underImmunizedPct}%)
+                    </div>
+                    <div>of {v.denominator} eligible children</div>
+                    {v.isHardToReach && (
+                      <Badge className="bg-amber-500/10 text-amber-700">Hard-to-reach</Badge>
+                    )}
+                  </div>
+                </Popup>
+              </CircleMarker>
+            );
+          });
+        })()}
+
+        {/* Under-immunized village pins — DTP1 received but DTP3 missed.
+            Rendered as a separate layer with the amber palette from
+            pages/ZeroDoseVillages.tsx (mode === "under") so planners doing
+            defaulter follow-up can see both layers in the same map context. */}
+        {layers.underImmunizedVillages && (() => {
+          const rows = (zeroDoseData?.byVillage ?? []).filter(
+            (v) => v.latitude != null && v.longitude != null && v.underImmunized > 0,
+          );
+          const districtsInProvince =
+            selectedProvinceId === "all"
+              ? null
+              : new Set(
+                  districts
+                    .filter((d) => Number(d.provinceId) === Number(selectedProvinceId))
+                    .map((d) => Number(d.id)),
+                );
+          const scoped = rows.filter((v) => {
+            if (districtsInProvince && !districtsInProvince.has(Number(v.districtId))) return false;
+            if (selectedDistrictId !== "all" && Number(v.districtId) !== Number(selectedDistrictId)) return false;
+            return true;
+          });
+          const maxCount = Math.max(1, ...scoped.map((v) => v.underImmunized));
+          const colorFor = (n: number) => {
+            const r = n / maxCount;
+            if (r > 0.66) return "#d97706";
+            if (r > 0.33) return "#f59e0b";
+            return "#fbbf24";
+          };
+          return scoped.map((v) => {
+            const n = v.underImmunized;
+            const color = colorFor(n);
+            const radius = 6 + Math.round((n / maxCount) * 12);
+            return (
+              <CircleMarker
+                key={`underimm-${v.villageId ?? "f" + v.facilityId}`}
+                center={[Number(v.latitude), Number(v.longitude)]}
+                radius={radius}
+                pathOptions={{ color, fillColor: color, fillOpacity: 0.65, weight: 1 }}
+              >
+                <Popup>
+                  <div className="text-xs space-y-1">
+                    <div className="font-semibold">{v.villageName}</div>
+                    <div>{v.facilityName} · {v.districtName}</div>
+                    <div>
+                      Under-imm: <strong>{v.underImmunized}</strong> ({v.underImmunizedPct}%)
+                    </div>
+                    <div>
+                      Zero-dose: <strong>{v.zeroDose}</strong> ({v.pct}%)
                     </div>
                     <div>of {v.denominator} eligible children</div>
                     {v.isHardToReach && (
