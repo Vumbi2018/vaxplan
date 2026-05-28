@@ -3756,6 +3756,13 @@ export async function registerRoutes(
         }
       }
 
+      // Coerce client-supplied ISO scheduledDate string into a Date object
+      // so the Drizzle/Zod timestamp validator accepts it.
+      if (req.body?.scheduledDate && typeof req.body.scheduledDate === "string") {
+        const parsed = new Date(req.body.scheduledDate);
+        if (!isNaN(parsed.getTime())) req.body.scheduledDate = parsed;
+      }
+
       const data = insertSessionPlanSchema.parse(req.body);
 
       // Enforce: only facility staff (and national_admin for testing/seed) can author session plans.

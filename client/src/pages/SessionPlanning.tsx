@@ -79,6 +79,15 @@ const sessionFormSchema = insertSessionPlanSchema.extend({
   name: z.string().min(2, "Name is required"),
   facilityId: z.number({ required_error: "Pick a facility before saving" }),
   microplanId: z.number({ required_error: "Pick a parent microplan before saving" }),
+  scheduledDate: z.preprocess(
+    (v) => {
+      if (v == null || v === "") return undefined;
+      if (v instanceof Date) return v;
+      const d = new Date(v as any);
+      return isNaN(d.getTime()) ? undefined : d;
+    },
+    z.date({ required_error: "Pick the scheduled date before saving" }),
+  ),
 });
 
 type PlanTypeFilter = "routine" | "campaign";
@@ -325,6 +334,7 @@ export default function SessionPlanning({
       approvalStatus: "draft",
       facilityId: user?.facilityId ?? undefined,
       microplanId: (lockedMicroplanId ?? undefined) as any,
+      scheduledDate: undefined as any,
     },
   });
 
@@ -371,14 +381,17 @@ export default function SessionPlanning({
   // dialog using the unserved village's coordinates. Synthesises a midpoint
   // scheduledDate from the form's quarter/year since the create form does not
   // collect a date yet.
-  const runCreateProximityCheck = async (facilityId: number, lat: number, lng: number, villageId: number | null, quarter: number, year: number, targetPopulation?: number) => {
+  const runCreateProximityCheck = async (facilityId: number, lat: number, lng: number, villageId: number | null, quarter: number, year: number, targetPopulation?: number, scheduledDateOverride?: string | Date | null) => {
     if (!navigator.onLine) {
       setCreateProximity({ nearby: [], reason: "Offline — proximity check skipped." });
       return;
     }
     setCreateProximityChecking(true);
     try {
-      const scheduledDate = new Date(year, (quarter - 1) * 3 + 1, 15).toISOString();
+      const picked = scheduledDateOverride ?? form.getValues("scheduledDate" as any);
+      const scheduledDate = picked
+        ? new Date(picked as any).toISOString()
+        : new Date(year, (quarter - 1) * 3 + 1, 15).toISOString();
       const res = await apiRequest("POST", "/api/sessions/validate-proximity", {
         facilityId,
         scheduledDate,
@@ -522,6 +535,7 @@ export default function SessionPlanning({
         approvalStatus: "draft",
         facilityId: user?.facilityId ?? undefined,
         microplanId: undefined as any,
+        scheduledDate: undefined as any,
       });
       toast({
         title: navigator.onLine ? "Session saved" : "Session queued offline",
@@ -1230,6 +1244,47 @@ export default function SessionPlanning({
                       )}
                     />
                   </div>
+
+                  <FormField
+                    control={form.control}
+                    name="scheduledDate"
+                    render={({ field }) => {
+                      const toInputValue = (v: any): string => {
+                        if (!v) return "";
+                        const d = v instanceof Date ? v : new Date(v);
+                        if (isNaN(d.getTime())) return "";
+                        const y = d.getFullYear();
+                        const m = String(d.getMonth() + 1).padStart(2, "0");
+                        const day = String(d.getDate()).padStart(2, "0");
+                        return `${y}-${m}-${day}`;
+                      };
+                      const todayStr = (() => {
+                        const t = new Date();
+                        const y = t.getFullYear();
+                        const m = String(t.getMonth() + 1).padStart(2, "0");
+                        const d = String(t.getDate()).padStart(2, "0");
+                        return `${y}-${m}-${d}`;
+                      })();
+                      return (
+                        <FormItem>
+                          <FormLabel>Scheduled date *</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="date"
+                              min={todayStr}
+                              value={toInputValue(field.value)}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                field.onChange(v ? new Date(`${v}T00:00:00`) : (undefined as any));
+                              }}
+                              data-testid="input-scheduled-date"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      );
+                    }}
+                  />
 
                   <FormField
                     control={form.control}
