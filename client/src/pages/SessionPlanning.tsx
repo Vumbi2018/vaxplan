@@ -64,6 +64,7 @@ import {
   X,
   Check,
   ChevronsUpDown,
+  CloudOff,
 } from "lucide-react";
 import {
   Popover,
@@ -245,6 +246,43 @@ export default function SessionPlanning({
       return res.json();
     },
   });
+
+  // Task #180 — Surface unsynced offline edits in the microplan list so a
+  // clerk can tell at a glance which rows still have changes queued in the
+  // outbox (and avoid double-editing them before reconnection). We poll the
+  // outbox cheaply on an interval so the badge clears once syncEngine flushes
+  // the entry, even without an explicit event channel.
+  const { data: pendingSessionSync } = useQuery<{
+    serverIds: Set<number>;
+    hasLocalCreate: boolean;
+  }>({
+    queryKey: ["offline-outbox", "sessionPlan"],
+    queryFn: async () => {
+      const entries = await offlineDb.outbox
+        .where("entityType")
+        .equals("sessionPlan")
+        .toArray();
+      const serverIds = new Set<number>();
+      let hasLocalCreate = false;
+      for (const e of entries) {
+        if (typeof e.serverId === "number") {
+          serverIds.add(e.serverId);
+        } else if (e.method === "POST" && !e.serverId) {
+          hasLocalCreate = true;
+        }
+      }
+      return { serverIds, hasLocalCreate };
+    },
+    refetchInterval: 3000,
+    refetchIntervalInBackground: false,
+    staleTime: 1000,
+  });
+
+  const isSessionPendingSync = (item: SessionPlan): boolean => {
+    if ((item as any)._localOnly) return true;
+    if (pendingSessionSync?.serverIds.has(item.id)) return true;
+    return false;
+  };
 
   const { data: facilities } = useQuery<Facility[]>({
     queryKey: ["/api/facilities"],
@@ -1011,9 +1049,23 @@ export default function SessionPlanning({
             <Calendar className="h-4 w-4 text-primary" />
           </div>
           <div>
-            <p className="font-semibold group-hover:text-indigo-600 dark:group-hover:text-indigo-400 group-hover:underline transition-all">
-              {item.name}
-            </p>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <p className="font-semibold group-hover:text-indigo-600 dark:group-hover:text-indigo-400 group-hover:underline transition-all">
+                {item.name}
+              </p>
+              {isSessionPendingSync(item) && (
+                <Badge
+                  variant="outline"
+                  className="gap-1 border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 text-[10px] font-medium px-1.5 py-0 h-5"
+                  data-testid={`badge-pending-sync-${item.id}`}
+                  title="This row has changes saved on this device that haven't reached the server yet."
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <CloudOff className="h-3 w-3" />
+                  Pending sync
+                </Badge>
+              )}
+            </div>
             <p className="text-xs text-muted-foreground">
               Q{item.quarter} {item.year}
             </p>
