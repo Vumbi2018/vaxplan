@@ -7787,12 +7787,19 @@ export async function registerRoutes(
           .select({
             id: clients.id,
             facilityId: clients.facilityId,
+            facilityName: facilities.name,
             districtId: facilities.districtId,
             districtName: districts.name,
+            villageId: clients.villageId,
+            villageName: villages.name,
+            villageLat: villages.latitude,
+            villageLng: villages.longitude,
+            villageHtr: villages.isHardToReach,
           })
           .from(clients)
           .innerJoin(facilities, eq(facilities.id, clients.facilityId))
           .innerJoin(districts, eq(districts.id, facilities.districtId))
+          .leftJoin(villages, eq(villages.id, clients.villageId))
           .where(
             and(
               eq(clients.tenantId, tenantId),
@@ -7811,6 +7818,7 @@ export async function registerRoutes(
             pct: 0,
             underImmunized: { total: 0, denominator: 0, pct: 0 },
             byDistrict: [],
+            byVillage: [],
           };
           cacheSetIndicator(cacheKey, empty);
           return res.json(empty);
@@ -7846,7 +7854,22 @@ export async function registerRoutes(
           underImmunized: number;
           denominator: number;
         };
+        type VillAgg = {
+          villageId: number | null;
+          villageName: string;
+          districtId: number;
+          districtName: string;
+          facilityId: number;
+          facilityName: string;
+          latitude: number | null;
+          longitude: number | null;
+          isHardToReach: boolean;
+          zeroDose: number;
+          underImmunized: number;
+          denominator: number;
+        };
         const byDistMap = new Map<number, DistAgg>();
+        const byVillMap = new Map<string, VillAgg>();
         let total = 0;
         let underTotal = 0;
         for (const c of eligible) {
@@ -7860,14 +7883,35 @@ export async function registerRoutes(
               denominator: 0,
             };
           entry.denominator += 1;
+          const vKey = `${c.villageId ?? `f${c.facilityId}`}`;
+          const vEntry: VillAgg =
+            byVillMap.get(vKey) ??
+            {
+              villageId: c.villageId ?? null,
+              villageName: c.villageName ?? `(Unmapped — ${c.facilityName})`,
+              districtId: c.districtId,
+              districtName: c.districtName,
+              facilityId: c.facilityId,
+              facilityName: c.facilityName,
+              latitude: c.villageLat != null ? Number(c.villageLat) : null,
+              longitude: c.villageLng != null ? Number(c.villageLng) : null,
+              isHardToReach: Boolean(c.villageHtr),
+              zeroDose: 0,
+              underImmunized: 0,
+              denominator: 0,
+            };
+          vEntry.denominator += 1;
           if (!haveDtp1.has(c.id)) {
             entry.zeroDose += 1;
+            vEntry.zeroDose += 1;
             total += 1;
           } else if (!haveDtp3.has(c.id)) {
             entry.underImmunized += 1;
+            vEntry.underImmunized += 1;
             underTotal += 1;
           }
           byDistMap.set(c.districtId, entry);
+          byVillMap.set(vKey, vEntry);
         }
         const byDistrictRaw: DistAgg[] = [];
         byDistMap.forEach((v) => byDistrictRaw.push(v));
@@ -7882,6 +7926,25 @@ export async function registerRoutes(
           }))
           .sort((a, b) => b.zeroDose - a.zeroDose);
 
+        const byVillageRaw: VillAgg[] = [];
+        byVillMap.forEach((v) => byVillageRaw.push(v));
+        const byVillage = byVillageRaw
+          .map((v) => ({
+            ...v,
+            missed: v.zeroDose + v.underImmunized,
+            pct: v.denominator > 0 ? Math.round((v.zeroDose / v.denominator) * 1000) / 10 : 0,
+            underImmunizedPct:
+              v.denominator > 0
+                ? Math.round((v.underImmunized / v.denominator) * 1000) / 10
+                : 0,
+          }))
+          .filter((v) => v.zeroDose + v.underImmunized > 0)
+          .sort((a, b) =>
+            b.zeroDose - a.zeroDose ||
+            b.underImmunized - a.underImmunized ||
+            a.villageName.localeCompare(b.villageName),
+          );
+
         const payload = {
           total,
           denominator: eligible.length,
@@ -7895,6 +7958,7 @@ export async function registerRoutes(
                 : 0,
           },
           byDistrict,
+          byVillage,
         };
         cacheSetIndicator(cacheKey, payload);
         res.json(payload);

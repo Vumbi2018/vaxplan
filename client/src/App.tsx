@@ -50,6 +50,7 @@ const MicroplanWizard = lazy(() => import("@/pages/MicroplanWizard"));
 const SettlementIntelligence = lazy(() => import("@/pages/SettlementIntelligence"));
 const StandardsAlignment = lazy(() => import("@/pages/StandardsAlignment"));
 const DropoutRates = lazy(() => import("@/pages/DropoutRates"));
+const ZeroDoseVillages = lazy(() => import("@/pages/ZeroDoseVillages"));
 
 // Task #50 — Small wrapper that reads :id from the route and passes it to
 // SessionPlanning as `lockedMicroplanId`, so the unserved-prefill auto-open
@@ -136,6 +137,7 @@ function AuthenticatedRouter() {
       <Route path="/sessions/:id/day-plans" component={SessionDayPlans} />
       <Route path="/clients/defaulters" component={Defaulters} />
       <Route path="/indicators/dropout" component={DropoutRates} />
+      <Route path="/indicators/zero-dose" component={ZeroDoseVillages} />
       <Route path="/clients" component={ClientLogbook} />
       <Route path="/stock">
         {modules.stock !== false ? <StockLedger /> : <NotFound />}

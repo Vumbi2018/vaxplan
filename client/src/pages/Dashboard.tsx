@@ -118,11 +118,11 @@ function ImmunizationIndicatorCards() {
               Zero-dose children
             </CardTitle>
             <Link
-              href="/clients/defaulters"
+              href="/indicators/zero-dose"
               className="text-xs font-semibold text-primary hover:underline"
               data-testid="link-zero-dose-details"
             >
-              View details →
+              By village →
             </Link>
           </div>
         </CardHeader>
@@ -181,11 +181,11 @@ function ImmunizationIndicatorCards() {
               Under-immunized children
             </CardTitle>
             <Link
-              href="/indicators/dropout"
+              href="/indicators/zero-dose"
               className="text-xs font-semibold text-primary hover:underline"
               data-testid="link-under-immunized-details"
             >
-              View dropout →
+              By village →
             </Link>
           </div>
         </CardHeader>
