@@ -3899,52 +3899,8 @@ export default function ClientLogbook() {
                   );
                 })()}
 
-                {/* Inline Share & Message Form Panel (Hidden on Print) */}
-                {isShareOpen && shareMethod && (
-                  <div className="no-print bg-indigo-500/5 dark:bg-indigo-500/10 border border-indigo-500/20 rounded-2xl p-4 space-y-3 animate-in slide-in-from-top-2 duration-300">
-                    <div className="flex items-center justify-between">
-                      <h4 className="text-xs font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5">
-                        {shareMethod === "email" ? (
-                          <Mail className="h-4 w-4 text-indigo-500" />
-                        ) : shareMethod === "sms" ? (
-                          <MessageSquare className="h-4 w-4 text-indigo-500" />
-                        ) : (
-                          <Share2 className="h-4 w-4 text-indigo-500" />
-                        )}
-                        Dispatch via {shareMethod === "email" ? "Email Address" : shareMethod === "sms" ? "SMS Mobile Number" : "WhatsApp Messenger"}
-                      </h4>
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
-                        className="h-6 w-6 rounded-full hover:bg-muted" 
-                        onClick={() => { setIsShareOpen(false); setShareMethod(null); setShareInput(""); }}
-                      >
-                        <XCircle className="h-4 w-4 text-muted-foreground" />
-                      </Button>
-                    </div>
-                    <div className="flex gap-2">
-                      <Input
-                        placeholder={
-                          shareMethod === "email" 
-                            ? "guardian.email@gmail.com" 
-                            : "+260 977 123456"
-                        }
-                        value={shareInput}
-                        onChange={(e) => setShareInput(e.target.value)}
-                        className="bg-background rounded-xl h-10 text-xs text-foreground placeholder:text-muted-foreground/60 focus-visible:ring-indigo-500"
-                      />
-                      <Button 
-                        onClick={handleShareSubmit} 
-                        disabled={isSharing}
-                        className="bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl px-4 flex items-center gap-1.5 text-xs font-semibold shadow-md shadow-indigo-600/10"
-                      >
-                        {isSharing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
-                        <span>Send</span>
-                      </Button>
-                    </div>
-                    <p className="text-[10px] text-muted-foreground">Transmits a secure, certified PDF immunization booklet and upcoming reminder schedule details instantly to the guardian.</p>
-                  </div>
-                )}
+                {/* Share & Message Form Panel was moved next to the Notify Guardian
+                    buttons below so it is visible at the moment the user clicks them. */}
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 border-b pb-6 print:border-none print:pb-0 print-double-sided">
                   
@@ -3963,6 +3919,12 @@ export default function ClientLogbook() {
                             <img 
                               src="/zambia-coat-of-arms.png" 
                               alt="Zambia Coat of Arms" 
+                              className="h-12 w-12 shrink-0 object-contain"
+                            />
+                          ) : (tenantCode === "SSD" || tenant?.name?.toLowerCase().includes("south sudan") || tenant?.code?.toLowerCase().includes("ssd")) ? (
+                            <img
+                              src="/ssd-moh-logo.png"
+                              alt="South Sudan Ministry of Health"
                               className="h-12 w-12 shrink-0 object-contain"
                             />
                           ) : (
@@ -4164,6 +4126,58 @@ export default function ClientLogbook() {
                     </div>
                   </div>
                 </div>
+
+                {/* Inline Share & Message Form Panel — appears right above the
+                    Notify Guardian buttons so it is visible the moment the user
+                    clicks Email / SMS / WhatsApp. (Hidden on Print) */}
+                {isShareOpen && shareMethod && (
+                  <div className="no-print bg-indigo-500/5 dark:bg-indigo-500/10 border border-indigo-500/20 rounded-2xl p-4 space-y-3 animate-in slide-in-from-top-2 duration-300 mt-4">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5">
+                        {shareMethod === "email" ? (
+                          <Mail className="h-4 w-4 text-indigo-500" />
+                        ) : shareMethod === "sms" ? (
+                          <MessageSquare className="h-4 w-4 text-indigo-500" />
+                        ) : (
+                          <Share2 className="h-4 w-4 text-indigo-500" />
+                        )}
+                        Dispatch via {shareMethod === "email" ? "Email Address" : shareMethod === "sms" ? "SMS Mobile Number" : "WhatsApp Messenger"}
+                      </h4>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 rounded-full hover:bg-muted"
+                        onClick={() => { setIsShareOpen(false); setShareMethod(null); setShareInput(""); }}
+                        data-testid="button-close-share"
+                      >
+                        <XCircle className="h-4 w-4 text-muted-foreground" />
+                      </Button>
+                    </div>
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder={
+                          shareMethod === "email"
+                            ? "guardian.email@gmail.com"
+                            : "+260 977 123456"
+                        }
+                        value={shareInput}
+                        onChange={(e) => setShareInput(e.target.value)}
+                        className="bg-background rounded-xl h-10 text-xs text-foreground placeholder:text-muted-foreground/60 focus-visible:ring-indigo-500"
+                        data-testid="input-share-destination"
+                      />
+                      <Button
+                        onClick={handleShareSubmit}
+                        disabled={isSharing}
+                        className="bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl px-4 flex items-center gap-1.5 text-xs font-semibold shadow-md shadow-indigo-600/10"
+                        data-testid="button-send-share"
+                      >
+                        {isSharing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                        <span>Send</span>
+                      </Button>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground">Transmits a secure, certified PDF immunization booklet and upcoming reminder schedule details instantly to the guardian.</p>
+                  </div>
+                )}
 
                 {/* Print and interaction controls */}
                 <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-border no-print">
