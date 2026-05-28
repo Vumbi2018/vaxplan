@@ -5839,7 +5839,11 @@ export async function registerRoutes(
   // POST /api/reminders/send — Send an individual SMS reminder and write persistent deletable logs in audit_logs
   app.post("/api/reminders/send", isAuthenticated, requireTenant, async (req: any, res) => {
     try {
-      const { clientId } = req.body;
+      const { clientId, antigen, dueDate } = req.body as {
+        clientId?: string;
+        antigen?: string;
+        dueDate?: string;
+      };
       if (!clientId) {
         return res.status(400).json({ message: "clientId is required to send reminder" });
       }
@@ -5853,31 +5857,130 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Client has no registered contact phone number" });
       }
 
-      // Generate a highly realistic reminder message context
-      const messageText = `Dear parent/guardian, this is a friendly reminder that your child ${client.name} is due for their scheduled immunizations soon. Please visit ${client.facilityId ? "your registered facility" : "the nearest health center"}.`;
+      // Build a contextual message naming the overdue antigen and due date when provided
+      const antigenLabel = antigen ? antigen.replace(/_/g, " ") : null;
+      const dueLabel = dueDate ? new Date(dueDate).toLocaleDateString() : null;
+      const overdueClause =
+        antigenLabel && dueLabel
+          ? ` Their ${antigenLabel} dose was due on ${dueLabel} and is now overdue.`
+          : antigenLabel
+            ? ` Their ${antigenLabel} dose is now overdue.`
+            : "";
+      const messageText = `Dear parent/guardian, this is a reminder that your child ${client.name} has a vaccination overdue.${overdueClause} Please visit ${client.facilityId ? "your registered facility" : "the nearest health center"} as soon as possible.`;
+
+      const sentAt = new Date().toISOString();
 
       // Persist the reminder activity inside the database as a queryable/deletable audit log row
       await logAudit(req, "send_individual_reminder", "sms_reminder", null, null, {
         clientId: client.id,
         clientName: client.name,
         contactPhone: client.contactPhone,
+        antigen: antigen ?? null,
+        dueDate: dueDate ?? null,
         message: messageText,
-        sentAt: new Date().toISOString(),
+        sentAt,
       });
 
-      res.status(200).json({ success: true, message: `Successfully sent SMS reminder to parent of ${client.name}` });
+      res.status(200).json({
+        success: true,
+        message: `Successfully sent SMS reminder to parent of ${client.name}`,
+        sentAt,
+        contactPhone: client.contactPhone,
+      });
     } catch (err: any) {
       console.error("POST /api/reminders/send failed:", err);
       res.status(500).json({ message: "Failed to send SMS reminder" });
     }
   });
 
+  // GET /api/reminders/recent — Return the most recent SMS reminder sentAt per clientId for this tenant
+  app.get("/api/reminders/recent", isAuthenticated, requireTenant, async (req: any, res) => {
+    try {
+      const logs = await storage.listAuditLogs(req.tenantId, {
+        entityType: "sms_reminder",
+        limit: 500,
+      });
+      const lastByClient: Record<string, string> = {};
+      for (const log of logs) {
+        const nv: any = log.newValue;
+        const clientId: string | undefined = nv?.clientId;
+        const sentAt: string | undefined = nv?.sentAt ?? log.createdAt?.toISOString?.();
+        if (!clientId || !sentAt) continue;
+        if (!lastByClient[clientId] || new Date(sentAt) > new Date(lastByClient[clientId])) {
+          lastByClient[clientId] = sentAt;
+        }
+      }
+      res.json(lastByClient);
+    } catch (err: any) {
+      console.error("GET /api/reminders/recent failed:", err);
+      res.status(500).json({ message: "Failed to load recent reminders" });
+    }
+  });
+
   // POST /api/reminders/bulk — Send cohort-based reminders and log persistent deletable events in audit_logs
   app.post("/api/reminders/bulk", isAuthenticated, requireTenant, async (req: any, res) => {
     try {
-      const { daysToDue } = req.body;
+      const { daysToDue, clientIds, reason } = req.body as {
+        daysToDue?: number;
+        clientIds?: Array<{ clientId: string; antigen?: string; dueDate?: string }>;
+        reason?: string;
+      };
+
+      // Mode B: explicit list of clients (e.g. defaulters scoped to current filters)
+      if (Array.isArray(clientIds)) {
+        let sent = 0;
+        let skipped = 0;
+        const sentAt = new Date().toISOString();
+        const details: Array<{ id: string; name: string; phone: string }> = [];
+
+        for (const entry of clientIds) {
+          if (!entry?.clientId) {
+            skipped++;
+            continue;
+          }
+          const client = await storage.getClient(req.tenantId, entry.clientId);
+          if (!client || !client.contactPhone) {
+            skipped++;
+            continue;
+          }
+
+          const antigenLabel = entry.antigen ? entry.antigen.replace(/_/g, " ") : null;
+          const dueLabel = entry.dueDate ? new Date(entry.dueDate).toLocaleDateString() : null;
+          const overdueClause =
+            antigenLabel && dueLabel
+              ? ` Their ${antigenLabel} dose was due on ${dueLabel} and is now overdue.`
+              : antigenLabel
+                ? ` Their ${antigenLabel} dose is now overdue.`
+                : "";
+          const messageText = `Dear parent/guardian, this is a reminder that your child ${client.name} has a vaccination overdue.${overdueClause} Please visit your registered facility as soon as possible.`;
+
+          await logAudit(req, "send_bulk_reminder", "sms_reminder", null, null, {
+            clientId: client.id,
+            clientName: client.name,
+            contactPhone: client.contactPhone,
+            antigen: entry.antigen ?? null,
+            dueDate: entry.dueDate ?? null,
+            reason: reason ?? "defaulters",
+            message: messageText,
+            sentAt,
+          });
+
+          sent++;
+          details.push({ id: client.id, name: client.name, phone: client.contactPhone });
+        }
+
+        return res.status(200).json({
+          success: true,
+          count: sent,
+          skipped,
+          message: `Sent ${sent} reminder${sent === 1 ? "" : "s"}${skipped ? ` (${skipped} skipped — no contact phone)` : ""}.`,
+          sentAt,
+          details,
+        });
+      }
+
       if (daysToDue === undefined) {
-        return res.status(400).json({ message: "daysToDue cohort parameter (7, 3, or 0) is required" });
+        return res.status(400).json({ message: "daysToDue cohort parameter (7, 3, or 0) or clientIds[] is required" });
       }
 
       // 1. Fetch all clients under this tenant

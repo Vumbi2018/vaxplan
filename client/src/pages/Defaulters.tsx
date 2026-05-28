@@ -11,7 +11,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { AlertTriangle, ExternalLink, CheckCircle2, ClipboardEdit } from "lucide-react";
+import {
+  AlertTriangle,
+  ExternalLink,
+  CheckCircle2,
+  ClipboardEdit,
+  MessageSquare,
+  Send,
+  Loader2,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -82,6 +90,20 @@ function currentYearQuarter() {
   return { year, quarter };
 }
 
+function formatRelative(iso: string): string {
+  const then = new Date(iso).getTime();
+  const now = Date.now();
+  const diffSec = Math.max(0, Math.floor((now - then) / 1000));
+  if (diffSec < 60) return "just now";
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  const diffDay = Math.floor(diffHr / 24);
+  if (diffDay < 30) return `${diffDay}d ago`;
+  return new Date(iso).toLocaleDateString();
+}
+
 export default function Defaulters() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -90,6 +112,7 @@ export default function Defaulters() {
   const [districtId, setDistrictId] = useState<number | null>(null);
   const [facilityId, setFacilityId] = useState<number | null>(null);
   const [antigen, setAntigen] = useState<string>("all");
+  const [sendingId, setSendingId] = useState<string | null>(null);
 
   // Record that the user opened a defaulter review. The audit_log entry is
   // what the guided workflow Step 12 (RED 4 / RED-Q Measure) reads to mark
@@ -129,9 +152,85 @@ export default function Defaulters() {
     },
   });
 
+  const { data: lastReminded = {} } = useQuery<Record<string, string>>({
+    queryKey: ["/api/reminders/recent"],
+    queryFn: async () => {
+      const res = await fetch("/api/reminders/recent", { credentials: "include" });
+      if (!res.ok) return {};
+      return (await res.json()) as Record<string, string>;
+    },
+  });
+
+  const sendOne = useMutation({
+    mutationFn: async (row: DefaulterRow) => {
+      return await apiRequest<{ success: boolean; sentAt: string }>(
+        "POST",
+        "/api/reminders/send",
+        {
+          clientId: row.clientId,
+          antigen: row.nextDoseAntigen,
+          dueDate: row.dueDate,
+        },
+      );
+    },
+    onMutate: (row) => setSendingId(row.clientId),
+    onSettled: () => setSendingId(null),
+    onSuccess: (_data, row) => {
+      toast({
+        title: "Reminder sent",
+        description: `SMS sent to caregiver of ${row.name}.`,
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/reminders/recent"] });
+    },
+    onError: (err: any, row) => {
+      toast({
+        title: "Could not send reminder",
+        description:
+          err?.message?.replace(/^\d+:\s*/, "") ||
+          `Failed to send SMS to caregiver of ${row.name}.`,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const sendBulk = useMutation({
+    mutationFn: async (rows: DefaulterRow[]) => {
+      return await apiRequest<{ success: boolean; count: number; skipped: number; message: string }>(
+        "POST",
+        "/api/reminders/bulk",
+        {
+          reason: "defaulters",
+          clientIds: rows.map((r) => ({
+            clientId: r.clientId,
+            antigen: r.nextDoseAntigen,
+            dueDate: r.dueDate,
+          })),
+        },
+      );
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Bulk reminders sent",
+        description: data.message,
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/reminders/recent"] });
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Bulk reminders failed",
+        description: err?.message?.replace(/^\d+:\s*/, "") || "Could not send reminders.",
+        variant: "destructive",
+      });
+    },
+  });
+
   const totalOverdue = defaulters.length;
   // >=56 days past due date = >4 weeks beyond the 4-week grace cutoff
   const severe = defaulters.filter((d) => d.daysOverdue >= 56).length;
+  const reachable = useMemo(
+    () => defaulters.filter((d) => !!d.contactPhone),
+    [defaulters],
+  );
 
   // ─── Quarterly review note ───
   // The note is per-facility. Facility staff can only write their own facility;
@@ -441,8 +540,30 @@ export default function Defaulters() {
       </Card>
 
       <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Defaulters</CardTitle>
+        <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
+          <div>
+            <CardTitle className="text-base">Defaulters</CardTitle>
+            <p className="text-xs text-muted-foreground mt-1">
+              {reachable.length.toLocaleString()} of {totalOverdue.toLocaleString()} have a
+              caregiver phone on file.
+            </p>
+          </div>
+          <Button
+            size="sm"
+            onClick={() => sendBulk.mutate(reachable)}
+            disabled={
+              sendBulk.isPending || reachable.length === 0 || isLoading
+            }
+            data-testid="button-remind-all-defaulters"
+            className="gap-1.5"
+          >
+            {sendBulk.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Send className="h-4 w-4" />
+            )}
+            Remind all ({reachable.length})
+          </Button>
         </CardHeader>
         <CardContent>
           {isLoading ? (
@@ -497,6 +618,47 @@ export default function Defaulters() {
                       {r.daysOverdue}
                     </Badge>
                   ),
+                },
+                {
+                  key: "contactPhone",
+                  header: "Reminder",
+                  render: (r) => {
+                    const last = lastReminded[r.clientId];
+                    const isSending = sendingId === r.clientId && sendOne.isPending;
+                    return (
+                      <div className="flex flex-col items-start gap-1">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 gap-1"
+                          disabled={!r.contactPhone || isSending}
+                          onClick={() => sendOne.mutate(r)}
+                          data-testid={`button-remind-defaulter-${r.clientId}`}
+                          title={
+                            r.contactPhone
+                              ? `Send SMS to ${r.contactPhone}`
+                              : "No caregiver phone on file"
+                          }
+                        >
+                          {isSending ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <MessageSquare className="h-3.5 w-3.5" />
+                          )}
+                          Remind
+                        </Button>
+                        {last && (
+                          <Badge
+                            variant="secondary"
+                            className="text-[10px] font-normal"
+                            data-testid={`badge-last-reminded-${r.clientId}`}
+                          >
+                            Last reminded {formatRelative(last)}
+                          </Badge>
+                        )}
+                      </div>
+                    );
+                  },
                 },
                 {
                   key: "id",
