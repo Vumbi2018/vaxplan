@@ -9992,6 +9992,72 @@ export async function registerRoutes(
     }
   });
 
+  // POST /api/population/bulk — Step 2. Upsert many population rows in one call.
+  app.post("/api/population/bulk", ...auth, async (req: any, res) => {
+    try {
+      const parsed = parseBulkItems(req.body);
+      if (!parsed) return res.status(400).json({ message: "Body must be { items: [...] }" });
+      const results: BulkResult[] = [];
+      for (const item of parsed.items) {
+        const clientId = item.clientId;
+        try {
+          const body = { ...item };
+          delete body.clientId;
+          const id = body.id;
+          delete body.id;
+          if (id != null) {
+            const old = await storage.getPopulationDataById(req.tenantId, Number(id));
+            const updated = await storage.updatePopulationData(req.tenantId, Number(id), body as any);
+            if (!updated) {
+              results.push({ clientId, ok: false, error: "Population data not found" });
+              continue;
+            }
+            await logAudit(req, "update", "population_data", updated.id, old, updated);
+            results.push({ clientId, ok: true, id: updated.id, data: updated });
+          } else {
+            const data = insertPopulationDataSchema.parse(body);
+            const created = await storage.createPopulationData(req.tenantId, data);
+            await logAudit(req, "create", "population_data", created.id, null, created);
+            results.push({ clientId, ok: true, id: created.id, data: created });
+          }
+        } catch (err: any) {
+          results.push({ clientId, ok: false, error: err?.message || "Failed to save population data" });
+        }
+      }
+      res.json({ results });
+    } catch (err: any) {
+      console.error("POST /api/population/bulk failed:", err);
+      res.status(500).json({ message: err?.message || "Bulk save failed" });
+    }
+  });
+
+  // POST /api/htr-scores/bulk — Step 3. Upsert many HTR scores in one call.
+  // Each item is an upsert keyed on villageId (matches single-item POST).
+  app.post("/api/htr-scores/bulk", ...auth, async (req: any, res) => {
+    try {
+      const parsed = parseBulkItems(req.body);
+      if (!parsed) return res.status(400).json({ message: "Body must be { items: [...] }" });
+      const results: BulkResult[] = [];
+      for (const item of parsed.items) {
+        const clientId = item.clientId;
+        try {
+          const body = { ...item };
+          delete body.clientId;
+          delete body.id;
+          const score = await storage.upsertHtrScore(req.tenantId, body);
+          await logAudit(req, "upsert", "htr_score", score.id, null, score);
+          results.push({ clientId, ok: true, id: score.id, data: score });
+        } catch (err: any) {
+          results.push({ clientId, ok: false, error: err?.message || "Failed to save HTR score" });
+        }
+      }
+      res.json({ results });
+    } catch (err: any) {
+      console.error("POST /api/htr-scores/bulk failed:", err);
+      res.status(500).json({ message: err?.message || "Bulk save failed" });
+    }
+  });
+
   // POST /api/vaccine-requirements/bulk — Step 6
   app.post("/api/vaccine-requirements/bulk", ...auth, async (req: any, res) => {
     try {

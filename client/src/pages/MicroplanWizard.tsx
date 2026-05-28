@@ -1348,10 +1348,29 @@ export default function MicroplanWizard() {
               console.warn("Could not update village coordinates:", e);
             }
           }
+        }
+        // Bulk upsert population rows in a single request. Per-row results let
+        // us map server-assigned ids back to local state and surface partial
+        // failures without aborting the batch.
+        type PopBulkResult = {
+          clientId?: string;
+          ok: boolean;
+          id?: number;
+          error?: string;
+        };
+        const popItems: Array<{ clientId: string; id: number | null; [k: string]: any }> = [];
+        const popRowIndex: Record<string, number> = {};
+        for (let i = 0; i < nextRows.length; i++) {
+          const row = nextRows[i];
+          const vid = row.villageId;
           if (!vid) continue;
           const target = parseInt(row.targetPopulation || "0", 10);
           if (target <= 0) continue;
-          const payload = {
+          const clientRowId = `pop-${i}`;
+          popRowIndex[clientRowId] = i;
+          popItems.push({
+            clientId: clientRowId,
+            id: row.id ?? null,
             villageId: vid,
             facilityId,
             source: row.source,
@@ -1359,30 +1378,57 @@ export default function MicroplanWizard() {
             totalPopulation: target,
             approvalStatus: "draft",
             metadata: { strategy: row.strategy, type: row.type },
-          };
-          if (row.id) {
-            await apiRequest("PATCH", `/api/population/${row.id}`, payload);
-            nextRows[i] = { ...nextRows[i], saved: true };
-          } else {
-            const created = await apiRequest<PopulationData>(
-              "POST",
-              "/api/population",
-              payload,
-            );
-            nextRows[i] = { ...nextRows[i], id: created.id, saved: true };
+          });
+        }
+        if (popItems.length > 0) {
+          const resp = await apiRequest<{ results: PopBulkResult[] }>(
+            "POST",
+            "/api/population/bulk",
+            { items: popItems },
+          );
+          const failures: string[] = [];
+          for (const r of resp.results ?? []) {
+            const idx = typeof r.clientId === "string" ? popRowIndex[r.clientId] : undefined;
+            if (r.ok && idx != null) {
+              nextRows[idx] = {
+                ...nextRows[idx],
+                ...(r.id != null ? { id: r.id } : {}),
+                saved: true,
+              };
+            } else if (!r.ok) {
+              failures.push(r.error || "unknown error");
+            }
+          }
+          if (failures.length > 0) {
+            console.warn(`Population bulk save: ${failures.length} row(s) skipped:`, failures);
+            toast({
+              title: `${failures.length} population row(s) skipped`,
+              description: failures[0],
+              variant: "destructive",
+            });
           }
         }
         setCommunities(nextRows);
         queryClient.invalidateQueries({ queryKey: ["/api/population"] });
       } else if (step === 3) {
-        // /api/htr-scores POST is an upsert keyed on villageId, so re-saving
-        // never produces duplicate rows.
-        for (const r of risk) {
+        // Bulk upsert HTR scores. The single-item POST is already keyed on
+        // villageId (upsert) so the bulk endpoint preserves that semantic
+        // and never produces duplicate rows.
+        type HtrBulkResult = {
+          clientId?: string;
+          ok: boolean;
+          id?: number;
+          error?: string;
+        };
+        const items: any[] = [];
+        for (let i = 0; i < risk.length; i++) {
+          const r = risk[i];
           if (!r.villageId) continue;
           const composite = Math.round(
             (r.distance + r.terrain + r.season + r.insecurity) * 5,
           );
-          await apiRequest("POST", "/api/htr-scores", {
+          items.push({
+            clientId: `htr-${i}`,
             villageId: r.villageId,
             distanceScore: r.distance,
             terrainScore: r.terrain,
@@ -1391,10 +1437,30 @@ export default function MicroplanWizard() {
             compositeScore: composite,
             interventionPriority:
               composite >= 70 ? "high" : composite >= 50 ? "medium" : "low",
-            comments: [r.missed ? "missed_12mo" : null, r.zeroDose ? "zero_dose_hotspot" : null]
-              .filter(Boolean)
-              .join("; ") || null,
+            comments:
+              [r.missed ? "missed_12mo" : null, r.zeroDose ? "zero_dose_hotspot" : null]
+                .filter(Boolean)
+                .join("; ") || null,
           });
+        }
+        if (items.length > 0) {
+          const resp = await apiRequest<{ results: HtrBulkResult[] }>(
+            "POST",
+            "/api/htr-scores/bulk",
+            { items },
+          );
+          const failures: string[] = [];
+          for (const r of resp.results ?? []) {
+            if (!r.ok) failures.push(r.error || "unknown error");
+          }
+          if (failures.length > 0) {
+            console.warn(`HTR bulk save: ${failures.length} row(s) skipped:`, failures);
+            toast({
+              title: `${failures.length} HTR row(s) skipped`,
+              description: failures[0],
+              variant: "destructive",
+            });
+          }
         }
         queryClient.invalidateQueries({ queryKey: ["/api/htr-scores"] });
       } else if (step === 4) {
