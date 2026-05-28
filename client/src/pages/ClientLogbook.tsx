@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
@@ -541,6 +542,23 @@ const vaccinationFormSchema = insertClientVaccinationSchema.extend({
 export default function ClientLogbook() {
   const { toast } = useToast();
   const { user } = useAuth();
+
+  // Tenant context for cross-tenant read-only detection. The server's
+  // crossTenantWriteGuard rejects writes (e.g. POST /api/villages) with 403 when
+  // the active view tenant differs from the user's home tenant. We surface that
+  // in the UI so users see why "+ Add Village" is disabled instead of hitting
+  // silent failures behind the open dialog overlay.
+  const { data: tenantInfo } = useQuery<any>({
+    queryKey: ["/api/me/tenant"],
+  });
+  const isCrossTenantView = !!(user?.tenantId && tenantInfo?.id && user.tenantId !== tenantInfo.id);
+  const crossTenantToast = () => {
+    toast({
+      title: "Read-only view",
+      description: `You're viewing ${tenantInfo?.name ?? "another country"} read-only. Switch back to your home country to add villages.`,
+      variant: "destructive",
+    });
+  };
 
   // Active view states
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
@@ -1266,6 +1284,17 @@ export default function ClientLogbook() {
       });
     },
   });
+
+  // Clear the inline Add-Village error banner as soon as the user edits the
+  // form after a failed submission, so the alert doesn't stay stale.
+  useEffect(() => {
+    const subscription = villageForm.watch(() => {
+      if (createVillageMutation.isError) {
+        createVillageMutation.reset();
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, [villageForm, createVillageMutation]);
 
   const vaccinationForm = useForm<z.infer<typeof vaccinationFormSchema>>({
     resolver: zodResolver(vaccinationFormSchema),
@@ -2398,12 +2427,25 @@ export default function ClientLogbook() {
                             type="button"
                             variant="ghost"
                             size="sm"
-                            className="h-auto p-0 text-sky-500 font-semibold flex items-center gap-0.5 hover:text-sky-600 hover:bg-transparent transition-colors"
-                            onClick={() => setIsAddVillageOpen(true)}
+                            disabled={isCrossTenantView}
+                            title={isCrossTenantView ? `Read-only view of ${tenantInfo?.name ?? "another country"} — switch back to your home country to add villages.` : undefined}
+                            className="h-auto p-0 text-sky-500 font-semibold flex items-center gap-0.5 hover:text-sky-600 hover:bg-transparent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            onClick={() => {
+                              if (isCrossTenantView) {
+                                crossTenantToast();
+                                return;
+                              }
+                              setIsAddVillageOpen(true);
+                            }}
                           >
                             <Plus className="h-3.5 w-3.5" /> Add Village
                           </Button>
                         </div>
+                        {isCrossTenantView && (
+                          <p className="text-[11px] text-muted-foreground mt-1">
+                            Read-only view of {tenantInfo?.name ?? "another country"}. Switch back to your home country to add villages.
+                          </p>
+                        )}
                         <Popover open={isVillageSelectOpen} onOpenChange={setIsVillageSelectOpen}>
                           <PopoverTrigger asChild>
                             <FormControl>
@@ -2434,8 +2476,14 @@ export default function ClientLogbook() {
                                   type="button"
                                   size="sm"
                                   variant="secondary"
-                                  className="h-8 text-xs font-semibold"
+                                  disabled={isCrossTenantView}
+                                  title={isCrossTenantView ? `Read-only view of ${tenantInfo?.name ?? "another country"} — switch back to your home country to add villages.` : undefined}
+                                  className="h-8 text-xs font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
                                   onClick={() => {
+                                    if (isCrossTenantView) {
+                                      crossTenantToast();
+                                      return;
+                                    }
                                     setIsVillageSelectOpen(false);
                                     setIsAddVillageOpen(true);
                                   }}
@@ -2943,12 +2991,25 @@ export default function ClientLogbook() {
                             type="button"
                             variant="ghost"
                             size="sm"
-                            className="h-auto p-0 text-sky-500 font-semibold flex items-center gap-0.5 hover:text-sky-600 hover:bg-transparent transition-colors"
-                            onClick={() => setIsAddVillageOpen(true)}
+                            disabled={isCrossTenantView}
+                            title={isCrossTenantView ? `Read-only view of ${tenantInfo?.name ?? "another country"} — switch back to your home country to add villages.` : undefined}
+                            className="h-auto p-0 text-sky-500 font-semibold flex items-center gap-0.5 hover:text-sky-600 hover:bg-transparent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            onClick={() => {
+                              if (isCrossTenantView) {
+                                crossTenantToast();
+                                return;
+                              }
+                              setIsAddVillageOpen(true);
+                            }}
                           >
                             <Plus className="h-3.5 w-3.5" /> Add Village
                           </Button>
                         </div>
+                        {isCrossTenantView && (
+                          <p className="text-[11px] text-muted-foreground mt-1">
+                            Read-only view of {tenantInfo?.name ?? "another country"}. Switch back to your home country to add villages.
+                          </p>
+                        )}
                         <Popover open={isVillageSelectOpen} onOpenChange={setIsVillageSelectOpen}>
                           <PopoverTrigger asChild>
                             <FormControl>
@@ -2979,8 +3040,14 @@ export default function ClientLogbook() {
                                   type="button"
                                   size="sm"
                                   variant="secondary"
-                                  className="h-8 text-xs font-semibold"
+                                  disabled={isCrossTenantView}
+                                  title={isCrossTenantView ? `Read-only view of ${tenantInfo?.name ?? "another country"} — switch back to your home country to add villages.` : undefined}
+                                  className="h-8 text-xs font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
                                   onClick={() => {
+                                    if (isCrossTenantView) {
+                                      crossTenantToast();
+                                      return;
+                                    }
                                     setIsVillageSelectOpen(false);
                                     setIsAddVillageOpen(true);
                                   }}
@@ -3215,7 +3282,17 @@ export default function ClientLogbook() {
       </Dialog>
 
       {/* DIALOG: Add Village Inline */}
-      <Dialog open={isAddVillageOpen} onOpenChange={setIsAddVillageOpen}>
+      <Dialog
+        open={isAddVillageOpen}
+        onOpenChange={(open) => {
+          setIsAddVillageOpen(open);
+          // Clear any stale mutation error when the dialog reopens so the
+          // inline error banner doesn't show up on a fresh attempt.
+          if (open) {
+            createVillageMutation.reset();
+          }
+        }}
+      >
         <DialogContent className="sm:max-w-[425px] border-border/80 bg-background/95 backdrop-blur-md shadow-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-foreground">
@@ -3223,6 +3300,22 @@ export default function ClientLogbook() {
               <span>Add Catchment Village</span>
             </DialogTitle>
           </DialogHeader>
+          {createVillageMutation.isError && (() => {
+            const err: any = createVillageMutation.error;
+            const rawMsg = err?.message ?? String(err ?? "");
+            const is403 = /^403:?\s/.test(rawMsg) || /viewing another country/i.test(rawMsg);
+            return (
+              <Alert variant="destructive" className="mt-2">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle>{is403 ? "Read-only view" : "Couldn't add village"}</AlertTitle>
+                <AlertDescription>
+                  {is403
+                    ? `You're viewing ${tenantInfo?.name ?? "another country"} read-only. Switch back to your home country to add villages.`
+                    : (rawMsg.replace(/^\d{3}:\s*/, "") || "Something went wrong. Please try again.")}
+                </AlertDescription>
+              </Alert>
+            );
+          })()}
           <Form {...villageForm}>
             {/* Original Code: Silent on form validation errors, causing the button to do nothing with no visual cues.
             <form onSubmit={villageForm.handleSubmit((values) => createVillageMutation.mutate(values))} className="space-y-4 pt-2">
