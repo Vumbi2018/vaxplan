@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import { GeoCascadeFilter } from "@/components/GeoCascadeFilter";
 
-const PAGE_SIZE_OPTIONS = [25, 50, 100, 250] as const;
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100, 250] as const;
 
 function ListPager({
   page,
@@ -197,7 +197,7 @@ export default function Supervision() {
   const [statusSort, setStatusSort] = useState<"status" | "lastVisit" | "name">("status");
   const [statusBadgeFilter, setStatusBadgeFilter] = useState<"all" | "overdue" | "due_soon" | "current">("all");
   const [fsPage, setFsPage] = useState(1);
-  const [fsPageSize, setFsPageSize] = useState<number>(25);
+  const [fsPageSize, setFsPageSize] = useState<number>(10);
   useEffect(() => { setFsPage(1); }, [statusBadgeFilter, statusSort, provinceFilter, districtFilter, facilityFilter]);
   const [hideAutoCancelled, setHideAutoCancelled] = useState<boolean>(true);
 
@@ -1112,7 +1112,7 @@ function QuarterlyReviewCoverage() {
   const [statusFilter, setStatusFilter] = useState<"all" | "missing" | "done">("all");
   const [openFacilityId, setOpenFacilityId] = useState<number | null>(null);
   const [qrcPage, setQrcPage] = useState(1);
-  const [qrcPageSize, setQrcPageSize] = useState<number>(25);
+  const [qrcPageSize, setQrcPageSize] = useState<number>(10);
   useEffect(() => { setQrcPage(1); }, [statusFilter, provinceId, districtId, facilityId, year, quarter]);
   const hasScopeFilter = provinceId !== null || districtId !== null || facilityId !== null;
 
