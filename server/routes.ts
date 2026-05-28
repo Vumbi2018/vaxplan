@@ -1556,6 +1556,8 @@ export async function registerRoutes(
         const current = await storage.getTenant(req.tenantId!);
         if (!current) return res.status(404).json({ message: "Tenant not found" });
 
+        const previousOverrides = readTenantWastageOverrides(current);
+
         const newSettings = {
           ...((current.settings as Record<string, any>) ?? {}),
           wastageThresholds: cleaned,
@@ -1563,9 +1565,48 @@ export async function registerRoutes(
         const updated = await storage.updateTenant(req.tenantId!, { settings: newSettings });
         if (!updated) return res.status(500).json({ message: "Failed to save thresholds" });
 
-        await logAudit(req, "update_wastage_thresholds", "tenant", req.tenantId!, null, {
-          overrideCount: Object.keys(cleaned).length,
-        });
+        const defaults = SERVER_DEFAULT_WASTAGE_THRESHOLDS as Record<string, { warn: number; max: number }>;
+        const seenKeys: Record<string, true> = {};
+        Object.keys(previousOverrides).forEach((k) => { seenKeys[k] = true; });
+        Object.keys(cleaned).forEach((k) => { seenKeys[k] = true; });
+        const antigenKeys: string[] = Object.keys(seenKeys).sort();
+        const diff: Array<{
+          antigen: string;
+          old: { warn: number; max: number } | null;
+          new: { warn: number; max: number } | null;
+          defaults: { warn: number; max: number } | null;
+        }> = [];
+        for (const key of antigenKeys) {
+          const before = previousOverrides[key] ?? null;
+          const after = cleaned[key] ?? null;
+          if (
+            before &&
+            after &&
+            before.warn === after.warn &&
+            before.max === after.max
+          ) {
+            continue;
+          }
+          diff.push({
+            antigen: key,
+            old: before,
+            new: after,
+            defaults: defaults[key] ?? null,
+          });
+        }
+
+        await logAudit(
+          req,
+          "update_wastage_thresholds",
+          "tenant",
+          req.tenantId!,
+          { overrides: previousOverrides },
+          {
+            overrides: cleaned,
+            overrideCount: Object.keys(cleaned).length,
+            diff,
+          },
+        );
 
         const effective = { ...SERVER_DEFAULT_WASTAGE_THRESHOLDS, ...cleaned };
         res.json({

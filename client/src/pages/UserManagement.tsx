@@ -74,6 +74,73 @@ function exportUsersCsv(users: any[], provinces: any[], districts: any[], facili
   URL.revokeObjectURL(url);
 }
 
+type ThresholdValue = { warn: number; max: number } | null;
+type ThresholdDiffRow = {
+  antigen: string;
+  old: ThresholdValue;
+  new: ThresholdValue;
+  defaults: ThresholdValue;
+};
+
+function fmtThreshold(v: ThresholdValue, fallback: ThresholdValue): string {
+  if (v) return `warn ${v.warn}% / max ${v.max}%`;
+  if (fallback) return `default (warn ${fallback.warn}% / max ${fallback.max}%)`;
+  return "default";
+}
+
+function WastageThresholdDiff({ entry }: { entry: any }) {
+  const nv = entry?.newValue ?? {};
+  const ov = entry?.oldValue ?? {};
+  let diff: ThresholdDiffRow[] = Array.isArray(nv?.diff) ? (nv.diff as ThresholdDiffRow[]) : [];
+
+  // Backfill a diff for legacy entries that only stored overrideCount.
+  if (diff.length === 0 && (nv?.overrides || ov?.overrides)) {
+    const prev = (ov?.overrides ?? {}) as Record<string, { warn: number; max: number }>;
+    const next = (nv?.overrides ?? {}) as Record<string, { warn: number; max: number }>;
+    const seen: Record<string, true> = {};
+    Object.keys(prev).forEach((k) => { seen[k] = true; });
+    Object.keys(next).forEach((k) => { seen[k] = true; });
+    const keys: string[] = Object.keys(seen).sort();
+    diff = keys
+      .filter((k) => {
+        const a = prev[k]; const b = next[k];
+        return !(a && b && a.warn === b.warn && a.max === b.max);
+      })
+      .map((k) => ({ antigen: k, old: prev[k] ?? null, new: next[k] ?? null, defaults: null }));
+  }
+
+  if (diff.length === 0) {
+    const count = typeof nv?.overrideCount === "number" ? nv.overrideCount : null;
+    return (
+      <div className="text-xs text-muted-foreground bg-muted/40 rounded-xl px-3 py-2">
+        Wastage thresholds saved{count != null ? ` (${count} custom)` : ""}. No per-antigen diff recorded for this entry.
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-muted/40 rounded-xl px-3 py-2 space-y-1" data-testid={`wastage-diff-${entry.id}`}>
+      <div className="text-xs font-medium text-foreground">Customized wastage thresholds</div>
+      <ul className="text-xs text-muted-foreground space-y-0.5">
+        {diff.map((row) => {
+          let label = "changed";
+          if (!row.old && row.new) label = "added override";
+          else if (row.old && !row.new) label = "reverted to default";
+          return (
+            <li key={row.antigen} className="flex flex-wrap items-center gap-x-2">
+              <span className="font-mono text-foreground">{row.antigen}</span>
+              <Badge variant="outline" className="text-[10px] capitalize">{label}</Badge>
+              <span>{fmtThreshold(row.old, row.defaults)}</span>
+              <span aria-hidden>→</span>
+              <span className="text-foreground">{fmtThreshold(row.new, row.defaults)}</span>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
 function ActivityLogPanel({ users }: { users: any[] }) {
   const [userFilter, setUserFilter] = useState<string>("all");
   const [entityFilter, setEntityFilter] = useState<string>("all");
@@ -142,15 +209,20 @@ function ActivityLogPanel({ users }: { users: any[] }) {
             const actor = l.userId ? userById[l.userId] : null;
             const actorLabel = actor ? `${actor.firstName || ""} ${actor.lastName || ""} (${actor.email})`.trim() : (l.userId || "system");
             return (
-              <div key={l.id} className="px-4 py-3 flex flex-col md:flex-row md:items-center gap-2" data-testid={`audit-${l.id}`}>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <Badge variant="outline" className="capitalize text-xs">{l.action}</Badge>
-                    <span className="text-sm font-medium">{l.entityType}{l.entityId ? ` #${l.entityId}` : ""}</span>
+              <div key={l.id} className="px-4 py-3 flex flex-col gap-2" data-testid={`audit-${l.id}`}>
+                <div className="flex flex-col md:flex-row md:items-center gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Badge variant="outline" className="capitalize text-xs">{l.action}</Badge>
+                      <span className="text-sm font-medium">{l.entityType}{l.entityId ? ` #${l.entityId}` : ""}</span>
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-0.5">by {actorLabel}</div>
                   </div>
-                  <div className="text-xs text-muted-foreground mt-0.5">by {actorLabel}</div>
+                  <div className="text-xs text-muted-foreground">{l.createdAt ? new Date(l.createdAt).toLocaleString() : ""}</div>
                 </div>
-                <div className="text-xs text-muted-foreground">{l.createdAt ? new Date(l.createdAt).toLocaleString() : ""}</div>
+                {l.action === "update_wastage_thresholds" && (
+                  <WastageThresholdDiff entry={l} />
+                )}
               </div>
             );
           })}
