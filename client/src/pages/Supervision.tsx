@@ -67,6 +67,20 @@ const STATUS_STYLES: Record<string, string> = {
   cancelled: "bg-muted text-muted-foreground border-border",
 };
 
+// Server appends "[Auto-cancelled] <reason>" to findings when a visit is
+// auto-cancelled because its parent microplan was un-approved or deleted.
+// See cancelSeededSupervisionVisitsForMicroplan in server/routes.ts.
+const AUTO_CANCEL_MARKER = "[Auto-cancelled]";
+function parseAutoCancel(findings: string | null | undefined): { reason: string; rest: string } | null {
+  if (!findings) return null;
+  const idx = findings.indexOf(AUTO_CANCEL_MARKER);
+  if (idx === -1) return null;
+  const after = findings.slice(idx + AUTO_CANCEL_MARKER.length).trim();
+  const reason = after.split(/\n\n+/)[0].trim();
+  const before = findings.slice(0, idx).trim();
+  return { reason: reason || "Parent microplan was removed.", rest: before };
+}
+
 function computeScore(checklist: ChecklistItem[]): number {
   const scorable = checklist.filter((c) => c.response === "yes" || c.response === "no");
   if (!scorable.length) return 0;
@@ -92,6 +106,7 @@ export default function Supervision() {
   const [conductingVisit, setConductingVisit] = useState<SupervisionVisit | null>(null);
   const [statusSort, setStatusSort] = useState<"status" | "lastVisit" | "name">("status");
   const [statusBadgeFilter, setStatusBadgeFilter] = useState<"all" | "overdue" | "due_soon" | "current">("all");
+  const [hideAutoCancelled, setHideAutoCancelled] = useState<boolean>(true);
 
   const { data: visits = [], isLoading } = useQuery<SupervisionVisit[]>({
     queryKey: ["/api/supervision-visits", { facilityId: facilityFilter, status: statusFilter }],
@@ -421,7 +436,21 @@ export default function Supervision() {
         <CardHeader className="pb-3">
           <div className="flex flex-col md:flex-row md:items-center gap-3 md:justify-between">
             <CardTitle className="text-lg">Visit calendar</CardTitle>
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap items-center">
+              <button
+                type="button"
+                onClick={() => setHideAutoCancelled((v) => !v)}
+                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition-colors ${
+                  hideAutoCancelled
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "bg-background text-muted-foreground border-border hover:bg-muted"
+                }`}
+                data-testid="toggle-hide-auto-cancelled"
+                title="Hide visits that were auto-cancelled because their parent microplan was removed"
+              >
+                <XCircle className="h-3 w-3" />
+                {hideAutoCancelled ? "Hiding auto-cancelled" : "Showing auto-cancelled"}
+              </button>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
                 <SelectTrigger className="w-40" data-testid="filter-status"><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -449,52 +478,107 @@ export default function Supervision() {
             <div className="space-y-2">
               {[1, 2, 3].map((i) => <Skeleton key={i} className="h-16 w-full" />)}
             </div>
-          ) : visits.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <ClipboardCheck className="h-10 w-10 mx-auto mb-2 opacity-50" />
-              <p>No supervisory visits yet.</p>
-              <p className="text-sm">Schedule the first one to start your supervision plan.</p>
-            </div>
-          ) : (
-            <div className="divide-y">
-              {visits.map((v) => {
-                const fac = facById.get(v.facilityId);
-                return (
-                  <div key={v.id} className="py-3 flex flex-col md:flex-row md:items-center gap-3" data-testid={`visit-${v.id}`}>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <Badge variant="outline" className={STATUS_STYLES[v.status] || ""}>{v.status}</Badge>
-                        <Badge variant="secondary" className="capitalize">{v.visitType}</Badge>
-                        {typeof v.score === "number" && (
-                          <Badge variant="outline" className={v.score >= 80 ? STATUS_STYLES.conducted : v.score >= 60 ? "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30" : STATUS_STYLES.missed}>
-                            Score {v.score}%
-                          </Badge>
-                        )}
-                      </div>
-                      <div className="mt-1 text-sm font-medium flex items-center gap-2">
-                        <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
-                        {fac?.name || `Facility #${v.facilityId}`}
-                      </div>
-                      <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-3 flex-wrap">
-                        <span className="flex items-center gap-1"><Calendar className="h-3 w-3" /> {new Date(v.scheduledDate).toLocaleDateString()}</span>
-                        {v.supervisorName && <span className="flex items-center gap-1"><User className="h-3 w-3" /> {v.supervisorName}</span>}
-                        {v.findings && <span className="flex items-center gap-1 truncate max-w-xs"><FileText className="h-3 w-3" /> {v.findings.slice(0, 60)}{v.findings.length > 60 ? "…" : ""}</span>}
-                      </div>
-                    </div>
-                    <div className="flex gap-2 self-start md:self-center">
-                      <Button size="sm" variant="outline" onClick={() => setConductingVisit(v)} data-testid={`btn-conduct-${v.id}`}>
-                        <Pencil className="h-3.5 w-3.5 mr-1" />
-                        {v.status === "conducted" ? "View / edit" : "Conduct"}
-                      </Button>
-                      <Button size="sm" variant="ghost" onClick={() => { if (confirm("Remove this visit?")) deleteMutation.mutate(v.id); }} data-testid={`btn-delete-${v.id}`}>
-                        <Trash2 className="h-3.5 w-3.5 text-rose-500" />
-                      </Button>
-                    </div>
+          ) : (() => {
+            const visibleVisits = hideAutoCancelled
+              ? visits.filter((v) => !(v.status === "cancelled" && parseAutoCancel(v.findings)))
+              : visits;
+            const hiddenCount = visits.length - visibleVisits.length;
+            if (visits.length === 0) {
+              return (
+                <div className="text-center py-12 text-muted-foreground">
+                  <ClipboardCheck className="h-10 w-10 mx-auto mb-2 opacity-50" />
+                  <p>No supervisory visits yet.</p>
+                  <p className="text-sm">Schedule the first one to start your supervision plan.</p>
+                </div>
+              );
+            }
+            return (
+              <>
+                {hiddenCount > 0 && (
+                  <div className="mb-3 text-xs text-muted-foreground" data-testid="auto-cancelled-hidden-count">
+                    {hiddenCount} auto-cancelled visit{hiddenCount === 1 ? "" : "s"} hidden.{" "}
+                    <button
+                      type="button"
+                      className="underline hover:text-foreground"
+                      onClick={() => setHideAutoCancelled(false)}
+                      data-testid="link-show-auto-cancelled"
+                    >
+                      Show them
+                    </button>
                   </div>
-                );
-              })}
-            </div>
-          )}
+                )}
+                {visibleVisits.length === 0 ? (
+                  <div className="text-center py-8 text-sm text-muted-foreground">
+                    All visits matching the current filters were auto-cancelled.
+                  </div>
+                ) : (
+                  <div className="divide-y">
+                    {visibleVisits.map((v) => {
+                      const fac = facById.get(v.facilityId);
+                      const autoCancel = v.status === "cancelled" ? parseAutoCancel(v.findings) : null;
+                      const findingsForPreview = autoCancel ? autoCancel.rest : v.findings || "";
+                      return (
+                        <div key={v.id} className="py-3 flex flex-col md:flex-row md:items-center gap-3" data-testid={`visit-${v.id}`}>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <Badge variant="outline" className={STATUS_STYLES[v.status] || ""}>{v.status}</Badge>
+                              <Badge variant="secondary" className="capitalize">{v.visitType}</Badge>
+                              {autoCancel && (
+                                <Badge
+                                  variant="outline"
+                                  className="bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30"
+                                  data-testid={`badge-auto-cancelled-${v.id}`}
+                                >
+                                  <XCircle className="h-3 w-3 mr-1" />
+                                  Auto-cancelled
+                                </Badge>
+                              )}
+                              {typeof v.score === "number" && (
+                                <Badge variant="outline" className={v.score >= 80 ? STATUS_STYLES.conducted : v.score >= 60 ? "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30" : STATUS_STYLES.missed}>
+                                  Score {v.score}%
+                                </Badge>
+                              )}
+                            </div>
+                            <div className="mt-1 text-sm font-medium flex items-center gap-2">
+                              <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+                              {fac?.name || `Facility #${v.facilityId}`}
+                            </div>
+                            <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-3 flex-wrap">
+                              <span className="flex items-center gap-1"><Calendar className="h-3 w-3" /> {new Date(v.scheduledDate).toLocaleDateString()}</span>
+                              {v.supervisorName && <span className="flex items-center gap-1"><User className="h-3 w-3" /> {v.supervisorName}</span>}
+                              {findingsForPreview && (
+                                <span className="flex items-center gap-1 truncate max-w-xs">
+                                  <FileText className="h-3 w-3" /> {findingsForPreview.slice(0, 60)}{findingsForPreview.length > 60 ? "…" : ""}
+                                </span>
+                              )}
+                            </div>
+                            {autoCancel && (
+                              <div
+                                className="mt-2 flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-2.5 py-1.5 text-xs text-amber-800 dark:text-amber-200"
+                                data-testid={`callout-auto-cancelled-${v.id}`}
+                              >
+                                <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                                <span><span className="font-medium">Cancelled automatically:</span> {autoCancel.reason}</span>
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex gap-2 self-start md:self-center">
+                            <Button size="sm" variant="outline" onClick={() => setConductingVisit(v)} data-testid={`btn-conduct-${v.id}`}>
+                              <Pencil className="h-3.5 w-3.5 mr-1" />
+                              {v.status === "conducted" ? "View / edit" : "Conduct"}
+                            </Button>
+                            <Button size="sm" variant="ghost" onClick={() => { if (confirm("Remove this visit?")) deleteMutation.mutate(v.id); }} data-testid={`btn-delete-${v.id}`}>
+                              <Trash2 className="h-3.5 w-3.5 text-rose-500" />
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
+            );
+          })()}
         </CardContent>
       </Card>
 
