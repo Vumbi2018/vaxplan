@@ -386,10 +386,26 @@ export default function MicroplanWizard() {
   const { data: villages } = useQuery<Village[]>({
     queryKey: ["/api/villages"],
   });
-  const { data: microplan } = useQuery<Microplan>({
-    queryKey: ["/api/microplans", microplanId],
+  // Consolidated hydration: one request returns the microplan plus every
+  // per-microplan / per-facility row the wizard's resume effects need. This
+  // replaces 8 separate round trips (sessions, day plans, supervision visits,
+  // population, htr scores, vaccine reqs, mobilization, budget) — see
+  // GET /api/microplans/:id/hydration.
+  type MicroplanHydration = {
+    microplan: Microplan;
+    sessions: SessionPlan[];
+    sessionDayPlans: SessionDayPlan[];
+    supervisionVisits: SupervisionVisit[];
+    population: PopulationData[];
+    vaccineRequirements: VaccineRequirement[];
+    mobilization: MobilizationActivity[];
+    budgetItems: BudgetItem[];
+    htrScores: HtrScore[];
+  };
+  const { data: hydration } = useQuery<MicroplanHydration>({
+    queryKey: ["/api/microplans", microplanId, "hydration"],
     queryFn: async () => {
-      const res = await fetch(`/api/microplans/${microplanId}`, {
+      const res = await fetch(`/api/microplans/${microplanId}/hydration`, {
         credentials: "include",
       });
       if (!res.ok) throw new Error("Failed to load microplan");
@@ -397,6 +413,7 @@ export default function MicroplanWizard() {
     },
     enabled: !!microplanId,
   });
+  const microplan = hydration?.microplan;
 
   useEffect(() => {
     if (microplan) {
@@ -496,73 +513,18 @@ export default function MicroplanWizard() {
 
   const [sessionIdMap, setSessionIdMap] = useState<Record<string, number>>({});
   const [dayPlanIdMap, setDayPlanIdMap] = useState<Record<string, number>>({});
-  const { data: existingSessions } = useQuery<SessionPlan[]>({
-    queryKey: ["/api/sessions"],
-    enabled: !!microplanId,
-  });
 
-  // ─── Rehydration queries (only when resuming) ───────────────────────────
-  const { data: existingPopulation } = useQuery<PopulationData[]>({
-    queryKey: ["/api/population", { facilityId, year }],
-    queryFn: async () => {
-      const res = await fetch(
-        `/api/population?facilityId=${facilityId}&year=${year}`,
-        { credentials: "include" },
-      );
-      if (!res.ok) return [];
-      return res.json();
-    },
-    enabled: !!microplanId && !!facilityId,
-  });
-  const { data: existingHtr } = useQuery<HtrScore[]>({
-    queryKey: ["/api/htr-scores"],
-    enabled: !!microplanId,
-  });
-  const { data: existingVaccineReqs } = useQuery<VaccineRequirement[]>({
-    queryKey: ["/api/vaccine-requirements", { facilityId }],
-    queryFn: async () => {
-      const res = await fetch(`/api/vaccine-requirements?facilityId=${facilityId}`, {
-        credentials: "include",
-      });
-      if (!res.ok) return [];
-      return res.json();
-    },
-    enabled: !!microplanId && !!facilityId,
-  });
-  const { data: existingMobilization } = useQuery<MobilizationActivity[]>({
-    queryKey: ["/api/mobilization", { facilityId }],
-    queryFn: async () => {
-      const res = await fetch(`/api/mobilization?facilityId=${facilityId}`, {
-        credentials: "include",
-      });
-      if (!res.ok) return [];
-      return res.json();
-    },
-    enabled: !!microplanId && !!facilityId,
-  });
-  const { data: existingBudget } = useQuery<BudgetItem[]>({
-    queryKey: ["/api/budget-items", { facilityId, quarter, year }],
-    queryFn: async () => {
-      const res = await fetch(
-        `/api/budget-items?facilityId=${facilityId}&quarter=${quarter}&year=${year}`,
-        { credentials: "include" },
-      );
-      if (!res.ok) return [];
-      return res.json();
-    },
-    enabled: !!microplanId && !!facilityId,
-  });
-  const { data: existingSupervision } = useQuery<SupervisionVisit[]>({
-    queryKey: ["/api/supervision-visits", { microplanId }],
-    queryFn: async () => {
-      const res = await fetch(`/api/supervision-visits?microplanId=${microplanId}`, {
-        credentials: "include",
-      });
-      if (!res.ok) return [];
-      return res.json();
-    },
-    enabled: !!microplanId,
-  });
+  // ─── Rehydration data (resume case) ─────────────────────────────────────
+  // Derived from the single /api/microplans/:id/hydration call above so each
+  // step's resume effect doesn't trigger its own request.
+  const existingSessions = hydration?.sessions;
+  const existingPopulation = hydration?.population;
+  const existingHtr = hydration?.htrScores;
+  const existingVaccineReqs = hydration?.vaccineRequirements;
+  const existingMobilization = hydration?.mobilization;
+  const existingBudget = hydration?.budgetItems;
+  const existingSupervision = hydration?.supervisionVisits;
+  const existingDayPlans = hydration?.sessionDayPlans;
 
   // ─── Save draft ────────────────────────────────────────────────────────
   const saveDraft = async () => {
@@ -979,78 +941,66 @@ export default function MicroplanWizard() {
   useEffect(() => {
     if (!microplanId || hydratedRef.current.dayPlans) return;
     if (!calendar.length) return;
+    if (!existingDayPlans) return;
     const sessionIds = calendar
       .map((c) => sessionIdMap[c.rowId])
       .filter((v): v is number => !!v);
     if (sessionIds.length === 0) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch(
-          `/api/session-day-plans?microplanId=${microplanId}`,
-          { credentials: "include" },
-        );
-        if (!res.ok) return;
-        const allDayPlans = (await res.json()) as SessionDayPlan[];
-        if (cancelled) return;
-        const sessionIdSet = new Set(sessionIds);
-        const bySessionId: Record<number, SessionDayPlan> = {};
-        for (const dp of allDayPlans) {
-          if (!sessionIdSet.has(dp.sessionPlanId)) continue;
-          // Storage orders by sessionPlanId, dayNumber, so the first row per
-          // session is the lowest dayNumber — matching the prior `arr[0]` behavior.
-          if (!bySessionId[dp.sessionPlanId]) bySessionId[dp.sessionPlanId] = dp;
-        }
-        const dayIdMap: Record<string, number> = {};
-        setStaffing((prev) =>
-          prev.map((s) => {
-            const sid = sessionIdMap[s.rowId];
-            const dp = sid ? bySessionId[sid] : undefined;
-            if (!dp) return s;
-            dayIdMap[s.rowId] = dp.id;
-            const notes = dp.executionNotes ?? "";
-            const grab = (k: string) => {
-              const m = notes.match(new RegExp(`${k}:([^;]+)`));
-              return m ? m[1].trim() : "";
-            };
-            return {
-              ...s,
-              vaccinator: grab("vaccinator") || s.vaccinator,
-              recorder: grab("recorder") || s.recorder,
-              supervisor: grab("supervisor") || s.supervisor,
-              teamType: grab("team") || s.teamType,
-              perDiem: grab("perDiem") || s.perDiem,
-              target: String(dp.targetPopulation ?? s.target),
-            };
-          }),
-        );
-        setTransport((prev) =>
-          prev.map((t) => {
-            const sid = sessionIdMap[t.rowId];
-            const dp = sid ? bySessionId[sid] : undefined;
-            if (!dp) return t;
-            const notes = dp.executionNotes ?? "";
-            const vehicleMatch = notes.match(/vehicle:([^;]+)/);
-            return {
-              ...t,
-              mode: (dp.transportType as any) ?? t.mode,
-              distanceKm: String(dp.distanceKm ?? t.distanceKm),
-              fuelLitres: String(dp.fuelLiters ?? t.fuelLitres),
-              vehicle: vehicleMatch ? vehicleMatch[1].trim() : t.vehicle,
-              cleared: /security_cleared/.test(notes),
-            };
-          }),
-        );
-        setDayPlanIdMap((prev) => ({ ...prev, ...dayIdMap }));
-        hydratedRef.current.dayPlans = true;
-      } catch (e) {
-        console.warn("Could not hydrate session day plans:", e);
+    try {
+      const sessionIdSet = new Set(sessionIds);
+      const bySessionId: Record<number, SessionDayPlan> = {};
+      for (const dp of existingDayPlans) {
+        if (!sessionIdSet.has(dp.sessionPlanId)) continue;
+        // Storage orders by sessionPlanId, dayNumber, so the first row per
+        // session is the lowest dayNumber — matching the prior `arr[0]` behavior.
+        if (!bySessionId[dp.sessionPlanId]) bySessionId[dp.sessionPlanId] = dp;
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [microplanId, calendar, sessionIdMap]);
+      const dayIdMap: Record<string, number> = {};
+      setStaffing((prev) =>
+        prev.map((s) => {
+          const sid = sessionIdMap[s.rowId];
+          const dp = sid ? bySessionId[sid] : undefined;
+          if (!dp) return s;
+          dayIdMap[s.rowId] = dp.id;
+          const notes = dp.executionNotes ?? "";
+          const grab = (k: string) => {
+            const m = notes.match(new RegExp(`${k}:([^;]+)`));
+            return m ? m[1].trim() : "";
+          };
+          return {
+            ...s,
+            vaccinator: grab("vaccinator") || s.vaccinator,
+            recorder: grab("recorder") || s.recorder,
+            supervisor: grab("supervisor") || s.supervisor,
+            teamType: grab("team") || s.teamType,
+            perDiem: grab("perDiem") || s.perDiem,
+            target: String(dp.targetPopulation ?? s.target),
+          };
+        }),
+      );
+      setTransport((prev) =>
+        prev.map((t) => {
+          const sid = sessionIdMap[t.rowId];
+          const dp = sid ? bySessionId[sid] : undefined;
+          if (!dp) return t;
+          const notes = dp.executionNotes ?? "";
+          const vehicleMatch = notes.match(/vehicle:([^;]+)/);
+          return {
+            ...t,
+            mode: (dp.transportType as any) ?? t.mode,
+            distanceKm: String(dp.distanceKm ?? t.distanceKm),
+            fuelLitres: String(dp.fuelLiters ?? t.fuelLitres),
+            vehicle: vehicleMatch ? vehicleMatch[1].trim() : t.vehicle,
+            cleared: /security_cleared/.test(notes),
+          };
+        }),
+      );
+      setDayPlanIdMap((prev) => ({ ...prev, ...dayIdMap }));
+      hydratedRef.current.dayPlans = true;
+    } catch (e) {
+      console.warn("Could not hydrate session day plans:", e);
+    }
+  }, [microplanId, calendar, sessionIdMap, existingDayPlans]);
 
   type BudgetRow = {
     id?: number;

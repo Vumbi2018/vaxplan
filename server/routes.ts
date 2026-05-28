@@ -3722,6 +3722,137 @@ export async function registerRoutes(
     }
   });
 
+  // Consolidated hydration for the microplan wizard: returns every per-microplan
+  // and per-facility row the wizard would otherwise fan out N separate requests
+  // for when reopening a saved microplan. One tenant-scoped round trip instead of 7+.
+  app.get("/api/microplans/:id/hydration", ...auth, async (req: any, res) => {
+    try {
+      const dbUser = req.dbUser;
+      if (!dbUser) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      const microplanId = parseInt(req.params.id);
+      if (isNaN(microplanId)) {
+        return res.status(400).json({ message: "Invalid microplan id" });
+      }
+      const microplan = await storage.getMicroplan(req.tenantId, microplanId);
+      if (!microplan) {
+        return res.status(404).json({ message: "Master microplan not found" });
+      }
+      const facilityId = microplan.facilityId ?? undefined;
+      const quarter = microplan.quarter ?? undefined;
+      const year = microplan.year ?? undefined;
+      const isNationalAdmin =
+        dbUser.role === "national_admin" ||
+        (Array.isArray(dbUser.roles) && (dbUser.roles as string[]).includes("national_admin"));
+
+      // Mirror /api/sessions: if the caller can't view session plans for this
+      // microplan's facility, suppress sessions entirely. Keeps the
+      // consolidated endpoint at the same privilege boundary as the
+      // individual ones it replaces.
+      let canViewSessions = true;
+      let geoContext: any = null;
+      if (facilityId) {
+        geoContext = await getFacilityHierarchy(facilityId, req.tenantId);
+        if (!hasPermission(dbUser, "view_session_plans", geoContext)) {
+          canViewSessions = false;
+        }
+      }
+
+      // Mirror /api/population's non-admin scope rewrite: that route silently
+      // narrows the filter to the caller's own facility/district/province, so
+      // a clerk asking for facility=20 effectively only sees their own
+      // facility=10. The hydration equivalent is: only return population for
+      // the microplan's facility if the caller's geo scope actually covers
+      // it. Otherwise return [] to match the empty result they'd get from
+      // /api/population.
+      let canViewFacilityScopedData = true;
+      if (!isNationalAdmin && facilityId) {
+        if (dbUser.facilityId) {
+          canViewFacilityScopedData = dbUser.facilityId === facilityId;
+        } else if (dbUser.districtId) {
+          canViewFacilityScopedData = !!geoContext && dbUser.districtId === geoContext.districtId;
+        } else if (dbUser.provinceId) {
+          canViewFacilityScopedData = !!geoContext && dbUser.provinceId === geoContext.provinceId;
+        }
+      }
+
+      const [
+        allSessions,
+        sessionDayPlans,
+        supervisionVisits,
+        population,
+        vaccineRequirements,
+        mobilization,
+        budgetItems,
+        htrScores,
+      ] = await Promise.all([
+        canViewSessions
+          ? storage.getSessionPlans(req.tenantId, facilityId)
+          : Promise.resolve([] as Awaited<ReturnType<typeof storage.getSessionPlans>>),
+        canViewSessions
+          ? storage.getSessionDayPlansByMicroplan(req.tenantId, microplanId)
+          : Promise.resolve([] as Awaited<ReturnType<typeof storage.getSessionDayPlansByMicroplan>>),
+        storage.getSupervisionVisits(req.tenantId, { microplanId }),
+        facilityId && year && canViewFacilityScopedData
+          ? storage.getPopulationData(req.tenantId, { facilityId, year })
+          : Promise.resolve([]),
+        facilityId
+          ? storage.getVaccineRequirements(req.tenantId, facilityId)
+          : Promise.resolve([]),
+        facilityId
+          ? storage.getMobilizationActivities(req.tenantId, facilityId)
+          : Promise.resolve([]),
+        facilityId && quarter && year
+          ? storage.getBudgetItems(req.tenantId, facilityId, quarter, year)
+          : Promise.resolve([]),
+        storage.getHtrScores(req.tenantId),
+      ]);
+
+      // Restrict to this microplan and apply the same per-row permission
+      // filter /api/sessions does for non-national-admin callers.
+      let sessionsForPlan = allSessions.filter((s) => s.microplanId === microplanId);
+      if (canViewSessions && !isNationalAdmin && sessionsForPlan.length) {
+        const hierarchyCache = new Map<number, any>();
+        const filtered: typeof sessionsForPlan = [];
+        for (const session of sessionsForPlan) {
+          let geo = hierarchyCache.get(session.facilityId);
+          if (!geo) {
+            geo = await getFacilityHierarchy(session.facilityId, req.tenantId);
+            hierarchyCache.set(session.facilityId, geo);
+          }
+          if (hasPermission(dbUser, "view_session_plans", geo)) {
+            filtered.push(session);
+          }
+        }
+        sessionsForPlan = filtered;
+      }
+      const sessions = await overlayCampaignFromParent(req.tenantId, sessionsForPlan);
+
+      // Drop day plans whose parent session got filtered out above, so
+      // hydration can't leak rows whose session the caller can't see.
+      const visibleSessionIds = new Set(sessions.map((s) => s.id));
+      const visibleDayPlans = sessionDayPlans.filter((dp) =>
+        visibleSessionIds.has(dp.sessionPlanId),
+      );
+
+      res.json({
+        microplan,
+        sessions,
+        sessionDayPlans: visibleDayPlans,
+        supervisionVisits,
+        population,
+        vaccineRequirements,
+        mobilization,
+        budgetItems,
+        htrScores,
+      });
+    } catch (error) {
+      console.error("Error fetching microplan hydration:", error);
+      res.status(500).json({ message: "Failed to fetch microplan hydration" });
+    }
+  });
+
   app.post("/api/microplans", ...auth, async (req: any, res) => {
     try {
       const data = insertMicroplanSchema.parse(req.body);
