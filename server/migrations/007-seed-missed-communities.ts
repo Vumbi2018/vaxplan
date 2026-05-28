@@ -47,16 +47,22 @@ const FACILITIES_PER_TENANT = 30;
 // Demo villages created per picked facility.
 const VILLAGES_PER_FACILITY = 3;
 
-// Antigens we surface low coverage for, mirroring the demo operational seed.
-const ANTIGENS = ["BCG", "OPV", "Penta", "MR"];
+// Antigens we surface low coverage for. These must match the antigen codes
+// the Missed Communities page queries (see client/src/pages/MissedCommunities.tsx
+// DEFAULT_ANTIGENS) — otherwise the scorer returns no rows.
+const ANTIGENS = ["BCG", "PENTA1", "PENTA3", "MEASLES1", "MEASLES2", "OPV1", "OPV3"];
 
 // Doses per child by antigen — used to size facility "expected" doses so the
-// missed-coverage gap is realistic.
+// missed-coverage gap is realistic. All routine antigens are 1 dose per child
+// at the cohort level we're modelling (under-1 population).
 const DOSES_PER_CHILD: Record<string, number> = {
   BCG: 1,
-  OPV: 3,
-  Penta: 3,
-  MR: 1,
+  PENTA1: 1,
+  PENTA3: 1,
+  MEASLES1: 1,
+  MEASLES2: 1,
+  OPV1: 1,
+  OPV3: 1,
 };
 
 // Coverage fraction administered = 10–45% of "expected". Deliberately low so
@@ -190,8 +196,10 @@ async function seedTenant(code: TenantCode): Promise<{
   let coverageInserted = 0;
 
   for (const p of picks) {
-    // Skip facilities that already have a demo missed village (idempotency).
-    const marker = await db
+    // Idempotency: if this facility already has demo missed villages we skip
+    // village/pop/htr creation, but we still run the coverage-row pass so
+    // antigen-list changes get backfilled on rerun.
+    const existingDemoVillages = await db
       .select({ id: villages.id })
       .from(villages)
       .where(
@@ -200,14 +208,28 @@ async function seedTenant(code: TenantCode): Promise<{
           eq(villages.assignedFacilityId, p.facilityId),
           sql`${villages.name} LIKE 'Demo Missed Village%'`,
         ),
-      )
-      .limit(1);
-    if (marker.length > 0) continue;
+      );
+    const alreadySeeded = existingDemoVillages.length > 0;
 
-    const facilityVillageIds: number[] = [];
+    const facilityVillageIds: number[] = existingDemoVillages.map((r) => r.id);
     let facilityUnder1Sum = 0;
 
-    for (let i = 1; i <= VILLAGES_PER_FACILITY; i++) {
+    if (alreadySeeded) {
+      // Recover under-1 sum from the already-seeded population rows so the
+      // coverage backfill below sizes "expected" doses consistently.
+      const pops = await db
+        .select({ u1: populationData.under1Population })
+        .from(populationData)
+        .where(
+          and(
+            eq(populationData.tenantId, tenant.id),
+            inArray(populationData.villageId, facilityVillageIds),
+          ),
+        );
+      facilityUnder1Sum = pops.reduce((s, r) => s + (r.u1 ?? 0), 0);
+    }
+
+    for (let i = 1; alreadySeeded ? false : i <= VILLAGES_PER_FACILITY; i++) {
       const { lat, lng, distanceKm } = offsetCoord(p.latitude, p.longitude, i + p.facilityId);
       const name = `Demo Missed Village ${p.facilityName} #${i}`;
       const under1 = 25 + (i * 17 + (p.facilityId % 7) * 4);

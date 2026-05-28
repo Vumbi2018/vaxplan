@@ -169,11 +169,10 @@ export default function Facilities() {
     queryKey: ["/api/me/tenant"],
   });
 
-  // Cross-tenant read-only detection — disables Draw Catchment writes when the
-  // user is viewing another country (their home tenant differs from the active
-  // view tenant). The server's crossTenantWriteGuard would otherwise return a
-  // silent 403; we surface a clear inline message instead.
-  const isCrossTenantView = !!(user?.tenantId && tenantInfo?.id && user.tenantId !== tenantInfo.id);
+  // Cross-tenant write restriction has been removed product-wide — Draw
+  // Catchment is always available regardless of which country is in view.
+  // Flag retained as `false` so the surrounding conditional UI keeps compiling.
+  const isCrossTenantView = false;
   const crossTenantToast = () => {
     toast({
       title: "Read-only view",

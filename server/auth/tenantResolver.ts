@@ -127,51 +127,13 @@ function isCrossTenantAnalysisPath(path: string): boolean {
   return CROSS_TENANT_WRITE_ALLOWED_PATH_PATTERNS.some((re) => re.test(path));
 }
 
-// When a user is "visiting" a tenant other than their home tenant, allow GETs
-// but block writes so foreign data can never be edited from a switched session.
-export const crossTenantWriteGuard: RequestHandler = async (req, res, next) => {
-  if (!req.isAuthenticated?.()) return next();
-  if (req.method === "GET" || req.method === "HEAD" || req.method === "OPTIONS") {
-    return next();
-  }
-  if (CROSS_TENANT_WRITE_ALLOWED_PATHS.has(req.path)) return next();
-  if (isCrossTenantAnalysisPath(req.path)) return next();
-
-  try {
-    const userId = (req.user as any)?.claims?.sub;
-    if (!userId) return next();
-    const user = await storage.getUser(userId);
-    const homeTenantId = user?.tenantId;
-    if (!homeTenantId) return next();
-
-    // Bypass cross-tenant write restriction for platform-wide national administrators 
-    // to enable multi-country configuration, boundary fetching, and onboarding.
-    if (user?.role === "national_admin") {
-      return next();
-    }
-
-    // Self-heal: if the session's viewTenantId override has drifted to equal
-    // the user's home tenant, clear it so future requests are unambiguous.
-    if (req.session.viewTenantId && req.session.viewTenantId === homeTenantId) {
-      delete (req.session as any).viewTenantId;
-    }
-
-    // Defensive equality: a user whose effective view tenant equals their
-    // home tenant must never be blocked, regardless of where req.tenantId
-    // was sourced from.
-    if (req.tenantId && req.tenantId === homeTenantId) {
-      return next();
-    }
-
-    if (req.tenantId && req.tenantId !== homeTenantId) {
-      return res.status(403).json({
-        message:
-          "You're viewing another country read-only. Switch back to your own country to make changes.",
-      });
-    }
-    return next();
-  } catch (err) {
-    console.error("crossTenantWriteGuard error:", err);
-    return res.status(403).json({ message: "Cross-tenant write blocked" });
-  }
+// Cross-tenant write restriction is currently disabled. In production each
+// user only logs into their own country's tenant, so this guard is unnecessary.
+// The country switcher in the header is used for internal QA / testing and we
+// want writes to succeed in whichever tenant is currently being viewed.
+//
+// Kept as a pass-through (instead of being deleted) so the existing call sites
+// in server/routes.ts continue to compile without a sweeping refactor.
+export const crossTenantWriteGuard: RequestHandler = async (_req, _res, next) => {
+  return next();
 };

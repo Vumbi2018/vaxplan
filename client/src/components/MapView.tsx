@@ -2037,11 +2037,11 @@ export function MapView({
     queryKey: ["/api/me/tenant"],
   });
 
-  // Cross-tenant read-only detection: when the active view tenant differs from
-  // the user's home tenant, any catchment / geofence write is rejected by the
-  // server's crossTenantWriteGuard. Surface this in the UI so users see why the
-  // draw tools are disabled instead of hitting silent 403s.
-  const isCrossTenantView = !!(user?.tenantId && tenantInfo?.id && user.tenantId !== tenantInfo.id);
+  // Cross-tenant write restriction has been removed product-wide — the server
+  // no longer rejects writes from a switched-tenant session, so draw tools are
+  // always enabled regardless of which country is in view. Flag retained as
+  // `false` so downstream conditional UI keeps compiling without a refactor.
+  const isCrossTenantView = false;
   const crossTenantToast = () => {
     toast({
       title: "Read-only view",
