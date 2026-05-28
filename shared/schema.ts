@@ -544,6 +544,11 @@ export const budgetItems = pgTable("budget_items", {
   fundingSource: fundingSourceEnum("funding_source").notNull().default("unspecified"),
   // Free-text descriptor used when `fundingSource === 'other'`.
   fundingSourceOther: varchar("funding_source_other", { length: 255 }),
+  // Provenance of this budget line. 'manual' for hand-entered rows,
+  // 'roster_sync' for lines auto-created by the microplan roster sync
+  // (Sync to Budget action / per-day Personnel snapshot). Lets reviewers
+  // tell auto-computed lines apart from typed ones at a glance.
+  source: varchar("source", { length: 32 }).notNull().default("manual"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [index("idx_budget_items_tenant").on(table.tenantId)]);
 

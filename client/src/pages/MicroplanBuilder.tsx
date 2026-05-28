@@ -859,6 +859,7 @@ export default function MicroplanBuilder({ prePlanType }: MicroplanBuilderProps 
               row.fundingSource === "other"
                 ? (row.fundingSourceOther || "").trim() || null
                 : null,
+            source: "roster_sync",
           };
           if (existing) {
             await apiRequest("PATCH", `/api/budget-items/${existing.id}`, payload);

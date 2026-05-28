@@ -700,6 +700,7 @@ export default function SessionDayPlans() {
               approvalStatus: "draft",
               fundingSource,
               fundingSourceOther,
+              source: "roster_sync",
             });
             snapshotResult.written++;
           } catch (e) {
