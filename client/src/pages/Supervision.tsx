@@ -1044,7 +1044,6 @@ function QuarterlyReviewCoverage() {
 
   const { data, isLoading } = useQuery<QuarterlyReviewCoverageResponse>({
     queryKey: ["/api/indicators/quarterly-review-coverage", year, quarter, provinceId, districtId, facilityId, "trend4"],
-    enabled: hasScopeFilter,
     queryFn: async () => {
       const r = await fetch(`/api/indicators/quarterly-review-coverage?${queryStr}`, { credentials: "include" });
       if (!r.ok) throw new Error("Failed to load quarterly review coverage");
@@ -1148,16 +1147,7 @@ function QuarterlyReviewCoverage() {
           </div>
         </div>
 
-        {!hasScopeFilter ? (
-          <div className="text-center py-8 px-4 text-sm text-muted-foreground border border-dashed rounded-md bg-muted/30">
-            <div className="font-medium text-foreground mb-1">
-              Pick a Province, District, or Facility above
-            </div>
-            <div>
-              Showing every facility in the tenant at once would be too long to scroll. Use the cascade filters to narrow down.
-            </div>
-          </div>
-        ) : isLoading ? (
+        {isLoading ? (
           <div className="space-y-2">
             {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-12 w-full" />)}
           </div>
