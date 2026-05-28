@@ -14,6 +14,7 @@ import { createServer } from "http";
 import { startPopulationRefreshScheduler } from "./jobs/populationRefresh";
 import { startSessionArchiveScheduler } from "./jobs/sessionArchive";
 import { startStockAlertDigestScheduler } from "./jobs/stockAlertDigest";
+import { startSupervisionDigestScheduler } from "./jobs/supervisionDigest";
 import { seedDemoOperational } from "./migrations/006-seed-demo-operational";
 
 
@@ -78,6 +79,7 @@ app.use((req, res, next) => {
   startPopulationRefreshScheduler();
   startSessionArchiveScheduler();
   startStockAlertDigestScheduler();
+  startSupervisionDigestScheduler();
 
   // Auto-run the demo operational seed on startup. Idempotent: every step
   // skips/upserts so subsequent boots are a no-op once data is in place.

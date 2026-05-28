@@ -13,10 +13,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
 import {
   ClipboardCheck, Calendar, Plus, CheckCircle2, AlertCircle, XCircle, MinusCircle,
-  Building2, User, FileText, ListChecks, Trash2, Pencil, Activity,
+  Building2, User, FileText, ListChecks, Trash2, Pencil, Activity, Mail,
 } from "lucide-react";
 
 type SupervisionVisit = {
@@ -257,21 +259,24 @@ export default function Supervision() {
             WHO RED step 10 — schedule and document supervisory visits at every facility, every quarter.
           </p>
         </div>
-        <Dialog open={scheduleOpen} onOpenChange={(o) => { setScheduleOpen(o); if (!o) setPresetFacilityId(null); }}>
-          <DialogTrigger asChild>
-            <Button data-testid="btn-schedule-visit" className="gap-2" onClick={() => setPresetFacilityId(null)}>
-              <Plus className="h-4 w-4" /> Schedule Visit
-            </Button>
-          </DialogTrigger>
-          <ScheduleDialog
-            key={presetFacilityId ?? "new"}
-            facilities={facilities}
-            microplans={microplans}
-            initialFacilityId={presetFacilityId}
-            onSubmit={(d) => scheduleMutation.mutate(d)}
-            isSubmitting={scheduleMutation.isPending}
-          />
-        </Dialog>
+        <div className="flex items-center gap-2">
+          <DigestPrefsPopover />
+          <Dialog open={scheduleOpen} onOpenChange={(o) => { setScheduleOpen(o); if (!o) setPresetFacilityId(null); }}>
+            <DialogTrigger asChild>
+              <Button data-testid="btn-schedule-visit" className="gap-2" onClick={() => setPresetFacilityId(null)}>
+                <Plus className="h-4 w-4" /> Schedule Visit
+              </Button>
+            </DialogTrigger>
+            <ScheduleDialog
+              key={presetFacilityId ?? "new"}
+              facilities={facilities}
+              microplans={microplans}
+              initialFacilityId={presetFacilityId}
+              onSubmit={(d) => scheduleMutation.mutate(d)}
+              isSubmitting={scheduleMutation.isPending}
+            />
+          </Dialog>
+        </div>
       </header>
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
@@ -525,6 +530,66 @@ function StatCard({ label, value, icon: Icon, tone }: { label: string; value: nu
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function DigestPrefsPopover() {
+  const { toast } = useToast();
+  const { data: prefs } = useQuery<{ supervisionDigest: boolean }>({
+    queryKey: ["/api/me/notification-prefs"],
+    queryFn: async () => {
+      const r = await fetch("/api/me/notification-prefs", { credentials: "include" });
+      if (!r.ok) throw new Error("Failed to load preferences");
+      return r.json();
+    },
+  });
+  const enabled = prefs?.supervisionDigest !== false;
+  const updateMutation = useMutation({
+    mutationFn: async (supervisionDigest: boolean) => {
+      const r = await apiRequest("PATCH", "/api/me/notification-prefs", { supervisionDigest });
+      return (r as Response).json();
+    },
+    onSuccess: (data) => {
+      queryClient.setQueryData(["/api/me/notification-prefs"], data);
+      toast({
+        title: data.supervisionDigest ? "Digest enabled" : "Digest disabled",
+        description: data.supervisionDigest
+          ? "You'll get the weekly overdue list every Monday."
+          : "You won't receive the weekly supervision digest.",
+      });
+    },
+    onError: (e: any) => toast({ title: "Could not save", description: e.message, variant: "destructive" }),
+  });
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button variant="outline" size="sm" className="gap-2" data-testid="btn-digest-prefs">
+          <Mail className="h-4 w-4" />
+          Weekly digest
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-80">
+        <div className="space-y-3">
+          <div>
+            <div className="text-sm font-semibold">Weekly overdue digest</div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Every Monday morning, get an email listing facilities in your scope that are overdue
+              for a supervisory visit (no visit in 90 days, or last score below 60%).
+            </p>
+          </div>
+          <div className="flex items-center justify-between border-t pt-3">
+            <Label htmlFor="digest-toggle" className="text-sm">Email me each Monday</Label>
+            <Switch
+              id="digest-toggle"
+              data-testid="switch-digest"
+              checked={enabled}
+              disabled={updateMutation.isPending}
+              onCheckedChange={(checked) => updateMutation.mutate(checked)}
+            />
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 

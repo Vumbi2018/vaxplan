@@ -206,6 +206,9 @@ export const users = pgTable("users", {
   provinceId: integer("province_id"),
   hmisCode: varchar("hmis_code"),
   isActive: boolean("is_active").default(true),
+  // Per-user notification preferences. Currently honoured: { supervisionDigest: boolean }.
+  // Default is "opt-in" (key absent or true → digest is sent); set to false to opt out.
+  notificationPrefs: jsonb("notification_prefs").default({}).notNull(),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [index("idx_users_tenant").on(table.tenantId)]);

@@ -5070,6 +5070,114 @@ export async function registerRoutes(
     }
   });
 
+  // ─── Supervision digest (weekly overdue email) ──────────────────────
+  // Manual trigger for the weekly supervision-overdue digest. Useful for
+  // testing the content and for letting a national admin re-send the digest
+  // after onboarding a new district manager. The scheduler in
+  // server/jobs/supervisionDigest.ts fires this automatically every Monday.
+  app.post("/api/supervision/digest/run", ...auth, loadRole, async (req: any, res) => {
+    try {
+      const role = req.user?.dbRole as string | undefined;
+      if (role !== "national_admin" && role !== "provincial_coordinator") {
+        return res.status(403).json({
+          message: "Only national or provincial coordinators may trigger the supervision digest.",
+        });
+      }
+      const dryRun = req.query.dryRun === "1" || req.body?.dryRun === true;
+      const { runSupervisionDigestForTenant } = await import("./jobs/supervisionDigest");
+      const result = await runSupervisionDigestForTenant(req.tenantId!, { dryRun });
+      await logAudit(req, "trigger_supervision_digest", "tenant", null, null, {
+        dryRun,
+        recipients: result.recipients,
+        delivered: result.delivered,
+        totalOverdue: result.totalOverdue,
+      });
+      res.json(result);
+    } catch (err: any) {
+      console.error("POST /api/supervision/digest/run failed:", err);
+      res.status(500).json({ message: err?.message || "Failed to run supervision digest" });
+    }
+  });
+
+  // Preview a digest for the caller — shows the same list of overdue
+  // facilities (filtered to the caller's scope) that they would receive by
+  // email on Monday. Lets users sanity-check the opt-out toggle.
+  app.get("/api/supervision/digest/preview", ...auth, async (req: any, res) => {
+    try {
+      const user = req.dbUser ?? (await storage.getUser(getCurrentUserId(req)));
+      if (!user) return res.status(401).json({ message: "Unauthorized" });
+      const { computeOverdueFacilities } = await import("./jobs/supervisionDigest");
+      const isNational =
+        user.role === "national_admin" ||
+        (Array.isArray(user.roles) && (user.roles as string[]).includes("national_admin"));
+      const scopeBlob = (user.dataAccessScope ?? {}) as {
+        provinces?: number[];
+        districts?: number[];
+        facilities?: number[];
+      };
+      const scope = isNational
+        ? {}
+        : {
+            facilityIds: Array.from(
+              new Set([...(scopeBlob.facilities ?? []), ...(user.facilityId ? [user.facilityId] : [])]),
+            ),
+            districtIds: Array.from(
+              new Set([...(scopeBlob.districts ?? []), ...(user.districtId ? [user.districtId] : [])]),
+            ),
+            provinceIds: Array.from(
+              new Set([...(scopeBlob.provinces ?? []), ...(user.provinceId ? [user.provinceId] : [])]),
+            ),
+          };
+      const overdue = await computeOverdueFacilities(req.tenantId!, scope);
+      res.json({ overdue, count: overdue.length });
+    } catch (err: any) {
+      console.error("GET /api/supervision/digest/preview failed:", err);
+      res.status(500).json({ message: "Failed to preview supervision digest" });
+    }
+  });
+
+  // ─── Per-user notification preferences (opt-out) ─────────────────────
+  app.get("/api/me/notification-prefs", isAuthenticated, async (req: any, res) => {
+    try {
+      const user = await storage.getUser(getCurrentUserId(req));
+      if (!user) return res.status(404).json({ message: "User not found" });
+      const prefs = (user.notificationPrefs ?? {}) as Record<string, unknown>;
+      res.json({
+        supervisionDigest: prefs.supervisionDigest !== false,
+      });
+    } catch (err: any) {
+      console.error("GET /api/me/notification-prefs failed:", err);
+      res.status(500).json({ message: "Failed to load notification preferences" });
+    }
+  });
+
+  app.patch("/api/me/notification-prefs", isAuthenticated, async (req: any, res) => {
+    try {
+      const schema = z.object({ supervisionDigest: z.boolean().optional() });
+      const data = schema.parse(req.body ?? {});
+      const userId = getCurrentUserId(req);
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(404).json({ message: "User not found" });
+      const prefs = { ...((user.notificationPrefs ?? {}) as Record<string, unknown>), ...data };
+      // updateUser is tenant-scoped on the storage layer; pass the user's own tenant.
+      if (!user.tenantId) {
+        return res.status(400).json({ message: "User is not bound to a tenant yet" });
+      }
+      const updated = await storage.updateUser(user.tenantId, user.id, {
+        notificationPrefs: prefs,
+      });
+      res.json({
+        supervisionDigest: ((updated?.notificationPrefs ?? prefs) as any).supervisionDigest !== false,
+      });
+    } catch (err: any) {
+      if (err?.name === "ZodError") {
+        return res.status(400).json({ message: "Invalid payload", errors: err.errors });
+      }
+      console.error("PATCH /api/me/notification-prefs failed:", err);
+      res.status(500).json({ message: "Failed to update notification preferences" });
+    }
+  });
+
   // ─── Audit Logs (read-only, admin-scoped) ─────────────
   app.get("/api/audit-logs", isAuthenticated, requireTenant, loadRole, requireAdmin, async (req: any, res) => {
     try {
