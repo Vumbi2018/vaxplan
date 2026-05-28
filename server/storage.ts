@@ -184,7 +184,19 @@ export interface IStorage {
 
   // --- Facility excluded villages ---
   getFacilityExcludedVillageIds(tenantId: string, facilityId: number): Promise<number[]>;
-  setFacilityExcludedVillageIds(tenantId: string, facilityId: number, villageIds: number[]): Promise<number[]>;
+  getFacilityExcludedVillages(tenantId: string, facilityId: number): Promise<Array<{
+    villageId: number;
+    removedAt: Date | null;
+    removedByUserId: string | null;
+    removedByName: string | null;
+    reason: string | null;
+  }>>;
+  setFacilityExcludedVillageIds(
+    tenantId: string,
+    facilityId: number,
+    desired: Array<{ villageId: number; reason?: string | null }>,
+    actorUserId: string | null,
+  ): Promise<number[]>;
 
   // --- Microplans ---
   getMicroplans(tenantId: string): Promise<Microplan[]>;
@@ -920,28 +932,117 @@ export class DatabaseStorage implements IStorage {
       ));
     return rows.map((r) => r.villageId);
   }
+  async getFacilityExcludedVillages(tenantId: string, facilityId: number): Promise<Array<{
+    villageId: number;
+    removedAt: Date | null;
+    removedByUserId: string | null;
+    removedByName: string | null;
+    reason: string | null;
+  }>> {
+    const rows = await db
+      .select({
+        villageId: facilityExcludedVillages.villageId,
+        removedAt: facilityExcludedVillages.createdAt,
+        removedByUserId: facilityExcludedVillages.removedByUserId,
+        reason: facilityExcludedVillages.reason,
+        firstName: users.firstName,
+        lastName: users.lastName,
+        email: users.email,
+      })
+      .from(facilityExcludedVillages)
+      .leftJoin(users, eq(users.id, facilityExcludedVillages.removedByUserId))
+      .where(and(
+        eq(facilityExcludedVillages.tenantId, tenantId),
+        eq(facilityExcludedVillages.facilityId, facilityId),
+      ));
+    return rows.map((r) => {
+      const fn = (r.firstName ?? "").trim();
+      const ln = (r.lastName ?? "").trim();
+      const fullName = `${fn} ${ln}`.trim();
+      return {
+        villageId: r.villageId,
+        removedAt: r.removedAt ?? null,
+        removedByUserId: r.removedByUserId ?? null,
+        removedByName: fullName || r.email || null,
+        reason: r.reason ?? null,
+      };
+    });
+  }
   async setFacilityExcludedVillageIds(
     tenantId: string,
     facilityId: number,
-    villageIds: number[],
+    desired: Array<{ villageId: number; reason?: string | null }>,
+    actorUserId: string | null,
   ): Promise<number[]> {
-    const unique: number[] = Array.from(
-      new Set<number>(villageIds.filter((v): v is number => Number.isFinite(v))),
-    );
+    const desiredMap = new Map<number, string | null>();
+    for (const d of desired) {
+      const id = typeof d.villageId === "number" ? d.villageId : Number(d.villageId);
+      if (!Number.isFinite(id)) continue;
+      const reason = typeof d.reason === "string" ? d.reason.trim().slice(0, 500) : null;
+      desiredMap.set(id, reason && reason.length > 0 ? reason : null);
+    }
+    const wantedIds = Array.from(desiredMap.keys());
     await db.transaction(async (tx) => {
-      await tx
-        .delete(facilityExcludedVillages)
+      const existing = await tx
+        .select({
+          villageId: facilityExcludedVillages.villageId,
+          reason: facilityExcludedVillages.reason,
+        })
+        .from(facilityExcludedVillages)
         .where(and(
           eq(facilityExcludedVillages.tenantId, tenantId),
           eq(facilityExcludedVillages.facilityId, facilityId),
         ));
-      if (unique.length > 0) {
-        await tx.insert(facilityExcludedVillages).values(
-          unique.map((villageId) => ({ tenantId, facilityId, villageId })),
-        );
+      const existingMap = new Map(existing.map((r) => [r.villageId, r.reason ?? null]));
+      const toDelete = existing
+        .map((r) => r.villageId)
+        .filter((id) => !desiredMap.has(id));
+      if (toDelete.length > 0) {
+        await tx
+          .delete(facilityExcludedVillages)
+          .where(and(
+            eq(facilityExcludedVillages.tenantId, tenantId),
+            eq(facilityExcludedVillages.facilityId, facilityId),
+            inArray(facilityExcludedVillages.villageId, toDelete),
+          ));
+      }
+      const toInsert: Array<{
+        tenantId: string;
+        facilityId: number;
+        villageId: number;
+        removedByUserId: string | null;
+        reason: string | null;
+      }> = [];
+      for (const [villageId, reason] of Array.from(desiredMap.entries())) {
+        if (existingMap.has(villageId)) {
+          // Already excluded — keep the original removal record (who/when)
+          // so re-saving the wizard doesn't reset the audit. Only update the
+          // reason if the caller actually supplied a new (non-empty) one.
+          if (reason && reason !== existingMap.get(villageId)) {
+            await tx
+              .update(facilityExcludedVillages)
+              .set({ reason })
+              .where(and(
+                eq(facilityExcludedVillages.tenantId, tenantId),
+                eq(facilityExcludedVillages.facilityId, facilityId),
+                eq(facilityExcludedVillages.villageId, villageId),
+              ));
+          }
+          continue;
+        }
+        toInsert.push({
+          tenantId,
+          facilityId,
+          villageId,
+          removedByUserId: actorUserId,
+          reason,
+        });
+      }
+      if (toInsert.length > 0) {
+        await tx.insert(facilityExcludedVillages).values(toInsert);
       }
     });
-    return unique;
+    return wantedIds;
   }
 
   // --- Microplans ---

@@ -2142,8 +2142,14 @@ export async function registerRoutes(
       }
       const facility = await storage.getFacility(req.tenantId, facilityId);
       if (!facility) return res.status(404).json({ message: "Facility not found" });
-      const villageIds = await storage.getFacilityExcludedVillageIds(req.tenantId, facilityId);
-      res.json({ facilityId, villageIds });
+      const rich = await storage.getFacilityExcludedVillages(req.tenantId, facilityId);
+      // Keep the flat `villageIds` field for backward-compatibility with older
+      // clients that hydrated this endpoint into a `Set<number>` directly.
+      res.json({
+        facilityId,
+        villageIds: rich.map((r) => r.villageId),
+        villages: rich,
+      });
     } catch (error) {
       console.error("Error fetching excluded villages:", error);
       res.status(500).json({ message: "Failed to fetch excluded villages" });
@@ -2158,34 +2164,64 @@ export async function registerRoutes(
       }
       const facility = await storage.getFacility(req.tenantId, facilityId);
       if (!facility) return res.status(404).json({ message: "Facility not found" });
-      const raw = (req.body && (req.body as any).villageIds) ?? [];
-      if (!Array.isArray(raw)) {
-        return res.status(400).json({ message: "villageIds must be an array" });
+
+      // Accept both the legacy { villageIds: number[] } shape and the new
+      // { villages: [{ villageId, reason? }] } shape so older offline clients
+      // keep working while the wizard captures a reason on remove.
+      const body = (req.body ?? {}) as any;
+      type Desired = { villageId: number; reason: string | null };
+      const desired: Desired[] = [];
+      const reasonMap = new Map<number, string | null>();
+      if (Array.isArray(body.villages)) {
+        for (const v of body.villages) {
+          if (!v || typeof v !== "object") continue;
+          const id = typeof v.villageId === "number" ? v.villageId : Number(v.villageId);
+          if (!Number.isFinite(id)) continue;
+          const reason = typeof v.reason === "string" ? v.reason : null;
+          reasonMap.set(id, reason);
+        }
       }
-      const parsed: number[] = [];
-      for (const v of raw) {
+      const flatIds = Array.isArray(body.villageIds) ? body.villageIds : [];
+      for (const v of flatIds) {
         const n = typeof v === "number" ? v : parseInt(String(v), 10);
-        if (Number.isFinite(n)) parsed.push(n);
+        if (!Number.isFinite(n)) continue;
+        if (!reasonMap.has(n)) reasonMap.set(n, null);
       }
+      for (const [villageId, reason] of Array.from(reasonMap.entries())) {
+        desired.push({ villageId, reason });
+      }
+
       // Reject IDs that don't belong to this tenant — keeps the catchment
       // editor from quietly persisting cross-tenant ids the user can't see.
-      if (parsed.length > 0) {
+      const ids = desired.map((d) => d.villageId);
+      let filtered = desired;
+      if (ids.length > 0) {
         const found = await db
           .select({ id: villages.id })
           .from(villages)
           .where(and(
             eq(villages.tenantId, req.tenantId),
-            inArray(villages.id, parsed),
+            inArray(villages.id, ids),
           ));
         const valid = new Set(found.map((r) => r.id));
-        const filtered = parsed.filter((id) => valid.has(id));
-        const villageIds = await storage.setFacilityExcludedVillageIds(req.tenantId, facilityId, filtered);
-        await logAudit(req, "update", "facility_excluded_villages", facilityId, null, { villageIds });
-        return res.json({ facilityId, villageIds });
+        filtered = desired.filter((d) => valid.has(d.villageId));
       }
-      const villageIds = await storage.setFacilityExcludedVillageIds(req.tenantId, facilityId, []);
-      await logAudit(req, "update", "facility_excluded_villages", facilityId, null, { villageIds });
-      res.json({ facilityId, villageIds });
+      const actorUserId = req.user?.claims?.sub ?? null;
+      await storage.setFacilityExcludedVillageIds(
+        req.tenantId,
+        facilityId,
+        filtered,
+        actorUserId,
+      );
+      const rich = await storage.getFacilityExcludedVillages(req.tenantId, facilityId);
+      await logAudit(req, "update", "facility_excluded_villages", facilityId, null, {
+        villageIds: rich.map((r) => r.villageId),
+      });
+      res.json({
+        facilityId,
+        villageIds: rich.map((r) => r.villageId),
+        villages: rich,
+      });
     } catch (error) {
       console.error("Error updating excluded villages:", error);
       res.status(500).json({ message: "Failed to update excluded villages" });
@@ -3944,6 +3980,7 @@ export async function registerRoutes(
         budgetItems,
         htrScores,
         excludedVillageIds,
+        excludedVillages,
       ] = await Promise.all([
         canViewSessions
           ? storage.getSessionPlans(req.tenantId, facilityId)
@@ -3968,6 +4005,9 @@ export async function registerRoutes(
         facilityId
           ? storage.getFacilityExcludedVillageIds(req.tenantId, facilityId)
           : Promise.resolve([] as number[]),
+        facilityId
+          ? storage.getFacilityExcludedVillages(req.tenantId, facilityId)
+          : Promise.resolve([] as Awaited<ReturnType<typeof storage.getFacilityExcludedVillages>>),
       ]);
 
       // Restrict to this microplan and apply the same per-row permission
@@ -4008,6 +4048,7 @@ export async function registerRoutes(
         budgetItems,
         htrScores,
         excludedVillageIds,
+        excludedVillages,
       });
     } catch (error) {
       console.error("Error fetching microplan hydration:", error);

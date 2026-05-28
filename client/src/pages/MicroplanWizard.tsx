@@ -59,6 +59,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { getCachedPopulation, setCachedPopulation } from "@/lib/populationCache";
 import {
@@ -294,6 +300,18 @@ function clearStoredReturnVillage(id: number | null) {
   }
 }
 
+// Audit metadata for a village that was removed from a facility's catchment in
+// Step 2 of the wizard. Surfaced in the "Previously removed" panel so staff can
+// see who removed each community, when, and (optionally) why before deciding
+// whether to add it back.
+type ExcludedVillageDetail = {
+  villageId: number;
+  removedAt: string | null;
+  removedByUserId: string | null;
+  removedByName: string | null;
+  reason: string | null;
+};
+
 // ─── Page ─────────────────────────────────────────────────────────────────
 export default function MicroplanWizard() {
   const { user } = useAuth();
@@ -423,6 +441,7 @@ export default function MicroplanWizard() {
     budgetItems: BudgetItem[];
     htrScores: HtrScore[];
     excludedVillageIds?: number[];
+    excludedVillages?: ExcludedVillageDetail[];
   };
   const { data: hydration } = useQuery<MicroplanHydration>({
     queryKey: ["/api/microplans", microplanId, "hydration"],
@@ -482,6 +501,7 @@ export default function MicroplanWizard() {
   const { data: excludedFromServer, isSuccess: excludedLoaded } = useQuery<{
     facilityId: number;
     villageIds: number[];
+    villages?: ExcludedVillageDetail[];
   }>({
     queryKey: excludedQueryKey ?? ["/api/facilities", "none", "excluded-villages"],
     queryFn: async () => {
@@ -497,6 +517,9 @@ export default function MicroplanWizard() {
   const [excludedVillageIds, setExcludedVillageIds] = useState<Set<number>>(
     () => new Set<number>(),
   );
+  const [excludedDetails, setExcludedDetails] = useState<Map<number, ExcludedVillageDetail>>(
+    () => new Map(),
+  );
   const [excludedReady, setExcludedReady] = useState<boolean>(false);
   const loadedExcludedFacilityRef = useRef<number | null>(null);
 
@@ -508,6 +531,7 @@ export default function MicroplanWizard() {
     if (loadedExcludedFacilityRef.current !== facilityId) {
       setExcludedReady(false);
       setExcludedVillageIds(new Set<number>());
+      setExcludedDetails(new Map());
       loadedExcludedFacilityRef.current = facilityId;
     }
   }, [facilityId]);
@@ -518,14 +542,28 @@ export default function MicroplanWizard() {
   //   3. legacy localStorage values (one-shot migration to the server)
   useEffect(() => {
     if (!facilityId) return;
-    const fromHydration = hydration?.excludedVillageIds;
-    const fromQuery = excludedFromServer?.villageIds;
+    const fromHydrationIds = hydration?.excludedVillageIds;
+    const fromHydrationDetails = hydration?.excludedVillages;
+    const fromQueryIds = excludedFromServer?.villageIds;
+    const fromQueryDetails = excludedFromServer?.villages;
     let serverIds: number[] | null = null;
-    if (Array.isArray(fromHydration)) serverIds = fromHydration;
-    else if (Array.isArray(fromQuery)) serverIds = fromQuery;
+    let serverDetails: ExcludedVillageDetail[] | null = null;
+    if (Array.isArray(fromHydrationIds)) {
+      serverIds = fromHydrationIds;
+      serverDetails = Array.isArray(fromHydrationDetails) ? fromHydrationDetails : null;
+    } else if (Array.isArray(fromQueryIds)) {
+      serverIds = fromQueryIds;
+      serverDetails = Array.isArray(fromQueryDetails) ? fromQueryDetails : null;
+    }
     if (serverIds === null) return;
 
     const next = new Set<number>(serverIds);
+    const detailMap = new Map<number, ExcludedVillageDetail>();
+    if (serverDetails) {
+      for (const d of serverDetails) {
+        if (typeof d?.villageId === "number") detailMap.set(d.villageId, d);
+      }
+    }
     // Migrate any legacy localStorage entries the user accumulated before
     // server persistence existed. We push them to the server once and then
     // clear the key so subsequent loads use the server copy directly.
@@ -551,17 +589,43 @@ export default function MicroplanWizard() {
       }
     }
     setExcludedVillageIds(next);
+    setExcludedDetails(detailMap);
     setExcludedReady(true);
-  }, [facilityId, hydration?.excludedVillageIds, excludedFromServer, excludedLoaded, legacyExcludedKey]);
+  }, [facilityId, hydration?.excludedVillageIds, hydration?.excludedVillages, excludedFromServer, excludedLoaded, legacyExcludedKey]);
 
-  const persistExcluded = (next: Set<number>) => {
+  // Persist the desired exclusion set with optional per-village reason. The
+  // server preserves the original removedAt/removedByUserId on entries that
+  // were already excluded, so a no-op resave from a different user doesn't
+  // overwrite the audit trail.
+  const persistExcluded = (
+    next: Set<number>,
+    reasonByVillage?: Map<number, string | null>,
+  ) => {
     if (!facilityId) return;
-    const villageIds = Array.from(next);
+    const villageIdList: number[] = [];
+    next.forEach((id) => villageIdList.push(id));
+    const payloadVillages = villageIdList.map((villageId) => ({
+      villageId,
+      reason: reasonByVillage?.get(villageId) ?? null,
+    }));
     void apiRequest("PUT", `/api/facilities/${facilityId}/excluded-villages`, {
-      villageIds,
-    }).catch((e) => {
-      console.warn("Failed to persist excluded villages:", e);
-    });
+      villages: payloadVillages,
+    })
+      .then((data: any) => {
+        if (data && Array.isArray(data.villages)) {
+          const map = new Map<number, ExcludedVillageDetail>();
+          for (const d of data.villages as ExcludedVillageDetail[]) {
+            if (typeof d?.villageId === "number") map.set(d.villageId, d);
+          }
+          setExcludedDetails(map);
+        }
+        queryClient.invalidateQueries({
+          queryKey: ["/api/facilities", facilityId, "excluded-villages"],
+        });
+      })
+      .catch((e) => {
+        console.warn("Failed to persist excluded villages:", e);
+      });
   };
 
   const facilityVillages = useMemo(() => {
@@ -1209,7 +1273,7 @@ export default function MicroplanWizard() {
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
 
-  async function performDeleteCommunity(index: number) {
+  async function performDeleteCommunity(index: number, reason?: string | null) {
     const row = communities[index];
     if (!row) return;
     if (row.id) {
@@ -1229,11 +1293,15 @@ export default function MicroplanWizard() {
     // Remember that the user explicitly removed this facility village so the
     // seed effect doesn't re-add it the next time the microplan is opened.
     if (row.villageId) {
+      const trimmed = typeof reason === "string" ? reason.trim().slice(0, 500) : "";
+      const reasonValue = trimmed.length > 0 ? trimmed : null;
       setExcludedVillageIds((prev) => {
         if (prev.has(row.villageId!)) return prev;
         const next = new Set<number>(prev);
         next.add(row.villageId!);
-        persistExcluded(next);
+        const reasonMap = new Map<number, string | null>();
+        reasonMap.set(row.villageId!, reasonValue);
+        persistExcluded(next, reasonMap);
         return next;
       });
     }
@@ -1296,9 +1364,37 @@ export default function MicroplanWizard() {
     setSupervision(supervision.filter((_, i) => i !== index));
   }
 
+  // Reason capture for removing a facility village from the catchment. We
+  // show this whenever the community row maps to a real `villageId` so the
+  // "Previously removed" panel can later explain *why* the community was
+  // taken out. For unsaved rows the dialog is purely informational; for
+  // saved rows it doubles as the destructive-action confirmation.
+  type PendingCommunityRemoval = {
+    index: number;
+    label: string;
+    hasServerRow: boolean;
+  };
+  const [pendingCommunityRemoval, setPendingCommunityRemoval] =
+    useState<PendingCommunityRemoval | null>(null);
+  const [removalReason, setRemovalReason] = useState("");
+
   function deleteCommunity(index: number) {
     const row = communities[index];
     if (!row) return;
+    // A facility-village row: prompt for an optional reason so the audit
+    // trail can answer "why was this community taken out of the catchment?".
+    if (row.villageId) {
+      setRemovalReason("");
+      setPendingCommunityRemoval({
+        index,
+        label: row.name?.trim() || "this community",
+        hasServerRow: !!row.id,
+      });
+      return;
+    }
+    // Manually-entered communities without a villageId: no audit value in
+    // capturing a reason. Keep the existing confirm-only flow for saved
+    // rows and the immediate delete for unsaved ones.
     if (row.id) {
       setPendingDelete({
         kind: "community",
@@ -1308,6 +1404,18 @@ export default function MicroplanWizard() {
       return;
     }
     void performDeleteCommunity(index);
+  }
+
+  async function confirmCommunityRemoval() {
+    if (!pendingCommunityRemoval) return;
+    setDeleteBusy(true);
+    try {
+      await performDeleteCommunity(pendingCommunityRemoval.index, removalReason);
+      setPendingCommunityRemoval(null);
+      setRemovalReason("");
+    } finally {
+      setDeleteBusy(false);
+    }
   }
 
   function deleteMobilizationRow(index: number) {
@@ -2124,6 +2232,7 @@ export default function MicroplanWizard() {
                   onDelete={deleteCommunity}
                   facility={facility}
                   excludedVillages={excludedFacilityVillages}
+                  excludedDetails={excludedDetails}
                   onRestoreVillage={(v) => {
                     setCommunities([
                       ...communities,
@@ -2282,8 +2391,82 @@ export default function MicroplanWizard() {
         onConfirm={() => void confirmPendingDelete()}
         isPending={deleteBusy}
       />
+      <Dialog
+        open={pendingCommunityRemoval !== null}
+        onOpenChange={(open) => {
+          if (!open && !deleteBusy) {
+            setPendingCommunityRemoval(null);
+            setRemovalReason("");
+          }
+        }}
+      >
+        <DialogContent data-testid="dialog-remove-community">
+          <DialogHeader>
+            <DialogTitle>
+              Remove {pendingCommunityRemoval?.label ?? "this community"} from the catchment?
+            </DialogTitle>
+            <DialogDescription>
+              {pendingCommunityRemoval?.hasServerRow
+                ? "This deletes the saved community row from this microplan and remembers the removal so the seed list won't add it back. You can restore it later from the Previously removed panel."
+                : "We'll remember this removal so the catchment won't re-add it the next time the microplan is opened. You can restore it later from the Previously removed panel."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="removal-reason">Reason (optional)</Label>
+            <Textarea
+              id="removal-reason"
+              value={removalReason}
+              onChange={(e) => setRemovalReason(e.target.value.slice(0, 500))}
+              placeholder="e.g. Now served by another facility, abandoned hamlet, duplicate entry…"
+              maxLength={500}
+              rows={3}
+              data-testid="input-removal-reason"
+            />
+            <p className="text-xs text-muted-foreground">
+              Shown alongside the removal in the Previously removed panel so other staff
+              understand why this community was taken out.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (deleteBusy) return;
+                setPendingCommunityRemoval(null);
+                setRemovalReason("");
+              }}
+              disabled={deleteBusy}
+              data-testid="button-cancel-removal"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant={pendingCommunityRemoval?.hasServerRow ? "destructive" : "default"}
+              onClick={() => void confirmCommunityRemoval()}
+              disabled={deleteBusy}
+              data-testid="button-confirm-removal"
+            >
+              {deleteBusy ? "Removing…" : "Remove from catchment"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
+}
+
+// Formats the timestamp for the "Previously removed" panel. Falls back to the
+// raw value when the timestamp is unparseable so we never silently hide audit
+// data the server actually supplied.
+function formatRemovedAt(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
 }
 
 // ─── Step components ──────────────────────────────────────────────────────
@@ -2363,6 +2546,7 @@ function Step2({
   onDelete,
   facility,
   excludedVillages,
+  excludedDetails,
   onRestoreVillage,
 }: {
   communities: any[];
@@ -2370,6 +2554,7 @@ function Step2({
   onDelete: (index: number) => void | Promise<void>;
   facility: Facility | null;
   excludedVillages: Village[];
+  excludedDetails: Map<number, ExcludedVillageDetail>;
   onRestoreVillage: (v: Village) => void;
 }) {
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
@@ -2506,20 +2691,63 @@ function Step2({
           <div className="mb-2 text-xs font-semibold uppercase text-muted-foreground">
             Previously removed ({excludedVillages.length})
           </div>
-          <div className="flex flex-wrap gap-2">
-            {excludedVillages.map((v) => (
-              <Button
-                key={v.id}
-                size="sm"
-                variant="outline"
-                onClick={() => onRestoreVillage(v)}
-                data-testid={`button-restore-village-${v.id}`}
-              >
-                <Plus className="mr-1 h-3 w-3" />
-                Add back {v.name}
-              </Button>
-            ))}
-          </div>
+          <TooltipProvider delayDuration={200}>
+            <ul className="space-y-2">
+              {excludedVillages.map((v) => {
+                const detail = excludedDetails.get(v.id);
+                const removedAtLabel = formatRemovedAt(detail?.removedAt ?? null);
+                const removedBy = detail?.removedByName?.trim();
+                const meta: string[] = [];
+                if (removedAtLabel) meta.push(`Removed ${removedAtLabel}`);
+                if (removedBy) meta.push(`by ${removedBy}`);
+                const metaLine = meta.join(" ");
+                const reason = detail?.reason?.trim();
+                return (
+                  <li
+                    key={v.id}
+                    className="flex flex-wrap items-center gap-2"
+                    data-testid={`excluded-village-${v.id}`}
+                  >
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => onRestoreVillage(v)}
+                      data-testid={`button-restore-village-${v.id}`}
+                    >
+                      <Plus className="mr-1 h-3 w-3" />
+                      Add back {v.name}
+                    </Button>
+                    {metaLine && (
+                      <span
+                        className="text-xs text-muted-foreground"
+                        data-testid={`excluded-village-meta-${v.id}`}
+                      >
+                        {metaLine}
+                      </span>
+                    )}
+                    {reason && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            type="button"
+                            className="inline-flex items-center text-muted-foreground hover:text-foreground"
+                            aria-label={`Reason: ${reason}`}
+                            data-testid={`excluded-village-reason-${v.id}`}
+                          >
+                            <HelpCircle className="h-4 w-4" />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-xs">
+                          <p className="text-xs font-semibold">Reason</p>
+                          <p className="text-xs">{reason}</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </TooltipProvider>
         </div>
       )}
 

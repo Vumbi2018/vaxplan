@@ -371,6 +371,8 @@ export const facilityExcludedVillages = pgTable("facility_excluded_villages", {
   tenantId: varchar("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
   facilityId: integer("facility_id").notNull().references(() => facilities.id, { onDelete: "cascade" }),
   villageId: integer("village_id").notNull().references(() => villages.id, { onDelete: "cascade" }),
+  removedByUserId: varchar("removed_by_user_id"),
+  reason: text("reason"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
   unique("facility_excluded_villages_pk").on(table.tenantId, table.facilityId, table.villageId),
