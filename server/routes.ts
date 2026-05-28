@@ -16,6 +16,7 @@ import {
   insertVaccineRequirementSchema,
   insertMobilizationActivitySchema,
   insertSupervisionVisitSchema,
+  supervisionVisits,
   insertApprovalRequestSchema,
   insertProvinceSchema,
   insertDistrictSchema,
@@ -296,6 +297,87 @@ async function validatePlanningLeadTimeAndNoConflict(
     console.error("validatePlanningLeadTimeAndNoConflict error:", error);
     return { isValid: false, message: "Server error validating planning dates." };
   }
+}
+
+// Default WHO RED supportive-supervision checklist applied to auto-seeded quarterly
+// visits. Kept in sync with the seed list in client/src/pages/Supervision.tsx so the
+// pre-populated rows look identical to one created by hand. Tenants can evolve this
+// over time on the visit itself; this is only the initial template.
+const DEFAULT_SUPERVISION_CHECKLIST = [
+  { key: "cold_chain_temp", label: "Cold chain log shows in-range temps for last 7 days", response: "" },
+  { key: "vaccines_in_stock", label: "All antigens in stock with ≥1 month buffer", response: "" },
+  { key: "expiry_check", label: "No expired or VVM-3/4 vials in fridge", response: "" },
+  { key: "ad_syringes", label: "AD syringes and safety boxes adequate for sessions", response: "" },
+  { key: "microplan_visible", label: "Microplan / session calendar posted at facility", response: "" },
+  { key: "register_updated", label: "Vaccination register updated, no >5% missing entries", response: "" },
+  { key: "defaulter_tracking", label: "Defaulter list reviewed and action taken this month", response: "" },
+  { key: "outreach_held", label: "Planned outreach sessions held (≥80% of plan)", response: "" },
+  { key: "aefi_kit", label: "AEFI kit complete and staff know reporting flow", response: "" },
+  { key: "waste_disposal", label: "Sharps and biohazard waste disposed per protocol", response: "" },
+  { key: "staff_trained", label: "All vaccinators trained on current schedule", response: "" },
+  { key: "community_engagement", label: "Recent community sensitisation activity logged", response: "" },
+];
+
+// Auto-seed one routine "Quarterly supervisory visit" per facility in scope of the
+// given microplan, for the microplan's year+quarter. Idempotent: if a visit already
+// exists for (tenant, facility, microplan, that quarter) we skip it. Facilities in
+// scope = the microplan's facility (facility-routine) OR all distinct facilityIds on
+// sessionPlans tied to the microplan (SIA / multi-facility plans).
+async function seedQuarterlySupervisionVisits(
+  tenantId: string,
+  microplan: { id: number; facilityId: number | null; year: number; quarter: number },
+  createdByUserId: string | null,
+) {
+  // Resolve facilities in scope.
+  const facilityIds = new Set<number>();
+  if (microplan.facilityId) {
+    facilityIds.add(microplan.facilityId);
+  }
+  const sessionRows = await db
+    .select({ facilityId: sessionPlans.facilityId })
+    .from(sessionPlans)
+    .where(and(eq(sessionPlans.tenantId, tenantId), eq(sessionPlans.microplanId, microplan.id)));
+  for (const row of sessionRows) {
+    if (row.facilityId != null) facilityIds.add(row.facilityId);
+  }
+  if (facilityIds.size === 0) return [];
+
+  // Quarter window: [qStart, qEnd). Seed the visit on the 15th of the middle month
+  // of the quarter so it lands cleanly within the window for Step 10 detection.
+  const qStartMonth = (microplan.quarter - 1) * 3;
+  const qStart = new Date(microplan.year, qStartMonth, 1);
+  const qEnd = new Date(microplan.year, qStartMonth + 3, 1);
+  const scheduledDate = new Date(microplan.year, qStartMonth + 1, 15);
+
+  // Find existing in-quarter visits for these facilities so we don't double-seed.
+  const existing = await db
+    .select({ facilityId: supervisionVisits.facilityId })
+    .from(supervisionVisits)
+    .where(
+      and(
+        eq(supervisionVisits.tenantId, tenantId),
+        inArray(supervisionVisits.facilityId, Array.from(facilityIds)),
+        gte(supervisionVisits.scheduledDate, qStart),
+        lte(supervisionVisits.scheduledDate, qEnd),
+      ),
+    );
+  const alreadyCovered = new Set(existing.map((r) => r.facilityId));
+
+  const created: any[] = [];
+  for (const facilityId of Array.from(facilityIds)) {
+    if (alreadyCovered.has(facilityId)) continue;
+    const v = await storage.createSupervisionVisit(tenantId, {
+      facilityId,
+      microplanId: microplan.id,
+      scheduledDate,
+      visitType: "routine",
+      status: "scheduled",
+      checklist: DEFAULT_SUPERVISION_CHECKLIST as any,
+      createdByUserId: createdByUserId ?? undefined,
+    } as any);
+    created.push(v);
+  }
+  return created;
 }
 
 export async function registerRoutes(
@@ -3470,6 +3552,30 @@ export async function registerRoutes(
       const plan = await storage.updateMicroplan(req.tenantId, planId, req.body);
       if (!plan) return res.status(404).json({ message: "Master microplan not found" });
       await logAudit(req, "update", "microplan", planId, oldPlan, plan);
+
+      // Auto-seed quarterly supervisory visits when a microplan transitions into "approved".
+      // Step 10 of the guided workflow goes green only when every facility with sessions has
+      // a supervisory visit scheduled for the current quarter, so pre-populate one per
+      // facility in scope (status=scheduled, visitType=routine, default checklist) and let
+      // supervisors just go conduct it.
+      if (plan.status === "approved" && oldPlan.status !== "approved") {
+        try {
+          const seeded = await seedQuarterlySupervisionVisits(req.tenantId, plan, req.user?.claims?.sub ?? null);
+          if (seeded.length > 0) {
+            await logAudit(req, "auto_seed_supervision_visits", "microplan", planId, null, {
+              microplanId: planId,
+              year: plan.year,
+              quarter: plan.quarter,
+              visitIds: seeded.map((v) => v.id),
+              facilityIds: seeded.map((v) => v.facilityId),
+            });
+          }
+        } catch (seedErr) {
+          // Don't fail the approval if seeding hits an issue — just log it.
+          console.error("Failed to auto-seed supervision visits for microplan", planId, seedErr);
+        }
+      }
+
       res.json(plan);
     } catch (error) {
       console.error("Error updating master microplan:", error);
