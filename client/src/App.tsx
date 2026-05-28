@@ -1,4 +1,4 @@
-import { Switch, Route, useParams } from "wouter";
+import { Switch, Route, useParams, Redirect } from "wouter";
 import { useEffect, lazy, Suspense } from "react";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -28,9 +28,10 @@ const Facilities = lazy(() => import("@/pages/Facilities"));
 const Population = lazy(() => import("@/pages/Population"));
 const SessionPlanning = lazy(() => import("@/pages/SessionPlanning"));
 const HardToReach = lazy(() => import("@/pages/HardToReach"));
-const BudgetPlanning = lazy(() => import("@/pages/BudgetPlanning"));
-const VaccineCalculator = lazy(() => import("@/pages/VaccineCalculator"));
-const SocialMobilization = lazy(() => import("@/pages/SocialMobilization"));
+// BudgetPlanning / VaccineCalculator / SocialMobilization are no longer
+// mounted as standalone pages — those concerns are now Steps 9 / 6 / 7 of the
+// Microplan Wizard. The /budget, /vaccines, /mobilization routes redirect to
+// the wizard (see <PreserveQueryRedirect> below).
 const Approvals = lazy(() => import("@/pages/Approvals"));
 const Supervision = lazy(() => import("@/pages/Supervision"));
 const Settings = lazy(() => import("@/pages/Settings"));
@@ -58,6 +59,15 @@ const ReconcileUnmappedVaccines = lazy(() => import("@/pages/ReconcileUnmappedVa
 // Task #50 — Small wrapper that reads :id from the route and passes it to
 // SessionPlanning as `lockedMicroplanId`, so the unserved-prefill auto-open
 // flow has a real routed home.
+// Small wrapper around wouter <Redirect> that carries the current URL's query
+// string along to the destination. This matters because some legacy in-app
+// links (e.g. MicroplanStepper) pass `?facility=…&microplan=…` and the
+// destination route (the wizard) reads those params to keep context.
+function PreserveQueryRedirect({ to }: { to: string }) {
+  const search = typeof window !== "undefined" ? window.location.search : "";
+  return <Redirect to={`${to}${search}`} />;
+}
+
 function SessionPlanningDetailRoute({ planTypeFilter }: { planTypeFilter: "routine" | "campaign" }) {
   const params = useParams<{ id: string }>();
   const id = params?.id ? Number(params.id) : NaN;
@@ -104,7 +114,7 @@ function AuthenticatedRouter() {
       <Route path="/settlement-intelligence" component={SettlementIntelligence} />
       <Route path="/facilities" component={Facilities} />
       <Route path="/develop-microplan">
-        <MicroplanBuilder />
+        <PreserveQueryRedirect to="/microplans/routine" />
       </Route>
       <Route path="/population" component={Population} />
       {/* Task #51: routine + campaign routes now mount the unified Microplan
@@ -149,14 +159,17 @@ function AuthenticatedRouter() {
       <Route path="/htr">
         {modules.htr !== false ? <HardToReach /> : <NotFound />}
       </Route>
+      {/* Budget / Vaccine Calculator / Social Mobilization are now steps inside
+          the Microplan wizard (Steps 9, 6, 7). The standalone routes redirect
+          to the wizard so bookmarks keep working. */}
       <Route path="/budget">
-        {modules.budget !== false ? <BudgetPlanning /> : <NotFound />}
+        <PreserveQueryRedirect to="/microplans/routine" />
       </Route>
       <Route path="/vaccines">
-        {modules.calculator !== false ? <VaccineCalculator /> : <NotFound />}
+        <PreserveQueryRedirect to="/microplans/routine" />
       </Route>
       <Route path="/mobilization">
-        {modules.mobilization !== false ? <SocialMobilization /> : <NotFound />}
+        <PreserveQueryRedirect to="/microplans/routine" />
       </Route>
       <Route path="/approvals" component={Approvals} />
       <Route path="/supervision" component={Supervision} />

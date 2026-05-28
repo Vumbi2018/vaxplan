@@ -19,8 +19,10 @@ import {
   Plus,
   Trash2,
   Download,
+  Upload,
   Activity,
   Clock,
+  Loader2,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { 
@@ -44,6 +46,262 @@ function csvEscape(v: any): string {
   const s = String(v);
   if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
   return s;
+}
+
+// ---------------------------------------------------------------------------
+// CSV bulk import helpers
+// ---------------------------------------------------------------------------
+// parseCsv: RFC-4180-ish parser that handles quoted fields, escaped quotes,
+// and embedded newlines/commas. We avoid bringing in a CSV library because
+// the user list import is the only place that needs it.
+function parseCsv(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = "";
+  let inQuotes = false;
+  let i = 0;
+  // Strip BOM if present.
+  if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
+  while (i < text.length) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (text[i + 1] === '"') { field += '"'; i += 2; continue; }
+        inQuotes = false; i++; continue;
+      }
+      field += c; i++; continue;
+    }
+    if (c === '"') { inQuotes = true; i++; continue; }
+    if (c === ",") { row.push(field); field = ""; i++; continue; }
+    if (c === "\r") { i++; continue; }
+    if (c === "\n") { row.push(field); rows.push(row); row = []; field = ""; i++; continue; }
+    field += c; i++;
+  }
+  // Flush trailing field/row if file didn't end with a newline.
+  if (field.length > 0 || row.length > 0) { row.push(field); rows.push(row); }
+  return rows.filter((r) => r.some((c) => c.trim().length > 0));
+}
+
+type ImportRowStatus = "pending" | "ok" | "error";
+type ImportRow = {
+  rowIndex: number;
+  email: string;
+  firstName: string;
+  lastName: string;
+  role: string;
+  provinceName: string;
+  districtName: string;
+  facilityName: string;
+  // Resolved during validation.
+  provinceId: number | null;
+  districtId: number | null;
+  facilityId: number | null;
+  // Workflow state.
+  status: ImportRowStatus;
+  message: string;
+};
+
+const KNOWN_ROLES = new Set([
+  "facility_clerk",
+  "facility_in_charge",
+  "district_manager",
+  "provincial_coordinator",
+  "national_admin",
+  "gis_specialist",
+]);
+
+// Build an ImportRow list from parsed CSV. The first row is treated as the
+// header. We accept several common header spellings so admins can re-upload
+// an exported file as-is.
+//
+// Resolution model (matters when the same name appears in multiple parents):
+//   - Province name → unique global lookup; ambiguity flagged.
+//   - District name → if a Province column resolved, scope to that province;
+//     otherwise unique global lookup; ambiguity flagged.
+//   - Facility name → if District resolved, scope to that district; else if
+//     Province resolved, scope to that province; else global unique; ambiguity
+//     flagged. This prevents silently mapping "Central HC" in two districts
+//     to the wrong facility.
+function buildImportRows(
+  parsed: string[][],
+  provinces: any[],
+  districts: any[],
+  facilities: any[],
+  allowedRoles: Set<string>,
+): { rows: ImportRow[]; headerError: string | null } {
+  if (parsed.length < 2) {
+    return { rows: [], headerError: "CSV is empty — needs at least a header row and one data row." };
+  }
+  const header = parsed[0].map((h) => h.trim().toLowerCase());
+  const col = (names: string[]) => {
+    for (const n of names) {
+      const idx = header.indexOf(n.toLowerCase());
+      if (idx >= 0) return idx;
+    }
+    return -1;
+  };
+  const cEmail = col(["email", "email address"]);
+  const cFirst = col(["first name", "firstname", "first"]);
+  const cLast = col(["last name", "lastname", "last", "surname"]);
+  const cRole = col(["role", "roles"]);
+  const cProv = col(["province"]);
+  const cDist = col(["district"]);
+  const cFac = col(["facility", "facility name"]);
+  if (cEmail < 0) {
+    return { rows: [], headerError: "Missing required column: Email. Use the Export CSV file as a template." };
+  }
+
+  const normName = (s: string) => s.trim().toLowerCase();
+
+  // Build resolver helpers. Each returns either a single id, null (not found),
+  // or the literal "ambiguous" so callers can produce a precise error.
+  // Note: lucide's `Map` icon is imported in this file, so we deliberately
+  // avoid `new Map()` and use plain Records keyed by name (or "parentId::name").
+  type Resolved = number | null | "ambiguous";
+
+  const provBuckets: Record<string, number[]> = {};
+  (provinces || []).forEach((p: any) => {
+    const k = normName(p.name || "");
+    if (!k) return;
+    (provBuckets[k] ||= []).push(p.id);
+  });
+  const resolveProvince = (name: string): Resolved => {
+    const ids = provBuckets[normName(name)];
+    if (!ids || ids.length === 0) return null;
+    if (ids.length > 1) return "ambiguous";
+    return ids[0];
+  };
+
+  // Districts indexed both by global name and by (provinceId, name).
+  const distGlobal: Record<string, number[]> = {};
+  const distByProv: Record<string, number> = {};
+  (districts || []).forEach((d: any) => {
+    const k = normName(d.name || "");
+    if (!k) return;
+    (distGlobal[k] ||= []).push(d.id);
+    if (d.provinceId != null) distByProv[`${d.provinceId}::${k}`] = d.id;
+  });
+  const resolveDistrict = (name: string, provinceId: number | null): Resolved => {
+    const k = normName(name);
+    if (provinceId != null) {
+      const scoped = distByProv[`${provinceId}::${k}`];
+      return scoped ?? null;
+    }
+    const ids = distGlobal[k];
+    if (!ids || ids.length === 0) return null;
+    if (ids.length > 1) return "ambiguous";
+    return ids[0];
+  };
+
+  // Facilities indexed by global, by (districtId,name), and by (provinceId,name).
+  const facGlobal: Record<string, number[]> = {};
+  const facByDist: Record<string, number[]> = {};
+  const facByProv: Record<string, number[]> = {};
+  (facilities || []).forEach((f: any) => {
+    const k = normName(f.name || "");
+    if (!k) return;
+    (facGlobal[k] ||= []).push(f.id);
+    if (f.districtId != null) (facByDist[`${f.districtId}::${k}`] ||= []).push(f.id);
+    if (f.provinceId != null) (facByProv[`${f.provinceId}::${k}`] ||= []).push(f.id);
+  });
+  const resolveFacility = (
+    name: string,
+    districtId: number | null,
+    provinceId: number | null,
+  ): Resolved => {
+    const k = normName(name);
+    if (districtId != null) {
+      const ids = facByDist[`${districtId}::${k}`];
+      if (!ids || ids.length === 0) return null;
+      if (ids.length > 1) return "ambiguous";
+      return ids[0];
+    }
+    if (provinceId != null) {
+      const ids = facByProv[`${provinceId}::${k}`];
+      if (!ids || ids.length === 0) return null;
+      if (ids.length > 1) return "ambiguous";
+      return ids[0];
+    }
+    const ids = facGlobal[k];
+    if (!ids || ids.length === 0) return null;
+    if (ids.length > 1) return "ambiguous";
+    return ids[0];
+  };
+
+  const rows: ImportRow[] = [];
+  for (let i = 1; i < parsed.length; i++) {
+    const r = parsed[i];
+    const email = (r[cEmail] ?? "").trim();
+    if (!email) continue; // skip blank lines silently
+    const firstName = cFirst >= 0 ? (r[cFirst] ?? "").trim() : "";
+    const lastName = cLast >= 0 ? (r[cLast] ?? "").trim() : "";
+    const roleRaw = cRole >= 0 ? (r[cRole] ?? "").trim() : "facility_clerk";
+    // Roles column may be pipe-separated ("facility_clerk|gis_specialist") —
+    // we take the first role for now; multi-role import is a follow-up.
+    const role = (roleRaw.split("|")[0] || "facility_clerk").trim();
+    const provinceName = cProv >= 0 ? (r[cProv] ?? "").trim() : "";
+    const districtName = cDist >= 0 ? (r[cDist] ?? "").trim() : "";
+    const facilityName = cFac >= 0 ? (r[cFac] ?? "").trim() : "";
+
+    let status: ImportRowStatus = "pending";
+    const issues: string[] = [];
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) issues.push("invalid email");
+    if (role && !allowedRoles.has(role)) issues.push(`unknown role "${role}"`);
+
+    // Resolve hierarchically; surface "not found" / "ambiguous" distinctly.
+    let provinceId: number | null = null;
+    if (provinceName) {
+      const res = resolveProvince(provinceName);
+      if (res === "ambiguous") issues.push(`province "${provinceName}" matches multiple records`);
+      else if (res == null) issues.push(`province "${provinceName}" not found`);
+      else provinceId = res;
+    }
+    let districtId: number | null = null;
+    if (districtName) {
+      const res = resolveDistrict(districtName, provinceId);
+      if (res === "ambiguous") issues.push(`district "${districtName}" matches multiple records — add a Province column to disambiguate`);
+      else if (res == null) issues.push(`district "${districtName}" not found${provinceId != null ? " in given province" : ""}`);
+      else districtId = res;
+    }
+    let facilityId: number | null = null;
+    if (facilityName) {
+      const res = resolveFacility(facilityName, districtId, provinceId);
+      if (res === "ambiguous") issues.push(`facility "${facilityName}" matches multiple records — add District (and Province) to disambiguate`);
+      else if (res == null) issues.push(`facility "${facilityName}" not found${districtId != null ? " in given district" : ""}`);
+      else facilityId = res;
+    }
+
+    if (issues.length > 0) status = "error";
+    rows.push({
+      rowIndex: i + 1,
+      email,
+      firstName,
+      lastName,
+      role,
+      provinceName,
+      districtName,
+      facilityName,
+      provinceId,
+      districtId,
+      facilityId,
+      status,
+      message: issues.join("; "),
+    });
+  }
+  return { rows, headerError: null };
+}
+
+function downloadImportTemplate() {
+  const header = ["Email", "First Name", "Last Name", "Role", "Province", "District", "Facility"];
+  const sample = ["jane.doe@example.com", "Jane", "Doe", "facility_clerk", "", "", ""];
+  const csv = [header, sample].map((r) => r.map(csvEscape).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "vaxplan-users-template.csv";
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
 }
 
 function exportUsersCsv(users: any[], provinces: any[], districts: any[], facilities: any[]) {
@@ -302,6 +560,16 @@ export default function UserManagement() {
   const [addDistrictId, setAddDistrictId] = useState<number | null>(null);
   const [addFacilityId, setAddFacilityId] = useState<number | null>(null);
 
+  // ---- CSV bulk import state ---------------------------------------------
+  // Open the import dialog with `isImporting`. The dialog has two phases:
+  //   1) file picker → parse CSV → show preview table
+  //   2) commit → POST one user at a time, updating row.status as we go
+  const [isImporting, setIsImporting] = useState(false);
+  const [importRows, setImportRows] = useState<ImportRow[]>([]);
+  const [importHeaderError, setImportHeaderError] = useState<string | null>(null);
+  const [importFileName, setImportFileName] = useState<string>("");
+  const [importInFlight, setImportInFlight] = useState(false);
+
   // Custom Roles CRUD Dialog States
   const [isAddingRole, setIsAddingRole] = useState(false);
   const [newRoleCode, setNewRoleCode] = useState("");
@@ -403,6 +671,113 @@ export default function UserManagement() {
   });
 
   // Mutations
+  // ---- CSV bulk import handlers ------------------------------------------
+  // onImportFileChosen: reads the selected file, parses it, runs validation
+  // against the loaded province/district/facility lists, and populates the
+  // preview table. Validation errors are surfaced per-row; the admin can
+  // still commit, but error rows are skipped.
+  async function onImportFileChosen(file: File) {
+    setImportFileName(file.name);
+    setImportHeaderError(null);
+    setImportRows([]);
+    try {
+      const text = await file.text();
+      const parsed = parseCsv(text);
+      // Allowed roles = built-ins (KNOWN_ROLES) ∪ any tenant-defined custom
+      // roles loaded from /api/user-roles. Without this merge, importing a
+      // legitimate custom role code would be flagged as "unknown role".
+      const allowedRoles = new Set<string>(KNOWN_ROLES);
+      for (const r of ((dbRoles || []) as any[])) {
+        if (r?.code) allowedRoles.add(String(r.code));
+      }
+      const { rows, headerError } = buildImportRows(
+        parsed,
+        (provinces || []) as any[],
+        (districts || []) as any[],
+        (facilities || []) as any[],
+        allowedRoles,
+      );
+      if (headerError) {
+        setImportHeaderError(headerError);
+        return;
+      }
+      // Pre-flight: flag rows whose email is already on file. The server
+      // would reject them anyway, but catching it now keeps the preview
+      // honest and avoids a spurious red row at commit time.
+      const existingEmails = new Set(
+        ((usersList || []) as any[])
+          .map((u) => (u.email || "").toLowerCase())
+          .filter(Boolean),
+      );
+      for (const r of rows) {
+        if (r.status === "pending" && existingEmails.has(r.email.toLowerCase())) {
+          r.status = "error";
+          r.message = "email already exists";
+        }
+      }
+      setImportRows(rows);
+    } catch (err: any) {
+      setImportHeaderError(`Could not read file: ${err?.message || String(err)}`);
+    }
+  }
+
+  // commitImport: POST each pending row sequentially to /api/users. We do
+  // them one at a time (not Promise.all) so the audit log stays ordered and
+  // so a flaky network doesn't fire off N parallel duplicates.
+  async function commitImport() {
+    if (importInFlight) return;
+    setImportInFlight(true);
+    const next = [...importRows];
+    let okCount = 0;
+    let errCount = 0;
+    for (let i = 0; i < next.length; i++) {
+      const r = next[i];
+      if (r.status !== "pending") continue;
+      try {
+        const res = await fetch("/api/users", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: r.email,
+            firstName: r.firstName || null,
+            lastName: r.lastName || null,
+            roles: [r.role || "facility_clerk"],
+            isActive: true,
+            provinceId: r.provinceId,
+            districtId: r.districtId,
+            facilityId: r.facilityId,
+            dataAccessScope: {
+              provinces: r.provinceId ? [r.provinceId] : [],
+              districts: r.districtId ? [r.districtId] : [],
+              facilities: r.facilityId ? [r.facilityId] : [],
+            },
+          }),
+        });
+        if (!res.ok) {
+          const msg = (await res.text()) || `HTTP ${res.status}`;
+          next[i] = { ...r, status: "error", message: msg };
+          errCount++;
+        } else {
+          next[i] = { ...r, status: "ok", message: "created" };
+          okCount++;
+        }
+        // Update the preview after each row so the admin sees progress.
+        setImportRows([...next]);
+      } catch (err: any) {
+        next[i] = { ...r, status: "error", message: err?.message || String(err) };
+        errCount++;
+        setImportRows([...next]);
+      }
+    }
+    setImportInFlight(false);
+    queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+    toast({
+      title: "Import complete",
+      description: `${okCount} created, ${errCount} skipped/failed`,
+      variant: errCount > 0 ? "destructive" : "default",
+    });
+  }
+
   const createUserMutation = useMutation({
     mutationFn: async (data: any) => {
       const res = await fetch("/api/users", {
@@ -682,6 +1057,21 @@ export default function UserManagement() {
                   className="pl-10 bg-background border-border text-foreground placeholder:text-muted-foreground focus:border-indigo-500 rounded-xl"
                 />
               </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setImportRows([]);
+                  setImportHeaderError(null);
+                  setImportFileName("");
+                  setIsImporting(true);
+                }}
+                className="rounded-xl gap-1.5"
+                data-testid="btn-import-csv"
+              >
+                <Upload className="h-4 w-4" /> Import CSV
+              </Button>
               <Button
                 type="button"
                 variant="outline"
@@ -1373,6 +1763,157 @@ export default function UserManagement() {
           </DialogContent>
         </Dialog>
       )}
+
+      {/* CSV bulk import dialog */}
+      <Dialog open={isImporting} onOpenChange={(o) => { if (!importInFlight) setIsImporting(o); }}>
+        <DialogContent className="max-w-3xl bg-card border border-border text-foreground rounded-3xl shadow-2xl p-6">
+          <DialogHeader>
+            <DialogTitle className="text-2xl font-extrabold flex items-center gap-2">
+              <Upload className="h-5 w-5" /> Bulk import users
+            </DialogTitle>
+            <DialogDescription>
+              Upload a CSV file to create multiple users at once. Required column: Email.
+              Optional columns: First Name, Last Name, Role, Province, District, Facility.
+              Province / district / facility names are matched case-insensitively against your boundaries.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center gap-3">
+              <input
+                id="users-import-file"
+                type="file"
+                accept=".csv,text/csv"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) onImportFileChosen(f);
+                  e.target.value = "";
+                }}
+                data-testid="input-import-file"
+              />
+              <Button
+                type="button"
+                variant="default"
+                onClick={() => document.getElementById("users-import-file")?.click()}
+                disabled={importInFlight}
+                className="rounded-xl gap-1.5"
+                data-testid="btn-choose-import-file"
+              >
+                <Upload className="h-4 w-4" /> Choose CSV file
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={downloadImportTemplate}
+                disabled={importInFlight}
+                className="rounded-xl gap-1.5"
+                data-testid="btn-download-template"
+              >
+                <Download className="h-4 w-4" /> Download template
+              </Button>
+              {importFileName && (
+                <span className="text-sm text-muted-foreground truncate max-w-[16rem]">
+                  {importFileName}
+                </span>
+              )}
+            </div>
+
+            {importHeaderError && (
+              <div className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+                {importHeaderError}
+              </div>
+            )}
+
+            {importRows.length > 0 && (
+              <>
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  <Badge variant="secondary">{importRows.length} rows parsed</Badge>
+                  <Badge variant="outline" className="border-emerald-500 text-emerald-700 dark:text-emerald-400">
+                    {importRows.filter((r) => r.status === "pending" || r.status === "ok").length} valid
+                  </Badge>
+                  <Badge variant="outline" className="border-destructive text-destructive">
+                    {importRows.filter((r) => r.status === "error").length} skipped
+                  </Badge>
+                </div>
+                <div className="max-h-80 overflow-auto rounded-md border border-border">
+                  <table className="w-full text-xs">
+                    <thead className="sticky top-0 bg-muted/50">
+                      <tr className="text-left">
+                        <th className="px-2 py-1.5 w-10">#</th>
+                        <th className="px-2 py-1.5">Email</th>
+                        <th className="px-2 py-1.5">Name</th>
+                        <th className="px-2 py-1.5">Role</th>
+                        <th className="px-2 py-1.5">Scope</th>
+                        <th className="px-2 py-1.5">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {importRows.map((r) => (
+                        <tr key={r.rowIndex} className="border-t border-border">
+                          <td className="px-2 py-1.5 text-muted-foreground">{r.rowIndex}</td>
+                          <td className="px-2 py-1.5">{r.email}</td>
+                          <td className="px-2 py-1.5">{[r.firstName, r.lastName].filter(Boolean).join(" ") || "—"}</td>
+                          <td className="px-2 py-1.5">{r.role || "facility_clerk"}</td>
+                          <td className="px-2 py-1.5 text-muted-foreground">
+                            {[r.provinceName, r.districtName, r.facilityName].filter(Boolean).join(" › ") || "—"}
+                          </td>
+                          <td className="px-2 py-1.5">
+                            {r.status === "ok" && (
+                              <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
+                                <Check className="h-3 w-3" /> {r.message}
+                              </span>
+                            )}
+                            {r.status === "error" && (
+                              <span className="inline-flex items-center gap-1 text-destructive" title={r.message}>
+                                <X className="h-3 w-3" /> {r.message}
+                              </span>
+                            )}
+                            {r.status === "pending" && (
+                              <span className="text-muted-foreground">ready</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsImporting(false)}
+              disabled={importInFlight}
+              data-testid="btn-cancel-import"
+            >
+              Close
+            </Button>
+            <Button
+              onClick={commitImport}
+              disabled={
+                importInFlight ||
+                importRows.filter((r) => r.status === "pending").length === 0
+              }
+              data-testid="btn-commit-import"
+              className="gap-1.5"
+            >
+              {importInFlight ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" /> Importing…
+                </>
+              ) : (
+                <>
+                  <Check className="h-4 w-4" />
+                  Create {importRows.filter((r) => r.status === "pending").length} user(s)
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Adding Dialog Modal */}
       <Dialog open={isAdding} onOpenChange={setIsAdding}>

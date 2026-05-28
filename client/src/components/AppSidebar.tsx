@@ -60,15 +60,16 @@ const mainNavItems = [
   { title: "Missed Communities", path: "/missed-communities", icon: Target },
 ];
 
+// Planning sidebar — slimmed down. Budget / Vaccine Calculator / Social
+// Mobilization used to be standalone pages but are now Steps 9, 6, and 7 of
+// the Microplan Wizard, so their sidebar entries were removed (the routes
+// now redirect to the wizard). "Microplan Builder" was a duplicate entry
+// point into the same wizard that Routine + SIA already cover.
 const planningNavItems = [
   { title: "Routine Microplan", path: "/microplans/routine", icon: Calendar },
   { title: "SIA Campaigns", path: "/microplans/campaigns", icon: Sparkles },
-  { title: "Microplan Builder", path: "/develop-microplan", icon: ClipboardList },
   { title: "Stock Ledger", path: "/stock", icon: Package },
   { title: "Hard-to-Reach", path: "/htr", icon: AlertTriangle },
-  { title: "Budget Planning", path: "/budget", icon: Wallet },
-  { title: "Vaccine Calculator", path: "/vaccines", icon: Syringe },
-  { title: "Social Mobilization", path: "/mobilization", icon: Megaphone },
   { title: "HIS Integrations", path: "/his-integrations", icon: Share2, adminOnly: true },
 ];
 
@@ -77,7 +78,7 @@ const workflowNavItems = [
 ];
 
 const adminNavItems = [
-  { title: "User Control", path: "/admin/users", icon: Users },
+  { title: "User Management", path: "/admin/users", icon: Users },
   { title: "Access Requests", path: "/admin/signups", icon: UserPlus },
   { title: "Country Onboarding", path: "/admin/countries", icon: Globe },
   { title: "Boundary Manager", path: "/admin/boundaries", icon: Map },
@@ -205,19 +206,20 @@ export function AppSidebar({ user }: AppSidebarProps) {
           </SidebarGroup>
         )}
 
-        {/* Admin Navigation Sidebar Group (Commented out to preserve working code - now unified under Settings tabs): */}
-        {/*
         {canAccessAdmin && (
           <SidebarGroup>
-            <SidebarGroupLabel>Admin</SidebarGroupLabel>
+            <SidebarGroupLabel>Administration</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
                 {adminNavItems
                   .filter((item) => {
-                    if (item.path !== "/admin/users" && !isNationalAdmin) {
-                      return false;
+                    // User Management + Access Requests are visible to any admin
+                    // (national_admin or provincial_coordinator). The deeper
+                    // tenant/boundary configuration tools stay national-only.
+                    if (item.path === "/admin/users" || item.path === "/admin/signups") {
+                      return true;
                     }
-                    return true;
+                    return isNationalAdmin;
                   })
                   .map((item) => (
                   <SidebarMenuItem key={item.path}>
@@ -233,7 +235,6 @@ export function AppSidebar({ user }: AppSidebarProps) {
             </SidebarGroupContent>
           </SidebarGroup>
         )}
-        */}
 
         <SidebarGroup>
           <SidebarGroupLabel>System</SidebarGroupLabel>
