@@ -48,7 +48,6 @@ const SessionDayPlans = lazy(() => import("@/pages/SessionDayPlans"));
 const SessionHistory = lazy(() => import("@/pages/SessionHistory"));
 const HisIntegrations = lazy(() => import("@/pages/HisIntegrations"));
 const MissedCommunities = lazy(() => import("@/pages/MissedCommunities"));
-const MicroplanBuilder = lazy(() => import("@/pages/MicroplanBuilder"));
 const MicroplanWizard = lazy(() => import("@/pages/MicroplanWizard"));
 const SettlementIntelligence = lazy(() => import("@/pages/SettlementIntelligence"));
 const StandardsAlignment = lazy(() => import("@/pages/StandardsAlignment"));
@@ -108,8 +107,12 @@ function AuthenticatedRouter() {
     <Suspense fallback={<RouteFallback />}>
     <Switch>
       <Route path="/" component={Dashboard} />
-      <Route path="/flow" component={MicroplanWizard} />
-      <Route path="/microplan/new" component={MicroplanWizard} />
+      <Route path="/flow">
+        <MicroplanWizard />
+      </Route>
+      <Route path="/microplan/new">
+        <MicroplanWizard />
+      </Route>
       <Route path="/map" component={MapPage} />
       <Route path="/settlement-intelligence" component={SettlementIntelligence} />
       <Route path="/facilities" component={Facilities} />
@@ -121,17 +124,20 @@ function AuthenticatedRouter() {
           Builder wizard with planType pre-selected. The old SessionPlanning
           page stays available via /sessions for users who prefer the legacy
           standalone workspace. */}
+      {/* Routine + SIA entries both render the Microplan Flow wizard. The
+          prePlanType prop locks the type chooser in Step 1 and switches
+          the header badge / default name accordingly. */}
       <Route path="/microplans/routine">
-        <MicroplanBuilder prePlanType="routine" />
+        <MicroplanWizard prePlanType="routine" />
       </Route>
       <Route path="/microplans/routine/:id">
-        <MicroplanBuilder prePlanType="routine" />
+        <MicroplanWizard prePlanType="routine" />
       </Route>
       <Route path="/microplans/campaigns">
-        <MicroplanBuilder prePlanType="campaign" />
+        <MicroplanWizard prePlanType="campaign" />
       </Route>
       <Route path="/microplans/campaigns/:id">
-        <MicroplanBuilder prePlanType="campaign" />
+        <MicroplanWizard prePlanType="campaign" />
       </Route>
       {/* Back-compat: /sessions now redirects to the routine microplan workspace. */}
       <Route path="/sessions">

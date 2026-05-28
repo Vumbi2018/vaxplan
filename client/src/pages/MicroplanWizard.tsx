@@ -44,6 +44,8 @@ import {
   Map as MapIcon,
   Maximize2,
   HelpCircle,
+  Sparkles,
+  Calendar,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
@@ -314,7 +316,16 @@ type ExcludedVillageDetail = {
 };
 
 // ─── Page ─────────────────────────────────────────────────────────────────
-export default function MicroplanWizard() {
+// Props:
+//   prePlanType: when the route already declares the intent (e.g.
+//   /microplans/routine vs /microplans/campaigns) the plan-type chooser is
+//   locked to that value and a badge is shown in the header. /flow leaves
+//   it undefined → the chooser defaults to "routine" but stays editable.
+type MicroplanWizardProps = {
+  prePlanType?: "routine" | "campaign";
+};
+
+export default function MicroplanWizard({ prePlanType }: MicroplanWizardProps = {}) {
   const { user } = useAuth();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
@@ -322,6 +333,25 @@ export default function MicroplanWizard() {
   const [active, setActive] = useState(1);
   const [returnToSummary, setReturnToSummary] = useState(false);
   const [microplanId, setMicroplanId] = useState<number | null>(null);
+
+  // ─── Plan type (routine vs SIA campaign) ──────────────────────────────
+  // The wizard is the same template for both flows; only the planType and
+  // a handful of SIA-only fields differ. When the route pre-selects a type
+  // (Routine Microplan / SIA Campaigns sidebar entries) we lock the chooser.
+  const [planType, setPlanType] = useState<"routine" | "campaign">(prePlanType ?? "routine");
+  const planTypeLocked = !!prePlanType;
+  useEffect(() => {
+    if (prePlanType) setPlanType(prePlanType);
+  }, [prePlanType]);
+
+  // SIA-only metadata. Stored on the microplan record so per-session data
+  // (forecasting, supervision plan, etc.) inherits the campaign context.
+  // Defaults match the polio SIA pattern most ministries run; they're free
+  // text so unusual campaigns (measles follow-up, HPV catch-up, etc.) work
+  // without code changes.
+  const [campaignAntigen, setCampaignAntigen] = useState("Polio");
+  const [campaignTargetAge, setCampaignTargetAge] = useState("0-59 months");
+  const [campaignScope, setCampaignScope] = useState<"National" | "Sub-national" | "Targeted">("National");
 
   // Task #101 — when the user lands here from a village pin that had no
   // routine microplan, the map passes the facility to prefill plus the
@@ -658,13 +688,23 @@ export default function MicroplanWizard() {
     if (ensureInFlight.current) return ensureInFlight.current;
     if (!facilityId) throw new Error("Pick a facility first.");
     const p = (async () => {
+      const isCampaign = planType === "campaign";
       const created = await apiRequest<Microplan>("POST", "/api/microplans", {
         facilityId,
-        name: name.trim() || `Microplan Q${quarter} ${year}`,
-        planType: "facility_routine",
+        name:
+          name.trim() ||
+          `${isCampaign ? "SIA" : "Routine"} microplan Q${quarter} ${year}`,
+        planType: isCampaign ? "sia_campaign" : "facility_routine",
         year,
         quarter,
         status: "draft",
+        ...(isCampaign
+          ? {
+              campaignAntigen,
+              campaignTargetAge,
+              campaignScope,
+            }
+          : {}),
       });
       setMicroplanId(created.id);
       queryClient.invalidateQueries({ queryKey: ["/api/microplans"] });
@@ -2073,9 +2113,27 @@ export default function MicroplanWizard() {
       <div className="sticky top-0 z-10 border-b bg-background/95 px-4 py-3 backdrop-blur">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="min-w-0">
-            <p className="text-xs text-muted-foreground">Microplan</p>
+            <div className="flex items-center gap-2">
+              <p className="text-xs text-muted-foreground">Microplan</p>
+              <Badge
+                variant={planType === "campaign" ? "default" : "secondary"}
+                className="gap-1"
+                data-testid="badge-plan-type"
+              >
+                {planType === "campaign" ? (
+                  <>
+                    <Sparkles className="h-3 w-3" /> SIA Campaign
+                  </>
+                ) : (
+                  <>
+                    <Calendar className="h-3 w-3" /> Routine
+                  </>
+                )}
+              </Badge>
+            </div>
             <h1 className="truncate text-lg font-semibold" data-testid="wizard-title">
-              {name || `Microplan Q${quarter} ${year}`}
+              {name ||
+                `${planType === "campaign" ? "SIA" : "Routine"} microplan Q${quarter} ${year}`}
             </h1>
             <p className="text-xs text-muted-foreground">{facilityLabel}</p>
           </div>
@@ -2229,6 +2287,15 @@ export default function MicroplanWizard() {
                 <Step1
                   coverage={coverage}
                   setCoverage={setCoverage}
+                  planType={planType}
+                  setPlanType={setPlanType}
+                  planTypeLocked={planTypeLocked}
+                  campaignAntigen={campaignAntigen}
+                  setCampaignAntigen={setCampaignAntigen}
+                  campaignTargetAge={campaignTargetAge}
+                  setCampaignTargetAge={setCampaignTargetAge}
+                  campaignScope={campaignScope}
+                  setCampaignScope={setCampaignScope}
                 />
               )}
               {active === 2 && (
@@ -2508,9 +2575,27 @@ function NumberField({
 function Step1({
   coverage,
   setCoverage,
+  planType,
+  setPlanType,
+  planTypeLocked,
+  campaignAntigen,
+  setCampaignAntigen,
+  campaignTargetAge,
+  setCampaignTargetAge,
+  campaignScope,
+  setCampaignScope,
 }: {
   coverage: any;
   setCoverage: (v: any) => void;
+  planType: "routine" | "campaign";
+  setPlanType: (v: "routine" | "campaign") => void;
+  planTypeLocked: boolean;
+  campaignAntigen: string;
+  setCampaignAntigen: (v: string) => void;
+  campaignTargetAge: string;
+  setCampaignTargetAge: (v: string) => void;
+  campaignScope: "National" | "Sub-national" | "Targeted";
+  setCampaignScope: (v: "National" | "Sub-national" | "Targeted") => void;
 }) {
   const dtp1 = parseFloat(coverage.dtp1 || "0");
   const dtp3 = parseFloat(coverage.dtp3 || "0");
@@ -2520,6 +2605,73 @@ function Step1({
   const set = (k: string, v: string) => setCoverage({ ...coverage, [k]: v });
   return (
     <div className="space-y-3">
+      {/* Plan type chooser — same template, two flavours. Locked when the
+          user entered via /microplans/routine or /microplans/campaigns. */}
+      <div className="rounded-md border bg-muted/30 p-3 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p className="text-sm font-medium">Plan type</p>
+            <p className="text-xs text-muted-foreground">
+              {planType === "campaign"
+                ? "Supplementary Immunization Activity (SIA / campaign)."
+                : "Routine immunization microplan for the quarter."}
+            </p>
+          </div>
+          <Select
+            value={planType}
+            onValueChange={(v) => setPlanType(v as "routine" | "campaign")}
+            disabled={planTypeLocked}
+          >
+            <SelectTrigger className="w-[220px]" data-testid="select-plan-type">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="routine">Routine immunization</SelectItem>
+              <SelectItem value="campaign">SIA / Campaign</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        {planType === "campaign" && (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div>
+              <Label className="text-xs">Antigen</Label>
+              <Input
+                value={campaignAntigen}
+                onChange={(e) => setCampaignAntigen(e.target.value)}
+                placeholder="e.g. Polio, Measles"
+                data-testid="input-campaign-antigen"
+              />
+            </div>
+            <div>
+              <Label className="text-xs">Target age group</Label>
+              <Input
+                value={campaignTargetAge}
+                onChange={(e) => setCampaignTargetAge(e.target.value)}
+                placeholder="e.g. 0-59 months"
+                data-testid="input-campaign-target-age"
+              />
+            </div>
+            <div>
+              <Label className="text-xs">Scope</Label>
+              <Select
+                value={campaignScope}
+                onValueChange={(v) =>
+                  setCampaignScope(v as "National" | "Sub-national" | "Targeted")
+                }
+              >
+                <SelectTrigger data-testid="select-campaign-scope">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="National">National</SelectItem>
+                  <SelectItem value="Sub-national">Sub-national</SelectItem>
+                  <SelectItem value="Targeted">Targeted</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        )}
+      </div>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <NumberField label="DTP1 %" value={coverage.dtp1} onChange={(v) => set("dtp1", v)} testId="input-dtp1" suffix="%" />
         <NumberField label="DTP3 %" value={coverage.dtp3} onChange={(v) => set("dtp3", v)} testId="input-dtp3" suffix="%" />
