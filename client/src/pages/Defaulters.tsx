@@ -22,6 +22,7 @@ import {
   History,
   ChevronDown,
   ChevronRight,
+  TrendingUp,
 } from "lucide-react";
 import {
   Collapsible,
@@ -164,6 +165,32 @@ export default function Defaulters() {
       if (!res.ok) throw new Error("Failed to fetch defaulters");
       const rows = (await res.json()) as DefaulterRow[];
       return rows.map((r) => ({ ...r, id: r.clientId }));
+    },
+  });
+
+  const { data: effectiveness } = useQuery<{
+    windowDays: number;
+    followupDays: number;
+    sent: number;
+    childrenReminded: number;
+    converted: number;
+    childrenConverted: number;
+    conversionPct: number;
+    breakdown?: Array<{
+      id: string;
+      name: string;
+      sent: number;
+      converted: number;
+      conversionPct: number;
+    }>;
+  }>({
+    queryKey: ["/api/reminders/effectiveness", "facility"],
+    queryFn: async () => {
+      const res = await fetch("/api/reminders/effectiveness?breakdown=facility", {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to load reminder effectiveness");
+      return await res.json();
     },
   });
 
@@ -453,6 +480,133 @@ export default function Defaulters() {
           </CardContent>
         </Card>
       </div>
+
+      <Card data-testid="card-reminder-effectiveness">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base flex items-center gap-2">
+            <TrendingUp className="h-4 w-4 text-emerald-600" />
+            Reminder effectiveness — last {effectiveness?.windowDays ?? 30} days
+          </CardTitle>
+          <p className="text-sm text-muted-foreground">
+            How many SMS reminders pulled a child back to the clinic within{" "}
+            {effectiveness?.followupDays ?? 14} days of the send.
+          </p>
+        </CardHeader>
+        <CardContent>
+          {!effectiveness ? (
+            <div className="text-sm text-muted-foreground">Loading…</div>
+          ) : effectiveness.sent === 0 ? (
+            <div className="text-sm text-muted-foreground">
+              No reminders sent in the last {effectiveness.windowDays} days yet.
+              Once you start sending reminders, conversion will appear here.
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <div className="text-xs text-muted-foreground">
+                    Reminders sent
+                  </div>
+                  <div
+                    className="text-3xl font-bold"
+                    data-testid="text-reminders-sent"
+                  >
+                    {effectiveness.sent.toLocaleString()}
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-1">
+                    to {effectiveness.childrenReminded.toLocaleString()}{" "}
+                    {effectiveness.childrenReminded === 1 ? "child" : "children"}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">
+                    Vaccinated within {effectiveness.followupDays} days
+                  </div>
+                  <div
+                    className="text-3xl font-bold text-emerald-600"
+                    data-testid="text-reminders-converted"
+                  >
+                    {effectiveness.converted.toLocaleString()}
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-1">
+                    {effectiveness.childrenConverted.toLocaleString()} distinct{" "}
+                    {effectiveness.childrenConverted === 1 ? "child" : "children"}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">
+                    Conversion rate
+                  </div>
+                  <div
+                    className={`text-3xl font-bold ${
+                      effectiveness.conversionPct >= 25
+                        ? "text-emerald-600"
+                        : effectiveness.conversionPct >= 10
+                          ? "text-amber-600"
+                          : "text-rose-600"
+                    }`}
+                    data-testid="text-reminders-conversion-pct"
+                  >
+                    {effectiveness.conversionPct.toFixed(1)}%
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-1">
+                    of reminders led to a recorded dose
+                  </div>
+                </div>
+              </div>
+
+              {effectiveness.breakdown && effectiveness.breakdown.length > 0 && (
+                <div className="mt-6">
+                  <div className="text-sm font-medium mb-2">
+                    By facility — where reminders are (and aren't) landing
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-left text-xs text-muted-foreground border-b">
+                          <th className="py-2 pr-3">Facility</th>
+                          <th className="py-2 pr-3 text-right">Sent</th>
+                          <th className="py-2 pr-3 text-right">Converted</th>
+                          <th className="py-2 text-right">Rate</th>
+                        </tr>
+                      </thead>
+                      <tbody data-testid="table-reminder-effectiveness-breakdown">
+                        {effectiveness.breakdown.slice(0, 10).map((row) => (
+                          <tr key={row.id} className="border-b last:border-b-0">
+                            <td className="py-2 pr-3">{row.name}</td>
+                            <td className="py-2 pr-3 text-right tabular-nums">
+                              {row.sent.toLocaleString()}
+                            </td>
+                            <td className="py-2 pr-3 text-right tabular-nums">
+                              {row.converted.toLocaleString()}
+                            </td>
+                            <td
+                              className={`py-2 text-right tabular-nums font-medium ${
+                                row.conversionPct >= 25
+                                  ? "text-emerald-600"
+                                  : row.conversionPct >= 10
+                                    ? "text-amber-600"
+                                    : "text-rose-600"
+                              }`}
+                            >
+                              {row.conversionPct.toFixed(1)}%
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {effectiveness.breakdown.length > 10 && (
+                      <div className="text-xs text-muted-foreground mt-2">
+                        Showing top 10 facilities by reminder volume.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader className="pb-2">

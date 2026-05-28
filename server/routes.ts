@@ -6384,6 +6384,174 @@ export async function registerRoutes(
     }
   });
 
+  // GET /api/reminders/effectiveness — Did the SMS reminders actually pull
+  // defaulter caregivers back to the clinic? Reads sms_reminder audit events
+  // from the last 30 days, joins each event by clientId against
+  // client_vaccinations, and counts a "conversion" when the child received
+  // any dose within 14 days AFTER the reminder was sent.
+  // Optional ?breakdown=facility|district returns per-facility / per-district
+  // rows so managers can spot where reminders aren't landing.
+  app.get("/api/reminders/effectiveness", isAuthenticated, requireTenant, async (req: any, res) => {
+    try {
+      const tenantId = req.tenantId as string;
+      const breakdown = (req.query.breakdown as string | undefined)?.toLowerCase();
+      const WINDOW_DAYS = 30;
+      const FOLLOWUP_DAYS = 14;
+      const now = Date.now();
+      const windowStart = new Date(now - WINDOW_DAYS * 24 * 3600 * 1000);
+
+      // 1. Pull recent sms_reminder audit log entries
+      const logs = await storage.listAuditLogs(tenantId, {
+        entityType: "sms_reminder",
+        limit: 5000,
+      });
+
+      type Event = { clientId: string; sentAt: Date };
+      const events: Event[] = [];
+      for (const log of logs) {
+        const nv: any = log.newValue;
+        const clientId: string | undefined = nv?.clientId;
+        const sentAtRaw: string | undefined =
+          nv?.sentAt ?? log.createdAt?.toISOString?.();
+        if (!clientId || !sentAtRaw) continue;
+        const sentAt = new Date(sentAtRaw);
+        if (isNaN(sentAt.getTime())) continue;
+        if (sentAt < windowStart) continue;
+        events.push({ clientId, sentAt });
+      }
+
+      if (events.length === 0) {
+        return res.json({
+          windowDays: WINDOW_DAYS,
+          followupDays: FOLLOWUP_DAYS,
+          sent: 0,
+          childrenReminded: 0,
+          converted: 0,
+          conversionPct: 0,
+          breakdown: breakdown ? [] : undefined,
+        });
+      }
+
+      const clientIdSet = new Set<string>();
+      for (const e of events) clientIdSet.add(e.clientId);
+      const clientIds: string[] = [];
+      clientIdSet.forEach((id) => clientIds.push(id));
+
+      // 2. Pull any vaccinations administered to those clients in the window
+      const vaxRows = await db
+        .select({
+          clientId: clientVaccinations.clientId,
+          administeredDate: clientVaccinations.administeredDate,
+        })
+        .from(clientVaccinations)
+        .where(
+          and(
+            eq(clientVaccinations.tenantId, tenantId),
+            inArray(clientVaccinations.clientId, clientIds),
+            gte(clientVaccinations.administeredDate, windowStart),
+          ),
+        );
+
+      const vaxByClient = new Map<string, Date[]>();
+      for (const v of vaxRows) {
+        const dt = new Date(v.administeredDate as any);
+        const list = vaxByClient.get(v.clientId) ?? [];
+        list.push(dt);
+        vaxByClient.set(v.clientId, list);
+      }
+
+      // 3. Pull client → facility / district mapping (one query)
+      const clientGeo = await db
+        .select({
+          id: clients.id,
+          facilityId: clients.facilityId,
+          facilityName: facilities.name,
+          districtId: facilities.districtId,
+          districtName: districts.name,
+        })
+        .from(clients)
+        .innerJoin(facilities, eq(facilities.id, clients.facilityId))
+        .innerJoin(districts, eq(districts.id, facilities.districtId))
+        .where(
+          and(
+            eq(clients.tenantId, tenantId),
+            inArray(clients.id, clientIds),
+          ),
+        );
+      const geoByClient = new Map<string, typeof clientGeo[number]>();
+      for (const c of clientGeo) geoByClient.set(c.id, c);
+
+      // 4. For each reminder event, decide if it converted: any dose
+      //    administered to that child within FOLLOWUP_DAYS AFTER sentAt.
+      const followupMs = FOLLOWUP_DAYS * 24 * 3600 * 1000;
+      let converted = 0;
+      const childConverted = new Set<string>();
+
+      type Bucket = { id: string; name: string; sent: number; converted: number };
+      const buckets = new Map<string, Bucket>();
+
+      for (const ev of events) {
+        const doses = vaxByClient.get(ev.clientId) ?? [];
+        const hit = doses.some((d) => {
+          const diff = d.getTime() - ev.sentAt.getTime();
+          return diff >= 0 && diff <= followupMs;
+        });
+        if (hit) {
+          converted++;
+          childConverted.add(ev.clientId);
+        }
+
+        if (breakdown === "facility" || breakdown === "district") {
+          const geo = geoByClient.get(ev.clientId);
+          if (!geo) continue;
+          const key =
+            breakdown === "facility"
+              ? `f:${geo.facilityId}`
+              : `d:${geo.districtId}`;
+          const name =
+            breakdown === "facility" ? geo.facilityName : geo.districtName;
+          const id = String(
+            breakdown === "facility" ? geo.facilityId : geo.districtId,
+          );
+          const b = buckets.get(key) ?? { id, name, sent: 0, converted: 0 };
+          b.sent += 1;
+          if (hit) b.converted += 1;
+          buckets.set(key, b);
+        }
+      }
+
+      const sent = events.length;
+      const conversionPct = sent > 0 ? Math.round((converted / sent) * 1000) / 10 : 0;
+
+      let breakdownRows: Array<Bucket & { conversionPct: number }> | undefined;
+      if (breakdown === "facility" || breakdown === "district") {
+        const bucketArr: Bucket[] = [];
+        buckets.forEach((b) => bucketArr.push(b));
+        breakdownRows = bucketArr
+          .map((b) => ({
+            ...b,
+            conversionPct:
+              b.sent > 0 ? Math.round((b.converted / b.sent) * 1000) / 10 : 0,
+          }))
+          .sort((a, b) => b.sent - a.sent);
+      }
+
+      res.json({
+        windowDays: WINDOW_DAYS,
+        followupDays: FOLLOWUP_DAYS,
+        sent,
+        childrenReminded: clientIds.length,
+        converted,
+        childrenConverted: childConverted.size,
+        conversionPct,
+        breakdown: breakdownRows,
+      });
+    } catch (err: any) {
+      console.error("GET /api/reminders/effectiveness failed:", err);
+      res.status(500).json({ message: "Failed to compute reminder effectiveness" });
+    }
+  });
+
   // POST /api/reminders/bulk — Send cohort-based reminders and log persistent deletable events in audit_logs
   app.post("/api/reminders/bulk", isAuthenticated, requireTenant, async (req: any, res) => {
     try {
