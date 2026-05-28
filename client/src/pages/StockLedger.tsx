@@ -327,10 +327,30 @@ export default function StockLedger() {
     return m;
   }, [facilities]);
 
+  const [confirmTransfer, setConfirmTransfer] = useState<TransferSuggestion | null>(null);
+  const [confirmDosesInput, setConfirmDosesInput] = useState<string>("");
+  const [confirmNote, setConfirmNote] = useState<string>("");
+
+  const openConfirmTransfer = (s: TransferSuggestion) => {
+    setConfirmTransfer(s);
+    setConfirmDosesInput(String(s.suggestedDoses));
+    setConfirmNote("");
+  };
+  const closeConfirmTransfer = () => {
+    setConfirmTransfer(null);
+    setConfirmDosesInput("");
+    setConfirmNote("");
+  };
+
   const actionTransferMutation = useMutation({
-    mutationFn: async (s: TransferSuggestion) => {
+    mutationFn: async (vars: { suggestion: TransferSuggestion; doses: number; note: string }) => {
+      const { suggestion: s, doses, note } = vars;
       const sourceName = facilityNameById.get(s.sourceFacilityId) ?? `Facility ${s.sourceFacilityId}`;
       const destName = facilityNameById.get(s.destFacilityId) ?? `Facility ${s.destFacilityId}`;
+      const trimmedNote = note.trim();
+      const reason = trimmedNote
+        ? `Suggested transfer (batch near expiry) — ${trimmedNote}`
+        : "Suggested transfer (batch near expiry)";
       // Atomic paired write — server records both issue and receipt in one DB
       // transaction so the ledger can't be left half-updated if anything fails.
       await apiRequest("POST", "/api/stock/transfer", {
@@ -340,14 +360,14 @@ export default function StockLedger() {
         batchNumber: s.batchNumber,
         expiryDate: new Date(s.expiryDate).toISOString(),
         vvmStatus: 1,
-        quantityDoses: s.suggestedDoses,
+        quantityDoses: doses,
         sourceFacilityName: sourceName,
         destFacilityName: destName,
-        reason: "Suggested transfer (batch near expiry)",
+        reason,
       });
-      return s;
+      return { suggestion: s, doses };
     },
-    onSuccess: (s) => {
+    onSuccess: ({ suggestion: s, doses }) => {
       setActionedSuggestionKeys((prev) => {
         const next = new Set<string>(prev);
         next.add(suggestionKey(s));
@@ -356,8 +376,9 @@ export default function StockLedger() {
       queryClient.invalidateQueries({ queryKey: [`/api/stock/ledger`, { facilityId: null }] });
       toast({
         title: "Transfer Logged",
-        description: `Issued ${s.suggestedDoses} ${s.antigen} doses (batch ${s.batchNumber}) and recorded the matching receipt.`,
+        description: `Issued ${doses} ${s.antigen} doses (batch ${s.batchNumber}) and recorded the matching receipt.`,
       });
+      closeConfirmTransfer();
     },
     onError: (err: any) => {
       toast({
@@ -367,6 +388,24 @@ export default function StockLedger() {
       });
     },
   });
+
+  const parsedConfirmDoses = Number(confirmDosesInput);
+  const confirmDosesValid =
+    confirmTransfer !== null &&
+    Number.isFinite(parsedConfirmDoses) &&
+    Number.isInteger(parsedConfirmDoses) &&
+    parsedConfirmDoses > 0 &&
+    parsedConfirmDoses <= confirmTransfer.sourceBatchRemaining;
+  const confirmDosesError =
+    confirmTransfer === null || confirmDosesInput === ""
+      ? null
+      : !Number.isFinite(parsedConfirmDoses) || !Number.isInteger(parsedConfirmDoses)
+        ? "Enter a whole number of doses."
+        : parsedConfirmDoses <= 0
+          ? "Must be greater than 0."
+          : parsedConfirmDoses > confirmTransfer.sourceBatchRemaining
+            ? `Cannot exceed source batch remaining (${confirmTransfer.sourceBatchRemaining.toLocaleString()}).`
+            : null;
 
   // Calculate dynamic Stock on Hand (SOH) per antigen
   const stockOnHand = useMemo(() => {
@@ -831,7 +870,7 @@ export default function StockLedger() {
                       const sourceName = facilityNameById.get(s.sourceFacilityId) ?? `Facility ${s.sourceFacilityId}`;
                       const destName = facilityNameById.get(s.destFacilityId) ?? `Facility ${s.destFacilityId}`;
                       const key = suggestionKey(s);
-                      const isPending = actionTransferMutation.isPending && actionTransferMutation.variables && suggestionKey(actionTransferMutation.variables as TransferSuggestion) === key;
+                      const isPending = actionTransferMutation.isPending && actionTransferMutation.variables && suggestionKey(actionTransferMutation.variables.suggestion) === key;
                       const expiryBadge =
                         s.expiryStatus === "expiring-30" ? (
                           <Badge variant="outline" className="border-rose-500 text-rose-600 bg-rose-500/10 text-[10px] px-1.5 py-0 h-5">
@@ -877,7 +916,7 @@ export default function StockLedger() {
                               size="sm"
                               variant="outline"
                               disabled={isPending}
-                              onClick={() => actionTransferMutation.mutate(s)}
+                              onClick={() => openConfirmTransfer(s)}
                               className="gap-1.5 border-amber-500/40 text-amber-700 hover:bg-amber-500/10"
                               data-testid={`button-action-transfer-${key}`}
                             >
@@ -898,6 +937,110 @@ export default function StockLedger() {
               </CardContent>
             </Card>
           )}
+
+          {/* Confirm Suggested Transfer Dialog */}
+          <Dialog
+            open={confirmTransfer !== null}
+            onOpenChange={(open) => {
+              if (!open && !actionTransferMutation.isPending) closeConfirmTransfer();
+            }}
+          >
+            <DialogContent className="sm:max-w-md" data-testid="dialog-confirm-transfer">
+              <DialogHeader>
+                <DialogTitle>Confirm transfer</DialogTitle>
+              </DialogHeader>
+              {confirmTransfer && (
+                <div className="space-y-4 text-sm">
+                  <div className="grid grid-cols-2 gap-y-2 gap-x-4 rounded-md border border-border bg-muted/40 p-3">
+                    <div>
+                      <div className="text-xs uppercase text-muted-foreground">Antigen</div>
+                      <div className="font-semibold" data-testid="text-confirm-transfer-antigen">{confirmTransfer.antigen}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs uppercase text-muted-foreground">Batch</div>
+                      <div className="font-mono text-xs" data-testid="text-confirm-transfer-batch">{confirmTransfer.batchNumber}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs uppercase text-muted-foreground">From</div>
+                      <div data-testid="text-confirm-transfer-source">
+                        {facilityNameById.get(confirmTransfer.sourceFacilityId) ?? `Facility ${confirmTransfer.sourceFacilityId}`}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs uppercase text-muted-foreground">To</div>
+                      <div data-testid="text-confirm-transfer-dest">
+                        {facilityNameById.get(confirmTransfer.destFacilityId) ?? `Facility ${confirmTransfer.destFacilityId}`}
+                      </div>
+                    </div>
+                    <div className="col-span-2 flex justify-between text-xs text-muted-foreground pt-1 border-t border-border">
+                      <span>Suggested: <span className="font-semibold text-foreground">{confirmTransfer.suggestedDoses.toLocaleString()}</span> doses</span>
+                      <span>Source batch remaining: <span className="font-semibold text-foreground">{confirmTransfer.sourceBatchRemaining.toLocaleString()}</span></span>
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label htmlFor="confirm-transfer-doses" className="text-sm font-medium">
+                      Doses to transfer
+                    </label>
+                    <Input
+                      id="confirm-transfer-doses"
+                      type="number"
+                      inputMode="numeric"
+                      min={1}
+                      max={confirmTransfer.sourceBatchRemaining}
+                      step={1}
+                      value={confirmDosesInput}
+                      onChange={(e) => setConfirmDosesInput(e.target.value)}
+                      disabled={actionTransferMutation.isPending}
+                      data-testid="input-confirm-transfer-doses"
+                    />
+                    {confirmDosesError && (
+                      <p className="text-xs text-rose-600" data-testid="text-confirm-transfer-error">
+                        {confirmDosesError}
+                      </p>
+                    )}
+                  </div>
+                  <div className="space-y-1.5">
+                    <label htmlFor="confirm-transfer-note" className="text-sm font-medium">
+                      Note <span className="text-xs text-muted-foreground font-normal">(optional)</span>
+                    </label>
+                    <Textarea
+                      id="confirm-transfer-note"
+                      placeholder="e.g. Rounded to carton size; holding 50 doses for source pipeline."
+                      rows={3}
+                      value={confirmNote}
+                      onChange={(e) => setConfirmNote(e.target.value)}
+                      disabled={actionTransferMutation.isPending}
+                      data-testid="input-confirm-transfer-note"
+                    />
+                  </div>
+                </div>
+              )}
+              <DialogFooter className="gap-2 sm:gap-2">
+                <Button
+                  variant="outline"
+                  onClick={closeConfirmTransfer}
+                  disabled={actionTransferMutation.isPending}
+                  data-testid="button-confirm-transfer-cancel"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={() => {
+                    if (!confirmTransfer || !confirmDosesValid) return;
+                    actionTransferMutation.mutate({
+                      suggestion: confirmTransfer,
+                      doses: parsedConfirmDoses,
+                      note: confirmNote,
+                    });
+                  }}
+                  disabled={!confirmDosesValid || actionTransferMutation.isPending}
+                  data-testid="button-confirm-transfer-submit"
+                >
+                  {actionTransferMutation.isPending ? "Logging…" : "Confirm transfer"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
           {/* Active Balances SOH Cards */}
           <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-4">
