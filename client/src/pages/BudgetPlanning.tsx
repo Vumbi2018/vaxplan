@@ -71,7 +71,6 @@ import {
   type Province,
   type District,
 } from "@shared/schema";
-import { MicroplanStepper } from "@/components/MicroplanStepper";
 import { z } from "zod";
 
 const budgetFormSchema = z
@@ -1100,7 +1099,6 @@ export default function BudgetPlanning() {
 
   return (
     <div className="p-6 space-y-6">
-      <MicroplanStepper currentStep={9} facilityId={geoFacilityId} />
       {tenantUnspecifiedCount > 0 && canBulkClassifyBudget(user) && (
         <div
           className="flex items-start gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-4"

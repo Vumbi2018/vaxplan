@@ -38,7 +38,6 @@ import { DataTable } from "@/components/DataTable";
 import { GeoCascadeFilter } from "@/components/GeoCascadeFilter";
 import { buildGeoMaps, withGeoColumns } from "@/lib/geoHierarchy";
 import { ApprovalBadge } from "@/components/ApprovalBadge";
-import { MicroplanStepper } from "@/components/MicroplanStepper";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { canCreateSessionPlan, canApproveSessionPlan } from "@/lib/permissions";
@@ -1500,7 +1499,6 @@ export default function SessionPlanning({
       : (planTypeFilter === "campaign" ? "/microplans/campaigns" : "/microplans/routine");
     return (
       <div className="p-6 space-y-6">
-        <MicroplanStepper currentStep={4} facilityId={geoFilterFacilityId} />
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div>
             <h1 className="text-2xl font-bold" data-testid="text-page-title">{pageTitle}</h1>
@@ -1596,7 +1594,6 @@ export default function SessionPlanning({
 
   return (
     <div className="p-6 space-y-6">
-      <MicroplanStepper currentStep={4} facilityId={geoFilterFacilityId} />
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <Link href={backHref} className="text-xs text-muted-foreground hover:underline">

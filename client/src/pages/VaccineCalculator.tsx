@@ -50,7 +50,6 @@ import type { Facility, PopulationData, Tenant, VaccineConfig } from "@shared/sc
 import { apiRequest } from "@/lib/queryClient";
 import { FacilityCascadePicker } from "@/components/FacilityCascadePicker";
 import { offlineDb } from "../lib/offlineDb";
-import { MicroplanStepper } from "@/components/MicroplanStepper";
 
 const fallbackVaccineSchedule = [
   { id: 1, name: "BCG", target: "births", doses: 1, wastage: 40, vialsPerDose: 20, recommendedAge: "Birth" },
@@ -394,7 +393,6 @@ export default function VaccineCalculator() {
 
   return (
     <div className="p-6 space-y-6">
-      <MicroplanStepper currentStep={6} facilityId={selectedFacility ? Number(selectedFacility) : null} />
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-primary/80">

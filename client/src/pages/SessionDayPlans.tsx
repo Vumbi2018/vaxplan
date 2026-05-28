@@ -101,7 +101,6 @@ import {
 import { z } from "zod";
 import { format } from "date-fns";
 import * as XLSX from "xlsx";
-import { MicroplanStepper } from "@/components/MicroplanStepper";
 
 const transportIcons: Record<string, typeof Car> = {
   walking: Footprints,
@@ -898,8 +897,6 @@ export default function SessionDayPlans() {
 
   return (
     <div className="p-6 space-y-6 max-w-[1600px] mx-auto">
-      <MicroplanStepper currentStep={8} activeSessionId={Number(id)} facilityId={sessionPlan?.facilityId ?? null} />
-
       {isLocked && (
         <div className="bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 rounded-xl p-3 text-xs font-semibold shadow-md flex items-center gap-2 mb-4 animate-in fade-in slide-in-from-top-2 duration-200">
           <Info className="h-4 w-4 shrink-0 text-red-600 dark:text-red-400" />

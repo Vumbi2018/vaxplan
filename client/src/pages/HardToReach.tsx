@@ -28,7 +28,6 @@ import {
   Plus,
 } from "lucide-react";
 import type { Village, HtrScore, Province, District, Facility } from "@shared/schema";
-import { MicroplanStepper } from "@/components/MicroplanStepper";
 import { AddCommunityDialog } from "@/components/AddCommunityDialog";
 import {
   Dialog,
@@ -495,7 +494,6 @@ export default function HardToReach() {
 
   return (
     <div className="p-6 space-y-6">
-      <MicroplanStepper currentStep={3} facilityId={geoFacilityId} />
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold">Hard-to-Reach Planning</h1>

@@ -64,8 +64,8 @@ const AnnualNationalPlan = lazy(() => import("@/pages/AnnualNationalPlan"));
 // flow has a real routed home.
 // Small wrapper around wouter <Redirect> that carries the current URL's query
 // string along to the destination. This matters because some legacy in-app
-// links (e.g. MicroplanStepper) pass `?facility=…&microplan=…` and the
-// destination route (the wizard) reads those params to keep context.
+// links pass `?facility=…&microplan=…` and the destination route (the wizard)
+// reads those params to keep context.
 function PreserveQueryRedirect({ to }: { to: string }) {
   const search = typeof window !== "undefined" ? window.location.search : "";
   return <Redirect to={`${to}${search}`} />;

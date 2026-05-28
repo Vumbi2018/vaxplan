@@ -37,7 +37,6 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { FacilityCascadePicker } from "@/components/FacilityCascadePicker";
-import { MicroplanStepper } from "@/components/MicroplanStepper";
 import {
   Plus,
   Megaphone,
@@ -365,7 +364,6 @@ export default function SocialMobilization() {
 
   return (
     <div className="p-6 space-y-6">
-      <MicroplanStepper currentStep={7} facilityId={geoFacilityId} />
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold">Social Mobilization</h1>
