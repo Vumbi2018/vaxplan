@@ -15,7 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import {
   ClipboardCheck, Calendar, Plus, CheckCircle2, AlertCircle, XCircle, MinusCircle,
-  Building2, User, FileText, ListChecks, Trash2, Pencil,
+  Building2, User, FileText, ListChecks, Trash2, Pencil, Activity,
 } from "lucide-react";
 
 type SupervisionVisit = {
@@ -75,7 +75,10 @@ export default function Supervision() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [facilityFilter, setFacilityFilter] = useState<string>("all");
   const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [presetFacilityId, setPresetFacilityId] = useState<number | null>(null);
   const [conductingVisit, setConductingVisit] = useState<SupervisionVisit | null>(null);
+  const [statusSort, setStatusSort] = useState<"status" | "lastVisit" | "name">("status");
+  const [statusBadgeFilter, setStatusBadgeFilter] = useState<"all" | "overdue" | "due_soon" | "current">("all");
 
   const { data: visits = [], isLoading } = useQuery<SupervisionVisit[]>({
     queryKey: ["/api/supervision-visits", { facilityId: facilityFilter, status: statusFilter }],
@@ -90,6 +93,14 @@ export default function Supervision() {
   });
 
   const { data: facilities = [] } = useQuery<any[]>({ queryKey: ["/api/facilities"] });
+  const { data: allVisits = [] } = useQuery<SupervisionVisit[]>({
+    queryKey: ["/api/supervision-visits", "all"],
+    queryFn: async () => {
+      const r = await fetch(`/api/supervision-visits`, { credentials: "include" });
+      if (!r.ok) throw new Error("Failed to load visits");
+      return r.json();
+    },
+  });
   const { data: microplans = [] } = useQuery<any[]>({ queryKey: ["/api/microplans"] });
 
   const facById = useMemo(() => {
@@ -97,6 +108,75 @@ export default function Supervision() {
     facilities.forEach((f) => m.set(f.id, f));
     return m;
   }, [facilities]);
+
+  const facilityStatus = useMemo(() => {
+    type Row = {
+      facility: any;
+      lastConducted: SupervisionVisit | null;
+      lastScheduled: SupervisionVisit | null;
+      daysSinceLast: number | null;
+      lastScore: number | null;
+      status: "overdue" | "due_soon" | "current" | "never";
+    };
+    const now = Date.now();
+    const rows: Row[] = facilities.map((f: any) => {
+      const visitsForFac = allVisits.filter((v) => v.facilityId === f.id);
+      const conducted = visitsForFac
+        .filter((v) => v.status === "conducted" && (v.conductedDate || v.scheduledDate))
+        .sort((a, b) => +new Date(b.conductedDate || b.scheduledDate) - +new Date(a.conductedDate || a.scheduledDate));
+      const lastConducted = conducted[0] || null;
+      const lastScheduled = visitsForFac
+        .filter((v) => v.status === "scheduled")
+        .sort((a, b) => +new Date(a.scheduledDate) - +new Date(b.scheduledDate))[0] || null;
+      const lastDate = lastConducted ? new Date(lastConducted.conductedDate || lastConducted.scheduledDate) : null;
+      const daysSinceLast = lastDate ? Math.floor((now - +lastDate) / 86_400_000) : null;
+      const lastScore = lastConducted && typeof lastConducted.score === "number" ? lastConducted.score : null;
+      let status: Row["status"];
+      if (!lastConducted) status = "overdue";
+      else if ((daysSinceLast ?? 0) > 90 || (lastScore !== null && lastScore < 60)) status = "overdue";
+      else if ((daysSinceLast ?? 0) > 60) status = "due_soon";
+      else status = "current";
+      return { facility: f, lastConducted, lastScheduled, daysSinceLast, lastScore, status };
+    });
+    return rows;
+  }, [facilities, allVisits]);
+
+  const filteredFacilityStatus = useMemo(() => {
+    let rows = facilityStatus;
+    if (statusBadgeFilter !== "all") {
+      rows = rows.filter((r) => r.status === statusBadgeFilter || (statusBadgeFilter === "overdue" && r.status === "overdue"));
+    }
+    const statusOrder: Record<string, number> = { overdue: 0, due_soon: 1, current: 2, never: 0 };
+    rows = [...rows].sort((a, b) => {
+      if (statusSort === "name") return (a.facility.name || "").localeCompare(b.facility.name || "");
+      if (statusSort === "lastVisit") {
+        const da = a.daysSinceLast ?? Number.MAX_SAFE_INTEGER;
+        const db = b.daysSinceLast ?? Number.MAX_SAFE_INTEGER;
+        return db - da;
+      }
+      const so = statusOrder[a.status] - statusOrder[b.status];
+      if (so !== 0) return so;
+      const da = a.daysSinceLast ?? Number.MAX_SAFE_INTEGER;
+      const db = b.daysSinceLast ?? Number.MAX_SAFE_INTEGER;
+      return db - da;
+    });
+    return rows;
+  }, [facilityStatus, statusBadgeFilter, statusSort]);
+
+  const statusCounts = useMemo(() => {
+    const c = { overdue: 0, due_soon: 0, current: 0 };
+    facilityStatus.forEach((r) => {
+      if (r.status === "overdue" || r.status === "never") c.overdue++;
+      else if (r.status === "due_soon") c.due_soon++;
+      else c.current++;
+    });
+    return c;
+  }, [facilityStatus]);
+
+  const openScheduleFor = (facilityId: number | null) => {
+    setPresetFacilityId(facilityId);
+    setScheduleOpen(true);
+  };
 
   const counts = useMemo(() => {
     const c = { scheduled: 0, conducted: 0, missed: 0, cancelled: 0, total: visits.length, avgScore: 0 };
@@ -158,15 +238,17 @@ export default function Supervision() {
             WHO RED step 10 — schedule and document supervisory visits at every facility, every quarter.
           </p>
         </div>
-        <Dialog open={scheduleOpen} onOpenChange={setScheduleOpen}>
+        <Dialog open={scheduleOpen} onOpenChange={(o) => { setScheduleOpen(o); if (!o) setPresetFacilityId(null); }}>
           <DialogTrigger asChild>
-            <Button data-testid="btn-schedule-visit" className="gap-2">
+            <Button data-testid="btn-schedule-visit" className="gap-2" onClick={() => setPresetFacilityId(null)}>
               <Plus className="h-4 w-4" /> Schedule Visit
             </Button>
           </DialogTrigger>
           <ScheduleDialog
+            key={presetFacilityId ?? "new"}
             facilities={facilities}
             microplans={microplans}
+            initialFacilityId={presetFacilityId}
             onSubmit={(d) => scheduleMutation.mutate(d)}
             isSubmitting={scheduleMutation.isPending}
           />
@@ -180,6 +262,99 @@ export default function Supervision() {
         <StatCard label="Missed / cancelled" value={counts.missed + counts.cancelled} icon={AlertCircle} tone="rose" />
         <StatCard label="Avg checklist score" value={`${counts.avgScore}%`} icon={ListChecks} tone="amber" />
       </div>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
+            <div>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Activity className="h-5 w-5 text-rose-500" />
+                Facility supervision status
+              </CardTitle>
+              <p className="text-xs text-muted-foreground mt-1">
+                Overdue = no visit in the last 90 days, or last score &lt; 60%. Due soon = last visit 61–90 days ago. Click a row to schedule the next visit.
+              </p>
+              <div className="flex gap-2 mt-2 text-xs">
+                <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-rose-500" /> {statusCounts.overdue} overdue</span>
+                <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-amber-500" /> {statusCounts.due_soon} due soon</span>
+                <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-500" /> {statusCounts.current} current</span>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Select value={statusBadgeFilter} onValueChange={(v) => setStatusBadgeFilter(v as any)}>
+                <SelectTrigger className="w-40" data-testid="filter-supervision-status"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All statuses</SelectItem>
+                  <SelectItem value="overdue">Overdue only</SelectItem>
+                  <SelectItem value="due_soon">Due soon</SelectItem>
+                  <SelectItem value="current">Current</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={statusSort} onValueChange={(v) => setStatusSort(v as any)}>
+                <SelectTrigger className="w-44" data-testid="sort-supervision"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="status">Sort: Status</SelectItem>
+                  <SelectItem value="lastVisit">Sort: Days since visit</SelectItem>
+                  <SelectItem value="name">Sort: Facility name</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {facilities.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground text-sm">No facilities in this tenant yet.</div>
+          ) : (
+            <div className="divide-y border rounded-md">
+              {filteredFacilityStatus.map((row) => {
+                const tone =
+                  row.status === "overdue"
+                    ? "bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/40"
+                    : row.status === "due_soon"
+                    ? "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/40"
+                    : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/40";
+                const label =
+                  row.status === "overdue" ? "Overdue" : row.status === "due_soon" ? "Due soon" : "Current";
+                return (
+                  <button
+                    key={row.facility.id}
+                    type="button"
+                    onClick={() => openScheduleFor(row.facility.id)}
+                    className="w-full text-left px-3 py-2.5 hover-elevate flex items-center gap-3 flex-wrap"
+                    data-testid={`supervision-row-${row.facility.id}`}
+                  >
+                    <Badge variant="outline" className={`${tone} min-w-[5.5rem] justify-center`}>{label}</Badge>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium flex items-center gap-2">
+                        <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+                        {row.facility.name}
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-3 flex-wrap">
+                        {row.lastConducted ? (
+                          <>
+                            <span>Last visit: {new Date(row.lastConducted.conductedDate || row.lastConducted.scheduledDate).toLocaleDateString()}</span>
+                            <span>{row.daysSinceLast} days ago</span>
+                            {row.lastScore !== null && <span>Score {row.lastScore}%</span>}
+                          </>
+                        ) : (
+                          <span>No visit recorded yet</span>
+                        )}
+                        {row.lastScheduled && (
+                          <span className="text-sky-700 dark:text-sky-300">Next scheduled: {new Date(row.lastScheduled.scheduledDate).toLocaleDateString()}</span>
+                        )}
+                      </div>
+                    </div>
+                    <span className="text-xs text-muted-foreground">Schedule →</span>
+                  </button>
+                );
+              })}
+              {filteredFacilityStatus.length === 0 && (
+                <div className="text-center py-6 text-sm text-muted-foreground">No facilities match this filter.</div>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader className="pb-3">
@@ -300,8 +475,8 @@ function StatCard({ label, value, icon: Icon, tone }: { label: string; value: nu
   );
 }
 
-function ScheduleDialog({ facilities, microplans, onSubmit, isSubmitting }: { facilities: any[]; microplans: any[]; onSubmit: (d: any) => void; isSubmitting: boolean }) {
-  const [facilityId, setFacilityId] = useState<string>("");
+function ScheduleDialog({ facilities, microplans, onSubmit, isSubmitting, initialFacilityId }: { facilities: any[]; microplans: any[]; onSubmit: (d: any) => void; isSubmitting: boolean; initialFacilityId?: number | null }) {
+  const [facilityId, setFacilityId] = useState<string>(initialFacilityId ? String(initialFacilityId) : "");
   const [microplanId, setMicroplanId] = useState<string>("");
   const [scheduledDate, setScheduledDate] = useState<string>(new Date().toISOString().slice(0, 10));
   const [supervisorName, setSupervisorName] = useState<string>("");
