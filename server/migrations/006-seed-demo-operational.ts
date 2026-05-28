@@ -45,6 +45,7 @@ import {
   clientVaccinations,
   importedCoverage,
   microplans,
+  stockTransactions,
 } from "../../shared/schema";
 
 type TenantCode = "ZMB" | "SSD" | "PNG";
@@ -1327,6 +1328,254 @@ async function seedImportedCoverage(
 }
 
 /**
+ * Fill monthly_reports.stockSummary for current-quarter rows that still have
+ * an empty summary. Derives plausible opening/received/administered/wasted/
+ * closing values from the row's seeded `immunizations` so dashboards line up
+ * with administered doses. Idempotent: skips any row whose stockSummary is
+ * already populated (non-empty object).
+ *
+ * Math per vaccine:
+ *   administered = immunizations[v]   (already in the row)
+ *   wasted       = round(administered * rate / (100 - rate))
+ *   received     = ceil((administered + wasted) * 1.10)  (10% surplus)
+ *   opening      = closing of previous month, or ~30% of received initially
+ *   closing      = max(0, opening + received - administered - wasted)
+ *   wastageRate  = round(wasted / (administered + wasted) * 100, 2)
+ */
+async function seedStockSummary(
+  tenantId: string,
+  picks: FacilityPick[],
+): Promise<number> {
+  if (picks.length === 0) return 0;
+  const startMonth = (QUARTER - 1) * 3 + 1;
+  const monthsInQuarter = [startMonth, startMonth + 1, startMonth + 2];
+  const facilityIds = picks.map((p) => p.facilityId);
+
+  const rows = await db
+    .select({
+      id: monthlyReports.id,
+      facilityId: monthlyReports.facilityId,
+      month: monthlyReports.month,
+      year: monthlyReports.year,
+      immunizations: monthlyReports.immunizations,
+      stockSummary: monthlyReports.stockSummary,
+    })
+    .from(monthlyReports)
+    .where(
+      and(
+        eq(monthlyReports.tenantId, tenantId),
+        eq(monthlyReports.year, YEAR),
+        inArray(monthlyReports.facilityId, facilityIds),
+        inArray(monthlyReports.month, monthsInQuarter),
+      ),
+    );
+
+  // Group by facility and order by month so we can carry closing → opening.
+  type Row = (typeof rows)[number];
+  const byFacility: Record<number, Row[]> = {};
+  for (const r of rows) {
+    const arr: Row[] = byFacility[r.facilityId] ?? [];
+    arr.push(r);
+    byFacility[r.facilityId] = arr;
+  }
+
+  let updated = 0;
+  for (const facilityRows of Object.values(byFacility)) {
+    facilityRows.sort((a: Row, b: Row) => a.month - b.month);
+    const carryByVaccine: Record<string, number> = {};
+    for (const r of facilityRows) {
+      const existingSummary = (r.stockSummary ?? {}) as Record<string, unknown>;
+      const alreadyFilled = Object.keys(existingSummary).length > 0;
+      const imms = (r.immunizations ?? {}) as Record<string, number>;
+      const summary: Record<string, {
+        opening: number;
+        received: number;
+        administered: number;
+        wasted: number;
+        closing: number;
+        wastageRate: number;
+      }> = {};
+
+      for (const v of VACCINES) {
+        const administered = Number(imms[v.name] ?? 0);
+        if (administered <= 0 && (carryByVaccine[v.name] ?? 0) <= 0) continue;
+        const rate = v.wastageRate;
+        const wasted = administered > 0
+          ? Math.round((administered * rate) / Math.max(1, 100 - rate))
+          : 0;
+        const consumed = administered + wasted;
+        const received = consumed > 0 ? Math.ceil(consumed * 1.10) : 0;
+        const opening = carryByVaccine[v.name] ?? Math.ceil(received * 0.30);
+        const closing = Math.max(0, opening + received - administered - wasted);
+        const denom = administered + wasted;
+        const wastageRate = denom > 0
+          ? Math.round((wasted / denom) * 10000) / 100
+          : 0;
+        summary[v.name] = { opening, received, administered, wasted, closing, wastageRate };
+        carryByVaccine[v.name] = closing;
+      }
+
+      if (alreadyFilled) continue;
+      if (Object.keys(summary).length === 0) continue;
+      await db
+        .update(monthlyReports)
+        .set({ stockSummary: summary })
+        .where(eq(monthlyReports.id, r.id));
+      updated++;
+    }
+  }
+  return updated;
+}
+
+/**
+ * Seed stock_transactions for the current quarter so the Stock Ledger view
+ * shows real movement. For each picked facility and each demo vaccine:
+ *   - one quarter-opening receipt from "National Vaccine Store"
+ *   - one monthly issue to "Routine Sessions" representing doses consumed
+ *   - one monthly issue to "Outreach Team" for ~25% of the routine amount
+ * Idempotent: skips a facility entirely if any stock_transactions row
+ * already exists for it.
+ */
+async function seedStockTransactions(
+  tenantId: string,
+  picks: FacilityPick[],
+): Promise<number> {
+  if (picks.length === 0) return 0;
+  const startMonth = (QUARTER - 1) * 3 + 1; // 1-indexed
+  const monthsInQuarter = [startMonth, startMonth + 1, startMonth + 2];
+  const facilityIds = picks.map((p) => p.facilityId);
+
+  const existing = await db
+    .select({ facilityId: stockTransactions.facilityId })
+    .from(stockTransactions)
+    .where(
+      and(
+        eq(stockTransactions.tenantId, tenantId),
+        inArray(stockTransactions.facilityId, facilityIds),
+      ),
+    );
+  const seededFacilityIds = new Set(existing.map((r) => r.facilityId));
+
+  // Pull this quarter's reports to drive issue quantities by administered doses.
+  const reports = await db
+    .select({
+      facilityId: monthlyReports.facilityId,
+      month: monthlyReports.month,
+      immunizations: monthlyReports.immunizations,
+    })
+    .from(monthlyReports)
+    .where(
+      and(
+        eq(monthlyReports.tenantId, tenantId),
+        eq(monthlyReports.year, YEAR),
+        inArray(monthlyReports.facilityId, facilityIds),
+        inArray(monthlyReports.month, monthsInQuarter),
+      ),
+    );
+  const immsByFacMonth = new Map<string, Record<string, number>>();
+  for (const r of reports) {
+    immsByFacMonth.set(
+      `${r.facilityId}|${r.month}`,
+      (r.immunizations ?? {}) as Record<string, number>,
+    );
+  }
+
+  let inserted = 0;
+  for (const p of picks) {
+    if (seededFacilityIds.has(p.facilityId)) continue;
+
+    // Quarter-opening receipts: sum all administered for the quarter, add the
+    // wastage uplift and a 25% surplus, round up to whole vials.
+    const quarterOpeningDate = new Date(Date.UTC(YEAR, startMonth - 1, 2));
+    const expiryDate = new Date(Date.UTC(YEAR + 2, 0, 1));
+
+    for (const v of VACCINES) {
+      let quarterAdministered = 0;
+      for (const m of monthsInQuarter) {
+        const imm = immsByFacMonth.get(`${p.facilityId}|${m}`) ?? {};
+        quarterAdministered += Number(imm[v.name] ?? 0);
+      }
+      const rate = v.wastageRate;
+      const wastedTotal = quarterAdministered > 0
+        ? Math.round((quarterAdministered * rate) / Math.max(1, 100 - rate))
+        : 0;
+      const consumed = quarterAdministered + wastedTotal;
+      // 25% surplus, then round up to whole vials.
+      const surplus = Math.ceil(consumed * 1.25);
+      const receiptDoses = Math.max(
+        v.dosesPerVial,
+        Math.ceil(surplus / v.dosesPerVial) * v.dosesPerVial,
+      );
+
+      await db.insert(stockTransactions).values({
+        tenantId,
+        facilityId: p.facilityId,
+        vaccineName: v.name,
+        transactionType: "receipt",
+        quantityDoses: receiptDoses,
+        batchNumber: `DEMO-${v.name.toUpperCase()}-Q${QUARTER}${YEAR}`,
+        expiryDate,
+        vvmStatus: 1,
+        supplierOrRecipient: "National Vaccine Store",
+        transactionDate: quarterOpeningDate,
+        notes: `Quarter-opening receipt seeded for demo.`,
+      });
+      inserted++;
+
+      // Monthly issues — routine + outreach split.
+      for (let mi = 0; mi < monthsInQuarter.length; mi++) {
+        const m = monthsInQuarter[mi];
+        const imm = immsByFacMonth.get(`${p.facilityId}|${m}`) ?? {};
+        const monthAdmin = Number(imm[v.name] ?? 0);
+        if (monthAdmin <= 0) continue;
+        const monthWasted = Math.round((monthAdmin * rate) / Math.max(1, 100 - rate));
+        const monthIssued = monthAdmin + monthWasted;
+        const outreachShare = Math.round(monthIssued * 0.25);
+        const routineShare = Math.max(0, monthIssued - outreachShare);
+
+        // Issue date: middle of the month for routine, end for outreach.
+        const routineDate = new Date(Date.UTC(YEAR, m - 1, 15));
+        const outreachDate = new Date(Date.UTC(YEAR, m - 1, 25));
+
+        if (routineShare > 0) {
+          await db.insert(stockTransactions).values({
+            tenantId,
+            facilityId: p.facilityId,
+            vaccineName: v.name,
+            transactionType: "issue",
+            quantityDoses: routineShare,
+            batchNumber: `DEMO-${v.name.toUpperCase()}-Q${QUARTER}${YEAR}`,
+            expiryDate,
+            vvmStatus: 1,
+            supplierOrRecipient: "Routine Sessions",
+            transactionDate: routineDate,
+            notes: `Issued to routine fixed sessions.`,
+          });
+          inserted++;
+        }
+        if (outreachShare > 0) {
+          await db.insert(stockTransactions).values({
+            tenantId,
+            facilityId: p.facilityId,
+            vaccineName: v.name,
+            transactionType: "issue",
+            quantityDoses: outreachShare,
+            batchNumber: `DEMO-${v.name.toUpperCase()}-Q${QUARTER}${YEAR}`,
+            expiryDate,
+            vvmStatus: 1,
+            supplierOrRecipient: "Outreach Team",
+            transactionDate: outreachDate,
+            notes: `Issued to outreach team for mobile sessions.`,
+          });
+          inserted++;
+        }
+      }
+    }
+  }
+  return inserted;
+}
+
+/**
  * Top-level seed entrypoint. Safe to call repeatedly — every step is
  * idempotent and gracefully skips tenants/facilities that aren't seeded yet.
  * Returns silently (no process.exit) so it can be invoked from server startup.
@@ -1371,8 +1620,13 @@ export async function seedDemoOperational(): Promise<void> {
       villagesByFacility,
       vaccineConfigByName,
     );
+    // Stock seeders run AFTER seedDemoClients because that step adjusts
+    // monthly_reports.immunizations; the stock summary derives from the
+    // final administered counts.
+    const ss = await seedStockSummary(tenant.id, picks);
+    const st = await seedStockTransactions(tenant.id, picks);
     console.log(
-      `[${code}] picked ${picks.length} facilities • +${u} users • +${pop} facility-pop • +${vp} village-pop • +${vr} vaccine reqs • +${sp} session plans • +${mr} monthly reports • +${ic} imported-coverage rows • +${clientsInserted} demo clients • +${vaccinationsInserted} client vaccinations`,
+      `[${code}] picked ${picks.length} facilities • +${u} users • +${pop} facility-pop • +${vp} village-pop • +${vr} vaccine reqs • +${sp} session plans • +${mr} monthly reports • +${ic} imported-coverage rows • +${clientsInserted} demo clients • +${vaccinationsInserted} client vaccinations • +${ss} stock summaries • +${st} stock transactions`,
     );
   }
 }
@@ -1390,7 +1644,9 @@ async function runCli() {
       (SELECT COUNT(*) FROM monthly_reports      m WHERE m.tenant_id = t.id) AS monthly_reports,
       (SELECT COUNT(*) FROM clients              c WHERE c.tenant_id = t.id) AS clients,
       (SELECT COUNT(*) FROM client_vaccinations  cv WHERE cv.tenant_id = t.id) AS client_vaccinations,
-      (SELECT COUNT(*) FROM imported_coverage    ic WHERE ic.tenant_id = t.id) AS imported_coverage_rows
+      (SELECT COUNT(*) FROM imported_coverage    ic WHERE ic.tenant_id = t.id) AS imported_coverage_rows,
+      (SELECT COUNT(*) FROM stock_transactions   st WHERE st.tenant_id = t.id) AS stock_transactions,
+      (SELECT COUNT(*) FROM monthly_reports      mr2 WHERE mr2.tenant_id = t.id AND mr2.stock_summary <> '{}'::jsonb) AS reports_with_stock
     FROM tenants t
     WHERE t.code IN ('ZMB','SSD','PNG')
     ORDER BY t.code;
