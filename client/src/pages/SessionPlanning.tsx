@@ -731,6 +731,11 @@ export default function SessionPlanning({
   const [editTargetPop, setEditTargetPop] = useState<number>(0);
   const [editTransportMode, setEditTransportMode] = useState<string>("road");
   const [editStatus, setEditStatus] = useState<string>("planned");
+  // Task #211 — Outreach purpose picker. Empty string means "no purpose set"
+  // and is converted to null when sent to the server. The whitelist
+  // (routine_outreach / unserved / defaulter_followup) is enforced server-side
+  // on PATCH /api/sessions/:id.
+  const [editOutreachPurpose, setEditOutreachPurpose] = useState<string>("");
   const [editHR, setEditHR] = useState("");
   const [editStakeholders, setEditStakeholders] = useState("");
   const [editProvinceId, setEditProvinceId] = useState<number | null>(null);
@@ -813,6 +818,19 @@ export default function SessionPlanning({
           );
         }
 
+        // Task #211 — Merge the patched columns (outreachPurpose, status,
+        // name, etc.) into the cached /api/sessions row so list badges and
+        // filters update immediately offline. onSuccess intentionally skips
+        // invalidation while offline, so the cache patch has to happen here.
+        queryClient.setQueryData<any[]>(["/api/sessions"], (prev) => {
+          if (!Array.isArray(prev)) return prev;
+          return prev.map((s) =>
+            Number((s as any).id) === Number(id)
+              ? { ...s, ...Object.fromEntries(Object.entries(data).filter(([k]) => k !== "villageIds")) }
+              : s,
+          );
+        });
+
         await enqueueOutbox({
           tenantId: user?.tenantId ?? "SSD",
           entityType: "sessionPlan",
@@ -879,6 +897,7 @@ export default function SessionPlanning({
     setEditStatus(plan.status || "planned");
     setEditHR((plan as any).humanResources || "");
     setEditStakeholders((plan as any).keyStakeholders || "");
+    setEditOutreachPurpose(((plan as any).outreachPurpose as string) || "");
 
     // Task #128 — Seed the editable village list from the session_villages
     // links we already loaded for this tenant. If the query hasn't resolved
@@ -942,6 +961,9 @@ export default function SessionPlanning({
       humanResources: editHR,
       keyStakeholders: editStakeholders,
       facilityId: editFacilityId,
+      // Task #211 — Allow planners to (re)classify outreach purpose from the
+      // edit dialog. Empty string maps to null so the column can be cleared.
+      outreachPurpose: editOutreachPurpose === "" ? null : editOutreachPurpose,
     };
     // Task #128 — Only include villageIds when we've actually loaded the
     // current link set. Otherwise the server would treat an unsaved [] as
@@ -2426,6 +2448,33 @@ export default function SessionPlanning({
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+
+            {/* Task #211 — Outreach purpose picker. Lets planners re-tag a
+                session (e.g. classify an existing outreach as a defaulter
+                follow-up) without having to recreate it. Server whitelist on
+                PATCH /api/sessions/:id allows: routine_outreach, unserved,
+                defaulter_followup, or null (cleared). Radix Select can't use
+                an empty string as a value, so we map "__none__" ↔ null. */}
+            <div className="space-y-1">
+              <Label htmlFor="edit-outreach-purpose" className="text-xs font-semibold text-muted-foreground uppercase">
+                Outreach Purpose
+              </Label>
+              <Select
+                value={editOutreachPurpose === "" ? "__none__" : editOutreachPurpose}
+                onValueChange={(v) => setEditOutreachPurpose(v === "__none__" ? "" : v)}
+                disabled={isLocked}
+              >
+                <SelectTrigger id="edit-outreach-purpose" className="bg-background rounded-xl" data-testid="select-edit-outreach-purpose">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">None</SelectItem>
+                  <SelectItem value="routine_outreach">Routine outreach</SelectItem>
+                  <SelectItem value="unserved">Unserved area</SelectItem>
+                  <SelectItem value="defaulter_followup">Defaulter follow-up</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             {/* Premium HR and Stakeholders layout fields */}
