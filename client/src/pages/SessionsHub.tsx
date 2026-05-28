@@ -11,6 +11,7 @@ import {
   AlertTriangle,
   Ban,
   ArrowRight,
+  Plus,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -179,6 +180,23 @@ export default function SessionsHub() {
     setLocation(route);
   };
 
+  // Calendar → new session. Encode the picked day so SessionPlanning can
+  // prefill the form's scheduledDate. We route into the routine microplan
+  // workspace; the user picks a microplan if a specific facility isn't
+  // already filtered, and the query string is preserved through that hop.
+  const planSessionOnSelectedDate = () => {
+    if (!selectedDate) return;
+    const y = selectedDate.getFullYear();
+    const m = String(selectedDate.getMonth() + 1).padStart(2, "0");
+    const d = String(selectedDate.getDate()).padStart(2, "0");
+    const qs = new URLSearchParams({
+      scheduledDate: `${y}-${m}-${d}`,
+      autoOpen: "1",
+    });
+    if (facilityId) qs.set("facilityId", String(facilityId));
+    setLocation(`/microplans/routine?${qs.toString()}`);
+  };
+
   return (
     <div className="p-6 space-y-6 max-w-7xl">
       <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -321,18 +339,41 @@ export default function SessionsHub() {
 
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm flex items-center gap-2">
+                <CardTitle className="text-sm flex items-center gap-2 flex-wrap">
                   <CalendarIcon className="h-4 w-4 text-primary" />
                   {selectedDate ? fmtDate(selectedDate) : "Pick a day"}
                   <Badge variant="secondary" className="ml-1">
                     {selectedDaySessions.length} session{selectedDaySessions.length === 1 ? "" : "s"}
                   </Badge>
+                  {selectedDate && (
+                    <Button
+                      size="sm"
+                      className="ml-auto gap-1.5"
+                      onClick={planSessionOnSelectedDate}
+                      data-testid="btn-calendar-plan-session"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      Plan a session on this day
+                    </Button>
+                  )}
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-0">
                 {selectedDaySessions.length === 0 ? (
-                  <div className="p-10 text-center text-sm text-muted-foreground">
-                    No sessions scheduled for this day.
+                  <div className="p-10 text-center text-sm text-muted-foreground space-y-3">
+                    <div>No sessions scheduled for this day.</div>
+                    {selectedDate && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="gap-1.5"
+                        onClick={planSessionOnSelectedDate}
+                        data-testid="btn-calendar-plan-session-empty"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                        Plan a session on {fmtDate(selectedDate)}
+                      </Button>
+                    )}
                   </div>
                 ) : (
                   <SessionList

@@ -230,10 +230,34 @@ export default function SessionPlanning({
       kind: (sp.get("prefillKind") as "village" | "followup" | "unserved" | "defaulter" | null) ?? "unserved",
     };
   }, []);
+  // Calendar prefill — the Sessions Hub calendar links here with
+  // `?scheduledDate=YYYY-MM-DD&autoOpen=1` when the user wants to start a
+  // new session on a specific day. We surface it as a self-contained
+  // prefill (no village dependency) so the new-session dialog opens with
+  // the date already filled in. List mode preserves the query on the
+  // microplan links so it survives the pick-a-microplan hop into detail
+  // mode where the dialog actually opens.
+  const scheduledDatePrefill = useMemo(() => {
+    if (typeof window === "undefined") return null;
+    const sp = new URLSearchParams(window.location.search);
+    if (sp.get("autoOpen") !== "1") return null;
+    const raw = sp.get("scheduledDate");
+    if (!raw) return null;
+    // Parse YYYY-MM-DD as a LOCAL date — `new Date("YYYY-MM-DD")` is
+    // interpreted as UTC midnight, which shifts the day in negative-offset
+    // locales (e.g. picking May 28 from a US tz would prefill May 27).
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+    const d = m
+      ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
+      : new Date(raw);
+    if (Number.isNaN(d.getTime())) return null;
+    return d;
+  }, []);
   const preserveUnservedQs = useMemo(() => {
-    if (!unservedPrefill || typeof window === "undefined") return "";
+    if (typeof window === "undefined") return "";
+    if (!unservedPrefill && !scheduledDatePrefill) return "";
     return window.location.search || "";
-  }, [unservedPrefill]);
+  }, [unservedPrefill, scheduledDatePrefill]);
 
   /*
   // Original Code: Direct online-only useQuery fetch calls that fail when offline.
@@ -599,6 +623,22 @@ export default function SessionPlanning({
     }
     setDialogOpen(true);
   }, [unservedPrefill, isDetailMode, isCreator, lockedParentForPrefill]);
+
+  // Calendar prefill — when the user came from the Sessions Hub calendar
+  // with `?scheduledDate=YYYY-MM-DD&autoOpen=1`, open the New Session
+  // dialog (only if no unservedPrefill is also handling the open) and set
+  // the scheduledDate on the form so the day is already filled in.
+  const datePrefillRanRef = useRef(false);
+  useEffect(() => {
+    if (!scheduledDatePrefill || !isDetailMode || !isCreator) return;
+    if (datePrefillRanRef.current) return;
+    if (!lockedParentForPrefill) return;
+    datePrefillRanRef.current = true;
+    form.setValue("scheduledDate", scheduledDatePrefill as any);
+    if (!unservedPrefill) {
+      setDialogOpen(true);
+    }
+  }, [scheduledDatePrefill, isDetailMode, isCreator, lockedParentForPrefill, unservedPrefill]);
 
   // Once the dialog is open and a facility is resolved from the locked parent
   // microplan, fire the proximity check for the prefilled village exactly once.
@@ -1453,7 +1493,7 @@ export default function SessionPlanning({
     // into SessionPlanning's own routed detail mode so the auto-open dialog +
     // proximity check actually fires. Otherwise keep the legacy link into the
     // Microplan Builder wizard for normal browsing.
-    const lockedParentBase = unservedPrefill
+    const lockedParentBase = (unservedPrefill || scheduledDatePrefill)
       ? (planTypeFilter === "campaign" ? "/sessions/campaign" : "/sessions/microplan")
       : (planTypeFilter === "campaign" ? "/microplans/campaigns" : "/microplans/routine");
     return (
