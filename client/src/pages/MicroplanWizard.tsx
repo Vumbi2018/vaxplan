@@ -47,11 +47,13 @@ import type {
   Facility,
   Village,
   SessionPlan,
+  SessionDayPlan,
   BudgetItem,
   VaccineRequirement,
   MobilizationActivity,
   SupervisionVisit,
   PopulationData,
+  HtrScore,
 } from "@shared/schema";
 
 // ─── Step metadata ────────────────────────────────────────────────────────
@@ -320,9 +322,72 @@ export default function MicroplanWizard() {
   };
 
   const [sessionIdMap, setSessionIdMap] = useState<Record<string, number>>({});
-  const [dayPlansWritten, setDayPlansWritten] = useState<Set<string>>(new Set());
+  const [dayPlanIdMap, setDayPlanIdMap] = useState<Record<string, number>>({});
   const { data: existingSessions } = useQuery<SessionPlan[]>({
     queryKey: ["/api/sessions"],
+    enabled: !!microplanId,
+  });
+
+  // ─── Rehydration queries (only when resuming) ───────────────────────────
+  const { data: existingPopulation } = useQuery<PopulationData[]>({
+    queryKey: ["/api/population", { facilityId, year }],
+    queryFn: async () => {
+      const res = await fetch(
+        `/api/population?facilityId=${facilityId}&year=${year}`,
+        { credentials: "include" },
+      );
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!microplanId && !!facilityId,
+  });
+  const { data: existingHtr } = useQuery<HtrScore[]>({
+    queryKey: ["/api/htr-scores"],
+    enabled: !!microplanId,
+  });
+  const { data: existingVaccineReqs } = useQuery<VaccineRequirement[]>({
+    queryKey: ["/api/vaccine-requirements", { facilityId }],
+    queryFn: async () => {
+      const res = await fetch(`/api/vaccine-requirements?facilityId=${facilityId}`, {
+        credentials: "include",
+      });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!microplanId && !!facilityId,
+  });
+  const { data: existingMobilization } = useQuery<MobilizationActivity[]>({
+    queryKey: ["/api/mobilization", { facilityId }],
+    queryFn: async () => {
+      const res = await fetch(`/api/mobilization?facilityId=${facilityId}`, {
+        credentials: "include",
+      });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!microplanId && !!facilityId,
+  });
+  const { data: existingBudget } = useQuery<BudgetItem[]>({
+    queryKey: ["/api/budget-items", { facilityId, quarter, year }],
+    queryFn: async () => {
+      const res = await fetch(
+        `/api/budget-items?facilityId=${facilityId}&quarter=${quarter}&year=${year}`,
+        { credentials: "include" },
+      );
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!microplanId && !!facilityId,
+  });
+  const { data: existingSupervision } = useQuery<SupervisionVisit[]>({
+    queryKey: ["/api/supervision-visits", { microplanId }],
+    queryFn: async () => {
+      const res = await fetch(`/api/supervision-visits?microplanId=${microplanId}`, {
+        credentials: "include",
+      });
+      if (!res.ok) return [];
+      return res.json();
+    },
     enabled: !!microplanId,
   });
 
@@ -373,6 +438,7 @@ export default function MicroplanWizard() {
   }, [microplan]);
 
   type CommunityRow = {
+    id?: number;
     villageId?: number;
     name: string;
     type: "village" | "hamlet" | "idp" | "school";
@@ -383,6 +449,8 @@ export default function MicroplanWizard() {
     rowId: string;
   };
   const [communities, setCommunities] = useState<CommunityRow[]>([]);
+  // Initial seed from facility villages (only when there are no saved
+  // communities to hydrate). Population merge happens in a later effect.
   useEffect(() => {
     if (!facilityVillages.length || communities.length) return;
     setCommunities(
@@ -399,7 +467,44 @@ export default function MicroplanWizard() {
     );
   }, [facilityVillages, communities.length]);
 
+  // Rehydrate Step 2 from saved population rows for this facility & year so
+  // re-saves PATCH instead of inserting duplicates.
+  const hydratedRef = useRef({
+    communities: false,
+    risk: false,
+    calendar: false,
+    dayPlans: false,
+    vaccines: false,
+    mobilization: false,
+    budget: false,
+    supervision: false,
+  });
+  useEffect(() => {
+    if (!microplanId || !existingPopulation || hydratedRef.current.communities) return;
+    if (!communities.length) return;
+    setCommunities((prev) =>
+      prev.map((c) => {
+        const hit = existingPopulation.find(
+          (p) => p.villageId && p.villageId === c.villageId,
+        );
+        if (!hit) return c;
+        const meta = (hit.metadata as any) ?? {};
+        return {
+          ...c,
+          id: hit.id,
+          targetPopulation: String(hit.totalPopulation ?? c.targetPopulation),
+          source: (hit.source as any) ?? c.source,
+          type: (meta.type as any) ?? c.type,
+          strategy: (meta.strategy as any) ?? c.strategy,
+          saved: true,
+        };
+      }),
+    );
+    hydratedRef.current.communities = true;
+  }, [microplanId, existingPopulation, communities.length]);
+
   type RiskRow = {
+    id?: number;
     villageId?: number;
     name: string;
     distance: number;
@@ -427,6 +532,30 @@ export default function MicroplanWizard() {
     });
   }, [communities]);
 
+  // Rehydrate Step 3 from saved HTR scores.
+  useEffect(() => {
+    if (!microplanId || !existingHtr || hydratedRef.current.risk) return;
+    if (!risk.length) return;
+    setRisk((prev) =>
+      prev.map((r) => {
+        const hit = existingHtr.find((h) => h.villageId === r.villageId);
+        if (!hit) return r;
+        const cm = (hit.comments ?? "").toString();
+        return {
+          ...r,
+          id: hit.id,
+          distance: hit.distanceScore ?? r.distance,
+          terrain: hit.terrainScore ?? r.terrain,
+          season: hit.seasonalScore ?? r.season,
+          insecurity: (hit as any).insecurityScore ?? r.insecurity,
+          missed: cm.includes("missed_12mo"),
+          zeroDose: cm.includes("zero_dose_hotspot"),
+        };
+      }),
+    );
+    hydratedRef.current.risk = true;
+  }, [microplanId, existingHtr, risk.length]);
+
   type CalendarRow = {
     rowId: string;
     name: string;
@@ -437,23 +566,41 @@ export default function MicroplanWizard() {
   };
   const [calendar, setCalendar] = useState<CalendarRow[]>([]);
 
-  // Hydrate session-id map from server when resuming an existing microplan,
-  // so Step 5/8 day-plan writes work across page reloads and don't create dupes.
+  // Rehydrate Step 4 from saved sessions, building the calendar back from
+  // the persisted rows so Step 11's summary reflects what's on the server.
   useEffect(() => {
-    if (!existingSessions || !microplanId || !calendar.length) return;
+    if (!existingSessions || !microplanId || hydratedRef.current.calendar) return;
     const mine = existingSessions.filter((s) => s.microplanId === microplanId);
-    const next: Record<string, number> = {};
-    for (const row of calendar) {
-      const hit = mine.find(
-        (s) =>
-          s.scheduledDate &&
-          new Date(s.scheduledDate).toISOString().slice(0, 10) === row.scheduledDate &&
-          s.name?.startsWith(row.name),
-      );
-      if (hit) next[row.rowId] = hit.id;
-    }
-    setSessionIdMap((prev) => ({ ...prev, ...next }));
-  }, [existingSessions, microplanId, calendar]);
+    if (!mine.length) return;
+    const rows: CalendarRow[] = [];
+    const idMap: Record<string, number> = {};
+    mine
+      .slice()
+      .sort((a, b) => {
+        const ad = a.scheduledDate ? new Date(a.scheduledDate).getTime() : 0;
+        const bd = b.scheduledDate ? new Date(b.scheduledDate).getTime() : 0;
+        return ad - bd;
+      })
+      .forEach((s, idx) => {
+        const date = s.scheduledDate
+          ? new Date(s.scheduledDate).toISOString().slice(0, 10)
+          : "";
+        // Session name format from this wizard: `${community} ${YYYY-MM-DD}`.
+        // Strip a trailing date if present, otherwise fall back to full name.
+        const trimmed = (s.name ?? "").replace(/\s+\d{4}-\d{2}-\d{2}$/, "").trim();
+        const rowId = `srv-${s.id}`;
+        rows.push({
+          rowId,
+          name: trimmed || s.name || `Session ${idx + 1}`,
+          sessionType: (s.sessionType as any) ?? "static",
+          scheduledDate: date,
+        });
+        idMap[rowId] = s.id;
+      });
+    setCalendar(rows);
+    setSessionIdMap((prev) => ({ ...prev, ...idMap }));
+    hydratedRef.current.calendar = true;
+  }, [existingSessions, microplanId]);
 
   function generateCalendar() {
     if (!communities.length) return;
@@ -503,6 +650,7 @@ export default function MicroplanWizard() {
   }, [calendar]);
 
   type VaccineRow = {
+    id?: number;
     name: string;
     target: string;
     doses: number;
@@ -522,7 +670,30 @@ export default function MicroplanWizard() {
     carriers: "1",
   });
 
+  // Rehydrate Step 6 from saved vaccine requirements.
+  useEffect(() => {
+    if (!microplanId || !existingVaccineReqs || hydratedRef.current.vaccines) return;
+    const mine = existingVaccineReqs.filter(
+      (v) => v.quarter === quarter && v.year === year,
+    );
+    if (!mine.length) return;
+    setVaccines((prev) =>
+      prev.map((v) => {
+        const hit = mine.find((r) => r.vaccineName === v.name);
+        if (!hit) return v;
+        return {
+          ...v,
+          id: hit.id,
+          target: String(hit.targetPopulation ?? 0),
+          wastage: String(hit.wastageRate ?? v.wastage),
+        };
+      }),
+    );
+    hydratedRef.current.vaccines = true;
+  }, [microplanId, existingVaccineReqs, quarter, year]);
+
   type MobRow = {
+    id?: number;
     rowId: string;
     sessionLabel: string;
     channels: string[];
@@ -545,6 +716,54 @@ export default function MicroplanWizard() {
       }));
     });
   }, [calendar]);
+
+  // Rehydrate Step 7 by matching saved mobilization activities back to their
+  // session row via the description prefix that this wizard writes.
+  useEffect(() => {
+    if (!microplanId || !existingMobilization || hydratedRef.current.mobilization)
+      return;
+    if (!mobilization.length) return;
+    setMobilization((prev) =>
+      prev.map((m) => {
+        const hit = existingMobilization.find((a) =>
+          (a.description ?? "").startsWith(m.sessionLabel),
+        );
+        if (!hit) return m;
+        const desc = hit.description ?? "";
+        const focalMatch = desc.match(/focal:\s*([^;]*?)\s*([\d+\-\s]*)?;/);
+        const iecMatch = desc.match(/IEC:\s*(.*)$/);
+        const channels = (hit.activityType ?? "")
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
+        const iec = iecMatch
+          ? iecMatch[1].split(",").map((s) => s.trim()).filter(Boolean)
+          : [];
+        let focalPoint = m.focalPoint;
+        let focalPhone = m.focalPhone;
+        if (focalMatch) {
+          const inner = focalMatch[0].replace(/^focal:\s*/, "").replace(/;$/, "");
+          const parts = inner.trim().split(/\s+/);
+          const last = parts[parts.length - 1] ?? "";
+          if (/^[\d+\-]+$/.test(last) && parts.length > 1) {
+            focalPhone = last;
+            focalPoint = parts.slice(0, -1).join(" ");
+          } else {
+            focalPoint = inner.trim();
+          }
+        }
+        return {
+          ...m,
+          id: hit.id,
+          channels: channels.length ? channels : m.channels,
+          focalPoint,
+          focalPhone,
+          iec,
+        };
+      }),
+    );
+    hydratedRef.current.mobilization = true;
+  }, [microplanId, existingMobilization, mobilization.length]);
 
   type TransportRow = {
     rowId: string;
@@ -572,7 +791,91 @@ export default function MicroplanWizard() {
     });
   }, [calendar]);
 
+  // Rehydrate Step 5 (staffing) + Step 8 (transport) from saved session day
+  // plans. Fetched once per session whose id we know, so resaves PATCH the
+  // same row instead of inserting another.
+  useEffect(() => {
+    if (!microplanId || hydratedRef.current.dayPlans) return;
+    if (!calendar.length) return;
+    const sessionIds = calendar
+      .map((c) => sessionIdMap[c.rowId])
+      .filter((v): v is number => !!v);
+    if (sessionIds.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const dayPlanArrays = await Promise.all(
+          sessionIds.map(async (sid) => {
+            try {
+              const res = await fetch(`/api/sessions/${sid}/days`, {
+                credentials: "include",
+              });
+              if (!res.ok) return [] as SessionDayPlan[];
+              return (await res.json()) as SessionDayPlan[];
+            } catch {
+              return [] as SessionDayPlan[];
+            }
+          }),
+        );
+        if (cancelled) return;
+        const bySessionId: Record<number, SessionDayPlan> = {};
+        sessionIds.forEach((sid, idx) => {
+          const arr = dayPlanArrays[idx];
+          if (arr && arr.length) bySessionId[sid] = arr[0];
+        });
+        const dayIdMap: Record<string, number> = {};
+        setStaffing((prev) =>
+          prev.map((s) => {
+            const sid = sessionIdMap[s.rowId];
+            const dp = sid ? bySessionId[sid] : undefined;
+            if (!dp) return s;
+            dayIdMap[s.rowId] = dp.id;
+            const notes = dp.executionNotes ?? "";
+            const grab = (k: string) => {
+              const m = notes.match(new RegExp(`${k}:([^;]+)`));
+              return m ? m[1].trim() : "";
+            };
+            return {
+              ...s,
+              vaccinator: grab("vaccinator") || s.vaccinator,
+              recorder: grab("recorder") || s.recorder,
+              supervisor: grab("supervisor") || s.supervisor,
+              teamType: grab("team") || s.teamType,
+              perDiem: grab("perDiem") || s.perDiem,
+              target: String(dp.targetPopulation ?? s.target),
+            };
+          }),
+        );
+        setTransport((prev) =>
+          prev.map((t) => {
+            const sid = sessionIdMap[t.rowId];
+            const dp = sid ? bySessionId[sid] : undefined;
+            if (!dp) return t;
+            const notes = dp.executionNotes ?? "";
+            const vehicleMatch = notes.match(/vehicle:([^;]+)/);
+            return {
+              ...t,
+              mode: (dp.transportType as any) ?? t.mode,
+              distanceKm: String(dp.distanceKm ?? t.distanceKm),
+              fuelLitres: String(dp.fuelLiters ?? t.fuelLitres),
+              vehicle: vehicleMatch ? vehicleMatch[1].trim() : t.vehicle,
+              cleared: /security_cleared/.test(notes),
+            };
+          }),
+        );
+        setDayPlanIdMap((prev) => ({ ...prev, ...dayIdMap }));
+        hydratedRef.current.dayPlans = true;
+      } catch (e) {
+        console.warn("Could not hydrate session day plans:", e);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [microplanId, calendar, sessionIdMap]);
+
   type BudgetRow = {
+    id?: number;
     rowId: string;
     category: string;
     description: string;
@@ -591,7 +894,26 @@ export default function MicroplanWizard() {
     },
   ]);
 
+  // Rehydrate Step 9 from saved budget items.
+  useEffect(() => {
+    if (!microplanId || !existingBudget || hydratedRef.current.budget) return;
+    if (!existingBudget.length) return;
+    setBudget(
+      existingBudget.map((b) => ({
+        id: b.id,
+        rowId: `srv-b-${b.id}`,
+        category: b.category,
+        description: b.description,
+        quantity: String(b.quantity ?? "1"),
+        unitCost: String(b.unitCost ?? "0"),
+        fundingSource: (b.fundingSource as any) ?? "government",
+      })),
+    );
+    hydratedRef.current.budget = true;
+  }, [microplanId, existingBudget]);
+
   type SupRow = {
+    id?: number;
     rowId: string;
     quarter: number;
     scheduledDate: string;
@@ -609,6 +931,31 @@ export default function MicroplanWizard() {
       followUp: "",
     },
   ]);
+
+  // Rehydrate Step 10 from saved supervision visits for this microplan.
+  useEffect(() => {
+    if (!microplanId || !existingSupervision || hydratedRef.current.supervision)
+      return;
+    if (!existingSupervision.length) return;
+    setSupervision(
+      existingSupervision.map((v) => {
+        const dt = v.scheduledDate ? new Date(v.scheduledDate) : new Date();
+        const checklistArr = Array.isArray(v.checklist) ? (v.checklist as any[]) : [];
+        const checklistLabel =
+          (checklistArr[0] && (checklistArr[0].label as string)) || "WHO RED checklist";
+        return {
+          id: v.id,
+          rowId: `srv-s-${v.id}`,
+          quarter: Math.ceil((dt.getUTCMonth() + 1) / 3),
+          scheduledDate: dt.toISOString().slice(0, 10),
+          supervisorName: v.supervisorName ?? "",
+          checklist: checklistLabel,
+          followUp: v.followUpActions ?? "",
+        };
+      }),
+    );
+    hydratedRef.current.supervision = true;
+  }, [microplanId, existingSupervision]);
 
   // ─── Per-step persistence ──────────────────────────────────────────────
   const [busy, setBusy] = useState(false);
@@ -628,7 +975,6 @@ export default function MicroplanWizard() {
         const nextRows = [...communities];
         for (let i = 0; i < nextRows.length; i++) {
           const row = nextRows[i];
-          if (row.saved) continue;
           let vid = row.villageId;
           // Persist newly added (manually typed) communities to villages first.
           if (!vid && row.name.trim() && districtId) {
@@ -647,21 +993,33 @@ export default function MicroplanWizard() {
           }
           if (!vid) continue;
           const target = parseInt(row.targetPopulation || "0", 10);
-          if (target > 0) {
-            await apiRequest("POST", "/api/population", {
-              villageId: vid,
-              facilityId,
-              source: row.source,
-              year,
-              totalPopulation: target,
-              approvalStatus: "draft",
-              metadata: { strategy: row.strategy, type: row.type },
-            });
+          if (target <= 0) continue;
+          const payload = {
+            villageId: vid,
+            facilityId,
+            source: row.source,
+            year,
+            totalPopulation: target,
+            approvalStatus: "draft",
+            metadata: { strategy: row.strategy, type: row.type },
+          };
+          if (row.id) {
+            await apiRequest("PATCH", `/api/population/${row.id}`, payload);
+            nextRows[i] = { ...nextRows[i], saved: true };
+          } else {
+            const created = await apiRequest<PopulationData>(
+              "POST",
+              "/api/population",
+              payload,
+            );
+            nextRows[i] = { ...nextRows[i], id: created.id, saved: true };
           }
-          nextRows[i] = { ...nextRows[i], saved: true };
         }
         setCommunities(nextRows);
+        queryClient.invalidateQueries({ queryKey: ["/api/population"] });
       } else if (step === 3) {
+        // /api/htr-scores POST is an upsert keyed on villageId, so re-saving
+        // never produces duplicate rows.
         for (const r of risk) {
           if (!r.villageId) continue;
           const composite = Math.round(
@@ -681,40 +1039,53 @@ export default function MicroplanWizard() {
               .join("; ") || null,
           });
         }
+        queryClient.invalidateQueries({ queryKey: ["/api/htr-scores"] });
       } else if (step === 4) {
+        // PATCH existing sessions so user edits to name / type / date on
+        // resume actually persist; POST only truly new rows.
         const persisted: Record<string, number> = { ...sessionIdMap };
         for (const row of calendar) {
-          if (!row.scheduledDate || persisted[row.rowId]) continue;
+          if (!row.scheduledDate) continue;
+          const existingId = persisted[row.rowId];
+          const payload = {
+            facilityId,
+            microplanId: mpId,
+            name: `${row.name} ${row.scheduledDate}`,
+            sessionType: row.sessionType,
+            quarter,
+            year,
+            scheduledDate: row.scheduledDate,
+            status: "planned",
+            approvalStatus: "draft",
+          };
           try {
-            const created = await apiRequest<SessionPlan>("POST", "/api/sessions", {
-              facilityId,
-              microplanId: mpId,
-              name: `${row.name} ${row.scheduledDate}`,
-              sessionType: row.sessionType,
-              quarter,
-              year,
-              scheduledDate: row.scheduledDate,
-              status: "planned",
-              approvalStatus: "draft",
-            });
-            persisted[row.rowId] = created.id;
+            if (existingId) {
+              await apiRequest("PATCH", `/api/sessions/${existingId}`, payload);
+            } else {
+              const created = await apiRequest<SessionPlan>(
+                "POST",
+                "/api/sessions",
+                payload,
+              );
+              persisted[row.rowId] = created.id;
+            }
           } catch (e) {
             // Skip duplicates / lead-time conflicts silently per-row.
-            console.warn("Session create skipped:", e);
+            console.warn("Session save skipped:", e);
           }
         }
         setSessionIdMap(persisted);
         queryClient.invalidateQueries({ queryKey: ["/api/sessions"] });
       } else if (step === 8) {
-        // Single day-plan write per session row; dedupe so step 5/8 cannot
-        // produce duplicate session_day_plan rows when both are visited.
-        const written = new Set<string>(dayPlansWritten);
+        // Single day-plan row per session: PATCH when we already know its id
+        // (resume case), POST and capture the id otherwise.
+        const nextIdMap: Record<string, number> = { ...dayPlanIdMap };
         for (let i = 0; i < staffing.length; i++) {
           const s = staffing[i];
           const sid = sessionIdMap[s.rowId];
-          if (!sid || written.has(s.rowId)) continue;
+          if (!sid) continue;
           const t = transport[i];
-          await apiRequest("POST", `/api/sessions/${sid}/days`, {
+          const payload = {
             dayNumber: 1,
             sessionDate: calendar[i].scheduledDate,
             communitiesVisited: [calendar[i].name],
@@ -737,23 +1108,35 @@ export default function MicroplanWizard() {
             ]
               .filter(Boolean)
               .join("; "),
-          });
-          written.add(s.rowId);
+          };
+          const existingId = nextIdMap[s.rowId];
+          if (existingId) {
+            await apiRequest("PATCH", `/api/sessions/days/${existingId}`, payload);
+          } else {
+            const created = await apiRequest<SessionDayPlan>(
+              "POST",
+              `/api/sessions/${sid}/days`,
+              payload,
+            );
+            nextIdMap[s.rowId] = created.id;
+          }
         }
-        setDayPlansWritten(written);
+        setDayPlanIdMap(nextIdMap);
       } else if (step === 5) {
         // Step 5 stores staffing in component state only; the durable write
         // happens in step 8 along with transport, so each session_day_plan
         // row is created exactly once.
       } else if (step === 6) {
-        for (const v of vaccines) {
+        const nextVaccines = [...vaccines];
+        for (let i = 0; i < nextVaccines.length; i++) {
+          const v = nextVaccines[i];
           const target = parseInt(v.target || "0", 10);
           if (!target) continue;
           const wast = parseFloat(v.wastage || "0");
           const dosesReq = target * v.doses;
           const dosesWithWastage = Math.ceil(dosesReq * (1 + wast / 100));
           const vials = Math.ceil(dosesWithWastage / 10);
-          await apiRequest("POST", "/api/vaccine-requirements", {
+          const payload = {
             facilityId,
             vaccineName: v.name,
             targetPopulation: target,
@@ -763,26 +1146,54 @@ export default function MicroplanWizard() {
             vialsRequired: vials,
             quarter,
             year,
-          });
+          };
+          if (v.id) {
+            await apiRequest("PATCH", `/api/vaccine-requirements/${v.id}`, payload);
+          } else {
+            const created = await apiRequest<VaccineRequirement>(
+              "POST",
+              "/api/vaccine-requirements",
+              payload,
+            );
+            nextVaccines[i] = { ...v, id: created.id };
+          }
         }
+        setVaccines(nextVaccines);
+        queryClient.invalidateQueries({ queryKey: ["/api/vaccine-requirements"] });
       } else if (step === 7) {
-        for (const m of mobilization) {
+        const nextMob = [...mobilization];
+        for (let i = 0; i < nextMob.length; i++) {
+          const m = nextMob[i];
           if (!m.focalPoint && m.channels.length === 0) continue;
-          await apiRequest("POST", "/api/mobilization", {
+          const payload = {
             facilityId,
             activityType: m.channels.join(",") || "announcement",
             description: `${m.sessionLabel} — focal: ${m.focalPoint} ${m.focalPhone}; IEC: ${m.iec.join(", ")}`,
             targetAudience: "community",
             status: "planned",
-          });
+          };
+          if (m.id) {
+            await apiRequest("PATCH", `/api/mobilization/${m.id}`, payload);
+          } else {
+            const created = await apiRequest<MobilizationActivity>(
+              "POST",
+              "/api/mobilization",
+              payload,
+            );
+            nextMob[i] = { ...m, id: created.id };
+          }
         }
+        setMobilization(nextMob);
+        queryClient.invalidateQueries({ queryKey: ["/api/mobilization"] });
       } else if (step === 9) {
-        for (const b of budget) {
+        const nextBudget = [...budget];
+        for (let i = 0; i < nextBudget.length; i++) {
+          const b = nextBudget[i];
           if (!b.description.trim()) continue;
           const qty = parseInt(b.quantity || "0", 10);
           const unit = parseFloat(b.unitCost || "0");
           const total = qty * unit;
-          await apiRequest("POST", "/api/budget-items", {
+          const payload = {
             facilityId,
             category: b.category,
             description: b.description,
@@ -793,12 +1204,26 @@ export default function MicroplanWizard() {
             year,
             fundingSource: b.fundingSource,
             approvalStatus: "draft",
-          });
+          };
+          if (b.id) {
+            await apiRequest("PATCH", `/api/budget-items/${b.id}`, payload);
+          } else {
+            const created = await apiRequest<BudgetItem>(
+              "POST",
+              "/api/budget-items",
+              payload,
+            );
+            nextBudget[i] = { ...b, id: created.id };
+          }
         }
+        setBudget(nextBudget);
+        queryClient.invalidateQueries({ queryKey: ["/api/budget-items"] });
       } else if (step === 10) {
-        for (const v of supervision) {
+        const nextSup = [...supervision];
+        for (let i = 0; i < nextSup.length; i++) {
+          const v = nextSup[i];
           if (!v.supervisorName.trim()) continue;
-          await apiRequest("POST", "/api/supervision-visits", {
+          const payload = {
             facilityId,
             microplanId: mpId,
             scheduledDate: v.scheduledDate,
@@ -807,8 +1232,20 @@ export default function MicroplanWizard() {
             status: "scheduled",
             checklist: [{ key: "type", label: v.checklist, response: "na" }],
             followUpActions: v.followUp || null,
-          });
+          };
+          if (v.id) {
+            await apiRequest("PATCH", `/api/supervision-visits/${v.id}`, payload);
+          } else {
+            const created = await apiRequest<SupervisionVisit>(
+              "POST",
+              "/api/supervision-visits",
+              payload,
+            );
+            nextSup[i] = { ...v, id: created.id };
+          }
         }
+        setSupervision(nextSup);
+        queryClient.invalidateQueries({ queryKey: ["/api/supervision-visits"] });
       }
       return true;
     } catch (e: any) {
