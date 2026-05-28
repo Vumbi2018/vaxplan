@@ -11,7 +11,7 @@ import {
 } from "./auth/authorization";
 import { registerSsoRoutes } from "./auth/ssoRoutes";
 import { tenantContext, requireTenant } from "./auth/tenantResolver";
-import { loadDbUser } from "./auth/loadDbUser";
+import { loadDbUser, requireDbUser } from "./auth/loadDbUser";
 import { seedReplitIdpConfig } from "./auth/seedReplitIdpConfig";
 import {
   insertFacilitySchema,
@@ -216,8 +216,10 @@ function requirePermission(
   };
 }
 
-// Convenience guard for every protected data route.
-const auth = [isAuthenticated, requireTenant] as const;
+// Convenience guard for every protected data route. `requireDbUser` runs last
+// so handlers can use `req.dbUser!` without writing their own null check —
+// see server/auth/loadDbUser.ts for why this is centralised.
+const auth = [isAuthenticated, requireTenant, requireDbUser] as const;
 
 // Helper function to validate lead time (>= 7 days in advance) and prevent double bookings on the same day for a facility
 async function validatePlanningLeadTimeAndNoConflict(
@@ -2032,10 +2034,7 @@ export async function registerRoutes(
   // ─── Facilities ───────────────────────────────────────
   app.get("/api/facilities", ...auth, async (req: any, res) => {
     try {
-      const dbUser = req.dbUser;
-      if (!dbUser) {
-        return res.status(401).json({ message: "Unauthorized: User record not found" });
-      }
+      const dbUser = req.dbUser!;
 
       let districtId = req.query.districtId ? parseInt(req.query.districtId as string) : undefined;
       const isNationalAdmin = dbUser.role === "national_admin" || (Array.isArray(dbUser.roles) && (dbUser.roles as string[]).includes("national_admin"));
@@ -2412,10 +2411,7 @@ export async function registerRoutes(
   // ─── Villages ─────────────────────────────────────────
   app.get("/api/villages", ...auth, async (req: any, res) => {
     try {
-      const dbUser = req.dbUser;
-      if (!dbUser) {
-        return res.status(401).json({ message: "Unauthorized: User record not found" });
-      }
+      const dbUser = req.dbUser!;
 
       let districtId = req.query.districtId ? parseInt(req.query.districtId as string) : undefined;
       let facilityId = req.query.facilityId ? parseInt(req.query.facilityId as string) : undefined;
@@ -3772,10 +3768,7 @@ export async function registerRoutes(
   // ─── Population data ──────────────────────────────────
   app.get("/api/population", ...auth, async (req: any, res) => {
     try {
-      const dbUser = req.dbUser;
-      if (!dbUser) {
-        return res.status(401).json({ message: "Unauthorized: User record not found" });
-      }
+      const dbUser = req.dbUser!;
 
       const filters: any = {
         source: req.query.source as string | undefined,
@@ -3883,10 +3876,7 @@ export async function registerRoutes(
   // for when reopening a saved microplan. One tenant-scoped round trip instead of 7+.
   app.get("/api/microplans/:id/hydration", ...auth, async (req: any, res) => {
     try {
-      const dbUser = req.dbUser;
-      if (!dbUser) {
-        return res.status(401).json({ message: "Unauthorized" });
-      }
+      const dbUser = req.dbUser!;
       const microplanId = parseInt(req.params.id);
       if (isNaN(microplanId)) {
         return res.status(400).json({ message: "Invalid microplan id" });
@@ -4160,10 +4150,7 @@ export async function registerRoutes(
   app.get("/api/sessions", ...auth, async (req: any, res) => {
     try {
       const user = req.user as any;
-      const dbUser = req.dbUser;
-      if (!dbUser) {
-        return res.status(401).json({ message: "Unauthorized" });
-      }
+      const dbUser = req.dbUser!;
 
       const facilityId = req.query.facilityId ? parseInt(req.query.facilityId as string) : undefined;
       
@@ -4272,10 +4259,7 @@ export async function registerRoutes(
   app.post("/api/sessions", ...auth, async (req: any, res) => {
     try {
       const user = req.user as any;
-      const dbUser = req.dbUser;
-      if (!dbUser) {
-        return res.status(401).json({ message: "Unauthorized" });
-      }
+      const dbUser = req.dbUser!;
 
       // Hard-reject any client attempt to dictate planType / campaign* — they're inherited.
       for (const f of ["planType", "campaignAntigen", "campaignTargetAge", "campaignScope"] as const) {
@@ -4433,8 +4417,7 @@ export async function registerRoutes(
   app.patch("/api/sessions/:id", ...auth, async (req: any, res) => {
     try {
       const user = req.user as any;
-      const dbUser = req.dbUser;
-      if (!dbUser) return res.status(401).json({ message: "Unauthorized" });
+      const dbUser = req.dbUser!;
       const authorRoles = new Set(["facility_clerk", "facility_in_charge", "national_admin"]);
       if (!authorRoles.has(dbUser.role)) {
         return res.status(403).json({
@@ -4621,8 +4604,7 @@ export async function registerRoutes(
   app.delete("/api/sessions/:id", ...auth, async (req: any, res) => {
     try {
       const user = req.user as any;
-      const dbUser = req.dbUser;
-      if (!dbUser) return res.status(401).json({ message: "Unauthorized" });
+      const dbUser = req.dbUser!;
       const authorRoles = new Set(["facility_clerk", "facility_in_charge", "national_admin"]);
       if (!authorRoles.has(dbUser.role)) {
         return res.status(403).json({
@@ -4767,8 +4749,7 @@ export async function registerRoutes(
   app.post("/api/sessions/:id/mark-done", ...auth, async (req: any, res) => {
     try {
       const user = req.user as any;
-      const dbUser = req.dbUser;
-      if (!dbUser) return res.status(401).json({ message: "Unauthorized" });
+      const dbUser = req.dbUser!;
       const authorRoles = new Set(["facility_clerk", "facility_in_charge", "national_admin"]);
       if (!authorRoles.has(dbUser.role)) {
         return res.status(403).json({ message: "Forbidden: only facility staff may mark sessions done." });
@@ -4850,8 +4831,7 @@ export async function registerRoutes(
 
   app.get("/api/sessions/unmapped-antigens", ...auth, async (req: any, res) => {
     try {
-      const dbUser = req.dbUser;
-      if (!dbUser) return res.status(401).json({ message: "Unauthorized" });
+      const dbUser = req.dbUser!;
       if (!reconcileRoles.has(dbUser.role)) {
         return res.status(403).json({ message: "Forbidden: admin only." });
       }
@@ -4889,8 +4869,7 @@ export async function registerRoutes(
 
   app.post("/api/sessions/reconcile-unmapped-antigens", ...auth, async (req: any, res) => {
     try {
-      const dbUser = req.dbUser;
-      if (!dbUser) return res.status(401).json({ message: "Unauthorized" });
+      const dbUser = req.dbUser!;
       if (!reconcileRoles.has(dbUser.role)) {
         return res.status(403).json({ message: "Forbidden: admin only." });
       }
@@ -6198,13 +6177,10 @@ export async function registerRoutes(
   // ─────────────────────────────────────────────────────────────────────────
 
   // GET /api/clients — List clients, optionally filtered by facility and type
-  app.get("/api/clients", isAuthenticated, requireTenant, async (req: any, res) => {
+  app.get("/api/clients", isAuthenticated, requireTenant, requireDbUser, async (req: any, res) => {
     try {
       const user = req.user as any;
-      const dbUser = req.dbUser;
-      if (!dbUser) {
-        return res.status(401).json({ message: "Unauthorized" });
-      }
+      const dbUser = req.dbUser!;
 
       const facilityId = req.query.facilityId ? parseInt(req.query.facilityId as string) : undefined;
       const clientType = req.query.clientType as string | undefined;
@@ -6259,13 +6235,10 @@ export async function registerRoutes(
   // Updated POST /api/clients: Resolves or dynamically seeds a virtual village named "Cross-Border / Foreign Residence"
   // within the parent district of the client's assigned facility to maintain referential integrity.
   // Enforces justification screening constraints if the registering user is a national_admin.
-  app.post("/api/clients", isAuthenticated, requireTenant, loadRole, async (req: any, res) => {
+  app.post("/api/clients", isAuthenticated, requireTenant, requireDbUser, loadRole, async (req: any, res) => {
     try {
       const user = req.user as any;
-      const dbUser = req.dbUser;
-      if (!dbUser) {
-        return res.status(401).json({ message: "Unauthorized" });
-      }
+      const dbUser = req.dbUser!;
 
       if (req.user?.dbRole === "national_admin") {
         const justification = req.body.justification;
@@ -7831,6 +7804,7 @@ export async function registerRoutes(
     "/api/missed-communities/create-outreach",
     isAuthenticated,
     requireTenant,
+    requireDbUser,
     loadRole,
     requireImportRole,
     async (req: any, res) => {
@@ -7864,8 +7838,7 @@ export async function registerRoutes(
         // Geographic scope check: ensure the user has manage_session_plans permission
         // for every facility involved. Reuses the same row-level guard used by
         // POST /api/sessions so this bulk path cannot escape geographic scope.
-        const dbUser = req.dbUser;
-        if (!dbUser) return res.status(401).json({ message: "Unauthorized" });
+        const dbUser = req.dbUser!;
         for (const fid of Array.from(byFacility.keys())) {
           const geoContext = await getFacilityHierarchy(fid, req.tenantId);
           if (!hasPermission(dbUser, "manage_session_plans", geoContext)) {
@@ -8568,10 +8541,10 @@ export async function registerRoutes(
     "/api/indicators/zero-dose",
     isAuthenticated,
     requireTenant,
+    requireDbUser,
     async (req: any, res) => {
       try {
-        const dbUser = req.dbUser;
-        if (!dbUser) return res.status(401).json({ message: "Unauthorized" });
+        const dbUser = req.dbUser!;
         const tenantId = req.tenantId as string;
         const provinceId = req.query.provinceId
           ? parseInt(req.query.provinceId as string)
@@ -8807,10 +8780,10 @@ export async function registerRoutes(
     "/api/indicators/dropout",
     isAuthenticated,
     requireTenant,
+    requireDbUser,
     async (req: any, res) => {
       try {
-        const dbUser = req.dbUser;
-        if (!dbUser) return res.status(401).json({ message: "Unauthorized" });
+        const dbUser = req.dbUser!;
         const tenantId = req.tenantId as string;
         const provinceId = req.query.provinceId
           ? parseInt(req.query.provinceId as string)
@@ -9006,10 +8979,10 @@ export async function registerRoutes(
     "/api/indicators/defaulters",
     isAuthenticated,
     requireTenant,
+    requireDbUser,
     async (req: any, res) => {
       try {
-        const dbUser = req.dbUser;
-        if (!dbUser) return res.status(401).json({ message: "Unauthorized" });
+        const dbUser = req.dbUser!;
         const tenantId = req.tenantId as string;
         const provinceId = req.query.provinceId
           ? parseInt(req.query.provinceId as string)
@@ -9492,10 +9465,10 @@ export async function registerRoutes(
     "/api/quarterly-reviews",
     isAuthenticated,
     requireTenant,
+    requireDbUser,
     async (req: any, res) => {
       try {
         const tenantId = req.tenantId as string;
-        const userId = getCurrentUserId(req);
         const parsed = insertQuarterlyReviewSchema.safeParse(req.body);
         if (!parsed.success) {
           return res.status(400).json({
@@ -9510,10 +9483,7 @@ export async function registerRoutes(
             .status(400)
             .json({ message: "Facility does not belong to this tenant" });
         }
-        const dbUser = await storage.getUser(userId);
-        if (!dbUser) {
-          return res.status(401).json({ message: "Unauthorized" });
-        }
+        const dbUser = req.dbUser!;
         const roles = new Set<string>([
           dbUser.role,
           ...((Array.isArray(dbUser.roles) ? dbUser.roles : []) as string[]),
@@ -9526,7 +9496,7 @@ export async function registerRoutes(
               "Facility staff can only save a quarterly review for their own facility",
           });
         }
-        const saved = await storage.upsertQuarterlyReview(tenantId, userId, data);
+        const saved = await storage.upsertQuarterlyReview(tenantId, dbUser.id, data);
         await logAudit(
           req,
           "upsert",
@@ -9754,8 +9724,7 @@ export async function registerRoutes(
   // applied per item so a bad row doesn't fail the rest of the batch.
   app.post("/api/sessions/bulk", ...auth, async (req: any, res) => {
     try {
-      const dbUser = req.dbUser;
-      if (!dbUser) return res.status(401).json({ message: "Unauthorized" });
+      const dbUser = req.dbUser!;
       const authorRoles = new Set(["facility_clerk", "facility_in_charge", "national_admin"]);
       if (!authorRoles.has(dbUser.role)) {
         return res.status(403).json({
