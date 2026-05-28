@@ -254,6 +254,7 @@ export default function SessionPlanning({
   // the entry, even without an explicit event channel.
   const { data: pendingSessionSync } = useQuery<{
     serverIds: Set<number>;
+    markDoneServerIds: Set<number>;
     hasLocalCreate: boolean;
   }>({
     queryKey: ["offline-outbox", "sessionPlan"],
@@ -263,15 +264,19 @@ export default function SessionPlanning({
         .equals("sessionPlan")
         .toArray();
       const serverIds = new Set<number>();
+      const markDoneServerIds = new Set<number>();
       let hasLocalCreate = false;
       for (const e of entries) {
         if (typeof e.serverId === "number") {
           serverIds.add(e.serverId);
+          if (typeof e.url === "string" && e.url.includes("/mark-done")) {
+            markDoneServerIds.add(e.serverId);
+          }
         } else if (e.method === "POST" && !e.serverId) {
           hasLocalCreate = true;
         }
       }
-      return { serverIds, hasLocalCreate };
+      return { serverIds, markDoneServerIds, hasLocalCreate };
     },
     refetchInterval: 3000,
     refetchIntervalInBackground: false,
@@ -2545,6 +2550,20 @@ export default function SessionPlanning({
                   {markDoneSession.sessionType} · target {markDoneSession.targetPopulation?.toLocaleString() ?? "—"}
                 </div>
               </div>
+              {pendingSessionSync?.markDoneServerIds.has(markDoneSession.id) && (
+                <Alert
+                  className="border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-200"
+                  data-testid="alert-mark-done-pending-sync"
+                >
+                  <CloudOff className="h-4 w-4" />
+                  <AlertTitle className="text-sm">Mark-done already queued offline</AlertTitle>
+                  <AlertDescription className="text-xs">
+                    A previous mark-done for this session is still waiting to
+                    sync. Wait for it to reach the server before submitting
+                    another one, or you may overwrite the queued counts.
+                  </AlertDescription>
+                </Alert>
+              )}
               <div className="space-y-2 max-h-[50vh] overflow-y-auto pr-1">
                 {doseStages.length === 0 ? (
                   <div className="text-xs text-muted-foreground border rounded-md p-3">
@@ -2583,7 +2602,11 @@ export default function SessionPlanning({
             <Button variant="outline" onClick={() => { setMarkDoneSession(null); setVaccinatedCounts({}); }}>Cancel</Button>
             <Button
               data-testid="button-confirm-mark-done"
-              disabled={markDoneMutation.isPending || !markDoneSession}
+              disabled={
+                markDoneMutation.isPending ||
+                !markDoneSession ||
+                !!(markDoneSession && pendingSessionSync?.markDoneServerIds.has(markDoneSession.id))
+              }
               onClick={() => {
                 if (!markDoneSession) return;
                 const counts: Record<string, number> = {};

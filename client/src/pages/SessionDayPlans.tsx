@@ -52,6 +52,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { offlineDb } from "@/lib/offlineDb";
 import {
   Calendar as CalendarIcon,
   MapPin,
@@ -72,6 +73,7 @@ import {
   Info,
   ClipboardList,
   TrendingUp,
+  CloudOff,
 } from "lucide-react";
 import {
   insertSessionDayPlanSchema,
@@ -207,6 +209,32 @@ export default function SessionDayPlans() {
     queryKey: [`/api/sessions/${id}`],
     enabled: !!id,
   });
+
+  // Task #196 — Mirror the "Pending sync" badge from the microplan list onto
+  // this drill-down so a clerk who navigates straight into a session's day
+  // plans can still see that their last save (a PATCH or a mark-done) is
+  // queued offline and avoid double-editing it. Polls the same outbox the
+  // microplan list uses so the badge clears once syncEngine flushes the
+  // entry.
+  const sessionIdNum = id ? Number(id) : null;
+  const { data: pendingSessionSync } = useQuery<{ pending: boolean }>({
+    queryKey: ["offline-outbox", "sessionPlan", sessionIdNum],
+    enabled: sessionIdNum != null && Number.isFinite(sessionIdNum),
+    queryFn: async () => {
+      const entries = await offlineDb.outbox
+        .where("entityType")
+        .equals("sessionPlan")
+        .toArray();
+      const pending = entries.some(
+        (e) => typeof e.serverId === "number" && e.serverId === sessionIdNum,
+      );
+      return { pending };
+    },
+    refetchInterval: 3000,
+    refetchIntervalInBackground: false,
+    staleTime: 1000,
+  });
+  const isSessionPendingSync = !!pendingSessionSync?.pending;
 
   // Fetch the parent microplan so we can reuse its staffing roster (per-diem
   // rates + headcount) to compute personnel cost per session-day without
@@ -881,11 +909,22 @@ export default function SessionDayPlans() {
             </Link>
           </Button>
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-2xl font-bold">{sessionPlan?.name}</h1>
               <Badge variant="secondary" className="capitalize">
                 {sessionPlan?.sessionType} Session
               </Badge>
+              {isSessionPendingSync && (
+                <Badge
+                  variant="outline"
+                  className="gap-1 border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 text-[10px] font-medium px-1.5 py-0 h-5"
+                  data-testid={`badge-pending-sync-${sessionIdNum}`}
+                  title="This session has changes saved on this device that haven't reached the server yet."
+                >
+                  <CloudOff className="h-3 w-3" />
+                  Pending sync
+                </Badge>
+              )}
             </div>
             <p className="text-sm text-muted-foreground flex items-center gap-1.5 mt-0.5">
               <MapPin className="h-3.5 w-3.5" />
