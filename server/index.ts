@@ -12,6 +12,7 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { startPopulationRefreshScheduler } from "./jobs/populationRefresh";
+import { startSessionArchiveScheduler } from "./jobs/sessionArchive";
 import { seedDemoOperational } from "./migrations/006-seed-demo-operational";
 
 
@@ -74,6 +75,7 @@ app.use((req, res, next) => {
 (async () => {
   await registerRoutes(httpServer, app);
   startPopulationRefreshScheduler();
+  startSessionArchiveScheduler();
 
   // Auto-run the demo operational seed on startup. Idempotent: every step
   // skips/upserts so subsequent boots are a no-op once data is in place.

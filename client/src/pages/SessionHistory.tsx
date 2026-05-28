@@ -138,7 +138,14 @@ export default function SessionHistory() {
                       <td className="p-2 font-medium">{r.name}</td>
                       <td className="p-2 capitalize">{r.planType ?? "—"} / {r.sessionType}</td>
                       <td className="p-2">
-                        <Badge variant={r.status === "completed" ? "default" : "destructive"} className="capitalize">
+                        <Badge
+                          variant={
+                            r.status === "completed" || r.status === "archived"
+                              ? "default"
+                              : "destructive"
+                          }
+                          className="capitalize"
+                        >
                           {String(r.status).replace("_", " ")}
                         </Badge>
                       </td>

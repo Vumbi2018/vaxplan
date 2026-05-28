@@ -3957,7 +3957,8 @@ export async function registerRoutes(
       const all = await storage.getSessionPlans(req.tenantId);
       const overlaid = await overlayCampaignFromParent(req.tenantId, all as any[]);
       const active = overlaid.filter((s: any) => {
-        if (s.status !== "completed") return s.status !== "cancelled";
+        if (s.status === "cancelled" || s.status === "archived") return false;
+        if (s.status !== "completed") return true;
         return s.completedAt && new Date(s.completedAt) >= cutoff;
       });
 
@@ -4010,7 +4011,7 @@ export async function registerRoutes(
       const facilityId = req.query.facilityId ? parseInt(req.query.facilityId as string) : undefined;
       const all = await storage.getSessionPlans(req.tenantId, facilityId);
       const overlaid = await overlayCampaignFromParent(req.tenantId, all as any[]);
-      const archived = overlaid.filter((s: any) => s.status === "completed" || s.status === "cancelled");
+      const archived = overlaid.filter((s: any) => s.status === "completed" || s.status === "cancelled" || s.status === "archived");
       archived.sort((a: any, b: any) => {
         const at = a.completedAt ? new Date(a.completedAt).getTime() : 0;
         const bt = b.completedAt ? new Date(b.completedAt).getTime() : 0;
