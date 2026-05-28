@@ -22,6 +22,70 @@ import {
 } from "lucide-react";
 import { GeoCascadeFilter } from "@/components/GeoCascadeFilter";
 
+const PAGE_SIZE_OPTIONS = [25, 50, 100, 250] as const;
+
+function ListPager({
+  page,
+  pageSize,
+  total,
+  onPageChange,
+  onPageSizeChange,
+  testIdPrefix,
+}: {
+  page: number;
+  pageSize: number;
+  total: number;
+  onPageChange: (p: number) => void;
+  onPageSizeChange: (s: number) => void;
+  testIdPrefix: string;
+}) {
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const start = total === 0 ? 0 : (safePage - 1) * pageSize + 1;
+  const end = Math.min(safePage * pageSize, total);
+  return (
+    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mt-3 text-xs text-muted-foreground">
+      <div className="flex items-center gap-2">
+        <span>Rows per page:</span>
+        <Select value={String(pageSize)} onValueChange={(v) => { onPageSizeChange(Number(v)); onPageChange(1); }}>
+          <SelectTrigger className="h-7 w-20" data-testid={`${testIdPrefix}-page-size`}><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {PAGE_SIZE_OPTIONS.map((n) => <SelectItem key={n} value={String(n)}>{n}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <span data-testid={`${testIdPrefix}-range`}>
+          {total === 0 ? "0 of 0" : `${start.toLocaleString()}–${end.toLocaleString()} of ${total.toLocaleString()}`}
+        </span>
+      </div>
+      <div className="flex items-center gap-1">
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-7 px-2"
+          disabled={safePage <= 1}
+          onClick={() => onPageChange(safePage - 1)}
+          data-testid={`${testIdPrefix}-prev`}
+        >
+          Previous
+        </Button>
+        <span className="px-2" data-testid={`${testIdPrefix}-page-indicator`}>
+          Page {safePage} of {totalPages}
+        </span>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-7 px-2"
+          disabled={safePage >= totalPages}
+          onClick={() => onPageChange(safePage + 1)}
+          data-testid={`${testIdPrefix}-next`}
+        >
+          Next
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 type SupervisionVisit = {
   id: number;
   tenantId: string;
@@ -132,6 +196,9 @@ export default function Supervision() {
   const [conductingVisit, setConductingVisit] = useState<SupervisionVisit | null>(null);
   const [statusSort, setStatusSort] = useState<"status" | "lastVisit" | "name">("status");
   const [statusBadgeFilter, setStatusBadgeFilter] = useState<"all" | "overdue" | "due_soon" | "current">("all");
+  const [fsPage, setFsPage] = useState(1);
+  const [fsPageSize, setFsPageSize] = useState<number>(25);
+  useEffect(() => { setFsPage(1); }, [statusBadgeFilter, statusSort, provinceFilter, districtFilter, facilityFilter]);
   const [hideAutoCancelled, setHideAutoCancelled] = useState<boolean>(true);
 
   const { data: visits = [], isLoading } = useQuery<SupervisionVisit[]>({
@@ -407,53 +474,67 @@ export default function Supervision() {
               </div>
             </div>
           ) : (
-            <div className="divide-y border rounded-md">
-              {filteredFacilityStatus.map((row) => {
-                const tone =
-                  row.status === "overdue"
-                    ? "bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/40"
-                    : row.status === "due_soon"
-                    ? "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/40"
-                    : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/40";
-                const label =
-                  row.status === "overdue" ? "Overdue" : row.status === "due_soon" ? "Due soon" : "Current";
-                return (
-                  <button
-                    key={row.facility.id}
-                    type="button"
-                    onClick={() => openScheduleFor(row.facility.id)}
-                    className="w-full text-left px-3 py-2.5 hover-elevate flex items-center gap-3 flex-wrap"
-                    data-testid={`supervision-row-${row.facility.id}`}
-                  >
-                    <Badge variant="outline" className={`${tone} min-w-[5.5rem] justify-center`}>{label}</Badge>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium flex items-center gap-2">
-                        <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
-                        {row.facility.name}
-                      </div>
-                      <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-3 flex-wrap">
-                        {row.lastConducted ? (
-                          <>
-                            <span>Last visit: {new Date(row.lastConducted.conductedDate || row.lastConducted.scheduledDate).toLocaleDateString()}</span>
-                            <span>{row.daysSinceLast} days ago</span>
-                            {row.lastScore !== null && <span>Score {row.lastScore}%</span>}
-                          </>
-                        ) : (
-                          <span>No visit recorded yet</span>
-                        )}
-                        {row.lastScheduled && (
-                          <span className="text-sky-700 dark:text-sky-300">Next scheduled: {new Date(row.lastScheduled.scheduledDate).toLocaleDateString()}</span>
-                        )}
-                      </div>
-                    </div>
-                    <span className="text-xs text-muted-foreground">Schedule →</span>
-                  </button>
-                );
-              })}
-              {filteredFacilityStatus.length === 0 && (
-                <div className="text-center py-6 text-sm text-muted-foreground">No facilities match this filter.</div>
+            <>
+              <div className="divide-y border rounded-md">
+                {filteredFacilityStatus
+                  .slice((Math.min(fsPage, Math.max(1, Math.ceil(filteredFacilityStatus.length / fsPageSize))) - 1) * fsPageSize, Math.min(fsPage, Math.max(1, Math.ceil(filteredFacilityStatus.length / fsPageSize))) * fsPageSize)
+                  .map((row) => {
+                    const tone =
+                      row.status === "overdue"
+                        ? "bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/40"
+                        : row.status === "due_soon"
+                        ? "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/40"
+                        : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/40";
+                    const label =
+                      row.status === "overdue" ? "Overdue" : row.status === "due_soon" ? "Due soon" : "Current";
+                    return (
+                      <button
+                        key={row.facility.id}
+                        type="button"
+                        onClick={() => openScheduleFor(row.facility.id)}
+                        className="w-full text-left px-3 py-2.5 hover-elevate flex items-center gap-3 flex-wrap"
+                        data-testid={`supervision-row-${row.facility.id}`}
+                      >
+                        <Badge variant="outline" className={`${tone} min-w-[5.5rem] justify-center`}>{label}</Badge>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium flex items-center gap-2">
+                            <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+                            {row.facility.name}
+                          </div>
+                          <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-3 flex-wrap">
+                            {row.lastConducted ? (
+                              <>
+                                <span>Last visit: {new Date(row.lastConducted.conductedDate || row.lastConducted.scheduledDate).toLocaleDateString()}</span>
+                                <span>{row.daysSinceLast} days ago</span>
+                                {row.lastScore !== null && <span>Score {row.lastScore}%</span>}
+                              </>
+                            ) : (
+                              <span>No visit recorded yet</span>
+                            )}
+                            {row.lastScheduled && (
+                              <span className="text-sky-700 dark:text-sky-300">Next scheduled: {new Date(row.lastScheduled.scheduledDate).toLocaleDateString()}</span>
+                            )}
+                          </div>
+                        </div>
+                        <span className="text-xs text-muted-foreground">Schedule →</span>
+                      </button>
+                    );
+                  })}
+                {filteredFacilityStatus.length === 0 && (
+                  <div className="text-center py-6 text-sm text-muted-foreground">No facilities match this filter.</div>
+                )}
+              </div>
+              {filteredFacilityStatus.length > 0 && (
+                <ListPager
+                  page={fsPage}
+                  pageSize={fsPageSize}
+                  total={filteredFacilityStatus.length}
+                  onPageChange={setFsPage}
+                  onPageSizeChange={setFsPageSize}
+                  testIdPrefix="supervision-status"
+                />
               )}
-            </div>
+            </>
           )}
         </CardContent>
       </Card>
@@ -1030,6 +1111,9 @@ function QuarterlyReviewCoverage() {
   const [facilityId, setFacilityId] = useState<number | null>(null);
   const [statusFilter, setStatusFilter] = useState<"all" | "missing" | "done">("all");
   const [openFacilityId, setOpenFacilityId] = useState<number | null>(null);
+  const [qrcPage, setQrcPage] = useState(1);
+  const [qrcPageSize, setQrcPageSize] = useState<number>(25);
+  useEffect(() => { setQrcPage(1); }, [statusFilter, provinceId, districtId, facilityId, year, quarter]);
   const hasScopeFilter = provinceId !== null || districtId !== null || facilityId !== null;
 
   const queryParams = new URLSearchParams();
@@ -1158,8 +1242,11 @@ function QuarterlyReviewCoverage() {
               : "No facilities match this filter."}
           </div>
         ) : (
+          <>
           <div className="divide-y border rounded-md">
-            {filteredRows.map((row) => (
+            {filteredRows
+              .slice((Math.min(qrcPage, Math.max(1, Math.ceil(filteredRows.length / qrcPageSize))) - 1) * qrcPageSize, Math.min(qrcPage, Math.max(1, Math.ceil(filteredRows.length / qrcPageSize))) * qrcPageSize)
+              .map((row) => (
               <button
                 type="button"
                 key={row.facilityId}
@@ -1193,6 +1280,15 @@ function QuarterlyReviewCoverage() {
               </button>
             ))}
           </div>
+          <ListPager
+            page={qrcPage}
+            pageSize={qrcPageSize}
+            total={filteredRows.length}
+            onPageChange={setQrcPage}
+            onPageSizeChange={setQrcPageSize}
+            testIdPrefix="qrc"
+          />
+          </>
         )}
       </CardContent>
 
