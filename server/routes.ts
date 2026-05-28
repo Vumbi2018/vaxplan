@@ -191,9 +191,16 @@ function requirePermission(
       
       // Reuse the row attached by the loadDbUser middleware; fall back to a
       // direct lookup only if the middleware did not run for this request.
+      // If the lookup still comes back empty after isAuthenticated has
+      // already approved the session, return a 500 with an actionable
+      // message rather than a misleading "Unauthorized" — the request *is*
+      // authenticated; we just couldn't materialise the DB row.
       const freshUser = req.dbUser ?? (await storage.getUser(getCurrentUserId(req)));
       if (!freshUser) {
-        return res.status(401).json({ message: "Unauthorized" });
+        return res.status(500).json({
+          message:
+            "Could not resolve your user account from the active session. Please sign out and back in.",
+        });
       }
 
       let context = {};
@@ -1363,10 +1370,14 @@ export async function registerRoutes(
     next();
   }
   // Tiny middleware to load the caller's role from db (cached on req).
+  // Prefers the row already resolved by the global `loadDbUser` middleware so
+  // we don't issue a second `storage.getUser` lookup per request (and don't
+  // risk it transiently returning null and producing a misleading 401/403
+  // downstream — see `requireDbUser` for the longer story).
   async function loadRole(req: any, _res: any, next: any) {
     if (req.user?.dbRole) return next();
     try {
-      const u = await storage.getUser(req.user.claims.sub);
+      const u = req.dbUser ?? (await storage.getUser(req.user.claims.sub));
       req.user.dbRole = u?.role;
     } catch {}
     next();
@@ -5446,7 +5457,7 @@ export async function registerRoutes(
   // server/jobs/supervisionDigest.ts fires this automatically every Monday.
   app.post("/api/supervision/digest/run", ...auth, loadRole, async (req: any, res) => {
     try {
-      const role = req.user?.dbRole as string | undefined;
+      const role = (req.user?.dbRole as string | undefined) ?? (req.dbUser?.role as string | undefined);
       if (role !== "national_admin" && role !== "provincial_coordinator") {
         return res.status(403).json({
           message: "Only national or provincial coordinators may trigger the supervision digest.",
@@ -5473,8 +5484,9 @@ export async function registerRoutes(
   // email on Monday. Lets users sanity-check the opt-out toggle.
   app.get("/api/supervision/digest/preview", ...auth, async (req: any, res) => {
     try {
-      const user = req.dbUser ?? (await storage.getUser(getCurrentUserId(req)));
-      if (!user) return res.status(401).json({ message: "Unauthorized" });
+      // `requireDbUser` (in `auth`) guarantees req.dbUser is non-null here —
+      // no need for a manual lookup that could produce a misleading 401.
+      const user = req.dbUser!;
       const { computeOverdueFacilities } = await import("./jobs/supervisionDigest");
       const isNational =
         user.role === "national_admin" ||
@@ -9523,10 +9535,14 @@ export async function registerRoutes(
   // NOTIFICATIONS — in-app digest delivery (e.g. stock alerts)
   // ─────────────────────────────────────────────────────────────────────────
 
-  app.get("/api/notifications", isAuthenticated, async (req: any, res) => {
+  // Notifications are keyed by user (not tenant), so we compose
+  // `isAuthenticated` + `requireDbUser` directly rather than the tenant-aware
+  // `...auth`. `requireDbUser` guarantees req.dbUser is non-null, so handlers
+  // can read `req.dbUser!.id` instead of running their own `if (!userId)
+  // return 401` check after auth has already passed.
+  app.get("/api/notifications", isAuthenticated, requireDbUser, async (req: any, res) => {
     try {
-      const userId = getCurrentUserId(req);
-      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+      const userId = req.dbUser!.id;
       const unreadOnly = req.query.unreadOnly === "1" || req.query.unreadOnly === "true";
       const limit = req.query.limit ? parseInt(String(req.query.limit), 10) : undefined;
       const list = await storage.getNotificationsForUser(userId, { unreadOnly, limit });
@@ -9537,11 +9553,9 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/notifications/:id/read", isAuthenticated, async (req: any, res) => {
+  app.post("/api/notifications/:id/read", isAuthenticated, requireDbUser, async (req: any, res) => {
     try {
-      const userId = getCurrentUserId(req);
-      if (!userId) return res.status(401).json({ message: "Unauthorized" });
-      const ok = await storage.markNotificationRead(userId, req.params.id);
+      const ok = await storage.markNotificationRead(req.dbUser!.id, req.params.id);
       if (!ok) return res.status(404).json({ message: "Notification not found" });
       res.json({ ok: true });
     } catch (err: any) {
@@ -9550,11 +9564,9 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/notifications/read-all", isAuthenticated, async (req: any, res) => {
+  app.post("/api/notifications/read-all", isAuthenticated, requireDbUser, async (req: any, res) => {
     try {
-      const userId = getCurrentUserId(req);
-      if (!userId) return res.status(401).json({ message: "Unauthorized" });
-      const count = await storage.markAllNotificationsRead(userId);
+      const count = await storage.markAllNotificationsRead(req.dbUser!.id);
       res.json({ ok: true, count });
     } catch (err: any) {
       console.error("POST /api/notifications/read-all failed:", err);

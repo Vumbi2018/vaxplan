@@ -97,6 +97,11 @@ const READ_ENDPOINTS = [
   "/api/vaccine-requirements",
   "/api/budget-items",
   "/api/supervision-visits",
+  // Per-user (non-tenant-scoped) endpoints that previously did their own
+  // `if (!userId) return 401` lookup after isAuthenticated — same false-401
+  // shape as the original bug, now routed through requireDbUser.
+  "/api/notifications",
+  "/api/supervision/digest/preview",
 ] as const;
 
 const WRITE_ENDPOINTS = [
@@ -107,6 +112,10 @@ const WRITE_ENDPOINTS = [
   "/api/vaccine-requirements",
   "/api/budget-items",
   "/api/supervision-visits",
+  // Notification mark-read endpoints — these also re-resolved the caller
+  // by hand and 401'd on null. Covered here so the regression cannot
+  // sneak back in.
+  "/api/notifications/read-all",
 ] as const;
 
 let app: Express;
