@@ -410,14 +410,57 @@ export default function MicroplanWizard() {
     [facilities, facilityId],
   );
 
+  // Track villages the user explicitly removed from this facility's catchment
+  // in Step 2. Persisted per-facility in localStorage so deleted communities
+  // don't pop back in via the facility-villages seed effect on next open.
+  const excludedKey = facilityId
+    ? `microplan-excluded-villages:${facilityId}`
+    : null;
+  const loadExcludedFromStorage = (key: string | null): Set<number> => {
+    if (!key || typeof window === "undefined") return new Set<number>();
+    try {
+      const raw = window.localStorage.getItem(key);
+      const parsed = raw ? JSON.parse(raw) : [];
+      return new Set(
+        Array.isArray(parsed) ? parsed.filter((n: any) => typeof n === "number") : [],
+      );
+    } catch {
+      return new Set<number>();
+    }
+  };
+  // Initialize synchronously so the very first render's `facilityVillages`
+  // already reflects any prior exclusions, avoiding a race where the seed
+  // effect runs against an empty set and re-adds removed villages.
+  const [excludedVillageIds, setExcludedVillageIds] = useState<Set<number>>(
+    () => loadExcludedFromStorage(excludedKey),
+  );
+  const [excludedReady, setExcludedReady] = useState<boolean>(() => true);
+  const loadedExcludedKeyRef = useRef<string | null>(excludedKey);
+  useEffect(() => {
+    if (loadedExcludedKeyRef.current === excludedKey) return;
+    setExcludedReady(false);
+    setExcludedVillageIds(loadExcludedFromStorage(excludedKey));
+    loadedExcludedKeyRef.current = excludedKey;
+    setExcludedReady(true);
+  }, [excludedKey]);
+  const persistExcluded = (next: Set<number>) => {
+    if (!excludedKey) return;
+    try {
+      localStorage.setItem(excludedKey, JSON.stringify(Array.from(next)));
+    } catch {
+      // ignore quota/serialization errors
+    }
+  };
+
   const facilityVillages = useMemo(() => {
     if (!villages || !facility) return [] as Village[];
     return villages.filter(
       (v) =>
-        v.assignedFacilityId === facility.id ||
-        v.districtId === facility.districtId,
+        (v.assignedFacilityId === facility.id ||
+          v.districtId === facility.districtId) &&
+        !excludedVillageIds.has(v.id),
     );
-  }, [villages, facility]);
+  }, [villages, facility, excludedVillageIds]);
 
   // ─── Microplan ensure (idempotent via in-flight ref) ───────────────────
   const ensureInFlight = useRef<Promise<number> | null>(null);
@@ -585,6 +628,10 @@ export default function MicroplanWizard() {
   // Initial seed from facility villages (only when there are no saved
   // communities to hydrate). Population merge happens in a later effect.
   useEffect(() => {
+    // Wait until exclusions for the current facility have been loaded from
+    // localStorage; otherwise a previously removed village can slip back into
+    // the seed before `excludedVillageIds` rehydrates.
+    if (!excludedReady) return;
     if (!facilityVillages.length || communities.length) return;
     setCommunities(
       facilityVillages.map((v) => ({
@@ -1122,6 +1169,17 @@ export default function MicroplanWizard() {
       }
     }
     setCommunities(communities.filter((_, i) => i !== index));
+    // Remember that the user explicitly removed this facility village so the
+    // seed effect doesn't re-add it the next time the microplan is opened.
+    if (row.villageId) {
+      setExcludedVillageIds((prev) => {
+        if (prev.has(row.villageId!)) return prev;
+        const next = new Set(prev);
+        next.add(row.villageId!);
+        persistExcluded(next);
+        return next;
+      });
+    }
   }
 
   async function performDeleteMobilizationRow(index: number) {
@@ -1280,19 +1338,53 @@ export default function MicroplanWizard() {
             row.longitude && row.longitude.trim() !== "" ? row.longitude.trim() : null;
           // Persist newly added (manually typed) communities to villages first.
           if (!vid && row.name.trim() && districtId) {
-            try {
-              const v = await apiRequest<Village>("POST", "/api/villages", {
-                name: row.name.trim(),
-                districtId,
-                assignedFacilityId: facilityId,
-                ...(latNum ? { latitude: latNum } : {}),
-                ...(lngNum ? { longitude: lngNum } : {}),
-              });
-              vid = v.id;
+            // If the typed name matches a previously-excluded village for this
+            // facility, reuse that village (and lift the exclusion) instead of
+            // creating a duplicate. This is the un-exclude path the user gets
+            // when they manually re-add a community they had removed earlier.
+            const typed = row.name.trim().toLowerCase();
+            const revived = (villages ?? []).find(
+              (v) =>
+                excludedVillageIds.has(v.id) &&
+                v.name.trim().toLowerCase() === typed &&
+                (v.assignedFacilityId === facilityId ||
+                  v.districtId === districtId),
+            );
+            if (revived) {
+              vid = revived.id;
               nextRows[i] = { ...row, villageId: vid, latLngDirty: false };
-            } catch (e) {
-              console.warn("Could not create village:", e);
-              continue;
+              setExcludedVillageIds((prev) => {
+                if (!prev.has(revived.id)) return prev;
+                const next = new Set(prev);
+                next.delete(revived.id);
+                persistExcluded(next);
+                return next;
+              });
+              if (row.latLngDirty && (latNum || lngNum)) {
+                try {
+                  await apiRequest("PATCH", `/api/villages/${vid}`, {
+                    ...(latNum ? { latitude: latNum } : {}),
+                    ...(lngNum ? { longitude: lngNum } : {}),
+                  });
+                } catch (e) {
+                  console.warn("Could not update village coordinates:", e);
+                }
+              }
+            } else {
+              try {
+                const v = await apiRequest<Village>("POST", "/api/villages", {
+                  name: row.name.trim(),
+                  districtId,
+                  assignedFacilityId: facilityId,
+                  ...(latNum ? { latitude: latNum } : {}),
+                  ...(lngNum ? { longitude: lngNum } : {}),
+                });
+                vid = v.id;
+                nextRows[i] = { ...row, villageId: vid, latLngDirty: false };
+              } catch (e) {
+                console.warn("Could not create village:", e);
+                continue;
+              }
             }
           } else if (vid && row.latLngDirty && (latNum || lngNum)) {
             // User moved/typed coordinates for an existing village — persist them.
