@@ -492,6 +492,90 @@ async function seedMonthlyReports(
   return inserted;
 }
 
+/**
+ * Backfill any VACCINES entries that are missing from existing
+ * monthly_reports rows for the current quarter. Needed when new antigens
+ * (e.g. PCV / Rotavirus / IPV) are added to the seed AFTER a tenant was
+ * already seeded — `seedMonthlyReports` skips rows that already exist
+ * for (facility, month, year), so the new vaccines never get written
+ * without this step.
+ *
+ * Idempotent: only adds a vaccine key when it is absent from the row's
+ * `immunizations` JSON. Re-running is a no-op once every row carries
+ * every vaccine in VACCINES.
+ */
+async function backfillMissingVaccinesInMonthlyReports(
+  tenantId: string,
+  picks: FacilityPick[],
+  demographics: { under1: number; pregnant: number; schoolEntry: number },
+  catchmentByFacility: Map<number, number>,
+): Promise<number> {
+  if (picks.length === 0) return 0;
+
+  const startMonth = (QUARTER - 1) * 3 + 1;
+  const months = [startMonth, startMonth + 1, startMonth + 2];
+
+  const facilityIds = picks.map((p) => p.facilityId);
+  const reports = await db
+    .select({
+      id: monthlyReports.id,
+      facilityId: monthlyReports.facilityId,
+      month: monthlyReports.month,
+      immunizations: monthlyReports.immunizations,
+    })
+    .from(monthlyReports)
+    .where(
+      and(
+        eq(monthlyReports.tenantId, tenantId),
+        eq(monthlyReports.year, YEAR),
+        inArray(monthlyReports.facilityId, facilityIds),
+        inArray(monthlyReports.month, months),
+      ),
+    );
+  if (reports.length === 0) return 0;
+
+  let updated = 0;
+  for (const p of picks) {
+    const catchmentPop = catchmentByFacility.get(p.facilityId);
+    if (catchmentPop === undefined) continue;
+
+    // Same totals/splits used by seedMonthlyReports so backfilled buckets
+    // are consistent with what would have been written originally.
+    const splits: Record<string, number[]> = {};
+    for (const v of VACCINES) {
+      const fraction = demographics[v.cohort];
+      const targetPopulation = Math.max(1, Math.round((catchmentPop * fraction) / 4));
+      const baseCoverage = DEMO_COVERAGE_FRACTIONS[v.name] ?? 0.5;
+      const jitter = (((Math.sin(p.facilityId * 13 + v.name.length) + 1) / 2) - 0.5) * 0.14;
+      const coverage = Math.max(0.05, Math.min(0.98, baseCoverage + jitter));
+      const total = Math.round(targetPopulation * coverage);
+      splits[v.name] = splitAcrossMonths(total, months.length, p.facilityId + v.name.length);
+    }
+
+    const facReports = reports.filter((r) => r.facilityId === p.facilityId);
+    for (const r of facReports) {
+      const mi = months.indexOf(r.month);
+      if (mi < 0) continue;
+      const imm = { ...((r.immunizations as Record<string, number>) ?? {}) };
+      let changed = false;
+      for (const v of VACCINES) {
+        if (Object.prototype.hasOwnProperty.call(imm, v.name)) continue;
+        const count = splits[v.name][mi] ?? 0;
+        if (count <= 0) continue;
+        imm[v.name] = count;
+        changed = true;
+      }
+      if (!changed) continue;
+      await db
+        .update(monthlyReports)
+        .set({ immunizations: imm })
+        .where(eq(monthlyReports.id, r.id));
+      updated++;
+    }
+  }
+  return updated;
+}
+
 async function seedSessionPlans(
   tenantId: string,
   picks: FacilityPick[],
@@ -1610,6 +1694,12 @@ export async function seedDemoOperational(): Promise<void> {
     const vr = await seedVaccineRequirements(tenant.id, picks, demographics, catchmentByFacility);
     const sp = await seedSessionPlans(tenant.id, picks, demographics, catchmentByFacility);
     const mr = await seedMonthlyReports(tenant.id, picks, demographics, catchmentByFacility);
+    const mrb = await backfillMissingVaccinesInMonthlyReports(
+      tenant.id,
+      picks,
+      demographics,
+      catchmentByFacility,
+    );
     const vaccineConfigByName = await ensureVaccineConfigs(tenant.id);
     const villagesByFacility = await pickVillagesPerFacility(tenant.id, picks);
     const vp = await seedVillagePopulation(tenant.id, villagesByFacility, picks);
@@ -1626,7 +1716,7 @@ export async function seedDemoOperational(): Promise<void> {
     const ss = await seedStockSummary(tenant.id, picks);
     const st = await seedStockTransactions(tenant.id, picks);
     console.log(
-      `[${code}] picked ${picks.length} facilities • +${u} users • +${pop} facility-pop • +${vp} village-pop • +${vr} vaccine reqs • +${sp} session plans • +${mr} monthly reports • +${ic} imported-coverage rows • +${clientsInserted} demo clients • +${vaccinationsInserted} client vaccinations • +${ss} stock summaries • +${st} stock transactions`,
+      `[${code}] picked ${picks.length} facilities • +${u} users • +${pop} facility-pop • +${vp} village-pop • +${vr} vaccine reqs • +${sp} session plans • +${mr} monthly reports (+${mrb} backfilled) • +${ic} imported-coverage rows • +${clientsInserted} demo clients • +${vaccinationsInserted} client vaccinations • +${ss} stock summaries • +${st} stock transactions`,
     );
   }
 }
