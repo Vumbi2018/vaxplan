@@ -1,4 +1,4 @@
-import { Switch, Route } from "wouter";
+import { Switch, Route, useParams } from "wouter";
 import { useEffect, lazy, Suspense } from "react";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -50,6 +50,16 @@ const MicroplanWizard = lazy(() => import("@/pages/MicroplanWizard"));
 const SettlementIntelligence = lazy(() => import("@/pages/SettlementIntelligence"));
 const StandardsAlignment = lazy(() => import("@/pages/StandardsAlignment"));
 const DropoutRates = lazy(() => import("@/pages/DropoutRates"));
+
+// Task #50 — Small wrapper that reads :id from the route and passes it to
+// SessionPlanning as `lockedMicroplanId`, so the unserved-prefill auto-open
+// flow has a real routed home.
+function SessionPlanningDetailRoute({ planTypeFilter }: { planTypeFilter: "routine" | "campaign" }) {
+  const params = useParams<{ id: string }>();
+  const id = params?.id ? Number(params.id) : NaN;
+  if (!Number.isFinite(id)) return <NotFound />;
+  return <SessionPlanning planTypeFilter={planTypeFilter} lockedMicroplanId={id} />;
+}
 
 function RouteFallback() {
   return (
@@ -112,6 +122,15 @@ function AuthenticatedRouter() {
       {/* Back-compat: /sessions now redirects to the routine microplan workspace. */}
       <Route path="/sessions">
         <SessionPlanning planTypeFilter="routine" />
+      </Route>
+      {/* Task #50 — Routed detail mode for SessionPlanning so the unserved-place
+          one-click "Plan a session here" flow lands on the New Session dialog
+          with the village prefilled. */}
+      <Route path="/sessions/microplan/:id">
+        <SessionPlanningDetailRoute planTypeFilter="routine" />
+      </Route>
+      <Route path="/sessions/campaign/:id">
+        <SessionPlanningDetailRoute planTypeFilter="campaign" />
       </Route>
       <Route path="/sessions/history" component={SessionHistory} />
       <Route path="/sessions/:id/day-plans" component={SessionDayPlans} />

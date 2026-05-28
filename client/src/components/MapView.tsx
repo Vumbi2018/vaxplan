@@ -4959,10 +4959,29 @@ export function MapView({
               pathOptions={{ color: "#dc2626", fillColor: "#fecaca", fillOpacity: 0.5, weight: 2, dashArray: "3 3" }}
             >
               <Popup>
-                <div className="w-48 text-xs">
+                <div className="w-52 text-xs">
                   <div className="font-bold text-sm">{p.name}</div>
                   <div className="text-red-600 font-semibold mt-1">No session ever planned</div>
-                  <div className="text-muted-foreground mt-0.5">{p.isHardToReach ? "Hard-to-reach community" : "Standard community"}</div>
+                  <div className="text-muted-foreground mt-0.5 mb-2">{p.isHardToReach ? "Hard-to-reach community" : "Standard community"}</div>
+                  <Button
+                    size="sm"
+                    className="w-full h-7 text-[11px] font-semibold bg-red-600 hover:bg-red-700 text-white"
+                    onClick={() => {
+                      const qs = new URLSearchParams({
+                        unservedVillageId: String(p.id),
+                        unservedName: p.name ?? "",
+                        unservedLat: String(p.latitude),
+                        unservedLng: String(p.longitude),
+                        unservedHtr: p.isHardToReach ? "1" : "0",
+                        autoOpen: "1",
+                      });
+                      window.location.assign(`/sessions?${qs.toString()}`);
+                    }}
+                    data-testid={`button-plan-session-here-${p.id}`}
+                  >
+                    <Plus className="h-3 w-3 mr-1" />
+                    Plan a session here
+                  </Button>
                 </div>
               </Popup>
             </CircleMarker>

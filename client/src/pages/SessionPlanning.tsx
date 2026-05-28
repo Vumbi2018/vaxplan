@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { Link } from "wouter";
 import { FacilityCascadePicker } from "@/components/FacilityCascadePicker";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -103,6 +103,10 @@ export default function SessionPlanning({
   // Task #47 — Proximity panel state shown inside the edit dialog.
   const [proximityWarning, setProximityWarning] = useState<{ nearby: any[]; reason?: string } | null>(null);
   const [proximityChecking, setProximityChecking] = useState(false);
+  // Task #50 — Proximity panel state shown inside the *create* dialog when
+  // prefilled from an unserved-place pin on the live map.
+  const [createProximity, setCreateProximity] = useState<{ nearby: any[]; reason?: string } | null>(null);
+  const [createProximityChecking, setCreateProximityChecking] = useState(false);
   const isDetailMode = lockedMicroplanId != null;
   const parentMicroplanTypeForRoute: "facility_routine" | "sia_campaign" =
     planTypeFilter === "campaign" ? "sia_campaign" : "facility_routine";
@@ -148,6 +152,32 @@ export default function SessionPlanning({
 
   const isCreator = canCreateSessionPlan(user);
   const isReviewer = canApproveSessionPlan(user);
+
+  // Task #50 — prefill from an unserved-place pin on the live map. When the
+  // user clicks "Plan a session here" in the map popup we land here with
+  // ?unservedVillageId=&unservedName=&unservedLat=&unservedLng=&autoOpen=1.
+  // In list mode we surface a banner and preserve the query on the microplan
+  // links; in detail mode we auto-open the New Session dialog, prefill the
+  // name, and run the proximity check against the village's coordinates.
+  const unservedPrefill = useMemo(() => {
+    if (typeof window === "undefined") return null;
+    const sp = new URLSearchParams(window.location.search);
+    if (sp.get("autoOpen") !== "1" || !sp.get("unservedName")) return null;
+    const lat = Number(sp.get("unservedLat"));
+    const lng = Number(sp.get("unservedLng"));
+    const vid = Number(sp.get("unservedVillageId"));
+    return {
+      villageId: Number.isFinite(vid) ? vid : null,
+      name: sp.get("unservedName") || "",
+      lat: Number.isFinite(lat) ? lat : null,
+      lng: Number.isFinite(lng) ? lng : null,
+      isHardToReach: sp.get("unservedHtr") === "1",
+    };
+  }, []);
+  const preserveUnservedQs = useMemo(() => {
+    if (!unservedPrefill || typeof window === "undefined") return "";
+    return window.location.search || "";
+  }, [unservedPrefill]);
 
   /*
   // Original Code: Direct online-only useQuery fetch calls that fail when offline.
@@ -335,6 +365,73 @@ export default function SessionPlanning({
       form.setValue("facilityId", undefined as any);
     }
   }, [filteredFacilities, form]);
+
+  // Task #50 — Run the proximity & population check directly from the create
+  // dialog using the unserved village's coordinates. Synthesises a midpoint
+  // scheduledDate from the form's quarter/year since the create form does not
+  // collect a date yet.
+  const runCreateProximityCheck = async (facilityId: number, lat: number, lng: number, villageId: number | null, quarter: number, year: number, targetPopulation?: number) => {
+    if (!navigator.onLine) {
+      setCreateProximity({ nearby: [], reason: "Offline — proximity check skipped." });
+      return;
+    }
+    setCreateProximityChecking(true);
+    try {
+      const scheduledDate = new Date(year, (quarter - 1) * 3 + 1, 15).toISOString();
+      const res = await apiRequest("POST", "/api/sessions/validate-proximity", {
+        facilityId,
+        scheduledDate,
+        targetPopulation: targetPopulation ?? 0,
+        villageIds: villageId ? [villageId] : [],
+        lat,
+        lng,
+      });
+      const json: any = await (res as any).json?.() ?? res;
+      setCreateProximity({ nearby: json?.nearby ?? [], reason: json?.reason });
+    } catch (e: any) {
+      setCreateProximity({ nearby: [], reason: e?.message ?? "Proximity check failed." });
+    } finally {
+      setCreateProximityChecking(false);
+    }
+  };
+
+  // Task #50 — In detail mode with an unserved-place prefill, auto-open the
+  // create dialog, prefill the session name, default to an outreach session,
+  // and (once a facility is resolved) run the proximity check automatically.
+  const lockedParentForPrefill = useMemo(
+    () =>
+      lockedMicroplanId != null
+        ? (microplansOfRouteType.find((m) => m.id === lockedMicroplanId)
+            ?? (allMicroplans ?? []).find((m) => m.id === lockedMicroplanId))
+        : undefined,
+    [lockedMicroplanId, microplansOfRouteType, allMicroplans],
+  );
+  const autoPrefillRanRef = useRef(false);
+  useEffect(() => {
+    if (!unservedPrefill || !isDetailMode || !isCreator) return;
+    if (autoPrefillRanRef.current) return;
+    if (!lockedParentForPrefill) return;
+    autoPrefillRanRef.current = true;
+    form.setValue("name", `Outreach — ${unservedPrefill.name}`);
+    form.setValue("sessionType", "outreach" as any);
+    setDialogOpen(true);
+  }, [unservedPrefill, isDetailMode, isCreator, lockedParentForPrefill]);
+
+  // Once the dialog is open and a facility is resolved from the locked parent
+  // microplan, fire the proximity check for the prefilled village exactly once.
+  const proxFiredRef = useRef(false);
+  useEffect(() => {
+    if (!unservedPrefill || !dialogOpen) return;
+    if (proxFiredRef.current) return;
+    if (unservedPrefill.lat == null || unservedPrefill.lng == null) return;
+    const fid = form.getValues("facilityId");
+    const q = form.getValues("quarter") || Math.ceil((new Date().getMonth() + 1) / 3);
+    const y = form.getValues("year") || new Date().getFullYear();
+    if (!fid) return;
+    proxFiredRef.current = true;
+    runCreateProximityCheck(Number(fid), unservedPrefill.lat, unservedPrefill.lng, unservedPrefill.villageId, q, y);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dialogOpen, unservedPrefill, watchedMicroplanId, facilities]);
 
   /*
   // Original Code: Direct online-only useMutation apiRequest post call.
@@ -836,7 +933,13 @@ export default function SessionPlanning({
   // the microplans of the route's planType (Routine or SIA). Sessions are
   // created and viewed *inside* a microplan-detail page, never from here.
   if (!isDetailMode) {
-    const lockedParentBase = planTypeFilter === "campaign" ? "/microplans/campaigns" : "/microplans/routine";
+    // Task #50: When prefilling from an unserved-place pin, route the user
+    // into SessionPlanning's own routed detail mode so the auto-open dialog +
+    // proximity check actually fires. Otherwise keep the legacy link into the
+    // Microplan Builder wizard for normal browsing.
+    const lockedParentBase = unservedPrefill
+      ? (planTypeFilter === "campaign" ? "/sessions/campaign" : "/sessions/microplan")
+      : (planTypeFilter === "campaign" ? "/microplans/campaigns" : "/microplans/routine");
     return (
       <div className="p-6 space-y-6">
         <MicroplanStepper currentStep={4} facilityId={geoFilterFacilityId} />
@@ -862,6 +965,18 @@ export default function SessionPlanning({
             )}
           </div>
         </div>
+
+        {unservedPrefill && (
+          <Alert data-testid="alert-unserved-prefill">
+            <MapPin className="h-4 w-4" />
+            <AlertTitle>Plan a session for {unservedPrefill.name}</AlertTitle>
+            <AlertDescription>
+              Pick the microplan that will host this session. The new-session form will
+              open pre-filled and the proximity check will run automatically.
+              {unservedPrefill.isHardToReach && " This is a hard-to-reach community."}
+            </AlertDescription>
+          </Alert>
+        )}
 
         {microplansOfRouteType.length === 0 ? (
           <Alert className="max-w-2xl">
@@ -895,9 +1010,9 @@ export default function SessionPlanning({
                           {m.status === "locked" ? " · locked" : ""}
                         </div>
                       </div>
-                      <Link href={`${lockedParentBase}/${m.id}`}>
+                      <Link href={`${lockedParentBase}/${m.id}${preserveUnservedQs}`}>
                         <Button variant="outline" size="sm" data-testid={`button-open-microplan-${m.id}`}>
-                          Open <ArrowRight className="h-4 w-4 ml-1" />
+                          {unservedPrefill ? "Add session here" : "Open"} <ArrowRight className="h-4 w-4 ml-1" />
                         </Button>
                       </Link>
                     </li>
@@ -1152,6 +1267,69 @@ export default function SessionPlanning({
                       </FormItem>
                     )}
                   />
+
+                  {unservedPrefill && (
+                    <div className="rounded-md border p-3 bg-red-50 dark:bg-red-950/20 space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="text-xs font-semibold text-red-700 dark:text-red-300 uppercase tracking-wider flex items-center gap-1.5">
+                          <MapPin className="h-3.5 w-3.5" />
+                          Prefilled from unserved place
+                        </div>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          data-testid="button-recheck-proximity"
+                          disabled={createProximityChecking}
+                          onClick={() => {
+                            const fid = form.getValues("facilityId");
+                            const q = form.getValues("quarter") || Math.ceil((new Date().getMonth() + 1) / 3);
+                            const y = form.getValues("year") || new Date().getFullYear();
+                            const tp = form.getValues("targetPopulation") || 0;
+                            if (!fid || unservedPrefill.lat == null || unservedPrefill.lng == null) return;
+                            runCreateProximityCheck(Number(fid), unservedPrefill.lat, unservedPrefill.lng, unservedPrefill.villageId, q, y, Number(tp));
+                          }}
+                        >
+                          {createProximityChecking ? "Checking…" : "Re-check"}
+                        </Button>
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        Village: <span className="font-semibold text-foreground">{unservedPrefill.name}</span>
+                        {unservedPrefill.lat != null && unservedPrefill.lng != null && (
+                          <> · {unservedPrefill.lat.toFixed(4)}, {unservedPrefill.lng.toFixed(4)}</>
+                        )}
+                        {unservedPrefill.isHardToReach && <> · <span className="text-rose-600 font-semibold">Hard-to-reach</span></>}
+                      </div>
+                      {createProximityChecking && !createProximity && (
+                        <div className="text-xs text-muted-foreground">Running proximity & population check…</div>
+                      )}
+                      {createProximity && (
+                        createProximity.nearby.length > 0 || createProximity.reason ? (
+                          <Alert variant="destructive" className="py-2">
+                            <AlertTriangle className="h-4 w-4" />
+                            <AlertTitle className="text-sm">Possible overlap</AlertTitle>
+                            <AlertDescription className="text-xs">
+                              {createProximity.reason && <div>{createProximity.reason}</div>}
+                              {createProximity.nearby.length > 0 && (
+                                <ul className="list-disc pl-4 mt-1">
+                                  {createProximity.nearby.slice(0, 5).map((n: any, i: number) => (
+                                    <li key={i}>
+                                      <span className="font-semibold">{n.name}</span> — {n.distanceKm?.toFixed?.(2) ?? n.distanceKm}km
+                                      {n.daysApart != null ? `, ${n.daysApart}d apart` : ""}
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                            </AlertDescription>
+                          </Alert>
+                        ) : (
+                          <div className="text-xs text-emerald-600 flex items-center gap-1.5">
+                            <CheckCircle2 className="h-3.5 w-3.5" /> No nearby session conflicts found.
+                          </div>
+                        )
+                      )}
+                    </div>
+                  )}
 
                   <div className="flex justify-end gap-2 pt-2">
                     <Button
