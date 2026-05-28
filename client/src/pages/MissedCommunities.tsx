@@ -9,7 +9,7 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { MapContainer, TileLayer, CircleMarker, Popup } from "react-leaflet";
+import { MapContainer, CircleMarker, Popup } from "react-leaflet";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -23,6 +23,12 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { AlertTriangle, MapPin, Target, ArrowRight, RefreshCw, Layers } from "lucide-react";
+import { GeoCascadeFilter } from "@/components/GeoCascadeFilter";
+import {
+  BasemapSwitcher,
+  BasemapTileLayer,
+  usePersistedBasemap,
+} from "@/components/map/BasemapToggle";
 
 interface MissedRow {
   villageId: number;
@@ -56,30 +62,29 @@ export default function MissedCommunities() {
     const d = new Date();
     return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}`;
   });
-  const [districtFilter, setDistrictFilter] = useState<string>("");
+  const [provinceId, setProvinceId] = useState<number | null>(null);
+  const [districtId, setDistrictId] = useState<number | null>(null);
+  const [facilityId, setFacilityId] = useState<number | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [basemap, setBasemap] = usePersistedBasemap("osm");
 
   const { data, isLoading, refetch, isFetching } = useQuery<{ count: number; results: MissedRow[] }>({
-    queryKey: ["/api/missed-communities", antigen, period, districtFilter],
+    queryKey: ["/api/missed-communities", antigen, period, districtId],
     queryFn: async () => {
       const params = new URLSearchParams({ antigen, period });
-      if (districtFilter) params.set("districtId", districtFilter);
+      if (districtId) params.set("districtId", String(districtId));
       const r = await fetch(`/api/missed-communities?${params.toString()}`, { credentials: "include" });
       if (!r.ok) throw new Error(await r.text());
       return r.json();
     },
   });
 
-  const rows = data?.results ?? [];
-  const districts = useMemo(() => {
-    const m = new Map<number, string>();
-    for (const r of rows) {
-      if (r.districtName) m.set(r.districtId, r.districtName);
-    }
-    const out: Array<{ id: number; name: string }> = [];
-    m.forEach((name, id) => out.push({ id, name }));
-    return out;
-  }, [rows]);
+  const allRows = data?.results ?? [];
+  // Apply client-side facility filter (server filters by district)
+  const rows = useMemo(
+    () => (facilityId ? allRows.filter((r) => r.facilityId === facilityId) : allRows),
+    [allRows, facilityId],
+  );
 
   const mapped = rows.filter((r) => r.latitude != null && r.longitude != null);
   const mapCenter: [number, number] = mapped.length
@@ -155,8 +160,25 @@ export default function MissedCommunities() {
 
       {/* Filters */}
       <Card>
-        <CardContent className="p-4">
-          <div className="grid sm:grid-cols-4 gap-3">
+        <CardContent className="p-4 space-y-3">
+          <GeoCascadeFilter
+            provinceId={provinceId}
+            districtId={districtId}
+            facilityId={facilityId}
+            onProvinceChange={(id) => {
+              setProvinceId(id);
+              setDistrictId(null);
+              setFacilityId(null);
+            }}
+            onDistrictChange={(id) => {
+              setDistrictId(id);
+              setFacilityId(null);
+            }}
+            onFacilityChange={setFacilityId}
+            showFacility
+            testIdPrefix="missed-geo"
+          />
+          <div className="grid sm:grid-cols-3 gap-3">
             <div className="space-y-1">
               <Label className="text-xs uppercase text-muted-foreground">Antigen</Label>
               <Select value={antigen} onValueChange={setAntigen}>
@@ -175,20 +197,10 @@ export default function MissedCommunities() {
                 data-testid="input-period"
               />
             </div>
-            <div className="space-y-1">
-              <Label className="text-xs uppercase text-muted-foreground">District</Label>
-              <Select value={districtFilter || "all"} onValueChange={(v) => setDistrictFilter(v === "all" ? "" : v)}>
-                <SelectTrigger data-testid="select-district"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All districts</SelectItem>
-                  {districts.map((d) => <SelectItem key={d.id} value={String(d.id)}>{d.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
             <div className="space-y-1 flex flex-col justify-end">
               <Label className="text-xs uppercase text-muted-foreground">Results</Label>
               <div className="flex items-center gap-2 text-sm">
-                <Badge variant="secondary">{data?.count ?? 0} villages</Badge>
+                <Badge variant="secondary">{rows.length} villages</Badge>
                 <Badge className="bg-rose-500/10 text-rose-700 border-rose-200" variant="secondary">
                   {selected.size} selected
                 </Badge>
@@ -208,7 +220,7 @@ export default function MissedCommunities() {
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
-            <div className="h-[500px]">
+            <div className="h-[500px] relative">
               {isLoading ? (
                 <Skeleton className="h-full w-full" />
               ) : mapped.length === 0 ? (
@@ -217,12 +229,10 @@ export default function MissedCommunities() {
                   No mapped villages with missed-community scores for this filter.
                 </div>
               ) : (
-                <MapContainer center={mapCenter} zoom={6} className="h-full w-full" scrollWheelZoom>
-                  <TileLayer
-                    attribution='&copy; OpenStreetMap'
-                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                  />
-                  {mapped.map((v) => (
+                <>
+                  <MapContainer center={mapCenter} zoom={6} className="h-full w-full" scrollWheelZoom>
+                    <BasemapTileLayer basemap={basemap} />
+                    {mapped.map((v) => (
                     <CircleMarker
                       key={v.villageId}
                       center={[v.latitude!, v.longitude!]}
@@ -246,7 +256,9 @@ export default function MissedCommunities() {
                       </Popup>
                     </CircleMarker>
                   ))}
-                </MapContainer>
+                  </MapContainer>
+                  <BasemapSwitcher basemap={basemap} onChange={setBasemap} />
+                </>
               )}
             </div>
           </CardContent>

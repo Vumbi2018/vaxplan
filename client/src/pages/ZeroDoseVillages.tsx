@@ -18,7 +18,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
-import { MapContainer, TileLayer, CircleMarker, Popup } from "react-leaflet";
+import { MapContainer, CircleMarker, Popup } from "react-leaflet";
+import { GeoCascadeFilter } from "@/components/GeoCascadeFilter";
+import {
+  BasemapSwitcher,
+  BasemapTileLayer,
+  usePersistedBasemap,
+} from "@/components/map/BasemapToggle";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -78,9 +84,12 @@ export default function ZeroDoseVillages() {
   const [, setLocation] = useLocation();
 
   const [mode, setMode] = useState<Mode>("zero");
-  const [districtFilter, setDistrictFilter] = useState<string>("");
+  const [provinceId, setProvinceId] = useState<number | null>(null);
+  const [districtId, setDistrictId] = useState<number | null>(null);
+  const [facilityId, setFacilityId] = useState<number | null>(null);
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [basemap, setBasemap] = usePersistedBasemap("osm");
 
   const [antigen, setAntigen] = useState<string>(defaultAntigenFor("zero"));
   const [antigenTouched, setAntigenTouched] = useState(false);
@@ -100,17 +109,12 @@ export default function ZeroDoseVillages() {
 
   const rows = data?.byVillage ?? [];
 
-  const districts = useMemo(() => {
-    const m = new Map<number, string>();
-    for (const r of rows) m.set(r.districtId, r.districtName);
-    return Array.from(m.entries()).map(([id, name]) => ({ id, name }));
-  }, [rows]);
-
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return rows
       .filter((r) => (mode === "zero" ? r.zeroDose > 0 : r.underImmunized > 0))
-      .filter((r) => !districtFilter || String(r.districtId) === districtFilter)
+      .filter((r) => !districtId || r.districtId === districtId)
+      .filter((r) => !facilityId || r.facilityId === facilityId)
       .filter(
         (r) =>
           !q ||
@@ -122,7 +126,7 @@ export default function ZeroDoseVillages() {
           ? b.zeroDose - a.zeroDose
           : b.underImmunized - a.underImmunized,
       );
-  }, [rows, mode, districtFilter, search]);
+  }, [rows, mode, districtId, facilityId, search]);
 
   const mapped = filtered.filter((v) => v.latitude != null && v.longitude != null);
   const mapCenter: [number, number] = mapped.length
@@ -222,8 +226,25 @@ export default function ZeroDoseVillages() {
 
       {/* Filters + headline */}
       <Card>
-        <CardContent className="p-4">
-          <div className="grid sm:grid-cols-4 gap-3">
+        <CardContent className="p-4 space-y-3">
+          <GeoCascadeFilter
+            provinceId={provinceId}
+            districtId={districtId}
+            facilityId={facilityId}
+            onProvinceChange={(id) => {
+              setProvinceId(id);
+              setDistrictId(null);
+              setFacilityId(null);
+            }}
+            onDistrictChange={(id) => {
+              setDistrictId(id);
+              setFacilityId(null);
+            }}
+            onFacilityChange={setFacilityId}
+            showFacility
+            testIdPrefix="zd-geo"
+          />
+          <div className="grid sm:grid-cols-3 gap-3">
             <div className="space-y-1">
               <Label className="text-xs uppercase text-muted-foreground">Indicator</Label>
               <Select
@@ -237,21 +258,6 @@ export default function ZeroDoseVillages() {
                 <SelectContent>
                   <SelectItem value="zero">Zero-dose (no DTP1)</SelectItem>
                   <SelectItem value="under">Under-immunized (DTP1, no DTP3)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs uppercase text-muted-foreground">District</Label>
-              <Select
-                value={districtFilter || "all"}
-                onValueChange={(v) => setDistrictFilter(v === "all" ? "" : v)}
-              >
-                <SelectTrigger data-testid="select-district"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All districts</SelectItem>
-                  {districts.map((d) => (
-                    <SelectItem key={d.id} value={String(d.id)}>{d.name}</SelectItem>
-                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -289,7 +295,7 @@ export default function ZeroDoseVillages() {
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
-            <div className="h-[500px]">
+            <div className="h-[500px] relative">
               {isLoading ? (
                 <Skeleton className="h-full w-full" />
               ) : mapped.length === 0 ? (
@@ -298,17 +304,15 @@ export default function ZeroDoseVillages() {
                   No mapped villages with {mode === "zero" ? "zero-dose" : "under-immunized"} children for this filter.
                 </div>
               ) : (
+                <>
                 <MapContainer
-                  key={`${mode}-${districtFilter}`}
+                  key={`${mode}-${districtId ?? "all"}-${facilityId ?? "all"}`}
                   center={mapCenter}
                   zoom={6}
                   className="h-full w-full"
                   scrollWheelZoom
                 >
-                  <TileLayer
-                    attribution='&copy; OpenStreetMap'
-                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                  />
+                  <BasemapTileLayer basemap={basemap} />
                   {mapped.map((v) => {
                     const n = countFor(v);
                     const color = colorFor(n);
@@ -365,6 +369,8 @@ export default function ZeroDoseVillages() {
                     );
                   })}
                 </MapContainer>
+                <BasemapSwitcher basemap={basemap} onChange={setBasemap} />
+                </>
               )}
             </div>
           </CardContent>

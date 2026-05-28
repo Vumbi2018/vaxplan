@@ -1443,57 +1443,61 @@ export default function Dashboard() {
               subtitle="Active facilities in system"
               icon={Building2}
               trend={{ value: 5, isPositive: true }}
+              href="/facilities"
+              testId="stats-health-facilities"
             />
             <StatsCard
               title="Annual Population"
               value={annualPopulationDisplay.value.toLocaleString()}
               subtitle={annualPopulationDisplay.label}
               icon={Users}
+              href="/population"
+              testId="stats-annual-population"
             />
             <StatsCard
               title="Planned Sessions"
               value={pendingSessions}
               subtitle="Sessions pending this quarter"
               icon={Calendar}
+              href="/microplans/routine"
+              testId="stats-planned-sessions"
             />
             <StatsCard
               title="Hard-to-Reach"
               value={htrVillages}
               subtitle="Villages requiring special attention"
               icon={AlertTriangle}
+              href="/htr"
+              testId="stats-hard-to-reach"
             />
-            <Link href="/microplans/routine">
-              <a className="block" data-testid="link-pending-implementation">
-                <StatsCard
-                  title="Pending Implementation"
-                  value={sessionsPendingImplementation.total}
-                  subtitle={
-                    sessionsPendingImplementation.overdue > 0
-                      ? `${sessionsPendingImplementation.overdue} overdue — needs attention`
-                      : "Sessions to conduct or report"
-                  }
-                  icon={Clock}
-                />
-              </a>
-            </Link>
-            <Link href="/stock">
-              <a className="block" data-testid="link-stock-alerts">
-                <StatsCard
-                  title="Stock Alerts"
-                  value={
-                    scopedStockAlerts.totals.lowStock +
-                    scopedStockAlerts.totals.outOfStock +
-                    scopedStockAlerts.totals.nearExpiry
-                  }
-                  subtitle={
-                    user?.facilityId
-                      ? `${scopedStockAlerts.totals.lowStock + scopedStockAlerts.totals.outOfStock} low/out · ${scopedStockAlerts.totals.nearExpiry} expiring ≤60d`
-                      : `${scopedStockAlerts.totals.facilitiesAtRisk} facilities at risk · ${scopedStockAlerts.totals.expiringSoon} batches ≤30d`
-                  }
-                  icon={Package}
-                />
-              </a>
-            </Link>
+            <StatsCard
+              title="Pending Implementation"
+              value={sessionsPendingImplementation.total}
+              subtitle={
+                sessionsPendingImplementation.overdue > 0
+                  ? `${sessionsPendingImplementation.overdue} overdue — needs attention`
+                  : "Sessions to conduct or report"
+              }
+              icon={Clock}
+              href="/microplans/routine"
+              testId="link-pending-implementation"
+            />
+            <StatsCard
+              title="Stock Alerts"
+              value={
+                scopedStockAlerts.totals.lowStock +
+                scopedStockAlerts.totals.outOfStock +
+                scopedStockAlerts.totals.nearExpiry
+              }
+              subtitle={
+                user?.facilityId
+                  ? `${scopedStockAlerts.totals.lowStock + scopedStockAlerts.totals.outOfStock} low/out · ${scopedStockAlerts.totals.nearExpiry} expiring ≤60d`
+                  : `${scopedStockAlerts.totals.facilitiesAtRisk} facilities at risk · ${scopedStockAlerts.totals.expiringSoon} batches ≤30d`
+              }
+              icon={Package}
+              href="/stock"
+              testId="link-stock-alerts"
+            />
           </>
         )}
       </div>

@@ -1,5 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { Link } from "wouter";
 import type { LucideIcon } from "lucide-react";
 
 interface StatsCardProps {
@@ -12,6 +13,8 @@ interface StatsCardProps {
     isPositive: boolean;
   };
   className?: string;
+  href?: string;
+  testId?: string;
 }
 
 export function StatsCard({
@@ -21,9 +24,19 @@ export function StatsCard({
   icon: Icon,
   trend,
   className,
+  href,
+  testId,
 }: StatsCardProps) {
-  return (
-    <Card className={cn("", className)}>
+  const interactive = !!href;
+  const card = (
+    <Card
+      className={cn(
+        interactive &&
+          "transition-shadow cursor-pointer hover:shadow-md hover:border-primary/40",
+        className,
+      )}
+      data-testid={testId}
+    >
       <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
         <CardTitle className="text-sm font-medium text-muted-foreground">
           {title}
@@ -43,13 +56,28 @@ export function StatsCard({
           <p
             className={cn(
               "text-xs mt-1",
-              trend.isPositive ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"
+              trend.isPositive
+                ? "text-green-600 dark:text-green-400"
+                : "text-red-600 dark:text-red-400",
             )}
           >
-            {trend.isPositive ? "+" : ""}{trend.value}% from last quarter
+            {trend.isPositive ? "+" : ""}
+            {trend.value}% from last quarter
           </p>
         )}
       </CardContent>
     </Card>
   );
+
+  if (interactive) {
+    return (
+      <Link
+        href={href!}
+        className="block rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+      >
+        {card}
+      </Link>
+    );
+  }
+  return card;
 }
