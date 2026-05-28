@@ -1677,6 +1677,18 @@ export function MapView({
     "Universal": { center: [-6.0, 147.0], zoom: 6 },
   };
 
+  // Task #101 — prompt to start a routine microplan when the user clicks
+  // "Plan a session here" on a village whose facility has none yet.
+  const [startMicroplanPrompt, setStartMicroplanPrompt] = useState<{
+    villageId: number;
+    villageName: string;
+    villageLat: number;
+    villageLng: number;
+    villageHtr: boolean;
+    facilityId: number;
+    facilityName: string;
+  } | null>(null);
+
   // States for session polygon geofencing drawing
   const [isDrawingSessionPolygon, setIsDrawingSessionPolygon] = useState(false);
   const [sessionPolygonPoints, setSessionPolygonPoints] = useState<L.LatLng[]>([]);
@@ -4881,7 +4893,10 @@ export function MapView({
                         })()}
                       </div>
 
-                      {/* Task #84 — Plan a session straight from any village pin */}
+                      {/* Task #84 — Plan a session straight from any village pin.
+                          Task #101 — if the village's facility has no routine
+                          microplan yet, offer to start one instead of dropping
+                          the user on the bare /sessions list page. */}
                       <Button
                         size="sm"
                         className="w-full h-7 text-[11px] font-semibold mt-2 bg-primary hover:bg-primary/90 text-primary-foreground"
@@ -4900,8 +4915,29 @@ export function MapView({
                             prefillKind: "village",
                             autoOpen: "1",
                           });
-                          const path = mp ? `/sessions/microplan/${mp.id}` : "/sessions";
-                          window.location.assign(`${path}?${qs.toString()}`);
+                          if (mp) {
+                            window.location.assign(`/sessions/microplan/${mp.id}?${qs.toString()}`);
+                            return;
+                          }
+                          // No routine microplan for the facility yet — offer
+                          // to start one via the Microplan Wizard, then return
+                          // here with the village prefill intact.
+                          const fac = facilities.find(
+                            (f) => Number(f.id) === Number(village.assignedFacilityId),
+                          );
+                          if (!village.assignedFacilityId || !fac) {
+                            window.location.assign(`/sessions?${qs.toString()}`);
+                            return;
+                          }
+                          setStartMicroplanPrompt({
+                            villageId: village.id,
+                            villageName: village.name ?? "",
+                            villageLat: Number(village.latitude),
+                            villageLng: Number(village.longitude),
+                            villageHtr: !!village.isHardToReach,
+                            facilityId: Number(fac.id),
+                            facilityName: fac.name ?? "this facility",
+                          });
                         }}
                         data-testid={`button-plan-session-village-${village.id}`}
                       >
@@ -6420,6 +6456,55 @@ export function MapView({
               className="text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white"
             >
               {createSessionPlanMutation.isPending ? "Creating..." : "Create outreach Plan"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Task #101 — Offer to start a routine microplan for the village's
+          facility when one doesn't exist yet, then return to the New Session
+          dialog with the village prefill intact. */}
+      <Dialog
+        open={!!startMicroplanPrompt}
+        onOpenChange={(open) => {
+          if (!open) setStartMicroplanPrompt(null);
+        }}
+      >
+        <DialogContent data-testid="dialog-start-microplan-prompt">
+          <DialogHeader>
+            <DialogTitle>Start a microplan for this facility?</DialogTitle>
+            <DialogDescription>
+              {startMicroplanPrompt
+                ? `${startMicroplanPrompt.facilityName} doesn't have a routine microplan yet. To plan a session for ${startMicroplanPrompt.villageName || "this village"}, you'll need to start one first.`
+                : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setStartMicroplanPrompt(null)}
+              data-testid="button-start-microplan-cancel"
+            >
+              Not now
+            </Button>
+            <Button
+              onClick={() => {
+                const p = startMicroplanPrompt;
+                if (!p) return;
+                const qs = new URLSearchParams({
+                  facilityId: String(p.facilityId),
+                  returnVillageId: String(p.villageId),
+                  returnVillageName: p.villageName,
+                  returnVillageLat: String(p.villageLat),
+                  returnVillageLng: String(p.villageLng),
+                  returnVillageHtr: p.villageHtr ? "1" : "0",
+                });
+                setStartMicroplanPrompt(null);
+                window.location.assign(`/microplan/new?${qs.toString()}`);
+              }}
+              data-testid="button-start-microplan-confirm"
+            >
+              Start microplan
             </Button>
           </DialogFooter>
         </DialogContent>

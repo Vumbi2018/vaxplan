@@ -228,8 +228,40 @@ export default function MicroplanWizard() {
   const [active, setActive] = useState(1);
   const [returnToSummary, setReturnToSummary] = useState(false);
   const [microplanId, setMicroplanId] = useState<number | null>(null);
+
+  // Task #101 — when the user lands here from a village pin that had no
+  // routine microplan, the map passes the facility to prefill plus the
+  // village context so we can hand them back to the New Session dialog
+  // once a microplan exists.
+  const initialQueryParams = useMemo(() => {
+    if (typeof window === "undefined") return null;
+    return new URLSearchParams(window.location.search);
+  }, []);
+  const queryFacilityId = (() => {
+    const raw = initialQueryParams?.get("facilityId");
+    const n = raw == null ? NaN : Number(raw);
+    return Number.isFinite(n) ? n : null;
+  })();
+  const returnVillage = useMemo(() => {
+    const sp = initialQueryParams;
+    if (!sp) return null;
+    const idRaw = sp.get("returnVillageId");
+    if (!idRaw) return null;
+    const id = Number(idRaw);
+    if (!Number.isFinite(id)) return null;
+    const lat = Number(sp.get("returnVillageLat"));
+    const lng = Number(sp.get("returnVillageLng"));
+    return {
+      villageId: id,
+      name: sp.get("returnVillageName") ?? "",
+      lat: Number.isFinite(lat) ? lat : null,
+      lng: Number.isFinite(lng) ? lng : null,
+      isHardToReach: sp.get("returnVillageHtr") === "1",
+    };
+  }, [initialQueryParams]);
+
   const [facilityId, setFacilityId] = useState<number | null>(
-    user?.facilityId ?? null,
+    queryFacilityId ?? user?.facilityId ?? null,
   );
   const [name, setName] = useState("");
   const [year] = useState(new Date().getFullYear());
@@ -244,10 +276,26 @@ export default function MicroplanWizard() {
     }
   }, []);
 
-  // Sync facility from user when it arrives
+  // Sync facility from user when it arrives — but never override an explicit
+  // ?facilityId= prefill coming from the village pin (Task #101).
   useEffect(() => {
+    if (queryFacilityId) return;
     if (user?.facilityId && !facilityId) setFacilityId(user.facilityId);
-  }, [user, facilityId]);
+  }, [user, facilityId, queryFacilityId]);
+
+  const continueToVillageSession = () => {
+    if (!returnVillage || !microplanId) return;
+    const qs = new URLSearchParams({
+      unservedVillageId: String(returnVillage.villageId),
+      unservedName: returnVillage.name,
+      unservedHtr: returnVillage.isHardToReach ? "1" : "0",
+      prefillKind: "village",
+      autoOpen: "1",
+    });
+    if (returnVillage.lat != null) qs.set("unservedLat", String(returnVillage.lat));
+    if (returnVillage.lng != null) qs.set("unservedLng", String(returnVillage.lng));
+    setLocation(`/sessions/microplan/${microplanId}?${qs.toString()}`);
+  };
 
   // ─── Data fetches ───────────────────────────────────────────────────────
   const { data: facilities } = useQuery<Facility[]>({
@@ -1315,6 +1363,44 @@ export default function MicroplanWizard() {
             {status}
           </Badge>
         </div>
+        {/* Task #101 — return-to-village banner */}
+        {returnVillage && (
+          <div
+            className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-xs"
+            data-testid="banner-return-to-village"
+          >
+            <span className="min-w-0">
+              {microplanId ? (
+                <>
+                  Microplan started. You can now continue to plan a session for{" "}
+                  <span className="font-semibold">
+                    {returnVillage.name || "the selected village"}
+                  </span>
+                  .
+                </>
+              ) : (
+                <>
+                  After this microplan is saved, you'll return to plan a session
+                  for{" "}
+                  <span className="font-semibold">
+                    {returnVillage.name || "the selected village"}
+                  </span>
+                  .
+                </>
+              )}
+            </span>
+            <Button
+              size="sm"
+              variant={microplanId ? "default" : "outline"}
+              disabled={!microplanId}
+              onClick={continueToVillageSession}
+              data-testid="button-continue-to-village-session"
+            >
+              Continue to session
+              <ChevronRight className="ml-1 h-4 w-4" />
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Body: stepper + content */}
