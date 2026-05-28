@@ -407,6 +407,7 @@ export default function MicroplanWizard() {
     mobilization: MobilizationActivity[];
     budgetItems: BudgetItem[];
     htrScores: HtrScore[];
+    excludedVillageIds?: number[];
   };
   const { data: hydration } = useQuery<MicroplanHydration>({
     queryKey: ["/api/microplans", microplanId, "hydration"],
@@ -434,45 +435,118 @@ export default function MicroplanWizard() {
   );
 
   // Track villages the user explicitly removed from this facility's catchment
-  // in Step 2. Persisted per-facility in localStorage so deleted communities
-  // don't pop back in via the facility-villages seed effect on next open.
-  const excludedKey = facilityId
+  // in Step 2. Persisted server-side per facility (see
+  // /api/facilities/:id/excluded-villages and task #167) so the choice
+  // follows the user across devices, browsers, and cache clears.
+  //
+  // Legacy localStorage key (kept only to migrate users transitioning off the
+  // browser-only persistence). Once the server has any value for the facility
+  // we treat the server as the source of truth and drop the local copy.
+  const legacyExcludedKey = facilityId
     ? `microplan-excluded-villages:${facilityId}`
     : null;
-  const loadExcludedFromStorage = (key: string | null): Set<number> => {
-    if (!key || typeof window === "undefined") return new Set<number>();
+  const loadLegacyExcluded = (key: string | null): number[] => {
+    if (!key || typeof window === "undefined") return [];
     try {
       const raw = window.localStorage.getItem(key);
       const parsed = raw ? JSON.parse(raw) : [];
-      return new Set(
-        Array.isArray(parsed) ? parsed.filter((n: any) => typeof n === "number") : [],
-      );
+      return Array.isArray(parsed)
+        ? parsed.filter((n: any) => typeof n === "number")
+        : [];
     } catch {
-      return new Set<number>();
+      return [];
     }
   };
-  // Initialize synchronously so the very first render's `facilityVillages`
-  // already reflects any prior exclusions, avoiding a race where the seed
-  // effect runs against an empty set and re-adds removed villages.
+
+  // Fetch the server-side list whenever a facility is selected. We also pull
+  // it out of the microplan hydration response (cheaper, no extra round trip)
+  // when a microplan is loaded; both paths converge on the same query cache.
+  const excludedQueryKey = facilityId
+    ? ["/api/facilities", facilityId, "excluded-villages"] as const
+    : null;
+  const { data: excludedFromServer, isSuccess: excludedLoaded } = useQuery<{
+    facilityId: number;
+    villageIds: number[];
+  }>({
+    queryKey: excludedQueryKey ?? ["/api/facilities", "none", "excluded-villages"],
+    queryFn: async () => {
+      const res = await fetch(`/api/facilities/${facilityId}/excluded-villages`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to load excluded villages");
+      return res.json();
+    },
+    enabled: !!facilityId,
+  });
+
   const [excludedVillageIds, setExcludedVillageIds] = useState<Set<number>>(
-    () => loadExcludedFromStorage(excludedKey),
+    () => new Set<number>(),
   );
-  const [excludedReady, setExcludedReady] = useState<boolean>(() => true);
-  const loadedExcludedKeyRef = useRef<string | null>(excludedKey);
+  const [excludedReady, setExcludedReady] = useState<boolean>(false);
+  const loadedExcludedFacilityRef = useRef<number | null>(null);
+
+  // Reset the readiness flag whenever the facility changes so the catchment
+  // seed effect waits for the server response before populating from
+  // facilityVillages — otherwise a previously-removed village could slip
+  // back in during the moment between switch and server response.
   useEffect(() => {
-    if (loadedExcludedKeyRef.current === excludedKey) return;
-    setExcludedReady(false);
-    setExcludedVillageIds(loadExcludedFromStorage(excludedKey));
-    loadedExcludedKeyRef.current = excludedKey;
-    setExcludedReady(true);
-  }, [excludedKey]);
-  const persistExcluded = (next: Set<number>) => {
-    if (!excludedKey) return;
-    try {
-      localStorage.setItem(excludedKey, JSON.stringify(Array.from(next)));
-    } catch {
-      // ignore quota/serialization errors
+    if (loadedExcludedFacilityRef.current !== facilityId) {
+      setExcludedReady(false);
+      setExcludedVillageIds(new Set<number>());
+      loadedExcludedFacilityRef.current = facilityId;
     }
+  }, [facilityId]);
+
+  // Hydrate excludedVillageIds from whichever source resolves first:
+  //   1. the per-microplan hydration payload (preferred — already in flight)
+  //   2. the dedicated /excluded-villages query for the facility
+  //   3. legacy localStorage values (one-shot migration to the server)
+  useEffect(() => {
+    if (!facilityId) return;
+    const fromHydration = hydration?.excludedVillageIds;
+    const fromQuery = excludedFromServer?.villageIds;
+    let serverIds: number[] | null = null;
+    if (Array.isArray(fromHydration)) serverIds = fromHydration;
+    else if (Array.isArray(fromQuery)) serverIds = fromQuery;
+    if (serverIds === null) return;
+
+    const next = new Set<number>(serverIds);
+    // Migrate any legacy localStorage entries the user accumulated before
+    // server persistence existed. We push them to the server once and then
+    // clear the key so subsequent loads use the server copy directly.
+    const legacy = loadLegacyExcluded(legacyExcludedKey);
+    const missing = legacy.filter((id) => !next.has(id));
+    if (missing.length > 0) {
+      missing.forEach((id) => next.add(id));
+      void apiRequest("PUT", `/api/facilities/${facilityId}/excluded-villages`, {
+        villageIds: Array.from(next),
+      }).then(() => {
+        try {
+          if (legacyExcludedKey) localStorage.removeItem(legacyExcludedKey);
+        } catch {
+          // ignore
+        }
+        queryClient.invalidateQueries({ queryKey: ["/api/facilities", facilityId, "excluded-villages"] });
+      }).catch((e) => console.warn("Failed to migrate excluded villages:", e));
+    } else if (legacyExcludedKey) {
+      try {
+        localStorage.removeItem(legacyExcludedKey);
+      } catch {
+        // ignore
+      }
+    }
+    setExcludedVillageIds(next);
+    setExcludedReady(true);
+  }, [facilityId, hydration?.excludedVillageIds, excludedFromServer, excludedLoaded, legacyExcludedKey]);
+
+  const persistExcluded = (next: Set<number>) => {
+    if (!facilityId) return;
+    const villageIds = Array.from(next);
+    void apiRequest("PUT", `/api/facilities/${facilityId}/excluded-villages`, {
+      villageIds,
+    }).catch((e) => {
+      console.warn("Failed to persist excluded villages:", e);
+    });
   };
 
   const facilityVillages = useMemo(() => {
@@ -1130,7 +1204,7 @@ export default function MicroplanWizard() {
     if (row.villageId) {
       setExcludedVillageIds((prev) => {
         if (prev.has(row.villageId!)) return prev;
-        const next = new Set(prev);
+        const next = new Set<number>(prev);
         next.add(row.villageId!);
         persistExcluded(next);
         return next;
@@ -1311,7 +1385,7 @@ export default function MicroplanWizard() {
               nextRows[i] = { ...row, villageId: vid, latLngDirty: false };
               setExcludedVillageIds((prev) => {
                 if (!prev.has(revived.id)) return prev;
-                const next = new Set(prev);
+                const next = new Set<number>(prev);
                 next.delete(revived.id);
                 persistExcluded(next);
                 return next;

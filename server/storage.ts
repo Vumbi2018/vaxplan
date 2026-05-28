@@ -6,6 +6,7 @@ import {
   llgs,
   facilities,
   villages,
+  facilityExcludedVillages,
   populationData,
   sessionPlans,
   sessionVillages,
@@ -180,6 +181,10 @@ export interface IStorage {
   createPopulationData(tenantId: string, data: InsertPopulationData): Promise<PopulationData>;
   updatePopulationData(tenantId: string, id: number, data: Partial<InsertPopulationData>): Promise<PopulationData | undefined>;
   deletePopulationData(tenantId: string, id: number): Promise<boolean>;
+
+  // --- Facility excluded villages ---
+  getFacilityExcludedVillageIds(tenantId: string, facilityId: number): Promise<number[]>;
+  setFacilityExcludedVillageIds(tenantId: string, facilityId: number, villageIds: number[]): Promise<number[]>;
 
   // --- Microplans ---
   getMicroplans(tenantId: string): Promise<Microplan[]>;
@@ -899,6 +904,44 @@ export class DatabaseStorage implements IStorage {
       .where(and(eq(populationData.id, id), eq(populationData.tenantId, tenantId)))
       .returning({ id: populationData.id });
     return rows.length > 0;
+  }
+
+  // --- Facility excluded villages ---
+  // Tracks villages staff explicitly removed from a facility's microplan
+  // catchment in Step 2 of the wizard. Persisted server-side so the choice
+  // syncs across devices/browsers (task #167).
+  async getFacilityExcludedVillageIds(tenantId: string, facilityId: number): Promise<number[]> {
+    const rows = await db
+      .select({ villageId: facilityExcludedVillages.villageId })
+      .from(facilityExcludedVillages)
+      .where(and(
+        eq(facilityExcludedVillages.tenantId, tenantId),
+        eq(facilityExcludedVillages.facilityId, facilityId),
+      ));
+    return rows.map((r) => r.villageId);
+  }
+  async setFacilityExcludedVillageIds(
+    tenantId: string,
+    facilityId: number,
+    villageIds: number[],
+  ): Promise<number[]> {
+    const unique: number[] = Array.from(
+      new Set<number>(villageIds.filter((v): v is number => Number.isFinite(v))),
+    );
+    await db.transaction(async (tx) => {
+      await tx
+        .delete(facilityExcludedVillages)
+        .where(and(
+          eq(facilityExcludedVillages.tenantId, tenantId),
+          eq(facilityExcludedVillages.facilityId, facilityId),
+        ));
+      if (unique.length > 0) {
+        await tx.insert(facilityExcludedVillages).values(
+          unique.map((villageId) => ({ tenantId, facilityId, villageId })),
+        );
+      }
+    });
+    return unique;
   }
 
   // --- Microplans ---

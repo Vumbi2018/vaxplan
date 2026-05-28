@@ -361,6 +361,22 @@ export const villages = pgTable("villages", {
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [index("idx_villages_tenant").on(table.tenantId)]);
 
+// Per-facility list of villages that staff have explicitly removed from the
+// microplan catchment in Step 2 of the wizard. Persisted server-side (rather
+// than in the browser's localStorage) so the choice follows the user across
+// devices and browsers — see task #167. A row's presence means "do not seed
+// this village into the catchment", and the row is deleted when a user
+// re-adds the community.
+export const facilityExcludedVillages = pgTable("facility_excluded_villages", {
+  tenantId: varchar("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  facilityId: integer("facility_id").notNull().references(() => facilities.id, { onDelete: "cascade" }),
+  villageId: integer("village_id").notNull().references(() => villages.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  unique("facility_excluded_villages_pk").on(table.tenantId, table.facilityId, table.villageId),
+  index("idx_facility_excluded_villages_facility").on(table.tenantId, table.facilityId),
+]);
+
 // Population Data (Multi-source)
 export const populationData = pgTable("population_data", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),

@@ -2120,6 +2120,68 @@ export async function registerRoutes(
     }
   });
 
+  // Per-facility excluded-village list for the microplan catchment editor.
+  // Persisted server-side so a clerk's "remove this village" choice in Step 2
+  // of the wizard syncs across devices/browsers (task #167). The body is the
+  // full set the client wants to remember — PUT replaces, GET reads.
+  app.get("/api/facilities/:id/excluded-villages", ...auth, async (req: any, res) => {
+    try {
+      const facilityId = parseInt(req.params.id);
+      if (!Number.isFinite(facilityId)) {
+        return res.status(400).json({ message: "Invalid facility id" });
+      }
+      const facility = await storage.getFacility(req.tenantId, facilityId);
+      if (!facility) return res.status(404).json({ message: "Facility not found" });
+      const villageIds = await storage.getFacilityExcludedVillageIds(req.tenantId, facilityId);
+      res.json({ facilityId, villageIds });
+    } catch (error) {
+      console.error("Error fetching excluded villages:", error);
+      res.status(500).json({ message: "Failed to fetch excluded villages" });
+    }
+  });
+
+  app.put("/api/facilities/:id/excluded-villages", ...auth, async (req: any, res) => {
+    try {
+      const facilityId = parseInt(req.params.id);
+      if (!Number.isFinite(facilityId)) {
+        return res.status(400).json({ message: "Invalid facility id" });
+      }
+      const facility = await storage.getFacility(req.tenantId, facilityId);
+      if (!facility) return res.status(404).json({ message: "Facility not found" });
+      const raw = (req.body && (req.body as any).villageIds) ?? [];
+      if (!Array.isArray(raw)) {
+        return res.status(400).json({ message: "villageIds must be an array" });
+      }
+      const parsed: number[] = [];
+      for (const v of raw) {
+        const n = typeof v === "number" ? v : parseInt(String(v), 10);
+        if (Number.isFinite(n)) parsed.push(n);
+      }
+      // Reject IDs that don't belong to this tenant — keeps the catchment
+      // editor from quietly persisting cross-tenant ids the user can't see.
+      if (parsed.length > 0) {
+        const found = await db
+          .select({ id: villages.id })
+          .from(villages)
+          .where(and(
+            eq(villages.tenantId, req.tenantId),
+            inArray(villages.id, parsed),
+          ));
+        const valid = new Set(found.map((r) => r.id));
+        const filtered = parsed.filter((id) => valid.has(id));
+        const villageIds = await storage.setFacilityExcludedVillageIds(req.tenantId, facilityId, filtered);
+        await logAudit(req, "update", "facility_excluded_villages", facilityId, null, { villageIds });
+        return res.json({ facilityId, villageIds });
+      }
+      const villageIds = await storage.setFacilityExcludedVillageIds(req.tenantId, facilityId, []);
+      await logAudit(req, "update", "facility_excluded_villages", facilityId, null, { villageIds });
+      res.json({ facilityId, villageIds });
+    } catch (error) {
+      console.error("Error updating excluded villages:", error);
+      res.status(500).json({ message: "Failed to update excluded villages" });
+    }
+  });
+
   // Bulk JSON import of facilities (non-destructive upserts)
   app.post("/api/facilities/import", isAuthenticated, requireTenant, loadRole, requireAdmin, async (req: any, res) => {
     try {
@@ -3880,6 +3942,7 @@ export async function registerRoutes(
         mobilization,
         budgetItems,
         htrScores,
+        excludedVillageIds,
       ] = await Promise.all([
         canViewSessions
           ? storage.getSessionPlans(req.tenantId, facilityId)
@@ -3901,6 +3964,9 @@ export async function registerRoutes(
           ? storage.getBudgetItems(req.tenantId, facilityId, quarter, year)
           : Promise.resolve([]),
         storage.getHtrScores(req.tenantId),
+        facilityId
+          ? storage.getFacilityExcludedVillageIds(req.tenantId, facilityId)
+          : Promise.resolve([] as number[]),
       ]);
 
       // Restrict to this microplan and apply the same per-row permission
@@ -3940,6 +4006,7 @@ export async function registerRoutes(
         mobilization,
         budgetItems,
         htrScores,
+        excludedVillageIds,
       });
     } catch (error) {
       console.error("Error fetching microplan hydration:", error);
