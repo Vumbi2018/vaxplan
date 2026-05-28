@@ -684,13 +684,33 @@ export default function BudgetPlanning() {
     const rawBrandColor =
       typeof tenantSettings.brandColor === "string" ? tenantSettings.brandColor.trim() : "";
     const brandColor = /^#[0-9a-fA-F]{3,8}$/.test(rawBrandColor) ? rawBrandColor : "";
-    const rawBrandLogo =
+    // Prefer the URL-hosted logo (current scheme). Fall back to the legacy
+    // inline data URL so tenants who haven't re-saved their settings since
+    // the storage migration still get a branded report cover.
+    const rawBrandLogoUrl =
+      typeof tenantSettings.brandLogoUrl === "string"
+        ? tenantSettings.brandLogoUrl.trim()
+        : "";
+    const rawBrandLogoDataUrl =
       typeof tenantSettings.brandLogoDataUrl === "string"
         ? tenantSettings.brandLogoDataUrl.trim()
         : "";
-    const brandLogo = /^data:image\/(png|jpe?g|svg\+xml|webp|gif);base64,/.test(rawBrandLogo)
-      ? rawBrandLogo
-      : "";
+    let brandLogo = "";
+    if (rawBrandLogoUrl) {
+      try {
+        // Allow absolute http(s) URLs or same-origin /uploads/* paths only.
+        if (/^https?:\/\//i.test(rawBrandLogoUrl)) {
+          brandLogo = rawBrandLogoUrl;
+        } else if (rawBrandLogoUrl.startsWith("/uploads/")) {
+          brandLogo = new URL(rawBrandLogoUrl, window.location.origin).toString();
+        }
+      } catch {
+        brandLogo = "";
+      }
+    }
+    if (!brandLogo && /^data:image\/(png|jpe?g|svg\+xml|webp|gif);base64,/.test(rawBrandLogoDataUrl)) {
+      brandLogo = rawBrandLogoDataUrl;
+    }
     const headingColor = brandColor || "#333";
 
     const sourceOrder = ["government", "gavi", "who", "unicef", "other"];

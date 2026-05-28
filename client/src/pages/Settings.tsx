@@ -85,6 +85,8 @@ export default function Settings() {
   const [maxApprovalLevel, setMaxApprovalLevel] = useState("national");
   const [offlineStaleHours, setOfflineStaleHours] = useState("2");
   const [brandLogoDataUrl, setBrandLogoDataUrl] = useState<string>("");
+  const [brandLogoUrl, setBrandLogoUrl] = useState<string>("");
+  const [brandLogoUploading, setBrandLogoUploading] = useState<boolean>(false);
   const [brandColor, setBrandColor] = useState<string>("#1e40af");
 
   useEffect(() => {
@@ -802,6 +804,7 @@ export default function Settings() {
       }
       setZoom(String(s.mapZoom || "6"));
       if (typeof s.brandLogoDataUrl === "string") setBrandLogoDataUrl(s.brandLogoDataUrl);
+      if (typeof s.brandLogoUrl === "string") setBrandLogoUrl(s.brandLogoUrl);
       if (typeof s.brandColor === "string") setBrandColor(s.brandColor);
     }
   }, [tenant]);
@@ -843,7 +846,10 @@ export default function Settings() {
         schoolEntry: (parseFloat(schoolEntry) || 2.7) / 100,
         schoolExit: s.demographics?.schoolExit || 0.022,
       },
-      brandLogoDataUrl: brandLogoDataUrl || "",
+      brandLogoUrl: brandLogoUrl || "",
+      // Once a URL-based logo is set, clear the legacy inline data URL so
+      // every `/api/me/tenant` payload stops shipping the base64 blob.
+      brandLogoDataUrl: brandLogoUrl ? "" : brandLogoDataUrl || "",
       brandColor: brandColor || "",
     };
     updateSettings.mutate({
@@ -1364,36 +1370,68 @@ export default function Settings() {
                 </p>
                 <div className="grid sm:grid-cols-2 gap-4">
                   <div className="space-y-1.5">
-                    <Label htmlFor="brand-logo" className="text-xs">Ministry Logo (PNG/JPG, max 200&nbsp;KB)</Label>
+                    <Label htmlFor="brand-logo" className="text-xs">Ministry Logo (PNG/JPG/SVG/WebP, max 2&nbsp;MB)</Label>
                     <Input
                       id="brand-logo"
                       type="file"
-                      accept="image/png,image/jpeg,image/svg+xml"
-                      disabled={!isNationalAdmin}
+                      accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                      disabled={!isNationalAdmin || brandLogoUploading}
                       data-testid="input-brand-logo"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
+                      onChange={async (e) => {
+                        const input = e.target;
+                        const file = input.files?.[0];
                         if (!file) return;
-                        if (file.size > 200 * 1024) {
+                        if (file.size > 2 * 1024 * 1024) {
                           toast({
                             title: "Logo too large",
-                            description: "Please upload a file under 200 KB.",
+                            description: "Please upload a file under 2 MB.",
                             variant: "destructive",
                           });
-                          e.target.value = "";
+                          input.value = "";
                           return;
                         }
-                        const reader = new FileReader();
-                        reader.onload = () => {
-                          setBrandLogoDataUrl(String(reader.result || ""));
-                        };
-                        reader.readAsDataURL(file);
+                        setBrandLogoUploading(true);
+                        try {
+                          const fd = new FormData();
+                          fd.append("file", file);
+                          const res = await fetch("/api/me/tenant/brand-logo", {
+                            method: "POST",
+                            body: fd,
+                            credentials: "include",
+                          });
+                          if (!res.ok) {
+                            const text = (await res.text()) || res.statusText;
+                            throw new Error(`${res.status}: ${text}`);
+                          }
+                          const body = await res.json();
+                          if (body?.url && typeof body.url === "string") {
+                            setBrandLogoUrl(body.url);
+                            // Drop any legacy inline blob locally; the save
+                            // mutation will also clear it server-side.
+                            setBrandLogoDataUrl("");
+                            toast({
+                              title: "Logo uploaded",
+                              description: "Click Save to apply the new logo to reports.",
+                            });
+                          } else {
+                            throw new Error("Server did not return a logo URL");
+                          }
+                        } catch (err: any) {
+                          toast({
+                            title: "Logo upload failed",
+                            description: err?.message || String(err),
+                            variant: "destructive",
+                          });
+                        } finally {
+                          setBrandLogoUploading(false);
+                          input.value = "";
+                        }
                       }}
                     />
-                    {brandLogoDataUrl ? (
+                    {(brandLogoUrl || brandLogoDataUrl) ? (
                       <div className="flex items-center gap-3 pt-1">
                         <img
-                          src={brandLogoDataUrl}
+                          src={brandLogoUrl || brandLogoDataUrl}
                           alt="Tenant logo preview"
                           className="h-12 w-12 object-contain border border-border rounded bg-white p-1"
                           data-testid="img-brand-logo-preview"
@@ -1403,7 +1441,10 @@ export default function Settings() {
                           variant="ghost"
                           size="sm"
                           disabled={!isNationalAdmin}
-                          onClick={() => setBrandLogoDataUrl("")}
+                          onClick={() => {
+                            setBrandLogoUrl("");
+                            setBrandLogoDataUrl("");
+                          }}
                           data-testid="button-clear-brand-logo"
                         >
                           Remove

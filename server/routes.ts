@@ -1,4 +1,4 @@
-import type { Express, Request } from "express";
+import express, { type Express, type Request } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated, getCurrentUserId } from "./replitAuth";
@@ -434,6 +434,27 @@ export async function registerRoutes(
   await seedReplitIdpConfig().catch((err) =>
     console.error("Replit IdP seed failed:", err),
   );
+
+  // Serve uploaded files (e.g. tenant brand logos) under /uploads/*. Files
+  // live in <cwd>/data/uploads so they persist on disk between requests and
+  // can be backed up alongside the rest of the data directory. The directory
+  // is created lazily by the upload handler — express.static gracefully
+  // returns 404 if it doesn't exist yet.
+  {
+    const _fs = await import("fs");
+    const _path = await import("path");
+    const uploadsRoot = _path.resolve(process.cwd(), "data", "uploads");
+    try { _fs.mkdirSync(uploadsRoot, { recursive: true }); } catch {}
+    app.use(
+      "/uploads",
+      express.static(uploadsRoot, {
+        fallthrough: true,
+        maxAge: "1h",
+        index: false,
+        dotfiles: "deny",
+      }),
+    );
+  }
 
   app.use(tenantContext);
   app.use(loadDbUser);
@@ -1457,6 +1478,74 @@ export async function registerRoutes(
       res.status(500).json({ message: "Failed to update country configuration" });
     }
   });
+
+  // ── Tenant brand logo upload ───────────────────────────────────────────
+  // National admins upload the printable-report logo here. The file is
+  // written to disk under `data/uploads/tenant-logos/` and served back via
+  // the `/uploads` static mount above. The caller is expected to persist
+  // the returned `url` into `tenants.settings.brandLogoUrl` (replacing the
+  // older inline `brandLogoDataUrl`) through the regular PATCH endpoint —
+  // this keeps the tenant JSON payload tiny on every `/api/me/tenant` read.
+  {
+    const _multer = (await import("multer")).default;
+    const _path = await import("path");
+    const _fs = await import("fs");
+    const _crypto = await import("crypto");
+    const logoDir = _path.resolve(process.cwd(), "data", "uploads", "tenant-logos");
+    try { _fs.mkdirSync(logoDir, { recursive: true }); } catch {}
+
+    const ALLOWED_MIME: Record<string, string> = {
+      "image/png": ".png",
+      "image/jpeg": ".jpg",
+      "image/jpg": ".jpg",
+      "image/svg+xml": ".svg",
+      "image/webp": ".webp",
+    };
+
+    const logoUpload = _multer({
+      storage: _multer.memoryStorage(),
+      limits: { fileSize: 2 * 1024 * 1024 }, // 2 MB — much larger than the
+                                             // old 200 KB inline cap, but
+                                             // still small enough to keep
+                                             // the disk and CDN happy.
+      fileFilter: (_req, file, cb) => {
+        if (ALLOWED_MIME[file.mimetype]) return cb(null, true);
+        cb(new Error("Unsupported logo format. Use PNG, JPG, SVG, or WebP."));
+      },
+    });
+
+    app.post(
+      "/api/me/tenant/brand-logo",
+      isAuthenticated,
+      requireTenant,
+      loadRole,
+      requireAdmin,
+      logoUpload.single("file"),
+      async (req: any, res) => {
+        try {
+          if (!req.file) {
+            return res.status(400).json({ message: "No file uploaded (field name: file)" });
+          }
+          const ext = ALLOWED_MIME[req.file.mimetype] ?? ".bin";
+          const rand = _crypto.randomBytes(8).toString("hex");
+          const safeTenant = String(req.tenantId).replace(/[^a-zA-Z0-9_-]/g, "");
+          const filename = `${safeTenant}-${Date.now()}-${rand}${ext}`;
+          const fullPath = _path.join(logoDir, filename);
+          await _fs.promises.writeFile(fullPath, req.file.buffer);
+          const url = `/uploads/tenant-logos/${filename}`;
+          await logAudit(req, "upload_tenant_brand_logo", "tenant", req.tenantId, null, {
+            filename,
+            size: req.file.size,
+            mimetype: req.file.mimetype,
+          });
+          res.json({ url, filename, size: req.file.size });
+        } catch (err: any) {
+          console.error("POST /api/me/tenant/brand-logo failed:", err);
+          res.status(500).json({ message: err?.message || "Failed to upload logo" });
+        }
+      },
+    );
+  }
 
   // ── Per-tenant wastage thresholds ──────────────────────────────────────
   // National admins can tighten or loosen the warn/max wastage percentages
