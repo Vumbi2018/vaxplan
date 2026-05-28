@@ -91,11 +91,10 @@ const SECTIONS: Section[] = [
       },
       {
         area: "UI segregation: Routine RI vs SIA workspaces",
-        status: "gap",
+        status: "aligned",
         evidence:
-          "Sidebar has one 'Session Planning' entry; SIA mode is a hidden field on the same form.",
-        recommendation:
-          "Split sidebar into 'Routine RI Microplan' and 'SIA Campaigns'. Each opens its own list + builder. Reports must filter by planType so RI and SIA doses are never mixed.",
+          "Sidebar exposes 'Routine Microplan' (/microplans/routine) and 'SIA Campaigns' (/microplans/campaigns) as separate entries. Both mount the shared MicroplanWizard with a `prePlanType` prop so the plan type is fixed at entry (header badge: Routine / SIA Campaign), and POST/PATCH /api/sessions rejects client-supplied planType/campaign* fields and inherits them from the parent microplan.",
+        recommendation: "Add a planType column to clientVaccinations so coverage reports can filter RI vs SIA doses cleanly (currently excluded heuristically by campaign name).",
       },
       {
         area: "Campaign-specific modules (independent monitoring, post-campaign coverage survey, finger-marking, micro-census)",
@@ -235,8 +234,9 @@ const SECTIONS: Section[] = [
       {
         area: "SP5 Outbreaks & emergencies (SIA mode)",
         status: "partial",
-        evidence: "planType=sia_campaign exists.",
-        recommendation: "Build the dedicated SIA workspace and independent-monitoring entity.",
+        evidence:
+          "Dedicated SIA Campaigns workspace shipped (/microplans/campaigns) sharing the MicroplanWizard with prePlanType='campaign' and SIA-specific fields (antigen / target age / scope).",
+        recommendation: "Add `campaign_independent_monitoring` and `post_campaign_coverage_survey` entities + finger-marking and house-visit counters.",
       },
       { area: "SP7 Sub-national equity (district-level)", status: "aligned", evidence: "Province → District → LLG hierarchy throughout." },
     ],
@@ -362,8 +362,10 @@ const SECTIONS: Section[] = [
     icon: Shield,
     rows: [
       { area: "OIDC + SAML SSO for MoH IdPs", status: "aligned", evidence: "oidcAdapter.ts + samlAdapter.ts." },
-      { area: "Multitenant isolation", status: "aligned", evidence: "tenantContext scopes reads/writes to the viewed tenant." },
+      { area: "Multitenant isolation", status: "aligned", evidence: "tenantContext scopes reads/writes to the currently viewed tenant (session.viewTenantId); cross-tenant operations are recorded in the audit log with a crossTenant flag." },
       { area: "Audit log (who/what/when/old/new + IP)", status: "aligned", evidence: "logAudit in server/routes.ts." },
+      { area: "Granular user management (invite, role, geographic scope, bulk CSV import)", status: "aligned", evidence: "UserManagement.tsx — per-user role + province/district/facility scope, hierarchical approval workflow, CSV bulk import, custom role permissions editor." },
+      { area: "Platform super-admin (break-glass cross-tenant operator)", status: "aligned", evidence: "users.is_platform_admin BOOLEAN (DB-only grant, no API to set) short-circuits hasPermission() across all tenants for Replit operators." },
       { area: "Encryption at rest", status: "partial", recommendation: "Document in SECURITY.md; confirm provider setting." },
       { area: "Encryption in transit", status: "aligned" },
       { area: "PII minimization", status: "partial", recommendation: "Add per-tenant PII redaction toggle for analytics exports." },
@@ -416,17 +418,16 @@ const STATUS_META: Record<Status, { label: string; icon: React.ComponentType<{ c
 
 const TOP_ACTIONS: { n: number; title: string; standard: string; effort: "S" | "M" | "L" }[] = [
   { n: 1, title: "Enforce session → microplan parenthood (NOT NULL, plan-type match, lock cascade)", standard: "WHO/UNICEF Microplanning §1.3", effort: "M" },
-  { n: 2, title: "Split the UI into Routine RI vs SIA Campaigns workspaces", standard: "WHO RED + IA2030 SP5; JRF separation", effort: "M" },
-  { n: 3, title: "Zero-dose children indicator on Dashboard (no DTP1 by 12 mo)", standard: "Gavi 5.0 flagship; IA2030 SP1", effort: "S" },
-  { n: 4, title: "AEFI reports entity + DHIS2 push", standard: "JRF; IHR 2005; Gavi safety", effort: "M" },
-  { n: 5, title: "Cold-chain equipment + temperature logs with PQS codes", standard: "EVM 2.0 E2–E4", effort: "M" },
-  { n: 6, title: "Stockout days + actual wastage in monthly reports", standard: "JRF; EVM 2.0 E6", effort: "M" },
-  { n: 7, title: "Staffing + funding source on microplan", standard: "WHO/UNICEF core elements 6 & 8; Gavi HSS", effort: "S" },
-  { n: 8, title: "GTIN + lot/expiry on stock; barcode-scan UI", standard: "GS1; Gavi traceability", effort: "M" },
-  { n: 9, title: "Supportive supervision visits entity + checklist", standard: "RED/REC; Gavi FCE 4.2", effort: "S" },
-  { n: 10, title: "Defaulter list + DTP1→DTP3 / DTP1→MCV1 dropout", standard: "WUENIC; RED/REC monitoring", effort: "S" },
-  { n: 11, title: "Service Worker Background Sync for outbox", standard: "Principles for Digital Development", effort: "M" },
-  { n: 12, title: "Extend FHIR adapter (Encounter + MedicationAdministration + Location + Practitioner)", standard: "WHO SMART Guidelines IMMZ", effort: "M" },
+  { n: 2, title: "Zero-dose children indicator on Dashboard (no DTP1 by 12 mo)", standard: "Gavi 5.0 flagship; IA2030 SP1", effort: "S" },
+  { n: 3, title: "AEFI reports entity + DHIS2 push", standard: "JRF; IHR 2005; Gavi safety", effort: "M" },
+  { n: 4, title: "Cold-chain equipment + temperature logs with PQS codes", standard: "EVM 2.0 E2–E4", effort: "M" },
+  { n: 5, title: "Stockout days + actual wastage in monthly reports", standard: "JRF; EVM 2.0 E6", effort: "M" },
+  { n: 6, title: "Staffing + funding source on microplan", standard: "WHO/UNICEF core elements 6 & 8; Gavi HSS", effort: "S" },
+  { n: 7, title: "GTIN + lot/expiry on stock; barcode-scan UI", standard: "GS1; Gavi traceability", effort: "M" },
+  { n: 8, title: "Defaulter list + DTP1→DTP3 / DTP1→MCV1 dropout", standard: "WUENIC; RED/REC monitoring", effort: "S" },
+  { n: 9, title: "Campaign independent monitoring + post-campaign coverage survey entities", standard: "WHO SIA field guide; IA2030 SP5", effort: "M" },
+  { n: 10, title: "Service Worker Background Sync for outbox", standard: "Principles for Digital Development", effort: "M" },
+  { n: 11, title: "Extend FHIR adapter (Encounter + MedicationAdministration + Location + Practitioner)", standard: "WHO SMART Guidelines IMMZ", effort: "M" },
 ];
 
 function StatusBadge({ status }: { status: Status }) {
@@ -560,7 +561,7 @@ function TopActionsCard() {
   return (
     <Card data-testid="top-actions-card">
       <CardHeader>
-        <CardTitle className="text-lg">Top 12 prioritized actions</CardTitle>
+        <CardTitle className="text-lg">Top {TOP_ACTIONS.length} prioritized actions</CardTitle>
         <CardDescription>
           The smallest, highest-leverage changes that move VaxPlan from "strong" to "audit-ready" against WHO, UNICEF, Gavi and MoH standards.
         </CardDescription>

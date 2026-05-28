@@ -1,0 +1,1 @@
+- [Cross-tenant write enforcement](cross-tenant-writes.md) — replit.md claims a `crossTenantWriteGuard` middleware exists; it does not. Real isolation is tenantContext scoping + audit `crossTenant` flag only.
