@@ -55,6 +55,7 @@ import {
   UserPlus
 } from "lucide-react";
 import { TenantEmailSenderCard } from "@/components/TenantEmailSenderCard";
+import { APP_VERSION, formatBuildTime } from "@/lib/version";
 import UserManagement from "./UserManagement";
 import SignupRequests from "./SignupRequests";
 import CountryOnboarding from "./CountryOnboarding";
@@ -993,6 +994,16 @@ export default function Settings() {
 
         <TabsContent value="profile" className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
           <div className="md:col-span-2 space-y-6">
+            <Card data-testid="card-app-version">
+              <CardContent className="py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 text-xs text-muted-foreground">
+                <span>
+                  App version <span className="font-mono text-foreground">v{APP_VERSION}</span>
+                </span>
+                <span>
+                  Built <span className="font-mono">{formatBuildTime()}</span>
+                </span>
+              </CardContent>
+            </Card>
             <Card>
               <CardHeader>
                 <div className="flex items-center gap-3">

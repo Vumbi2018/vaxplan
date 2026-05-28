@@ -19,6 +19,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { versionLabel } from "@/lib/version";
 
 interface PublicTenant {
   id: string;
@@ -471,6 +472,9 @@ export default function Landing() {
             <div className="text-xs">
               Built for national immunization programs · Multi-tenant SaaS
             </div>
+          </div>
+          <div className="mt-3 text-center text-[11px] text-muted-foreground/80" data-testid="landing-version">
+            {versionLabel()}
           </div>
         </div>
       </footer>
