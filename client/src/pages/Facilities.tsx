@@ -1069,7 +1069,7 @@ export default function Facilities() {
       render: (item: Facility) => {
         // Original Code: referenced districts which was renamed to allDistricts
         // const canEdit = canEditFacility(user, item.districtId, item.id, districts, provinces);
-        const canEdit = canEditFacility(user, item.districtId, item.id, allDistricts, provinces);
+        const canEdit = canEditFacility(user, item.districtId, item.id, allDistricts, provinces, tenantInfo?.id);
         const canDelete = canDeleteData(user);
         
         if (!canEdit && !canDelete) return null;
@@ -1397,7 +1397,7 @@ export default function Facilities() {
       key: "actions",
       header: "Actions",
       render: (item: Village) => {
-        const canEdit = canEditFacility(user, item.districtId, item.assignedFacilityId || 0, allDistricts, provinces);
+        const canEdit = canEditFacility(user, item.districtId, item.assignedFacilityId || 0, allDistricts, provinces, tenantInfo?.id);
         const canDelete = canDeleteData(user);
         if (!canEdit && !canDelete) return null;
         return (

@@ -107,6 +107,11 @@ export interface GeographicContext {
   provinceId?: number | null;
   districtId?: number | null;
   facilityId?: number | null;
+  // The tenant whose data is being accessed in this request. When the active
+  // tenant differs from `user.tenantId`, the user is operating in a tenant
+  // other than their home country and the row-level geographic scope check
+  // below is skipped. See the long-form rationale on `hasPermission`.
+  activeTenantId?: string | null;
 }
 
 export interface UserDataAccessScope {
@@ -121,6 +126,26 @@ export const tenantRolesCache = new Map<string, Record<string, Permission[]>>();
 /**
  * Checks if a user has a specified permission, and if a geographic context is provided,
  * verifies that the user has row-level authority to access/modify that geographic scope.
+ *
+ * Cross-tenant scope decision
+ * ---------------------------
+ * `user.dataAccessScope`, `user.provinceId`, `user.districtId`, and
+ * `user.facilityId` all hold IDs that exist in the user's *home* tenant. Those
+ * IDs are not meaningful in any other tenant — primary keys for provinces /
+ * districts / facilities are not shared across tenants and may collide by
+ * coincidence. So when an authenticated user has switched into a tenant other
+ * than their home tenant (`context.activeTenantId !== user.tenantId`), we
+ * cannot meaningfully compare their stored home-tenant geography against the
+ * visited tenant's records: doing so would either deny everything to a
+ * mid-level role (district_manager / provincial_coordinator / facility_*)
+ * making them unusable in the visited tenant, or — when IDs happen to overlap
+ * — grant access to a completely unrelated record.
+ *
+ * Therefore: in a visited (non-home) tenant we treat the user as having full
+ * scope *within that tenant*. The role check above still gates which actions
+ * are allowed (a facility_clerk still cannot approve plans), but the per-
+ * province / district / facility row-level restriction only applies when the
+ * user is operating inside their own home tenant.
  */
 export function hasPermission(
   user: User,
@@ -167,7 +192,21 @@ export function hasPermission(
   }
 
   // 6. Enforce Row-Level Geographic Data Scope Restrictions
-  if (context && (context.provinceId || context.districtId || context.facilityId)) {
+  //    Skip entirely when the user is operating in a tenant other than their
+  //    home tenant — see the cross-tenant scope decision in the doc comment
+  //    above. user.dataAccessScope / user.{province,district,facility}Id are
+  //    home-tenant IDs and would either spuriously deny or coincidentally
+  //    allow records in a visited tenant.
+  const isVisitingOtherTenant =
+    !!context?.activeTenantId &&
+    !!user.tenantId &&
+    context.activeTenantId !== user.tenantId;
+
+  if (
+    !isVisitingOtherTenant &&
+    context &&
+    (context.provinceId || context.districtId || context.facilityId)
+  ) {
     const scope = (user.dataAccessScope as UserDataAccessScope) || {
       provinces: [],
       districts: [],

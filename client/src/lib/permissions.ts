@@ -11,12 +11,37 @@ const roleHierarchy: Record<UserRole, number> = {
   gis_specialist: 5,
 };
 
+// Cross-tenant scope decision (mirrors server/auth/authorization.ts → hasPermission)
+// -------------------------------------------------------------------------------
+// `user.provinceId`, `user.districtId`, `user.facilityId` and `user.dataAccessScope`
+// all reference rows in the user's *home* tenant. Those IDs are not meaningful
+// in any other tenant — province / district / facility primary keys are not
+// shared across tenants and may collide by coincidence.
+//
+// When the user has switched into a tenant other than their home tenant
+// (`activeTenantId !== user.tenantId`), comparing their stored home-tenant
+// geography against the visited tenant's records would either deny everything
+// to mid-level roles (district_manager / provincial_coordinator / facility_*)
+// or — when IDs happen to overlap — light up the wrong record.
+//
+// So in a visited tenant we treat the user as having full scope *within that
+// tenant*: the role still gates which actions are surfaced (a facility_clerk
+// still cannot delete), but the per-province / district / facility row-level
+// restriction only applies when operating inside the user's home tenant.
+function isVisitingOtherTenant(
+  user: { tenantId?: string | null },
+  activeTenantId?: string | null,
+): boolean {
+  return !!activeTenantId && !!user.tenantId && activeTenantId !== user.tenantId;
+}
+
 export function canEditFacility(
   user: User | null | undefined,
   facilityDistrictId: number,
   facilityId?: number,
   districts?: District[],
-  provinces?: Province[]
+  provinces?: Province[],
+  activeTenantId?: string | null,
 ): boolean {
   if (!user) return false;
   
@@ -24,6 +49,17 @@ export function canEditFacility(
   
   if (role === "national_admin" || role === "gis_specialist") {
     return true;
+  }
+
+  // In a visited (non-home) tenant the user's home-tenant IDs are meaningless,
+  // so we treat the role as having full scope inside that tenant.
+  if (isVisitingOtherTenant(user, activeTenantId)) {
+    return (
+      role === "provincial_coordinator" ||
+      role === "district_manager" ||
+      role === "facility_clerk" ||
+      role === "facility_in_charge"
+    );
   }
   
   if (role === "provincial_coordinator" && user.provinceId) {
@@ -50,7 +86,8 @@ export function canEditFacility(
 export function canEditVillage(
   user: User | null | undefined,
   villageDistrictId: number,
-  districts?: District[]
+  districts?: District[],
+  activeTenantId?: string | null,
 ): boolean {
   if (!user) return false;
   
@@ -58,6 +95,14 @@ export function canEditVillage(
   
   if (role === "national_admin" || role === "gis_specialist") {
     return true;
+  }
+
+  // See cross-tenant scope decision above canEditFacility.
+  if (isVisitingOtherTenant(user, activeTenantId)) {
+    return (
+      role === "provincial_coordinator" ||
+      role === "district_manager"
+    );
   }
   
   if (role === "provincial_coordinator" && user.provinceId) {

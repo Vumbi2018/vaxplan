@@ -134,16 +134,20 @@ async function logAudit(
 async function getFacilityHierarchy(facilityId: number, tenantId: string) {
   try {
     const fac = await storage.getFacility(tenantId, facilityId);
-    if (!fac) return { facilityId };
+    if (!fac) return { facilityId, activeTenantId: tenantId };
     const dist = await storage.getDistrict(tenantId, fac.districtId);
     return {
       facilityId,
       districtId: fac.districtId,
       provinceId: dist ? dist.provinceId : null,
+      // Used by hasPermission to detect when the caller is operating in a
+      // tenant other than their home tenant and skip home-tenant-scoped
+      // row-level geographic checks accordingly.
+      activeTenantId: tenantId,
     };
   } catch (e) {
     console.error("getFacilityHierarchy failed:", e);
-    return { facilityId };
+    return { facilityId, activeTenantId: tenantId };
   }
 }
 
@@ -7232,10 +7236,11 @@ export async function registerRoutes(
     const allowed: number[] = [];
     for (const fid of ids) {
       const row = rows.find((r) => r.id === fid);
-      const geo: { facilityId: number; districtId: number | null; provinceId: number | null } = {
+      const geo = {
         facilityId: fid,
         districtId: row?.districtId ?? null,
         provinceId: row ? (distProvince.get(row.districtId) as number | undefined) ?? null : null,
+        activeTenantId: req.tenantId as string,
       };
       if (hasPermission(dbUser, "view_clients", geo)) allowed.push(fid);
     }
