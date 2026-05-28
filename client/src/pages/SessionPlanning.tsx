@@ -62,7 +62,23 @@ import {
   AlertTriangle,
   History as HistoryIcon,
   X,
+  Check,
+  ChevronsUpDown,
 } from "lucide-react";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import { cn } from "@/lib/utils";
 import {
   insertSessionPlanSchema,
   type SessionPlan,
@@ -72,6 +88,7 @@ import {
   type InsertSessionPlan,
   type Microplan,
   type VaccineConfig,
+  type Village,
 } from "@shared/schema";
 import { expandVaccineSchedule } from "@shared/vaccineSchedule";
 import { z } from "zod";
@@ -235,6 +252,23 @@ export default function SessionPlanning({
       return res.json();
     },
   });
+
+  // Task #129 — Village list scoped to the chosen facility, used by the
+  // manual "Add village" picker in the new-session dialog so users can build
+  // the attached-villages chip list up front instead of waiting until after
+  // save.
+  const { data: villages } = useQuery<Village[]>({
+    queryKey: ["/api/villages"],
+    queryFn: async () => {
+      if (!navigator.onLine) {
+        return (await offlineDb.villages.toArray()) as unknown as Village[];
+      }
+      const res = await fetch("/api/villages");
+      if (!res.ok) throw new Error("Failed to load villages");
+      return res.json();
+    },
+  });
+  const [villagePickerOpen, setVillagePickerOpen] = useState(false);
 
   const { data: provinces } = useQuery<Province[]>({
     queryKey: ["/api/provinces"],
@@ -1373,40 +1407,111 @@ export default function SessionPlanning({
                     )}
                   />
 
-                  {attachedVillages.length > 0 && (
-                    <div className="rounded-md border p-3 space-y-2" data-testid="attached-villages-panel">
-                      <div className="text-xs font-medium text-muted-foreground flex items-center gap-1">
-                        <MapPin className="h-3.5 w-3.5" />
-                        Villages attached to this session
-                      </div>
-                      <div className="flex flex-wrap gap-1.5">
-                        {attachedVillages.map((v) => (
-                          <Badge
-                            key={v.id}
-                            variant="secondary"
-                            className="gap-1 pl-2 pr-1 py-1"
-                            data-testid={`attached-village-${v.id}`}
-                          >
-                            <span>{v.name}</span>
-                            <button
+                  {(() => {
+                    const selectedFacilityId = form.watch("facilityId" as any);
+                    const facilityVillages = selectedFacilityId
+                      ? (villages ?? [])
+                          .filter((v) => Number((v as any).assignedFacilityId) === Number(selectedFacilityId))
+                          .sort((a, b) => a.name.localeCompare(b.name))
+                      : [];
+                    const attachedIds = new Set(attachedVillages.map((v) => v.id));
+                    const pickable = facilityVillages.filter((v) => !attachedIds.has(Number(v.id)));
+                    return (
+                      <div className="rounded-md border p-3 space-y-2" data-testid="attached-villages-panel">
+                        <div className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+                          <MapPin className="h-3.5 w-3.5" />
+                          Villages attached to this session
+                        </div>
+                        {attachedVillages.length > 0 ? (
+                          <div className="flex flex-wrap gap-1.5">
+                            {attachedVillages.map((v) => (
+                              <Badge
+                                key={v.id}
+                                variant="secondary"
+                                className="gap-1 pl-2 pr-1 py-1"
+                                data-testid={`attached-village-${v.id}`}
+                              >
+                                <span>{v.name}</span>
+                                <button
+                                  type="button"
+                                  className="ml-0.5 rounded-sm hover:bg-muted-foreground/20 p-0.5"
+                                  aria-label={`Remove ${v.name}`}
+                                  data-testid={`remove-attached-village-${v.id}`}
+                                  onClick={() =>
+                                    setAttachedVillages((prev) => prev.filter((x) => x.id !== v.id))
+                                  }
+                                >
+                                  <X className="h-3 w-3" />
+                                </button>
+                              </Badge>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="text-xs text-muted-foreground">
+                            No villages attached yet. Pick the ones this session will cover.
+                          </div>
+                        )}
+                        <Popover open={villagePickerOpen} onOpenChange={setVillagePickerOpen}>
+                          <PopoverTrigger asChild>
+                            <Button
                               type="button"
-                              className="ml-0.5 rounded-sm hover:bg-muted-foreground/20 p-0.5"
-                              aria-label={`Remove ${v.name}`}
-                              data-testid={`remove-attached-village-${v.id}`}
-                              onClick={() =>
-                                setAttachedVillages((prev) => prev.filter((x) => x.id !== v.id))
-                              }
+                              variant="outline"
+                              size="sm"
+                              role="combobox"
+                              disabled={!selectedFacilityId || pickable.length === 0}
+                              className="w-full justify-between font-normal"
+                              data-testid="button-add-attached-village"
                             >
-                              <X className="h-3 w-3" />
-                            </button>
-                          </Badge>
-                        ))}
+                              <span className="truncate text-left">
+                                {!selectedFacilityId
+                                  ? "Pick a facility first"
+                                  : facilityVillages.length === 0
+                                  ? "No villages assigned to this facility"
+                                  : pickable.length === 0
+                                  ? "All assigned villages are attached"
+                                  : "Add village"}
+                              </span>
+                              <ChevronsUpDown className="h-4 w-4 opacity-50 shrink-0" />
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent
+                            className="p-0 w-[--radix-popover-trigger-width]"
+                            align="start"
+                          >
+                            <Command>
+                              <CommandInput placeholder="Search villages..." />
+                              <CommandList>
+                                <CommandEmpty>No matches.</CommandEmpty>
+                                <CommandGroup>
+                                  {pickable.map((v) => (
+                                    <CommandItem
+                                      key={v.id}
+                                      value={v.name}
+                                      onSelect={() => {
+                                        setAttachedVillages((prev) =>
+                                          prev.some((x) => x.id === Number(v.id))
+                                            ? prev
+                                            : [...prev, { id: Number(v.id), name: v.name }],
+                                        );
+                                        setVillagePickerOpen(false);
+                                      }}
+                                      data-testid={`option-attach-village-${v.id}`}
+                                    >
+                                      <Check className={cn("mr-2 h-4 w-4 opacity-0")} />
+                                      {v.name}
+                                    </CommandItem>
+                                  ))}
+                                </CommandGroup>
+                              </CommandList>
+                            </Command>
+                          </PopoverContent>
+                        </Popover>
+                        <div className="text-xs text-muted-foreground">
+                          These villages will be linked to the session on save. Remove a chip if you don't want it attached.
+                        </div>
                       </div>
-                      <div className="text-xs text-muted-foreground">
-                        These villages will be linked to the session on save. Remove a chip if you don't want it attached.
-                      </div>
-                    </div>
-                  )}
+                    );
+                  })()}
 
                   {unservedPrefill && (
                     <div className="rounded-md border p-3 bg-red-50 dark:bg-red-950/20 space-y-2">
