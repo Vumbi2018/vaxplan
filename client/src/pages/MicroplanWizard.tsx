@@ -43,6 +43,7 @@ import {
   Satellite,
   Map as MapIcon,
   Maximize2,
+  HelpCircle,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
@@ -2508,6 +2509,11 @@ function Step2Map({
   const [leaflet, setLeaflet] = useState<any>(null);
   const [showPopulation, setShowPopulation] = useState(false);
   const [populationUnavailable, setPopulationUnavailable] = useState(false);
+  const [infoMode, setInfoMode] = useState(false);
+  const [infoPopup, setInfoPopup] = useState<
+    | { lat: number; lng: number; status: "loading" | "ok" | "nodata" | "error"; value?: number; message?: string }
+    | null
+  >(null);
   const popErrorToastedRef = useRef(false);
   const { toast } = useToast();
   useEffect(() => {
@@ -2612,9 +2618,64 @@ function Step2Map({
   const pinGreen = createFilledPinIcon("green");
   const pinAmber = createFilledPinIcon("amber");
 
+  async function fetchPopulationAt(map: any, latlng: any) {
+    const size = map.getSize();
+    const point = map.latLngToContainerPoint(latlng);
+    const bounds = map.getBounds();
+    const sw = L.CRS.EPSG3857.project(bounds.getSouthWest());
+    const ne = L.CRS.EPSG3857.project(bounds.getNorthEast());
+    const params = new URLSearchParams({
+      service: "WMS",
+      version: "1.3.0",
+      request: "GetFeatureInfo",
+      layers: "wpGlobal:ppp_2020_1km_Aggregated",
+      query_layers: "wpGlobal:ppp_2020_1km_Aggregated",
+      crs: "EPSG:3857",
+      bbox: `${sw.x},${sw.y},${ne.x},${ne.y}`,
+      width: String(size.x),
+      height: String(size.y),
+      i: String(Math.round(point.x)),
+      j: String(Math.round(point.y)),
+      info_format: "application/json",
+      feature_count: "1",
+    });
+    const url = `https://ogc.worldpop.org/geoserver/wpGlobal/ows?${params.toString()}`;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 8000);
+    try {
+      const res = await fetch(url, { signal: ctrl.signal });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      const feat = json?.features?.[0];
+      const props = feat?.properties ?? {};
+      const raw =
+        props.GRAY_INDEX ?? props.gray_index ?? props.PALETTE_INDEX ?? props.value ?? null;
+      const num = raw == null ? null : Number(raw);
+      if (num == null || !isFinite(num) || num < 0) {
+        return { status: "nodata" as const };
+      }
+      return { status: "ok" as const, value: num };
+    } catch (err: any) {
+      return {
+        status: "error" as const,
+        message: err?.name === "AbortError" ? "Request timed out." : "Couldn't reach WorldPop.",
+      };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   function ClickCatcher() {
-    useMapEvents({
+    const map = useMapEvents({
       click(e: any) {
+        if (infoMode) {
+          const { lat, lng } = e.latlng;
+          setInfoPopup({ lat, lng, status: "loading" });
+          fetchPopulationAt(map, e.latlng).then((res) => {
+            setInfoPopup({ lat, lng, ...res });
+          });
+          return;
+        }
         onMapClick(e.latlng.lat, e.latlng.lng);
       },
     });
@@ -2640,7 +2701,11 @@ function Step2Map({
     });
 
   return (
-    <div className="h-[360px] w-full rounded-xl overflow-hidden border border-border shadow-inner relative">
+    <div
+      className={`h-[360px] w-full rounded-xl overflow-hidden border border-border shadow-inner relative ${
+        infoMode ? "[&_.leaflet-container]:cursor-help" : ""
+      }`}
+    >
       <MapContainer center={center} zoom={11} className="h-full w-full z-0" zoomControl={false}>
         {basemap === "osm" ? (
           <TileLayer
@@ -2680,6 +2745,43 @@ function Step2Map({
         <MapRefCatcher />
         <ClickCatcher />
         <Recenter center={center} />
+
+        {infoPopup && (
+          <Popup
+            position={[infoPopup.lat, infoPopup.lng]}
+            eventHandlers={{ remove: () => setInfoPopup(null) }}
+          >
+            <div className="text-xs" data-testid="popup-population-info">
+              <div className="font-semibold">Population estimate</div>
+              <div className="text-muted-foreground">
+                {infoPopup.lat.toFixed(4)}, {infoPopup.lng.toFixed(4)}
+              </div>
+              {infoPopup.status === "loading" && (
+                <div className="mt-1 flex items-center gap-1">
+                  <Loader2 className="h-3 w-3 animate-spin" /> Looking up…
+                </div>
+              )}
+              {infoPopup.status === "ok" && infoPopup.value != null && (
+                <div className="mt-1">
+                  ≈ <strong>{Math.round(infoPopup.value).toLocaleString()}</strong> people/km²
+                  <div className="text-muted-foreground">
+                    WorldPop 2020, 1&nbsp;km grid
+                  </div>
+                </div>
+              )}
+              {infoPopup.status === "nodata" && (
+                <div className="mt-1 text-muted-foreground">
+                  No population data for this cell.
+                </div>
+              )}
+              {infoPopup.status === "error" && (
+                <div className="mt-1 text-muted-foreground">
+                  {infoPopup.message ?? "Lookup failed."}
+                </div>
+              )}
+            </div>
+          </Popup>
+        )}
 
         {facilityLat != null && facilityLng != null && !isNaN(facilityLat) && !isNaN(facilityLng) && (
           <Marker position={[facilityLat, facilityLng]} icon={facilityIcon}>
@@ -2733,6 +2835,40 @@ function Step2Map({
         <span style={{ display: "none" }}>{[pinBlue, pinGreen, pinAmber].length}</span>
       </MapContainer>
       <div className="absolute top-2 right-2 z-[400] flex flex-col items-end gap-2">
+        <button
+          type="button"
+          onClick={() => {
+            if (populationUnavailable) {
+              setInfoMode(false);
+              return;
+            }
+            setInfoMode((v) => {
+              const next = !v;
+              if (next && !showPopulation) setShowPopulation(true);
+              if (!next) setInfoPopup(null);
+              return next;
+            });
+          }}
+          disabled={populationUnavailable}
+          title={
+            populationUnavailable
+              ? "Population layer unavailable offline."
+              : infoMode
+              ? "Click the map to add a community"
+              : "Click the map to look up an estimated population"
+          }
+          className={`rounded-full px-3 py-1 text-xs font-medium shadow transition-colors inline-flex items-center gap-1 ${
+            populationUnavailable
+              ? "bg-muted text-muted-foreground cursor-not-allowed opacity-70"
+              : infoMode
+              ? "bg-blue-600 text-white hover:bg-blue-700"
+              : "bg-background/90 text-foreground hover:bg-background"
+          }`}
+          data-testid="button-toggle-population-info"
+        >
+          <HelpCircle className="h-3 w-3" />
+          {infoMode ? "Info on" : "Info"}
+        </button>
         <button
           type="button"
           onClick={() => {
