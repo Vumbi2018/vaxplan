@@ -444,6 +444,177 @@ export default function BudgetPlanning() {
 
   const fundingGrandTotal = Object.values(fundingTotals).reduce((s, n) => s + n, 0);
 
+  const fundingSourceLabel = (fs: string, other?: string | null) => {
+    if (fs === "other" && other) return other;
+    const opt = fundingSourceOptions.find((o) => o.value === fs);
+    return opt?.label || (fs === "unspecified" ? "Unspecified" : fs);
+  };
+
+  const escapeCsv = (val: any): string => {
+    if (val === null || val === undefined) return "";
+    const s = String(val);
+    if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+    return s;
+  };
+
+  const handleExportCsv = () => {
+    const year = new Date().getFullYear();
+    const lines: string[] = [];
+    lines.push(
+      `Gavi HSS Funding Report — Q${selectedQuarter} ${year}`,
+    );
+
+    const geoBits: string[] = [];
+    if (geoProvinceId !== null) {
+      const p = provinces?.find((x) => x.id === geoProvinceId);
+      if (p) geoBits.push(`Province: ${p.name}`);
+    }
+    if (geoDistrictId !== null) {
+      const d = districts?.find((x) => x.id === geoDistrictId);
+      if (d) geoBits.push(`District: ${d.name}`);
+    }
+    if (geoFacilityId !== null) {
+      const f = facilities?.find((x) => x.id === geoFacilityId);
+      if (f) geoBits.push(`Facility: ${f.name}`);
+    }
+    lines.push(geoBits.length ? `Filter: ${geoBits.join(" / ")}` : "Filter: All geographies");
+    lines.push(`Generated: ${new Date().toISOString()}`);
+    lines.push("");
+
+    // Section 1: Summary by funding source
+    lines.push("Summary by Funding Source");
+    lines.push(["Funding Source", "Total (K)", "% of Total"].map(escapeCsv).join(","));
+    const sourceOrder = ["government", "gavi", "who", "unicef", "other"];
+    for (const src of sourceOrder) {
+      const amount = fundingTotals[src] || 0;
+      if (amount <= 0) continue;
+      const pct = fundingGrandTotal > 0 ? ((amount / fundingGrandTotal) * 100).toFixed(1) : "0.0";
+      lines.push([fundingSourceLabel(src), amount.toFixed(2), `${pct}%`].map(escapeCsv).join(","));
+    }
+    lines.push(["Total (classified)", (fundingGrandTotal - (fundingTotals["unspecified"] || 0)).toFixed(2), ""].map(escapeCsv).join(","));
+    lines.push("");
+
+    // Section 2: Breakdown by funding source × category
+    lines.push("Breakdown by Funding Source and Category");
+    lines.push(["Funding Source", "Category", "Total (K)"].map(escapeCsv).join(","));
+    for (const src of sourceOrder) {
+      const rows = quarterItems.filter(
+        (i: any) => (i.fundingSource || "unspecified") === src,
+      );
+      if (rows.length === 0) continue;
+      const byCat: Record<string, number> = {};
+      for (const r of rows) {
+        const cat = (r as any).category || "Uncategorized";
+        byCat[cat] = (byCat[cat] || 0) + parseFloat((r as any).totalCost || "0");
+      }
+      Object.entries(byCat)
+        .sort((a, b) => b[1] - a[1])
+        .forEach(([cat, total]) => {
+          lines.push([fundingSourceLabel(src), cat, total.toFixed(2)].map(escapeCsv).join(","));
+        });
+    }
+    lines.push("");
+
+    // Section 3: Line item detail (classified)
+    lines.push("Line Item Detail (Classified)");
+    const detailHeader = [
+      "Province",
+      "District",
+      "Facility",
+      "Funding Source",
+      "Category",
+      "Description",
+      "Quantity",
+      "Unit Cost (K)",
+      "Total (K)",
+      "Approval Status",
+    ];
+    lines.push(detailHeader.map(escapeCsv).join(","));
+    const classified = quarterItems.filter(
+      (i: any) => i.fundingSource && i.fundingSource !== "unspecified",
+    );
+    for (const item of classified) {
+      const facName = facilities?.find((f) => f.id === (item as any).facilityId)?.name || "";
+      lines.push(
+        [
+          (item as any)._geoProvinceName || "",
+          (item as any)._geoDistrictName || "",
+          facName,
+          fundingSourceLabel((item as any).fundingSource, (item as any).fundingSourceOther),
+          (item as any).category,
+          (item as any).description,
+          (item as any).quantity,
+          parseFloat((item as any).unitCost || "0").toFixed(2),
+          parseFloat((item as any).totalCost || "0").toFixed(2),
+          (item as any).approvalStatus || "draft",
+        ]
+          .map(escapeCsv)
+          .join(","),
+      );
+    }
+    lines.push("");
+
+    // Section 4: Unspecified gap (called out so the report doesn't hide it)
+    const unspecifiedItems = quarterItems.filter(
+      (i: any) => !i.fundingSource || i.fundingSource === "unspecified",
+    );
+    const unspecifiedTotal = unspecifiedItems.reduce(
+      (s, i: any) => s + parseFloat(i.totalCost || "0"),
+      0,
+    );
+    lines.push(
+      `Unspecified / Needs Classification (${unspecifiedItems.length} line${unspecifiedItems.length === 1 ? "" : "s"}, K${unspecifiedTotal.toFixed(2)})`,
+    );
+    if (unspecifiedItems.length === 0) {
+      lines.push("None — every line in scope has a funding source.");
+    } else {
+      lines.push(detailHeader.map(escapeCsv).join(","));
+      for (const item of unspecifiedItems) {
+        const facName = facilities?.find((f) => f.id === (item as any).facilityId)?.name || "";
+        lines.push(
+          [
+            (item as any)._geoProvinceName || "",
+            (item as any)._geoDistrictName || "",
+            facName,
+            "Unspecified",
+            (item as any).category,
+            (item as any).description,
+            (item as any).quantity,
+            parseFloat((item as any).unitCost || "0").toFixed(2),
+            parseFloat((item as any).totalCost || "0").toFixed(2),
+            (item as any).approvalStatus || "draft",
+          ]
+            .map(escapeCsv)
+            .join(","),
+        );
+      }
+    }
+
+    const csv = "\uFEFF" + lines.join("\r\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const geoSuffix =
+      geoFacilityId !== null
+        ? `facility-${geoFacilityId}`
+        : geoDistrictId !== null
+          ? `district-${geoDistrictId}`
+          : geoProvinceId !== null
+            ? `province-${geoProvinceId}`
+            : "all";
+    a.href = url;
+    a.download = `gavi-hss-funding-Q${selectedQuarter}-${year}-${geoSuffix}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    toast({
+      title: "Export ready",
+      description: `Q${selectedQuarter} ${year} funding report downloaded.`,
+    });
+  };
+
   const columns = [
     {
       key: "_geoProvinceName",
@@ -701,7 +872,17 @@ export default function BudgetPlanning() {
             </SelectContent>
           </Select>
 
-          <Button variant="outline" data-testid="button-export-budget">
+          <Button
+            variant="outline"
+            data-testid="button-export-budget"
+            onClick={handleExportCsv}
+            disabled={quarterItems.length === 0}
+            title={
+              quarterItems.length === 0
+                ? "No budget items in the current quarter / filter to export"
+                : "Download Gavi HSS funding report (CSV)"
+            }
+          >
             <Download className="h-4 w-4 mr-1" />
             Export
           </Button>
