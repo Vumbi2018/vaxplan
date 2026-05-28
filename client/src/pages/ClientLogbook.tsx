@@ -523,14 +523,19 @@ function MapEvents({ onClick }: { onClick: (lat: number, lng: number) => void })
 }
 
 
+// Batch number, expiry date and VVM status are nullable in the DB
+// (`client_vaccinations` schema). They're nice-to-have for cold-chain audit but
+// field workers often log doses without them (vial already discarded, label
+// faded, etc.). Keeping them required in the form silently blocked saves
+// because users missed the validation toast and assumed it had succeeded.
 const vaccinationFormSchema = insertClientVaccinationSchema.extend({
   tenantId: z.string().optional().nullable(),
   clientId: z.string().optional().nullable(),
   facilityId: z.number().optional().nullable(),
   administeredDate: z.string().min(1, "Administered date is required"),
-  expiryDate: z.string().min(1, "Expiry date is required"),
-  batchNumber: z.string().min(1, "Batch number is required"),
-  vvmStatus: z.string().min(1, "VVM status is required"),
+  expiryDate: z.string().optional().nullable(),
+  batchNumber: z.string().optional().nullable(),
+  vvmStatus: z.string().optional().nullable(),
 });
 
 export default function ClientLogbook() {
@@ -1488,14 +1493,19 @@ export default function ClientLogbook() {
     const configId = parseInt(values.vaccineConfigId as any);
     const selectedConfig = vaccineConfigs?.find((c) => c.id === configId);
     
+    // Null-coerce the optional cold-chain fields so an empty form submission
+    // becomes a clean INSERT instead of "Invalid Date" / "NaN" reaching the DB.
+    const expiryRaw = (values.expiryDate ?? "").toString().trim();
+    const batchRaw = (values.batchNumber ?? "").toString().trim();
+    const vvmRaw = (values.vvmStatus ?? "").toString().trim();
     const payload = {
       tenantId: user?.tenantId || "",
       vaccineConfigId: configId,
       vaccineName: selectedConfig?.name || values.vaccineName,
       administeredDate: new Date(values.administeredDate),
-      expiryDate: new Date(values.expiryDate),
-      batchNumber: values.batchNumber,
-      vvmStatus: parseInt(values.vvmStatus),
+      expiryDate: expiryRaw ? new Date(expiryRaw) : null,
+      batchNumber: batchRaw || null,
+      vvmStatus: vvmRaw ? parseInt(vvmRaw) : null,
     };
     vaccinateMutation.mutate({ clientId: vaccinateClient.id, data: payload });
   };
@@ -3489,7 +3499,7 @@ export default function ClientLogbook() {
                   name="expiryDate"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Vaccine Expiry Date</FormLabel>
+                      <FormLabel>Vaccine Expiry Date <span className="text-xs text-muted-foreground">(optional)</span></FormLabel>
                       <FormControl>
                         <Input type="date" {...field} />
                       </FormControl>
@@ -3505,7 +3515,7 @@ export default function ClientLogbook() {
                   name="batchNumber"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Batch Number</FormLabel>
+                      <FormLabel>Batch Number <span className="text-xs text-muted-foreground">(optional)</span></FormLabel>
                       <FormControl>
                         <Input placeholder="e.g. B892A" {...field} />
                       </FormControl>
@@ -3519,7 +3529,7 @@ export default function ClientLogbook() {
                   name="vvmStatus"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>VVM Status (1-4)</FormLabel>
+                      <FormLabel>VVM Status (1-4) <span className="text-xs text-muted-foreground">(optional)</span></FormLabel>
                       <Select onValueChange={field.onChange} defaultValue={field.value}>
                         <FormControl>
                           <SelectTrigger>

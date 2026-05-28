@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useLocation } from "wouter";
+import { Link, useLocation, useRoute } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -399,14 +399,25 @@ export default function MicroplanWizard({ prePlanType }: MicroplanWizardProps = 
   const [year] = useState(new Date().getFullYear());
   const [quarter] = useState(currentQuarter());
 
-  // Optionally resume an existing draft via ?id=
+  // Resume an existing draft via either the path param (/microplans/routine/:id,
+  // /microplans/campaigns/:id) or the legacy `?id=` query string. The path-param
+  // form is what SessionsHub / the map popups link to — without honouring it the
+  // wizard silently stayed in "new microplan" mode and hid the saved plan
+  // (along with its planned sessions) from the user.
+  const [, routineParams] = useRoute("/microplans/routine/:id");
+  const [, campaignParams] = useRoute("/microplans/campaigns/:id");
+  const routeIdRaw = routineParams?.id ?? campaignParams?.id ?? null;
   useEffect(() => {
+    if (routeIdRaw && !Number.isNaN(Number(routeIdRaw))) {
+      setMicroplanId(Number(routeIdRaw));
+      return;
+    }
     const params = new URLSearchParams(window.location.search);
     const id = params.get("id");
     if (id && !Number.isNaN(Number(id))) {
       setMicroplanId(Number(id));
     }
-  }, []);
+  }, [routeIdRaw]);
 
   // Sync facility from user when it arrives — but never override an explicit
   // ?facilityId= prefill coming from the village pin (Task #101).
@@ -2209,6 +2220,22 @@ export default function MicroplanWizard({ prePlanType }: MicroplanWizardProps = 
           </div>
         )}
       </div>
+
+      {/* Saved-microplans picker — only when no microplan is open. Gives users
+          a real "list of microplans (with their planned sessions count)" entry
+          point. Previously the only way to reopen a saved plan was via deep
+          links from the map or SessionsHub, which made the planned sessions
+          for an existing microplan effectively invisible from this page. */}
+      {!microplanId && (
+        <SavedMicroplansPanel
+          planType={planType}
+          onOpen={(id) =>
+            setLocation(
+              `/microplans/${planType === "campaign" ? "campaigns" : "routine"}/${id}`,
+            )
+          }
+        />
+      )}
 
       {/* Body: stepper + content */}
       <div className="flex flex-1 gap-4 overflow-hidden p-4">
@@ -5366,6 +5393,104 @@ function Step11({
             Awaiting district approval.
           </p>
         )}
+      </div>
+    </div>
+  );
+}
+
+// Listing of saved microplans for the current planType, with a per-plan count
+// of planned / completed sessions. Renders only when the wizard is in "list
+// mode" (no microplanId selected). Clicking Open navigates to the path-param
+// route so the wizard hydrates that plan.
+function SavedMicroplansPanel({
+  planType,
+  onOpen,
+}: {
+  planType: "routine" | "campaign";
+  onOpen: (id: number) => void;
+}) {
+  const { data: microplans } = useQuery<any[]>({
+    queryKey: ["/api/microplans"],
+  });
+  const { data: sessions } = useQuery<SessionPlan[]>({
+    queryKey: ["/api/sessions"],
+  });
+  const sessionsByPlan = useMemo(() => {
+    const m = new Map<number, SessionPlan[]>();
+    for (const s of sessions ?? []) {
+      if (s.microplanId == null) continue;
+      const arr = m.get(s.microplanId) ?? [];
+      arr.push(s);
+      m.set(s.microplanId, arr);
+    }
+    return m;
+  }, [sessions]);
+
+  // The DB column `plan_type` uses values like "facility_routine" /
+  // "sia_campaign" while this page thinks in "routine" / "campaign". Map both.
+  const filtered = (microplans ?? []).filter((m) => {
+    const pt = String(m.planType ?? "");
+    return planType === "campaign"
+      ? pt.includes("campaign")
+      : !pt.includes("campaign");
+  });
+
+  if (filtered.length === 0) return null;
+
+  return (
+    <div className="border-b bg-muted/20 px-4 py-3">
+      <div className="mb-2 flex items-center justify-between">
+        <h2 className="text-sm font-semibold">
+          Saved microplans ({filtered.length})
+        </h2>
+        <p className="text-xs text-muted-foreground">
+          Open one to see its planned sessions
+        </p>
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        {filtered.map((m) => {
+          const rows = sessionsByPlan.get(m.id) ?? [];
+          const completed = rows.filter(
+            (s) => s.completedAt || (s as any).isAchieved,
+          ).length;
+          const planned = rows.length - completed;
+          return (
+            <div
+              key={m.id}
+              className="rounded-md border bg-background p-3 text-sm"
+              data-testid={`saved-microplan-${m.id}`}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="truncate font-medium" title={m.name}>
+                    {m.name}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Q{m.quarter} {m.year}
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => onOpen(m.id)}
+                  data-testid={`button-open-microplan-${m.id}`}
+                >
+                  Open
+                </Button>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
+                <Badge variant="secondary" className="gap-1">
+                  <Calendar className="h-3 w-3" />
+                  {planned} planned
+                </Badge>
+                <Badge variant="outline" className="gap-1">
+                  <CheckCircle2 className="h-3 w-3 text-emerald-600" />
+                  {completed} done
+                </Badge>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
