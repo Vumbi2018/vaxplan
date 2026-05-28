@@ -38,6 +38,17 @@ const SCREENS = {
   home: "screenshots/01-home.jpg",
   signin: "screenshots/02-signin.jpg",
   signup: "screenshots/03-signup.jpg",
+  // Real in-product screenshots (cropped to remove dev-only error toasts)
+  wizard: "screenshots/app/wizard-stepper.png",
+  facilities: "screenshots/app/facilities-registry.png",
+  coverage: "screenshots/app/microplan-coverage.png",
+  microplanMap: "screenshots/app/microplan-map.png",
+  derivedSession: "screenshots/app/derived-session.png",
+  settlementIntel: "screenshots/app/settlement-intel.png",
+  nsoCensus: "screenshots/app/nso-census.png",
+  saveCatchment: "screenshots/app/save-catchment.png",
+  navPlanning: "screenshots/app/nav-planning.png",
+  rolePicker: "attached_assets/image_1777793124593_1779865327925.png",
 };
 
 // ---------------- Helpers ----------------
@@ -137,7 +148,7 @@ function screenshotPanel(slide, { x, y, w, h, path, caption }) {
   }
 }
 
-const TOTAL = 22;
+const TOTAL = 28;
 let page = 0;
 const slide = () => {
   page += 1;
@@ -420,6 +431,222 @@ const slide = () => {
       x: x + 0.25, y: y + 0.65, w: w - 0.4, h: 0.85,
       fontFace: FONT_B, fontSize: 10.5, color: C.inkSoft, valign: "top",
     });
+  });
+}
+
+// ============================================================
+// Slide 7a — Product tour: the wizard (12-step WHO RED + GAVI RED-Q)
+// ============================================================
+{
+  const s = slide();
+  chrome(s, page, TOTAL, "05a  ·  Product tour  ·  Wizard");
+  title(
+    s,
+    "From \"who lives here?\" to \"we vaccinated them\" — in twelve plain-language steps.",
+    "VaxPlan's microplan wizard walks the facility clerk through the WHO RED and GAVI RED-Q workflow without ever using the word \"microplan\".",
+  );
+
+  // Wide stepper screenshot
+  screenshotPanel(s, {
+    x: 0.6, y: 2.7, w: 12.1, h: 2.6, path: SCREENS.wizard,
+    caption: "Three phases — PLAN · PREPARE · DELIVER — with twelve friendly steps end-to-end.",
+  });
+
+  // Bottom row: three phase summaries
+  const phases = [
+    {
+      t: "PLAN",
+      color: C.accent,
+      b: "Who lives here, who is hard to reach, who missed last round, and who is due this round. The map answers all four.",
+    },
+    {
+      t: "PREPARE",
+      color: C.teal,
+      b: "How many doses, how many session days, where and when, who runs each one, how much it costs, who tells the community.",
+    },
+    {
+      t: "DELIVER",
+      color: C.amber,
+      b: "Mark sessions done with per-antigen counts, sweep defaulters, supervise with the RED checklist, sign off the quarter.",
+    },
+  ];
+  const x0p = 0.6, y0p = 5.7, wp = 3.97, hp = 1.05, gxp = 0.2;
+  phases.forEach((p, i) => {
+    const x = x0p + i * (wp + gxp);
+    card(s, { x, y: y0p, w: wp, h: hp });
+    s.addShape(pres.ShapeType.rect, {
+      x, y: y0p, w: 0.7, h: hp, fill: { color: p.color }, line: { type: "none" },
+    });
+    s.addText(p.t, {
+      x, y: y0p, w: 0.7, h: hp,
+      fontFace: FONT_H, fontSize: 13, bold: true, color: "FFFFFF",
+      align: "center", valign: "middle", charSpacing: 2,
+    });
+    s.addText(p.b, {
+      x: x + 0.85, y: y0p, w: wp - 1.0, h: hp,
+      fontFace: FONT_B, fontSize: 11, color: C.inkSoft, valign: "middle",
+    });
+  });
+}
+
+// ============================================================
+// Slide 7b — Product tour: facility & community registry
+// ============================================================
+{
+  const s = slide();
+  chrome(s, page, TOTAL, "05b  ·  Product tour  ·  Registry");
+  title(
+    s,
+    "Every facility, every community, every coordinate — one searchable table.",
+    "The Communities Registry is the source of truth for catchment, distance and Hard-to-Reach status.",
+  );
+
+  screenshotPanel(s, {
+    x: 0.6, y: 2.7, w: 8.4, h: 4.05, path: SCREENS.facilities,
+    caption: "Communities Registry in the South Sudan tenant — note the live country indicator and the per-community HTR flag.",
+  });
+
+  const tx = 9.3, tw = 3.5;
+  card(s, { x: tx, y: 2.7, w: tw, h: 4.05, accent: C.accent });
+  s.addText("What's captured per row", {
+    x: tx + 0.2, y: 2.85, w: tw - 0.3, h: 0.4,
+    fontFace: FONT_H, fontSize: 13, bold: true, color: C.ink,
+  });
+  s.addText(
+    [
+      "•  Province / district / county / state",
+      "•  HMIS / DHIS2 facility code",
+      "•  GPS coordinates",
+      "•  Assigned facility & distance (km)",
+      "•  Three closest facilities (fallback)",
+      "•  Hard-to-Reach status badge",
+      "•  In-line edit + delete with audit",
+      "•  Bulk import from CSV or extract from map",
+    ].join("\n"),
+    {
+      x: tx + 0.2, y: 3.3, w: tw - 0.3, h: 3.35,
+      fontFace: FONT_B, fontSize: 11, color: C.inkSoft, paraSpaceAfter: 4, valign: "top",
+    },
+  );
+}
+
+// ============================================================
+// Slide 7c — Product tour: Settlement Intelligence
+// ============================================================
+{
+  const s = slide();
+  chrome(s, page, TOTAL, "05c  ·  Product tour  ·  Settlement intel");
+  title(
+    s,
+    "Find the communities your registry never knew existed.",
+    "Settlement Intelligence fuses OpenStreetMap names, GRID3 building footprints and WorldPop population grids on a PostGIS spatial engine.",
+  );
+
+  screenshotPanel(s, {
+    x: 0.6, y: 2.7, w: 12.1, h: 4.05, path: SCREENS.settlementIntel,
+    caption: "Zambia — thousands of detected master settlements overlaid against the registry. Toggle zero-dose candidates, suggested outreach sites, 5 km coverage gaps and health facilities.",
+  });
+}
+
+// ============================================================
+// Slide 7d — Product tour: Map-driven outreach planning
+// ============================================================
+{
+  const s = slide();
+  chrome(s, page, TOTAL, "05d  ·  Product tour  ·  Outreach");
+  title(
+    s,
+    "Click an unserved settlement. Plan a session right there.",
+    "The map IS the planning form. Click any household or settlement and VaxPlan opens a Derived Session Plan with the coordinates, staging facility and transport mode prefilled.",
+  );
+
+  screenshotPanel(s, {
+    x: 0.6, y: 2.7, w: 12.1, h: 3.4, path: SCREENS.derivedSession,
+    caption: "Create Derived Session Plan dialog — target coordinates, staging base, transport mode (motorcycle / boat / foot), planning scope and link to master microplan.",
+  });
+
+  // Bottom row: two cards
+  card(s, { x: 0.6, y: 6.2, w: 5.95, h: 0.85, accent: C.accent });
+  s.addText("EPI Planning Legend (left panel)", {
+    x: 0.85, y: 6.25, w: 5.5, h: 0.3,
+    fontFace: FONT_H, fontSize: 12, bold: true, color: C.ink,
+  });
+  s.addText("Health Facility · Planned Community · Missing Standard · Missing HTR · Session Planned / In-Progress / Overdue / Completed · Unserved Place.", {
+    x: 0.85, y: 6.55, w: 5.5, h: 0.5,
+    fontFace: FONT_B, fontSize: 10, color: C.inkSoft, valign: "top",
+  });
+
+  card(s, { x: 6.75, y: 6.2, w: 5.95, h: 0.85, accent: C.teal });
+  s.addText("Derived Session Checklist (right panel)", {
+    x: 7.0, y: 6.25, w: 5.5, h: 0.3,
+    fontFace: FONT_H, fontSize: 12, bold: true, color: C.ink,
+  });
+  s.addText("Routine / Outreach / Mobile sessions auto-listed against the staging facility with a one-tap dispatch ready for the field team.", {
+    x: 7.0, y: 6.55, w: 5.5, h: 0.5,
+    fontFace: FONT_B, fontSize: 10, color: C.inkSoft, valign: "top",
+  });
+}
+
+// ============================================================
+// Slide 7e — Product tour: live coverage review inside the wizard
+// ============================================================
+{
+  const s = slide();
+  chrome(s, page, TOTAL, "05e  ·  Product tour  ·  Coverage");
+  title(
+    s,
+    "Last quarter's reality, baked into next quarter's plan.",
+    "The wizard's first step shows the facility's own DTP1, DTP3, MCV1, MCV2 and dropout rates — so plans are anchored to performance, not aspirations.",
+  );
+
+  screenshotPanel(s, {
+    x: 0.6, y: 2.7, w: 8.4, h: 4.05, path: SCREENS.coverage,
+    caption: "Microplan Q2 2026 · Kabwela Rural Health Centre — Step 1 Coverage review with live DTP1 / DTP3 / MCV1 / MCV2, dropout DTP1→DTP3 and DTP1→MCV1.",
+  });
+
+  const tx = 9.3, tw = 3.5;
+  card(s, { x: tx, y: 2.7, w: tw, h: 4.05, accent: C.accent });
+  s.addText("Why this step matters", {
+    x: tx + 0.2, y: 2.85, w: tw - 0.3, h: 0.4,
+    fontFace: FONT_H, fontSize: 13, bold: true, color: C.ink,
+  });
+  s.addText(
+    [
+      "•  Plans grounded in real performance, not last year's targets copy-pasted.",
+      "•  A 10% DTP1→DTP3 dropout becomes a visible problem, not a buried row.",
+      "•  Negative dropout (−4% here) flags data quality issues for the district reviewer.",
+      "•  Stockouts, AEFI cases and sessions planned vs held are captured in the same step.",
+      "•  The 11 remaining wizard steps build on this baseline — catchment, risk, calendar, staffing, forecasting, mobilisation, transport, budget, supervision, submission, approval.",
+    ].join("\n"),
+    {
+      x: tx + 0.2, y: 3.3, w: tw - 0.3, h: 3.35,
+      fontFace: FONT_B, fontSize: 11, color: C.inkSoft, paraSpaceAfter: 5, valign: "top",
+    },
+  );
+}
+
+// ============================================================
+// Slide 7f — Product tour: living denominator (NSO census + drawn catchments)
+// ============================================================
+{
+  const s = slide();
+  chrome(s, page, TOTAL, "05f  ·  Product tour  ·  Denominator");
+  title(
+    s,
+    "A living denominator, not a fossilised one.",
+    "VaxPlan ingests the National Statistical Office census, lets GIS specialists draw real catchment polygons, and the targets recompute themselves.",
+  );
+
+  // Left: NSO census table
+  screenshotPanel(s, {
+    x: 0.6, y: 2.7, w: 8.0, h: 4.05, path: SCREENS.nsoCensus,
+    caption: "NSO Census table — 2,016 records, 39.09 million total population, with approval workflow per row.",
+  });
+
+  // Right: Save Catchment dialog
+  screenshotPanel(s, {
+    x: 8.85, y: 2.7, w: 3.9, h: 4.05, path: SCREENS.saveCatchment,
+    caption: "Draw a polygon on the map → save as a named catchment.",
   });
 }
 
