@@ -4523,6 +4523,23 @@ export function MapView({
                     </div>
                   `;
                   layer.bindPopup(tooltipContent);
+                  // Leaflet vector layers swallow click events by default, so a
+                  // user clicking ON a catchment polygon never triggered the
+                  // map's click handler (which is what initiates a new session
+                  // plan from the clicked location). Re-fire the click on the
+                  // map so the "Plan a session here" flow runs even when the
+                  // click lands inside a drawn catchment area. We stop the
+                  // underlying DOM event first so any latent bubbling from the
+                  // SVG renderer can't double-dispatch into handleMapClick (one
+                  // click → one session-start / one drawn point).
+                  layer.on("click", (e: any) => {
+                    if (e?.originalEvent) {
+                      L.DomEvent.stopPropagation(e.originalEvent);
+                    }
+                    if (mapRef.current) {
+                      mapRef.current.fire("click", e);
+                    }
+                  });
                 }}
               />
             );

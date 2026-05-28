@@ -396,8 +396,11 @@ export default function MicroplanWizard({ prePlanType }: MicroplanWizardProps = 
     queryFacilityId ?? user?.facilityId ?? null,
   );
   const [name, setName] = useState("");
-  const [year] = useState(new Date().getFullYear());
-  const [quarter] = useState(currentQuarter());
+  // Year & quarter default to "today" for new microplans but must become
+  // editable once we resume an existing draft so the Step 1 inputs reflect
+  // the saved values instead of silently overwriting them.
+  const [year, setYear] = useState(new Date().getFullYear());
+  const [quarter, setQuarter] = useState(currentQuarter());
 
   // Resume an existing draft via either the path param (/microplans/routine/:id,
   // /microplans/campaigns/:id) or the legacy `?id=` query string. The path-param
@@ -502,6 +505,20 @@ export default function MicroplanWizard({ prePlanType }: MicroplanWizardProps = 
     if (microplan) {
       if (microplan.facilityId) setFacilityId(microplan.facilityId);
       if (microplan.name) setName(microplan.name);
+      // Mirror the saved year/quarter/planType into Step 1 so reopening an
+      // existing microplan shows it exactly as the author left it instead of
+      // silently snapping back to "today's" period or the default plan type.
+      if (typeof microplan.year === "number") setYear(microplan.year);
+      if (typeof microplan.quarter === "number") setQuarter(microplan.quarter);
+      if (microplan.planType) {
+        // DB enum values are `facility_routine` / `sia_campaign`; the wizard
+        // works in the shorter `routine` / `campaign` vocabulary.
+        const mapped =
+          microplan.planType === "sia_campaign" || microplan.planType === "campaign"
+            ? "campaign"
+            : "routine";
+        setPlanType(mapped);
+      }
     }
   }, [microplan]);
 
