@@ -1,11 +1,21 @@
-import { useState, useMemo } from "react";
+import { Fragment, useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Download, History as HistoryIcon, Search } from "lucide-react";
+import { ChevronDown, ChevronRight, Download, History as HistoryIcon, Search } from "lucide-react";
+import type { VaccineConfig } from "@shared/schema";
+import { expandVaccineSchedule } from "@shared/vaccineSchedule";
+import { offlineDb } from "@/lib/offlineDb";
+
+type VaccinatedCounts = {
+  totals?: number | null;
+  perAntigen?: Record<string, number> | null;
+  actualDate?: string | null;
+  note?: string | null;
+};
 
 type HistoryRow = {
   id: number;
@@ -17,22 +27,49 @@ type HistoryRow = {
   scheduledDate?: string | null;
   completedAt?: string | null;
   targetPopulation?: number | null;
-  vaccinatedCounts?: Record<string, number> | null;
+  vaccinatedCounts?: VaccinatedCounts | null;
 };
 
-function vaccinatedTotal(vc: Record<string, number> | null | undefined) {
-  if (!vc) return 0;
-  return Object.values(vc).reduce((s, n) => s + (Number(n) || 0), 0);
+function perAntigenEntries(vc: VaccinatedCounts | null | undefined): Array<[string, number]> {
+  const pa = vc?.perAntigen;
+  if (!pa || typeof pa !== "object") return [];
+  return Object.entries(pa)
+    .map(([code, n]) => [code, Number(n) || 0] as [string, number])
+    .filter(([, n]) => n > 0);
 }
 
-function toCsv(rows: HistoryRow[]) {
-  const headers = ["id", "name", "status", "planType", "sessionType", "scheduledDate", "completedAt", "targetPopulation", "vaccinatedTotal"];
+function vaccinatedTotal(vc: VaccinatedCounts | null | undefined): number {
+  if (!vc) return 0;
+  const sum = perAntigenEntries(vc).reduce((s, [, n]) => s + n, 0);
+  // Prefer recomputed sum so totals always reconcile with the per-antigen
+  // breakdown. Fall back to the stored totals only when perAntigen is empty.
+  if (sum > 0) return sum;
+  const stored = Number(vc.totals);
+  return Number.isFinite(stored) && stored > 0 ? stored : 0;
+}
+
+function toCsv(rows: HistoryRow[], codeToLabel: (code: string) => string) {
+  const headers = [
+    "id",
+    "name",
+    "status",
+    "planType",
+    "sessionType",
+    "scheduledDate",
+    "completedAt",
+    "targetPopulation",
+    "vaccinatedTotal",
+    "perAntigen",
+  ];
   const escape = (v: any) => {
     const s = v == null ? "" : String(v);
     return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
   const lines = [headers.join(",")];
   for (const r of rows) {
+    const breakdown = perAntigenEntries(r.vaccinatedCounts)
+      .map(([code, n]) => `${codeToLabel(code)}: ${n}`)
+      .join("; ");
     lines.push([
       r.id,
       r.name,
@@ -43,6 +80,7 @@ function toCsv(rows: HistoryRow[]) {
       r.completedAt ?? "",
       r.targetPopulation ?? "",
       vaccinatedTotal(r.vaccinatedCounts),
+      breakdown,
     ].map(escape).join(","));
   }
   return lines.join("\n");
@@ -50,6 +88,7 @@ function toCsv(rows: HistoryRow[]) {
 
 export default function SessionHistory() {
   const [q, setQ] = useState("");
+  const [expanded, setExpanded] = useState<Record<number, boolean>>({});
 
   const { data: rows = [], isLoading } = useQuery<HistoryRow[]>({
     queryKey: ["/api/sessions/history"],
@@ -61,6 +100,28 @@ export default function SessionHistory() {
     },
   });
 
+  // Tenant antigen schedule — used to translate stable codes captured at
+  // mark-done time (e.g. PENTA-1) back into friendly labels.
+  const { data: vaccineConfigs } = useQuery<VaccineConfig[]>({
+    queryKey: ["/api/vaccines/config"],
+    queryFn: async () => {
+      if (!navigator.onLine) {
+        return (await offlineDb.vaccineConfigs.toArray()) as unknown as VaccineConfig[];
+      }
+      const res = await fetch("/api/vaccines/config");
+      if (!res.ok) throw new Error("Failed to load vaccine configs");
+      return res.json();
+    },
+  });
+
+  const codeToLabel = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const stage of expandVaccineSchedule(vaccineConfigs)) {
+      map.set(stage.code, stage.label);
+    }
+    return (code: string) => map.get(code) ?? code;
+  }, [vaccineConfigs]);
+
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
     if (!needle) return rows;
@@ -70,7 +131,7 @@ export default function SessionHistory() {
   }, [rows, q]);
 
   const handleExport = () => {
-    const csv = toCsv(filtered);
+    const csv = toCsv(filtered, codeToLabel);
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -123,6 +184,7 @@ export default function SessionHistory() {
               <table className="w-full text-sm">
                 <thead className="text-xs uppercase text-muted-foreground border-b">
                   <tr>
+                    <th className="w-8 p-2"></th>
                     <th className="text-left p-2">Name</th>
                     <th className="text-left p-2">Type</th>
                     <th className="text-left p-2">Status</th>
@@ -133,28 +195,95 @@ export default function SessionHistory() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((r) => (
-                    <tr key={r.id} className="border-b last:border-0 hover:bg-muted/30" data-testid={`row-history-${r.id}`}>
-                      <td className="p-2 font-medium">{r.name}</td>
-                      <td className="p-2 capitalize">{r.planType ?? "—"} / {r.sessionType}</td>
-                      <td className="p-2">
-                        <Badge
-                          variant={
-                            r.status === "completed" || r.status === "archived"
-                              ? "default"
-                              : "destructive"
-                          }
-                          className="capitalize"
+                  {filtered.map((r) => {
+                    const entries = perAntigenEntries(r.vaccinatedCounts);
+                    const total = vaccinatedTotal(r.vaccinatedCounts);
+                    const isOpen = !!expanded[r.id];
+                    const canExpand = entries.length > 0;
+                    return (
+                      <Fragment key={r.id}>
+                        <tr
+                          className="border-b last:border-0 hover:bg-muted/30"
+                          data-testid={`row-history-${r.id}`}
                         >
-                          {String(r.status).replace("_", " ")}
-                        </Badge>
-                      </td>
-                      <td className="p-2">{r.scheduledDate ? new Date(r.scheduledDate).toLocaleDateString() : "—"}</td>
-                      <td className="p-2">{r.completedAt ? new Date(r.completedAt).toLocaleDateString() : "—"}</td>
-                      <td className="p-2 text-right">{r.targetPopulation?.toLocaleString() ?? "—"}</td>
-                      <td className="p-2 text-right font-semibold">{vaccinatedTotal(r.vaccinatedCounts).toLocaleString()}</td>
-                    </tr>
-                  ))}
+                          <td className="p-2 align-top">
+                            {canExpand ? (
+                              <button
+                                type="button"
+                                data-testid={`button-toggle-history-${r.id}`}
+                                onClick={() => setExpanded((s) => ({ ...s, [r.id]: !s[r.id] }))}
+                                className="text-muted-foreground hover:text-foreground"
+                                aria-label={isOpen ? "Hide breakdown" : "Show breakdown"}
+                              >
+                                {isOpen ? (
+                                  <ChevronDown className="h-4 w-4" />
+                                ) : (
+                                  <ChevronRight className="h-4 w-4" />
+                                )}
+                              </button>
+                            ) : null}
+                          </td>
+                          <td className="p-2 font-medium">{r.name}</td>
+                          <td className="p-2 capitalize">{r.planType ?? "—"} / {r.sessionType}</td>
+                          <td className="p-2">
+                            <Badge
+                              variant={
+                                r.status === "completed" || r.status === "archived"
+                                  ? "default"
+                                  : "destructive"
+                              }
+                              className="capitalize"
+                            >
+                              {String(r.status).replace("_", " ")}
+                            </Badge>
+                          </td>
+                          <td className="p-2">{r.scheduledDate ? new Date(r.scheduledDate).toLocaleDateString() : "—"}</td>
+                          <td className="p-2">{r.completedAt ? new Date(r.completedAt).toLocaleDateString() : "—"}</td>
+                          <td className="p-2 text-right">{r.targetPopulation?.toLocaleString() ?? "—"}</td>
+                          <td className="p-2 text-right font-semibold">{total.toLocaleString()}</td>
+                        </tr>
+                        {isOpen && canExpand && (
+                          <tr
+                            className="border-b last:border-0 bg-muted/20"
+                            data-testid={`row-history-breakdown-${r.id}`}
+                          >
+                            <td></td>
+                            <td colSpan={7} className="p-3">
+                              <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                                Vaccinated by antigen
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                {entries.map(([code, n]) => (
+                                  <div
+                                    key={code}
+                                    data-testid={`chip-antigen-${r.id}-${code.toLowerCase()}`}
+                                    className="inline-flex items-center gap-2 rounded-md border bg-background px-2 py-1"
+                                  >
+                                    <span className="text-xs font-medium">{codeToLabel(code)}</span>
+                                    <span className="text-xs font-semibold tabular-nums">
+                                      {n.toLocaleString()}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                              <div className="mt-2 text-xs text-muted-foreground">
+                                Sum of per-antigen counts: <span className="font-semibold">{total.toLocaleString()}</span>
+                                {r.vaccinatedCounts?.totals != null &&
+                                  Number(r.vaccinatedCounts.totals) !== total && (
+                                    <span className="ml-2 text-amber-600">
+                                      (recorded total {Number(r.vaccinatedCounts.totals).toLocaleString()} differs)
+                                    </span>
+                                  )}
+                                {r.vaccinatedCounts?.note ? (
+                                  <span className="ml-2">· Note: {r.vaccinatedCounts.note}</span>
+                                ) : null}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
