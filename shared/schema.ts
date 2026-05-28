@@ -206,6 +206,12 @@ export const users = pgTable("users", {
   provinceId: integer("province_id"),
   hmisCode: varchar("hmis_code"),
   isActive: boolean("is_active").default(true),
+  // Cross-tenant platform super-admin. Orthogonal to `role` (which is still
+  // tenant-scoped — e.g. national_admin OF a specific Ministry). When true,
+  // hasPermission() short-circuits to allow everything in every tenant.
+  // Set this *only* via direct DB action — there is intentionally no API to
+  // grant it, so a compromised tenant admin can never escalate to platform.
+  isPlatformAdmin: boolean("is_platform_admin").default(false).notNull(),
   // Per-user notification preferences. Currently honoured: { supervisionDigest: boolean }.
   // Default is "opt-in" (key absent or true → digest is sent); set to false to opt out.
   notificationPrefs: jsonb("notification_prefs").default({}).notNull(),

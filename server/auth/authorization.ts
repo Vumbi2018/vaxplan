@@ -207,7 +207,15 @@ export function hasPermission(
   requiredPermission: Permission,
   context?: GeographicContext
 ): boolean {
+  // 0. Platform super-admin — cross-tenant. Bypasses both the permission set
+  //    and the row-level geographic scope check, in every tenant. There is
+  //    intentionally no API to grant this flag; it can only be set in the DB.
+  if ((user as any).isPlatformAdmin === true) {
+    return true;
+  }
+
   // 1. National Admin (either legacy string or JSONB array) has absolute access to everything
+  //    within their home tenant. Cross-tenant promotion requires isPlatformAdmin above.
   const roles: string[] = Array.isArray(user.roles) ? (user.roles as string[]) : [];
   const hasNationalAdminRole =
     user.role === "national_admin" || roles.includes("national_admin");
