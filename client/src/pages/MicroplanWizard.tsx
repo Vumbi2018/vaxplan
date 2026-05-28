@@ -2103,14 +2103,23 @@ export default function MicroplanWizard({ prePlanType }: MicroplanWizardProps = 
     }
     setBusy(true);
     try {
-      await apiRequest("PATCH", `/api/microplans/${microplanId}`, {
-        status: "submitted",
+      // File a real approval request so the microplan flows through the same
+      // hierarchical approvals pipeline used by session plans, population and
+      // budget items. The server-side POST /api/approvals handler mirrors the
+      // submission onto microplans.status = "pending" automatically.
+      await apiRequest("POST", "/api/approvals", {
+        entityType: "microplan",
+        entityId: microplanId,
+        currentLevel: "district",
+        status: "pending",
+        comments: "Microplan submitted for review.",
       });
       toast({
         title: "Microplan submitted",
-        description: "Sent to district approvers.",
+        description: "Sent to district approvers. Track progress on the Approvals page.",
       });
       queryClient.invalidateQueries({ queryKey: ["/api/microplans"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/approvals"] });
       setActive(12);
     } catch (e: any) {
       toast({
@@ -5479,6 +5488,24 @@ function SavedMicroplansPanel({
                 </Button>
               </div>
               <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
+                {(() => {
+                  const s = String(m.status ?? "draft").toLowerCase();
+                  const label =
+                    s === "pending"
+                      ? "Pending approval"
+                      : s === "approved"
+                        ? "Approved"
+                        : s === "locked"
+                          ? "Locked"
+                          : "Draft";
+                  const variant: "default" | "secondary" | "outline" =
+                    s === "approved" ? "default" : s === "pending" ? "secondary" : "outline";
+                  return (
+                    <Badge variant={variant} className="gap-1" data-testid={`microplan-status-${m.id}`}>
+                      {label}
+                    </Badge>
+                  );
+                })()}
                 <Badge variant="secondary" className="gap-1">
                   <Calendar className="h-3 w-3" />
                   {planned} planned

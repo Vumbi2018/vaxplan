@@ -181,6 +181,8 @@ export default function Approvals() {
         return Clock;
       case "budget":
         return FileText;
+      case "microplan":
+        return FileText;
       default:
         return AlertTriangle;
     }

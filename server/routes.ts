@@ -5795,7 +5795,37 @@ export async function registerRoutes(
         ...req.body,
         requestedById: req.user.claims.sub,
       });
+      // Entity-level authorization. Without this, any authenticated tenant
+      // user could submit an approval request for an arbitrary entityId and
+      // (for microplans) flip its status to "pending". For microplans we
+      // require (a) the microplan to exist in the caller's tenant and (b) the
+      // caller to be a facility-level author (clerk / in-charge) or a national
+      // admin — mirroring the client-side `canSubmit` rule and the rule that
+      // only facility staff can author microplans.
+      if (data.entityType === "microplan") {
+        const mp = await storage.getMicroplan(req.tenantId, data.entityId);
+        if (!mp) return res.status(404).json({ message: "Microplan not found in this tenant" });
+        const role = (req.user as any)?.role ?? (await storage.getUser(req.user.claims.sub))?.role;
+        const allowed = role === "facility_clerk" || role === "facility_in_charge" || role === "national_admin";
+        if (!allowed) {
+          return res.status(403).json({ message: "Only facility staff or national admins may submit a microplan for approval." });
+        }
+      }
+
       const request = await storage.createApprovalRequest(req.tenantId, data);
+
+      // Mirror submission onto the underlying entity so list views (e.g. the
+      // microplans grid) immediately show "Pending" without waiting for the
+      // first approver's action. Best-effort — the approval_requests row is
+      // the authoritative record.
+      if (data.entityType === "microplan") {
+        try {
+          await storage.updateMicroplan(req.tenantId, data.entityId, { status: "pending" } as any);
+        } catch (e) {
+          console.warn("Failed to flip microplan status to pending on submission:", e);
+        }
+      }
+
       await logAudit(req, "create", "approval_request", request.id, null, request);
       res.status(201).json(request);
     } catch (error) {
@@ -5838,7 +5868,61 @@ export async function registerRoutes(
             await db.update(populationData)
               .set({ approvalStatus: "approved", updatedAt: new Date() })
               .where(eq(populationData.id, request.entityId));
+          } else if (request.entityType === "microplan") {
+            // Match the side effects of PATCH /api/microplans/:id: when a
+            // microplan transitions into "approved", seed quarterly supervisory
+            // visits for facilities in scope so Step 10 of the wizard can go
+            // green without supervisors hunting for missing visits.
+            const oldMp = await storage.getMicroplan(req.tenantId, request.entityId);
+            const updatedMp = await storage.updateMicroplan(req.tenantId, request.entityId, { status: "approved" } as any);
+            if (updatedMp && oldMp && oldMp.status !== "approved") {
+              try {
+                const seeded = await seedQuarterlySupervisionVisits(req.tenantId, updatedMp, req.user?.claims?.sub ?? null);
+                if (seeded.length > 0) {
+                  await logAudit(req, "auto_seed_supervision_visits", "microplan", updatedMp.id, null, {
+                    microplanId: updatedMp.id,
+                    year: updatedMp.year,
+                    quarter: updatedMp.quarter,
+                    visitIds: seeded.map((v) => v.id),
+                    facilityIds: seeded.map((v) => v.facilityId),
+                    source: "approval_workflow",
+                  });
+                }
+              } catch (seedErr) {
+                console.error("Failed to auto-seed supervision visits via approval workflow:", seedErr);
+              }
+            }
           }
+        }
+      }
+
+      // On rejection, revert the microplan to draft so the authoring facility
+      // can address comments and resubmit. The `microplans.status` column has
+      // no "rejected" value, so "draft" is the closest editable state.
+      // If the microplan was previously approved (mid-cycle revoke), cancel
+      // its auto-seeded supervisory visits to mirror the direct-patch route.
+      if (status === "rejected" && request.entityType === "microplan") {
+        try {
+          const oldMp = await storage.getMicroplan(req.tenantId, request.entityId);
+          await storage.updateMicroplan(req.tenantId, request.entityId, { status: "draft" } as any);
+          if (oldMp?.status === "approved") {
+            const result = await cancelSeededSupervisionVisitsForMicroplan(
+              req.tenantId,
+              request.entityId,
+              `Approval workflow rejected microplan #${request.entityId}; reverted to draft.`,
+            );
+            if (result.deletedIds.length > 0 || result.cancelledIds.length > 0) {
+              await logAudit(req, "auto_cancel_supervision_visits", "microplan", request.entityId, null, {
+                microplanId: request.entityId,
+                reason: "approval_rejected",
+                newStatus: "draft",
+                deletedVisitIds: result.deletedIds,
+                cancelledVisitIds: result.cancelledIds,
+              });
+            }
+          }
+        } catch (e) {
+          console.warn("Failed to revert microplan to draft after rejection:", e);
         }
       }
 
