@@ -561,6 +561,18 @@ export default function MicroplanWizard() {
     );
   }, [villages, facility, excludedVillageIds]);
 
+  // Villages the user previously removed from this facility's catchment.
+  // Surfaced in Step 2 so a misclick is reversible without re-typing names.
+  const excludedFacilityVillages = useMemo(() => {
+    if (!villages || !facility) return [] as Village[];
+    return villages.filter(
+      (v) =>
+        excludedVillageIds.has(v.id) &&
+        (v.assignedFacilityId === facility.id ||
+          v.districtId === facility.districtId),
+    );
+  }, [villages, facility, excludedVillageIds]);
+
   // ─── Microplan ensure (idempotent via in-flight ref) ───────────────────
   const ensureInFlight = useRef<Promise<number> | null>(null);
   const ensureMicroplan = async (): Promise<number> => {
@@ -2098,6 +2110,31 @@ export default function MicroplanWizard() {
                   setCommunities={setCommunities}
                   onDelete={deleteCommunity}
                   facility={facility}
+                  excludedVillages={excludedFacilityVillages}
+                  onRestoreVillage={(v) => {
+                    setCommunities([
+                      ...communities,
+                      {
+                        villageId: v.id,
+                        name: v.name,
+                        type: "village",
+                        targetPopulation: "0",
+                        source: "nso",
+                        strategy: v.isHardToReach ? "outreach" : "static",
+                        saved: false,
+                        rowId: `v${v.id}-${Date.now()}`,
+                        latitude: v.latitude != null ? String(v.latitude) : undefined,
+                        longitude: v.longitude != null ? String(v.longitude) : undefined,
+                      },
+                    ]);
+                    setExcludedVillageIds((prev) => {
+                      if (!prev.has(v.id)) return prev;
+                      const next = new Set<number>(prev);
+                      next.delete(v.id);
+                      persistExcluded(next);
+                      return next;
+                    });
+                  }}
                 />
               )}
               {active === 3 && <Step3 risk={risk} setRisk={setRisk} />}
@@ -2312,11 +2349,15 @@ function Step2({
   setCommunities,
   onDelete,
   facility,
+  excludedVillages,
+  onRestoreVillage,
 }: {
   communities: any[];
   setCommunities: (v: any[]) => void;
   onDelete: (index: number) => void | Promise<void>;
   facility: Facility | null;
+  excludedVillages: Village[];
+  onRestoreVillage: (v: Village) => void;
 }) {
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
 
@@ -2370,6 +2411,31 @@ function Step2({
         }}
         onPinClick={(i) => setSelectedIdx(i)}
       />
+
+      {excludedVillages.length > 0 && (
+        <div
+          className="rounded-md border border-dashed bg-muted/30 p-3"
+          data-testid="section-previously-removed"
+        >
+          <div className="mb-2 text-xs font-semibold uppercase text-muted-foreground">
+            Previously removed ({excludedVillages.length})
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {excludedVillages.map((v) => (
+              <Button
+                key={v.id}
+                size="sm"
+                variant="outline"
+                onClick={() => onRestoreVillage(v)}
+                data-testid={`button-restore-village-${v.id}`}
+              >
+                <Plus className="mr-1 h-3 w-3" />
+                Add back {v.name}
+              </Button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
