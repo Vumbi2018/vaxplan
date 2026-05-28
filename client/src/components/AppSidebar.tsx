@@ -18,6 +18,7 @@ import {
   Building2,
   Users,
   Calendar,
+  CalendarDays,
   CheckCircle,
   AlertTriangle,
   Settings,
@@ -68,6 +69,7 @@ const mainNavItems = [
 const planningNavItems = [
   { title: "Routine Microplan", path: "/microplans/routine", icon: Calendar },
   { title: "SIA Campaigns", path: "/microplans/campaigns", icon: Sparkles },
+  { title: "Sessions", path: "/all-sessions", icon: CalendarDays },
   { title: "Stock Ledger", path: "/stock", icon: Package },
   { title: "Hard-to-Reach", path: "/htr", icon: AlertTriangle },
   { title: "HIS Integrations", path: "/his-integrations", icon: Share2, adminOnly: true },

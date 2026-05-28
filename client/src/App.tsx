@@ -27,6 +27,7 @@ const MapPage = lazy(() => import("@/pages/MapPage"));
 const Facilities = lazy(() => import("@/pages/Facilities"));
 const Population = lazy(() => import("@/pages/Population"));
 const SessionPlanning = lazy(() => import("@/pages/SessionPlanning"));
+const SessionsHub = lazy(() => import("@/pages/SessionsHub"));
 const HardToReach = lazy(() => import("@/pages/HardToReach"));
 // BudgetPlanning / VaccineCalculator / SocialMobilization are no longer
 // mounted as standalone pages — those concerns are now Steps 9 / 6 / 7 of the
@@ -152,6 +153,7 @@ function AuthenticatedRouter() {
       <Route path="/sessions/campaign/:id">
         <SessionPlanningDetailRoute planTypeFilter="campaign" />
       </Route>
+      <Route path="/all-sessions" component={SessionsHub} />
       <Route path="/sessions/history" component={SessionHistory} />
       <Route path="/admin/reconcile-vaccines" component={ReconcileUnmappedVaccines} />
       <Route path="/sessions/:id/day-plans" component={SessionDayPlans} />
