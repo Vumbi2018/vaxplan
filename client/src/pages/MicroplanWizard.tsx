@@ -2059,8 +2059,13 @@ export default function MicroplanWizard() {
   const stepDef = STEPS.find((s) => s.id === active)!;
   const status = microplan?.status ?? "draft";
   const facilityLabel = facility?.name ?? "No facility selected";
+  // Facility staff (clerk + in-charge) author and submit microplans; higher
+  // roles act as reviewers/approvers. national_admin is included so platform
+  // admins can unblock submissions during support.
   const canSubmit =
-    user?.role === "facility_in_charge" || user?.role === "national_admin";
+    user?.role === "facility_clerk" ||
+    user?.role === "facility_in_charge" ||
+    user?.role === "national_admin";
 
   return (
     <div className="flex h-full min-h-[calc(100vh-3.5rem)] flex-col">
