@@ -3461,7 +3461,12 @@ function Step2Map({
   // Lazy-load Leaflet so the wizard's earlier steps don't pay the bundle cost.
   const [leaflet, setLeaflet] = useState<any>(null);
   const [showPopulation, setShowPopulation] = useState(false);
-  const [populationUnavailable, setPopulationUnavailable] = useState(false);
+  // WorldPop retired the `wpGlobal` workspace from their public GeoServer in
+  // 2025; both the WMS tile overlay and the GetFeatureInfo cell sampler
+  // (worldpopCatchment.ts) return 404 against the old layer name. Until we
+  // wire up a replacement raster, surface the disabled state up-front instead
+  // of letting users click the toggle and get a destructive error toast.
+  const [populationUnavailable, setPopulationUnavailable] = useState(true);
   const [infoMode, setInfoMode] = useState(false);
   const [infoPopup, setInfoPopup] = useState<
     | {
@@ -3909,7 +3914,7 @@ function Step2Map({
           disabled={populationUnavailable}
           title={
             populationUnavailable
-              ? "Population layer unavailable offline."
+              ? "Population layer is temporarily unavailable."
               : infoMode
               ? "Click the map to add a community"
               : "Click the map to look up an estimated population"
@@ -3935,7 +3940,7 @@ function Step2Map({
           disabled={populationUnavailable}
           title={
             populationUnavailable
-              ? "Population layer unavailable offline."
+              ? "Population layer is temporarily unavailable."
               : showPopulation
               ? "Hide population density"
               : "Show population density"
