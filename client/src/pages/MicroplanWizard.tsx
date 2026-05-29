@@ -4973,6 +4973,13 @@ function Step4({
     { length: 4 },
     (_, i) => now.getFullYear() + i,
   );
+  // Whether the chosen start month/year falls before the current month. Used to
+  // surface a gentle, non-blocking warning since past months can collide with
+  // the >=7-day lead-time check later in the wizard.
+  const startIsInPast =
+    Number(startYear) < now.getFullYear() ||
+    (Number(startYear) === now.getFullYear() &&
+      Number(startMonth) < now.getMonth());
   const errorRowRef = useRef<HTMLInputElement | null>(null);
 
   // Scroll the flagged row into view and focus its date input whenever a new
@@ -5044,6 +5051,15 @@ function Step4({
           Generate calendar
         </Button>
       </div>
+      {startIsInPast && (
+        <p
+          className="text-right text-xs text-amber-600 dark:text-amber-500"
+          data-testid="text-start-month-past-warning"
+        >
+          This start month is in the past — some sessions may fail the lead-time
+          check.
+        </p>
+      )}
       <div className="max-h-[420px] overflow-y-auto">
         <table className="w-full text-sm">
           <thead className="sticky top-0 border-b bg-background text-left text-xs uppercase text-muted-foreground">
