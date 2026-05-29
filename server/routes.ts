@@ -71,6 +71,7 @@ import {
   insertAnnualImmunizationPlanSchema,
 } from "@shared/schema";
 import { expandVaccineSchedule, canonicalizePerAntigen } from "@shared/vaccineSchedule";
+import { isAtLeastDaysAhead, DEFAULT_LEAD_TIME_DAYS } from "@shared/schedulingDates";
 import {
   runMissingSettlementDetection,
   assignAdminBoundaries,
@@ -248,20 +249,14 @@ export async function validatePlanningLeadTimeAndNoConflict(
       return { isValid: false, message: "Invalid date format supplied." };
     }
     
-    // Normalize both input date and current date to UTC midnight to do strict
-    // calendar-day arithmetic. The client submits the picked date as a UTC
-    // calendar date (`YYYY-MM-DDT00:00:00.000Z`), so we MUST compare in UTC. Using
-    // local/server-time components here would shift the input back a day for any
-    // server running in a negative-offset timezone (e.g. UTC midnight reads as the
-    // previous day's 19:00 local), silently rejecting valid `today + 7` defaults.
+    // Normalize the input date to UTC midnight for the same-day conflict queries
+    // below. The client submits the picked date as a UTC calendar date
+    // (`YYYY-MM-DDT00:00:00.000Z`), so we MUST compare in UTC. The lead-time rule
+    // itself is enforced by the shared `isAtLeastDaysAhead` helper, the single
+    // source of truth shared with the client (see shared/schedulingDates.ts).
     const inputMidnight = new Date(Date.UTC(inputDate.getUTCFullYear(), inputDate.getUTCMonth(), inputDate.getUTCDate()));
-    const today = new Date();
-    const todayMidnight = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
-    
-    const diffTime = inputMidnight.getTime() - todayMidnight.getTime();
-    const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
-    
-    if (diffDays < 7) {
+
+    if (!isAtLeastDaysAhead(inputDate, DEFAULT_LEAD_TIME_DAYS)) {
       return {
         isValid: false,
         message: "Immunization sessions must be scheduled at least 7 days in advance. No plans can be scheduled for today or in the past.",
