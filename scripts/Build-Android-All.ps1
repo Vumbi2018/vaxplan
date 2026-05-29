@@ -5,7 +5,7 @@
 .DESCRIPTION
   Automates the entire Android debug-APK pipeline in a single command:
     1. Acquire the project package (a .zip) from a URL, a local file path,
-       or — if neither is given — the newest .zip in your Downloads folder.
+       or - if neither is given - the newest .zip in your Downloads folder.
     2. Extract it into the destination folder (default C:\vaxplan), flattening
        any single top-level folder the archive may contain.
     3. Install npm dependencies (optionally a clean reinstall).
@@ -16,11 +16,16 @@
   Windows PowerShell 5.1.
 
 .PARAMETER Source
-  URL to a .zip OR a local path to a .zip. If omitted (and -SkipDownload is
-  not set), the newest *.zip in your Downloads folder is used.
+  URL to a .zip/.tar.gz OR a local path to a .zip/.tar.gz. If omitted (and
+  -SkipDownload is not set), the newest *.zip in your Downloads folder is used.
 
 .PARAMETER Dest
   Folder to extract into and build from. Default: C:\vaxplan
+
+.PARAMETER Token
+  Release download token. When set, it is sent as the "x-release-token" header
+  with the download request so the app's /release/ endpoint serves the source
+  without a browser login.
 
 .PARAMETER SkipDownload
   Skip the download/extract steps and build the code already in -Dest.
@@ -37,8 +42,8 @@
   npm run build:android:all
 
 .EXAMPLE
-  # Build from a direct URL
-  powershell -ExecutionPolicy Bypass -File scripts\Build-Android-All.ps1 -Source "https://example.com/vaxplan.zip"
+  # Build straight from the running app's release URL using a token
+  powershell -ExecutionPolicy Bypass -File scripts\Build-Android-All.ps1 -Source "https://your-app/release/vaxplan-source-1.0.0.tar.gz" -Token "<TOKEN>"
 
 .EXAMPLE
   # Just rebuild the code already sitting in C:\vaxplan
@@ -48,6 +53,7 @@
 param(
   [string]$Source,
   [string]$Dest = "C:\vaxplan",
+  [string]$Token,
   [switch]$SkipDownload,
   [switch]$Clean,
   [switch]$Open
@@ -89,11 +95,15 @@ if (-not $SkipDownload) {
     Write-Info $Source
     # TLS 1.2 for older PowerShell / Windows.
     try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch {}
-    $tempDownload = Join-Path $env:TEMP ("vaxplan_pkg_" + [guid]::NewGuid().ToString("N") + ".zip")
+    # Pick a temp extension that matches the archive type in the URL.
+    if ($Source -match '\.(tar\.gz|tgz)(\?|$)') { $dlExt = ".tar.gz" } else { $dlExt = ".zip" }
+    $tempDownload = Join-Path $env:TEMP ("vaxplan_pkg_" + [guid]::NewGuid().ToString("N") + $dlExt)
+    $headers = @{}
+    if (-not [string]::IsNullOrWhiteSpace($Token)) { $headers["x-release-token"] = $Token }
     try {
-      Invoke-WebRequest -Uri $Source -OutFile $tempDownload -UseBasicParsing
+      Invoke-WebRequest -Uri $Source -OutFile $tempDownload -UseBasicParsing -Headers $headers
     } catch {
-      Write-Error "Download failed: $($_.Exception.Message). Check the URL, your internet connection, or download the .zip manually and pass it with -Source <path>."
+      Write-Error "Download failed: $($_.Exception.Message). Check the URL/token, your internet connection, or download the archive manually and pass it with -Source <path>."
       exit 1
     }
     if (-not (Test-Path $tempDownload)) { Write-Error "Download failed (no file written)."; exit 1 }
@@ -103,11 +113,11 @@ if (-not $SkipDownload) {
   else {
     if (-not (Test-Path $Source)) { Write-Error "Source not found: $Source"; exit 1 }
     if (Test-Path $Source -PathType Container) {
-      Write-Error "-Source is a folder, not a .zip file: $Source. Point it at the downloaded .zip, or use -SkipDownload to build code already in -Dest."
+      Write-Error "-Source is a folder, not an archive file: $Source. Point it at the downloaded .zip/.tar.gz, or use -SkipDownload to build code already in -Dest."
       exit 1
     }
-    if ([System.IO.Path]::GetExtension($Source) -ne ".zip") {
-      Write-Error "-Source must be a .zip file: $Source"
+    if ($Source -notmatch '\.(zip|tar\.gz|tgz)$') {
+      Write-Error "-Source must be a .zip or .tar.gz file: $Source"
       exit 1
     }
     $zipPath = (Resolve-Path $Source).Path
@@ -118,7 +128,16 @@ if (-not $SkipDownload) {
   Write-Step "Extracting package..."
   $staging = Join-Path $env:TEMP ("vaxplan_extract_" + [guid]::NewGuid().ToString("N"))
   New-Item -ItemType Directory -Path $staging -Force | Out-Null
-  Expand-Archive -Path $zipPath -DestinationPath $staging -Force
+  if ($zipPath -match '\.(tar\.gz|tgz)$') {
+    if (-not (Get-Command "tar" -ErrorAction SilentlyContinue)) {
+      Write-Error "tar is required to extract .tar.gz (built into Windows 10 1803+). Update Windows or use a .zip package."
+      exit 1
+    }
+    tar -xzf $zipPath -C $staging
+    if ($LASTEXITCODE -ne 0) { Write-Error "tar extraction failed."; exit 1 }
+  } else {
+    Expand-Archive -Path $zipPath -DestinationPath $staging -Force
+  }
 
   # The project root is wherever package.json lives (handles archives that
   # wrap everything in a single top-level folder, e.g. "workspace-abc/").
