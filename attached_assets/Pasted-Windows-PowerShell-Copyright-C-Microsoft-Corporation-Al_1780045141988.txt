@@ -1,0 +1,242 @@
+Windows PowerShell
+Copyright (C) Microsoft Corporation. All rights reserved.
+
+Install the latest PowerShell for new features and improvements! https://aka.ms/PSWindows
+
+PS C:\Users\Mukombo> $d="C:\vaxplan"; New-Item $d -ItemType Directory -Force | Out-Null; Set-Location $d; Invoke-WebRequest -Uri "https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit.dev/release/vaxplan-source-1.0.0.tar.gz" -OutFile vaxplan-source.tar.gz -Headers @{"x-release-token"="YOUR_TOKEN"} -UseBasicParsing; tar -xzf vaxplan-source.tar.gz; npm install; npm run build:android
+Invoke-WebRequest : {"message":"Unauthorized"}
+At line:1 char:86
++ ... ocation $d; Invoke-WebRequest -Uri "https://ca8e169b-0ca1-4ef3-b713-3 ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : InvalidOperation: (System.Net.HttpWebRequest:HttpWebRequest) [Invoke-WebRequest], WebExc
+   eption
+    + FullyQualifiedErrorId : WebCmdletWebResponseException,Microsoft.PowerShell.Commands.InvokeWebRequestCommand
+tar.exe: Error opening archive: Failed to open 'vaxplan-source.tar.gz'
+npm warn ERESOLVE overriding peer dependency
+npm warn While resolving: vite@8.0.14
+npm warn Found: @types/node@20.16.11
+npm warn node_modules/@types/node
+npm warn   dev @types/node@"20.16.11" from the root project
+npm warn   18 more (@types/body-parser, @types/cacheable-request, ...)
+npm warn
+npm warn Could not resolve dependency:
+npm warn peerOptional @types/node@"^20.19.0 || >=22.12.0" from vite@8.0.14
+npm warn node_modules/vitest/node_modules/vite
+npm warn   vite@"^6.0.0 || ^7.0.0 || ^8.0.0" from vitest@4.1.7
+npm warn   node_modules/vitest
+npm warn   1 more (@vitest/mocker)
+npm warn
+npm warn Conflicting peer dependency: @types/node@25.9.1
+npm warn node_modules/@types/node
+npm warn   peerOptional @types/node@"^20.19.0 || >=22.12.0" from vite@8.0.14
+npm warn   node_modules/vitest/node_modules/vite
+npm warn     vite@"^6.0.0 || ^7.0.0 || ^8.0.0" from vitest@4.1.7
+npm warn     node_modules/vitest
+npm warn     1 more (@vitest/mocker)
+
+up to date, audited 2131 packages in 14s
+
+446 packages are looking for funding
+  run `npm fund` for details
+
+57 vulnerabilities (10 low, 12 moderate, 35 high)
+
+To address issues that do not require attention, run:
+  npm audit fix
+
+To address all issues possible (including breaking changes), run:
+  npm audit fix --force
+
+Some issues need review, and may require choosing
+a different dependency.
+
+Run `npm audit` for details.
+
+> rest-express@1.0.0 build:android
+> powershell -ExecutionPolicy Bypass -File scripts/Build-Android.ps1
+
+
+======================================================
+  VaxPlan  Android APK Builder (Debug)
+======================================================
+
+> Checking prerequisites...
+  Java: Found (version check bypassed)
+
+> Building Vite production bundle...
+
+> rest-express@1.0.0 build
+> tsx script/build.ts
+
+[build] Building client with Vite…
+vite v5.4.20 building for production...
+transforming (4) src\App.tsx
+A PostCSS plugin did not pass the `from` option to `postcss.parse`. This may cause imported assets to be incorrectly transformed. If you've recently added a PostCSS plugin that raised this warning, please contact the package author to fix the issue.
+✓ 4067 modules transformed.
+[plugin:vite:reporter] [plugin vite:reporter]
+(!) C:/vaxplan/client/src/hooks/use-toast.ts is dynamically imported by C:/vaxplan/client/src/lib/offlineDb.ts but also statically imported by C:/vaxplan/client/src/components/AddCommunityDialog.tsx, C:/vaxplan/client/src/components/DataTable.tsx, C:/vaxplan/client/src/components/MapView.tsx, C:/vaxplan/client/src/components/PopulationDialog.tsx, C:/vaxplan/client/src/components/PopulationOverlay.tsx, C:/vaxplan/client/src/components/TenantEmailSenderCard.tsx, C:/vaxplan/client/src/components/TenantSwitcher.tsx, C:/vaxplan/client/src/components/WastageThresholdsCard.tsx, C:/vaxplan/client/src/components/ui/toaster.tsx, C:/vaxplan/client/src/hooks/useProximityConflictWarnings.tsx, C:/vaxplan/client/src/hooks/useUnmappedAntigenWarnings.ts, C:/vaxplan/client/src/pages/AnnualNationalPlan.tsx, C:/vaxplan/client/src/pages/Approvals.tsx, C:/vaxplan/client/src/pages/BoundaryManager.tsx, C:/vaxplan/client/src/pages/ClientLogbook.tsx, C:/vaxplan/client/src/pages/CountryOnboarding.tsx, C:/vaxplan/client/src/pages/Dashboard.tsx, C:/vaxplan/client/src/pages/Defaulters.tsx, C:/vaxplan/client/src/pages/Facilities.tsx, C:/vaxplan/client/src/pages/HardToReach.tsx, C:/vaxplan/client/src/pages/Help.tsx, C:/vaxplan/client/src/pages/HisIntegrations.tsx, C:/vaxplan/client/src/pages/MicroplanWizard.tsx, C:/vaxplan/client/src/pages/MissedCommunities.tsx, C:/vaxplan/client/src/pages/Population.tsx, C:/vaxplan/client/src/pages/ReconcileUnmappedVaccines.tsx, C:/vaxplan/client/src/pages/SessionDayPlans.tsx, C:/vaxplan/client/src/pages/SessionPlanning.tsx, C:/vaxplan/client/src/pages/Settings.tsx, C:/vaxplan/client/src/pages/SettlementIntelligence.tsx, C:/vaxplan/client/src/pages/Signup.tsx, C:/vaxplan/client/src/pages/SignupRequests.tsx, C:/vaxplan/client/src/pages/StockLedger.tsx, C:/vaxplan/client/src/pages/Supervision.tsx, C:/vaxplan/client/src/pages/SyncConflicts.tsx, C:/vaxplan/client/src/pages/UserManagement.tsx, C:/vaxplan/client/src/pages/ZeroDoseVillages.tsx, dynamic import will not move module into another chunk.
+
+[plugin:vite:reporter] [plugin vite:reporter]
+(!) C:/vaxplan/client/src/lib/syncEngine.ts is dynamically imported by C:/vaxplan/client/src/lib/queryClient.ts but also statically imported by C:/vaxplan/client/src/components/SyncStatus.tsx, C:/vaxplan/client/src/hooks/useProximityConflictWarnings.tsx, C:/vaxplan/client/src/hooks/useSyncEngine.ts, C:/vaxplan/client/src/hooks/useUnmappedAntigenWarnings.ts, dynamic import will not move module into another chunk.
+
+[plugin:vite:reporter] [plugin vite:reporter]
+(!) C:/vaxplan/client/src/lib/backgroundSync.ts is dynamically imported by C:/vaxplan/client/src/lib/offlineDb.ts but also statically imported by C:/vaxplan/client/src/components/SyncStatus.tsx, dynamic import will not move module into another chunk.
+
+../dist/public/manifest.webmanifest                                 0.89 kB
+../dist/public/index.html                                           2.97 kB │ gzip:   1.13 kB
+../dist/public/assets/grid3Inside.worker-DeNBaOhD.js                6.50 kB
+../dist/public/assets/index-V7beH5ld.css                          176.22 kB │ gzip:  30.56 kB
+../dist/public/assets/loader-circle-DzN8KyQU.js                     0.31 kB │ gzip:   0.26 kB
+../dist/public/assets/arrow-left-CqIszrX8.js                        0.33 kB │ gzip:   0.27 kB
+../dist/public/assets/message-square-D82wVFVd.js                    0.35 kB │ gzip:   0.27 kB
+../dist/public/assets/info-CnLDJzlO.js                              0.37 kB │ gzip:   0.28 kB
+../dist/public/assets/lock-B48PuojK.js                              0.38 kB │ gzip:   0.30 kB
+../dist/public/assets/mail-CtcNt7do.js                              0.39 kB │ gzip:   0.30 kB
+../dist/public/assets/history-DHunozrn.js                           0.41 kB │ gzip:   0.30 kB
+../dist/public/assets/database-CznGCPZ9.js                          0.41 kB │ gzip:   0.31 kB
+../dist/public/assets/external-link-BFiaMQiG.js                     0.42 kB │ gzip:   0.30 kB
+../dist/public/assets/pencil-Ctj4AIEf.js                            0.45 kB │ gzip:   0.33 kB
+../dist/public/assets/list-checks-Ce4AQOV9.js                       0.45 kB │ gzip:   0.29 kB
+../dist/public/assets/send-BobCQfeU.js                              0.46 kB │ gzip:   0.33 kB
+../dist/public/assets/satellite-RMdh-v44.js                         0.48 kB │ gzip:   0.32 kB
+../dist/public/assets/square-pen-BhGrjtbm.js                        0.49 kB │ gzip:   0.34 kB
+../dist/public/assets/trash-2-Dvoc7nYM.js                           0.53 kB │ gzip:   0.35 kB
+../dist/public/assets/droplets-DC-JW9c4.js                          0.54 kB │ gzip:   0.39 kB
+../dist/public/assets/phone-GRWnKYy6.js                             0.56 kB │ gzip:   0.36 kB
+../dist/public/assets/vaccineSchedule-DIFQJGsC.js                   0.59 kB │ gzip:   0.38 kB
+../dist/public/assets/DeleteConfirmDialog-BpiPZABa.js               0.69 kB │ gzip:   0.38 kB
+../dist/public/assets/sliders-vertical-D1qGc5Ws.js                  0.75 kB │ gzip:   0.37 kB
+../dist/public/assets/alert-D3yIhCt-.js                             0.92 kB │ gzip:   0.47 kB
+../dist/public/assets/web-iaObasl3.js                               1.18 kB │ gzip:   0.56 kB
+../dist/public/assets/geoHierarchy-CqNdqgTu.js                      1.19 kB │ gzip:   0.52 kB
+../dist/public/assets/ApprovalBadge-j3VzdaNZ.js                     1.30 kB │ gzip:   0.69 kB
+../dist/public/assets/BasemapToggle-YcGoimoP.js                     1.53 kB │ gzip:   0.74 kB
+../dist/public/assets/useWastageThresholds-D-FCpNw2.js              1.64 kB │ gzip:   0.75 kB
+../dist/public/assets/MapPage-CnGGwG5t.js                           1.95 kB │ gzip:   0.77 kB
+../dist/public/assets/ship-CZgsnzA_.js                              2.14 kB │ gzip:   0.86 kB
+../dist/public/assets/index-DIAiEaje.js                             2.17 kB │ gzip:   0.97 kB
+../dist/public/assets/checkbox-DZXndUAy.js                          2.76 kB │ gzip:   1.37 kB
+../dist/public/assets/tabs-DCsHh_iR.js                              3.19 kB │ gzip:   1.34 kB
+../dist/public/assets/accordion-Cn6cdBbM.js                         4.54 kB │ gzip:   1.81 kB
+../dist/public/assets/GeoCascadeFilter-D4z2kNn7.js                  4.67 kB │ gzip:   1.49 kB
+../dist/public/assets/SyncConflicts-CAxbyun6.js                     4.71 kB │ gzip:   1.91 kB
+../dist/public/assets/alert-dialog-pINYQJOe.js                      4.73 kB │ gzip:   1.73 kB
+../dist/public/assets/index-nmUJrL3_.js                             5.13 kB │ gzip:   2.06 kB
+../dist/public/assets/SignupRequests-DK0LpBVA.js                    5.21 kB │ gzip:   2.00 kB
+../dist/public/assets/DropoutRates-CgrGpUrp.js                      5.96 kB │ gzip:   1.78 kB
+../dist/public/assets/DataTable-BKckb4aq.js                         6.19 kB │ gzip:   2.31 kB
+../dist/public/assets/ReconcileUnmappedVaccines-BOqJoH77.js         6.42 kB │ gzip:   2.43 kB
+../dist/public/assets/slider-Bz9EqSyX.js                            8.15 kB │ gzip:   3.30 kB
+../dist/public/assets/AnnualNationalPlan-DHpqRrqp.js                8.16 kB │ gzip:   2.64 kB
+../dist/public/assets/index-Bq1veR0D.js                             8.68 kB │ gzip:   3.58 kB
+../dist/public/assets/MissedCommunities-BIWPh8vm.js                 8.96 kB │ gzip:   3.24 kB
+../dist/public/assets/SessionHistory-BBQIfYja.js                    9.10 kB │ gzip:   3.06 kB
+../dist/public/assets/Approvals-65QF6dai.js                        10.79 kB │ gzip:   3.16 kB
+../dist/public/assets/Signup-CvDkgilp.js                           12.24 kB │ gzip:   3.88 kB
+../dist/public/assets/ZeroDoseVillages-BkUxdNQe.js                 12.67 kB │ gzip:   4.18 kB
+../dist/public/assets/format-ANj_Jit6.js                           13.05 kB │ gzip:   3.47 kB
+../dist/public/assets/BoundaryManager-q9Vg_0FW.js                  15.21 kB │ gzip:   4.77 kB
+../dist/public/assets/CountryOnboarding-DRxg_Hb1.js                15.79 kB │ gzip:   4.92 kB
+../dist/public/assets/Defaulters-jinYklgp.js                       21.67 kB │ gzip:   6.32 kB
+../dist/public/assets/SettlementIntelligence-v-CYPROO.js           24.68 kB │ gzip:   5.89 kB
+../dist/public/assets/StandardsAlignment-kBqHxZe9.js               35.44 kB │ gzip:  12.02 kB
+../dist/public/assets/Population-DqS-MPlq.js                       35.98 kB │ gzip:   8.81 kB
+../dist/public/assets/Supervision-DJPph0IB.js                      39.59 kB │ gzip:  11.17 kB
+../dist/public/assets/HardToReach-OTg1Kzf4.js                      40.78 kB │ gzip:  10.73 kB
+../dist/public/assets/HisIntegrations-uZMYYglx.js                  41.00 kB │ gzip:   9.26 kB
+../dist/public/assets/SessionsHub-D4pIxL5-.js                      43.90 kB │ gzip:  13.95 kB
+../dist/public/assets/StockLedger-mUOqF83N.js                      46.18 kB │ gzip:  11.06 kB
+../dist/public/assets/Facilities-Cehq_SBj.js                       54.39 kB │ gzip:  13.12 kB
+../dist/public/assets/SessionDayPlans-9MBDAWRa.js                  54.43 kB │ gzip:  12.87 kB
+../dist/public/assets/SessionPlanning-DOTFaPaI.js                  62.25 kB │ gzip:  15.77 kB
+../dist/public/assets/UserManagement-CB46Kgiv.js                   64.89 kB │ gzip:  14.24 kB
+../dist/public/assets/Settings-CkXVYG5c.js                         68.95 kB │ gzip:  15.45 kB
+../dist/public/assets/schema-BnNass1j.js                           77.86 kB │ gzip:  19.05 kB
+../dist/public/assets/index-BKUq7hv2.js                            88.88 kB │ gzip:  24.79 kB
+../dist/public/assets/ClientLogbook-CYdHmcnZ.js                   101.85 kB │ gzip:  21.45 kB
+../dist/public/assets/MicroplanWizard-D6J0wR-Z.js                 122.79 kB │ gzip:  32.52 kB
+../dist/public/assets/Help-Cj4lZokF.js                            227.64 kB │ gzip:  66.53 kB
+../dist/public/assets/xlsx-CKN5doRT.js                            424.23 kB │ gzip: 141.75 kB
+../dist/public/assets/georaster.browser.bundle.min-BQ-ZOBiA.js    580.57 kB │ gzip: 186.81 kB
+../dist/public/assets/index-kFmnvBnP.js                           957.50 kB │ gzip: 285.12 kB
+../dist/public/assets/georaster-layer-for-leaflet-C0CfRDKx.js   1,300.43 kB │ gzip: 467.19 kB
+✓ built in 20.73s
+
+PWA v1.3.0
+mode      generateSW
+precache  89 entries (7394.51 KiB)
+files generated
+  ../dist/public/_vite-pwa-sw.js
+  ../dist/public/workbox-0562a5fe.js
+[build] Bundling server with esbuild → dist/index.cjs
+
+  dist\index.cjs      766.3kb
+  dist\index.cjs.map    1.5mb
+
+⚡ Done in 66ms
+[build] Done.
+  [OK] Vite build complete
+
+> Syncing to Android project...
+  First run: initializing Capacitor Android platform...
+√ Adding native android project in android in 138.06ms
+√ add in 138.94ms
+√ Copying web assets from public to android\app\src\main\assets\public in 60.11ms
+√ Creating capacitor.config.json in android\app\src\main\assets in 1.28ms
+√ copy android in 187.95ms
+√ Updating Android plugins in 35.32ms
+[info] Found 3 Capacitor plugins for android:
+       @capacitor/network@8.0.1
+       @capacitor/push-notifications@8.1.1
+       @capacitor/splash-screen@8.0.1
+√ update android in 152.52ms
+√ Syncing Gradle in 885.10μs
+[success] android platform added!
+Follow the Developer Workflow guide to get building:
+https://capacitorjs.com/docs/basics/workflow
+√ Copying web assets from public to android\app\src\main\assets\public in 120.07ms
+√ Creating capacitor.config.json in android\app\src\main\assets in 1.87ms
+√ copy android in 292.78ms
+√ Updating Android plugins in 18.64ms
+[info] Found 3 Capacitor plugins for android:
+       @capacitor/network@8.0.1
+       @capacitor/push-notifications@8.1.1
+       @capacitor/splash-screen@8.0.1
+√ update android in 137.38ms
+[info] Sync finished in 0.62s
+  [OK] Capacitor sync complete
+
+> Building debug APK with Gradle...
+Starting a Gradle Daemon (subsequent builds will be faster)
+
+> Configure project :app
+WARNING: Using flatDir should be avoided because it doesn't support any meta-data formats.
+
+> Configure project :capacitor-cordova-android-plugins
+WARNING: Using flatDir should be avoided because it doesn't support any meta-data formats.
+
+> Task :capacitor-android:compileDebugJavaWithJavac
+Note: Some input files use unchecked or unsafe operations.
+Note: Recompile with -Xlint:unchecked for details.
+
+> Task :capacitor-push-notifications:compileDebugJavaWithJavac
+Note: C:\vaxplan\node_modules\@capacitor\push-notifications\android\src\main\java\com\capacitorjs\plugins\pushnotifications\PushNotificationsPlugin.java uses or overrides a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
+
+> Task :app:stripDebugDebugSymbols
+Unable to strip the following libraries, packaging them as they are: libdatastore_shared_counter.so. Run with --info option to learn more.
+
+[Incubating] Problems report is available at: file:///C:/vaxplan/android/build/reports/problems/problems-report.html
+
+BUILD SUCCESSFUL in 52s
+185 actionable tasks: 185 executed
+
+======================================================
+  [OK] APK built successfully!
+  [APK] Location: android\app\build\outputs\apk\debug\app-debug.apk
+  [SIZE] Size: 9.7 MB
+
+  To install on a connected device:
+  adb install android\app\build\outputs\apk\debug\app-debug.apk
+======================================================
+PS C:\vaxplan>
