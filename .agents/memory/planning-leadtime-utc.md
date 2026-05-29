@@ -20,4 +20,15 @@ America/New_York the old local math gives diffDays=6, UTC gives 7.
 
 **How to apply:** keep client (getUTC*) and server (Date.UTC) in lockstep. The
 regression is guarded by server/__tests__/planning-leadtime-timezone.test.ts,
-which runs the validator under several simulated server timezones.
+which runs the validator under several simulated server timezones — covering both
+the session-plan conflict branch and the itinerary day-plan conflict branch
+(sessionDayPlans.sessionDate).
+
+The same validator backs the multi-day itinerary endpoints (POST
+/api/sessions/:sessionId/days, PATCH /api/sessions/days/:id). The day-plan
+clients (SessionDayPlans.tsx, MicroplanBuilder.tsx) submit the picked day as a
+date-only / UTC-midnight string, so server serialization is safe — but their
+*client-side* lead-time checks (zod refine / isDateValid) and date-picker
+defaults must also use getUTC*/setUTCDate. Local-time math (getDate/setHours on a
+UTC-midnight date) there silently rejects the valid UTC today+7 default on
+negative-offset *clients* before any request is sent.

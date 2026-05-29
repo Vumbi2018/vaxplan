@@ -27,7 +27,7 @@ import { eq } from "drizzle-orm";
 
 import { db, pool } from "../db";
 import { validatePlanningLeadTimeAndNoConflict } from "../routes";
-import { tenants, facilities, microplans, sessionPlans } from "@shared/schema";
+import { tenants, facilities, microplans, sessionPlans, sessionDayPlans } from "@shared/schema";
 
 const LEAD_TIME_MSG = /at least 7 days in advance/i;
 
@@ -53,6 +53,17 @@ const originalTz = process.env.TZ;
 const CONFLICT_OFFSET_DAYS = 45;
 const conflictDateStr = utcDayOffset(CONFLICT_OFFSET_DAYS);
 const conflictMidnight = new Date(conflictDateStr);
+
+// A separate, dedicated day for the itinerary day-plan conflict branch. It must
+// differ from CONFLICT_OFFSET_DAYS and from the day-plan's own parent session
+// date so the session-plan branch never fires first and mask the day-plan
+// conflict we want to exercise.
+const DAY_CONFLICT_OFFSET_DAYS = 52;
+const dayConflictDateStr = utcDayOffset(DAY_CONFLICT_OFFSET_DAYS);
+const dayConflictMidnight = new Date(dayConflictDateStr);
+// Parent session date kept well clear of the day-plan conflict date.
+const DAY_PARENT_OFFSET_DAYS = 60;
+const dayParentMidnight = new Date(utcDayOffset(DAY_PARENT_OFFSET_DAYS));
 
 beforeAll(async () => {
   // Pin to PNG if present (local-dev seed), else any active tenant.
@@ -197,4 +208,77 @@ describe("planning lead-time is timezone-robust (UTC calendar-day arithmetic)", 
     ).toBe(false);
     expect(result.message).toMatch(/Conflict/i);
   });
+});
+
+// The same validator backs the multi-day itinerary / session-day-plan endpoints
+// (POST /api/sessions/:sessionId/days, PATCH /api/sessions/days/:id), which
+// submit a per-day `sessionDate`. That conflict branch matches against the
+// `session_day_plans.session_date` `timestamp` column. The clients serialize the
+// picked day as UTC midnight, so the day-plan conflict must be detected on the
+// intended UTC calendar day no matter what timezone the server runs in. This
+// mirrors the session-plan conflict guard but exercises the day-plan branch.
+describe("itinerary day-plan conflict is timezone-robust (sessionDayPlans.sessionDate)", () => {
+  const SERVER_TIMEZONES = [
+    "UTC",
+    "America/New_York", // negative offset (UTC-4/-5)
+    "America/Los_Angeles", // larger negative offset (UTC-7/-8)
+    "Pacific/Kiritimati", // large positive offset (UTC+14)
+    "Asia/Kolkata", // positive, half-hour offset (UTC+5:30)
+  ] as const;
+
+  beforeAll(async () => {
+    // A parent session on a DIFFERENT day so the session-plan conflict branch
+    // never fires for the day-plan conflict date (otherwise it would mask the
+    // branch under test). Insert under UTC so the stored timestamp lands on the
+    // intended UTC calendar day regardless of the ambient timezone.
+    const prevTz = process.env.TZ;
+    process.env.TZ = "UTC";
+    try {
+      const [parent] = await db
+        .insert(sessionPlans)
+        .values({
+          tenantId,
+          facilityId,
+          microplanId,
+          name: "TZ regression day-plan parent session",
+          sessionType: "mobile",
+          quarter: 1,
+          year: dayParentMidnight.getUTCFullYear(),
+          scheduledDate: dayParentMidnight,
+        } as any)
+        .returning({ id: sessionPlans.id });
+
+      // Seed one itinerary day on the dedicated day-plan conflict date.
+      await db.insert(sessionDayPlans).values({
+        tenantId,
+        sessionPlanId: parent.id,
+        dayNumber: 1,
+        sessionDate: dayConflictMidnight,
+        communitiesVisited: [],
+        targetPopulation: 50,
+      } as any);
+    } finally {
+      process.env.TZ = prevTz;
+    }
+  });
+
+  for (const tz of SERVER_TIMEZONES) {
+    it(`flags a same-UTC-day itinerary day conflict under server timezone ${tz}`, async () => {
+      process.env.TZ = tz;
+      const result = await validatePlanningLeadTimeAndNoConflict(
+        tenantId,
+        facilityId,
+        dayConflictDateStr,
+      );
+      expect(
+        result.isValid,
+        `A new itinerary day on the same UTC calendar day for the same ` +
+          `facility must be flagged as a conflict under TZ=${tz}. If the ` +
+          `validator does local-time calendar math on the UTC-midnight date, ` +
+          `the conflict is missed (or shifted a day) in non-UTC zones. ` +
+          `message=${result.message}`,
+      ).toBe(false);
+      expect(result.message).toMatch(/itinerary day/i);
+    });
+  }
 });
