@@ -774,13 +774,18 @@ export default function MicroplanWizard({ prePlanType }: MicroplanWizardProps = 
     // Capture the dispatched snapshot up front so concurrent edits aren't
     // wrongly marked clean.
     const snap = snapshotForStep(active);
+    setSaveStatus("saving");
     const ok = await persistStep(active);
     if (ok) {
       savedSnapshots.current[active] = snap;
+      setLastSavedAt(Date.now());
+      setSaveStatus("saved");
       toast({
         title: "Draft saved",
         description: "You can leave and come back without losing progress.",
       });
+    } else {
+      setSaveStatus("idle");
     }
   };
 
@@ -1332,6 +1337,14 @@ export default function MicroplanWizard({ prePlanType }: MicroplanWizardProps = 
   // ─── Per-step persistence ──────────────────────────────────────────────
   const [busy, setBusy] = useState(false);
 
+  // Inline auto-save status shown next to the Save Draft button so planners can
+  // tell a background save is underway (especially on slow connections) without
+  // relying on transient toasts.
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">(
+    "idle",
+  );
+  const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
+
   // ─── Validation error focus ────────────────────────────────────────────
   // When a save (manual, auto, or on Next) detects a validation problem we
   // record which step + field/row is at fault here, switch the wizard to that
@@ -1442,6 +1455,7 @@ export default function MicroplanWizard({ prePlanType }: MicroplanWizardProps = 
         return;
       }
       autoSaveInFlight.current = true;
+      setSaveStatus("saving");
       try {
         const ok = await persistStep(active, { silent: true });
         if (ok) {
@@ -1449,10 +1463,14 @@ export default function MicroplanWizard({ prePlanType }: MicroplanWizardProps = 
           // current UI state, which may have newer edits made while the save
           // was in flight. Marking those clean would silently drop them.
           savedSnapshots.current[active] = snap;
+          setLastSavedAt(Date.now());
+          setSaveStatus("saved");
           toast({
             title: "Draft saved",
             description: "You can leave and come back without losing progress.",
           });
+        } else {
+          setSaveStatus("idle");
         }
       } finally {
         autoSaveInFlight.current = false;
@@ -2724,6 +2742,30 @@ export default function MicroplanWizard({ prePlanType }: MicroplanWizardProps = 
                 <ChevronLeft className="mr-1 h-4 w-4" /> Back
               </Button>
               <div className="flex flex-wrap items-center gap-2">
+                {saveStatus !== "idle" && (
+                  <span
+                    className="flex items-center gap-1 text-xs text-muted-foreground"
+                    aria-live="polite"
+                    data-testid="text-autosave-status"
+                  >
+                    {saveStatus === "saving" ? (
+                      <>
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        Saving…
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 className="h-3 w-3 text-emerald-600" />
+                        {lastSavedAt
+                          ? `Last saved ${new Date(lastSavedAt).toLocaleTimeString(
+                              [],
+                              { hour: "2-digit", minute: "2-digit" },
+                            )}`
+                          : "All changes saved"}
+                      </>
+                    )}
+                  </span>
+                )}
                 <Button
                   variant="outline"
                   onClick={saveDraft}
