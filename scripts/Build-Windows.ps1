@@ -80,6 +80,13 @@ if ($LASTEXITCODE -ne 0) {
   Write-Warning "Electron TypeScript compilation had errors - trying to continue..."
 }
 
+# The root package.json has "type": "module", which would make Node/Electron
+# treat the compiled electron-dist/*.js (CommonJS) as ES modules and fail with
+# "exports is not defined in ES module scope". Drop a scoped package.json that
+# marks ONLY the electron-dist folder as CommonJS, leaving the rest untouched.
+New-Item "electron-dist" -ItemType Directory -Force | Out-Null
+'{ "type": "commonjs" }' | Set-Content "electron-dist\package.json"
+
 # -- 4. Install @electron-forge/cli if not present ------------------------
 $forgePath = "node_modules\.bin\electron-forge.cmd"
 if (-not (Test-Path $forgePath)) {
