@@ -6265,7 +6265,7 @@ export async function registerRoutes(
     const _multer = (await import("multer")).default;
     const layerUpload = _multer({
       storage: _multer.memoryStorage(),
-      limits: { fileSize: 200 * 1024 * 1024 }, // 200MB for large rasters/shapefiles
+      limits: { fileSize: 2 * 1024 * 1024 * 1024 }, // 2GB for large rasters/shapefiles
     });
 
     app.post(

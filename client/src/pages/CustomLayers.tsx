@@ -272,7 +272,7 @@ export default function CustomLayers() {
               <strong>CSV points</strong> (.csv with latitude & longitude columns) · <strong>GeoTIFF</strong> (.tif, .tiff)
             </p>
             <p className="text-xs text-muted-foreground">
-              Maximum file size 200 MB. Vector layers (GeoJSON, Shapefile, CSV) render as styled shapes;
+              Maximum file size 2 GB. Vector layers (GeoJSON, Shapefile, CSV) render as styled shapes;
               GeoTIFF renders as a raster image overlay.
             </p>
           </div>
