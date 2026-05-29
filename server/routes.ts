@@ -235,7 +235,7 @@ function requirePermission(
 const auth = [isAuthenticated, requireTenant, requireDbUser] as const;
 
 // Helper function to validate lead time (>= 7 days in advance) and prevent double bookings on the same day for a facility
-async function validatePlanningLeadTimeAndNoConflict(
+export async function validatePlanningLeadTimeAndNoConflict(
   tenantId: string,
   facilityId: number,
   dateString: string | Date,
@@ -248,10 +248,15 @@ async function validatePlanningLeadTimeAndNoConflict(
       return { isValid: false, message: "Invalid date format supplied." };
     }
     
-    // Normalize both input date and current date to midnight in local/server time to do strict calendar day arithmetic
-    const inputMidnight = new Date(inputDate.getFullYear(), inputDate.getMonth(), inputDate.getDate());
+    // Normalize both input date and current date to UTC midnight to do strict
+    // calendar-day arithmetic. The client submits the picked date as a UTC
+    // calendar date (`YYYY-MM-DDT00:00:00.000Z`), so we MUST compare in UTC. Using
+    // local/server-time components here would shift the input back a day for any
+    // server running in a negative-offset timezone (e.g. UTC midnight reads as the
+    // previous day's 19:00 local), silently rejecting valid `today + 7` defaults.
+    const inputMidnight = new Date(Date.UTC(inputDate.getUTCFullYear(), inputDate.getUTCMonth(), inputDate.getUTCDate()));
     const today = new Date();
-    const todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const todayMidnight = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
     
     const diffTime = inputMidnight.getTime() - todayMidnight.getTime();
     const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));

@@ -27,6 +27,7 @@ import {
   PopulationOverlayToggle,
   PopulationOverlayLegend,
 } from "@/components/PopulationOverlay";
+import { FacilityCascadePicker } from "@/components/FacilityCascadePicker";
 import { useAuth } from "@/hooks/useAuth";
 import { usePersistedBasemap } from "@/hooks/usePersistedBasemap";
 import { canCreateSessionPlan } from "@/lib/permissions";
@@ -6574,30 +6575,24 @@ export function MapView({
               />
             </div>
 
-            {/* Staging health facility */}
+            {/* Staging health facility — searchable Province → District → Facility cascade */}
             <div className="space-y-1">
               <Label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Staging Base Facility *</Label>
-              <Select
-                value={selectedParentFacilityId ? String(selectedParentFacilityId) : ""}
-                onValueChange={(val) => {
-                  setSelectedParentFacilityId(Number(val));
-                  const fac = facilities.find(f => f.id === Number(val));
+              <FacilityCascadePicker
+                value={selectedParentFacilityId}
+                onChange={(id, fac) => {
+                  setSelectedParentFacilityId(id);
                   if (fac) {
                     setNewSessionName(`Outreach Session Plan - ${fac.name}`);
                   }
                 }}
-              >
-                <SelectTrigger className="h-8 text-xs bg-background">
-                  <SelectValue placeholder="Select Facility..." />
-                </SelectTrigger>
-                <SelectContent className="bg-background/95">
-                  {facilities.map((fac) => (
-                    <SelectItem key={fac.id} value={String(fac.id)} className="text-xs">
-                      {fac.name} ({fac.hmisCode})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                required
+                layout="stacked"
+                provinceLabel={adminLabels.level1}
+                districtLabel={adminLabels.level2}
+                facilityLabel={adminLabels.level3}
+                testIdPrefix="staging-facility-picker"
+              />
             </div>
 
             {/* Parent Master Microplan link */}
