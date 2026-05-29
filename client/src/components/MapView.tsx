@@ -1588,6 +1588,60 @@ function GeoTIFFOverlay({ url, opacity = 0.65, onRasterLoaded, cacheScope, autoF
   return null;
 }
 
+// Renders a single custom vector layer. Fetches the full GeoJSON (which is NOT
+// included in the list endpoint to keep it light) only when this layer is
+// actually shown on the map.
+function CustomVectorLayer({ id, style }: { id: string; style: any }) {
+  const { data } = useQuery<any>({
+    queryKey: [`/api/custom-layers/${id}`],
+    staleTime: 10 * 60 * 1000,
+    queryFn: async () => {
+      const res = await fetch(`/api/custom-layers/${id}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load custom layer");
+      return res.json();
+    },
+  });
+  const color = style?.color ?? "#2563eb";
+  const pathStyle = {
+    color,
+    weight: style?.weight ?? 2,
+    fillColor: color,
+    fillOpacity: style?.fillOpacity ?? 0.25,
+  };
+  if (!data?.geojson?.features?.length) return null;
+  return (
+    <GeoJSON
+      key={`custom-layer-${id}`}
+      data={data.geojson}
+      style={() => pathStyle as any}
+      pointToLayer={(_feature, latlng) =>
+        L.circleMarker(latlng, { radius: style?.pointRadius ?? 5, ...pathStyle })
+      }
+      onEachFeature={(feature, layer) => {
+        const props = feature.properties || {};
+        // Escape both keys and values — uploaded GeoJSON/CSV/Shapefile
+        // attributes are untrusted and would otherwise allow stored XSS in
+        // the Leaflet popup HTML.
+        const esc = (s: any) =>
+          String(s ?? "")
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#39;");
+        const rows = Object.entries(props)
+          .slice(0, 12)
+          .map(([k, v]) => `<div><strong>${esc(k)}:</strong> ${esc(v)}</div>`)
+          .join("");
+        layer.bindPopup(
+          `<div class="p-2 text-xs font-sans space-y-0.5 max-w-[220px]">${rows || "<em>No attributes</em>"}</div>`,
+          { maxWidth: 240 },
+        );
+      }}
+    />
+  );
+}
+
 const DEFAULT_MAP_CENTER: [number, number] = [-6.0, 147.0];
 
 // Updated Code: Fully functional MapView supporting interactive geodesic Turf measurements, high-res PDF layout, and premium Radix UI data exports
@@ -1925,6 +1979,34 @@ export function MapView({
   // on the Zambia dataset (tens of thousands of polygons → tens of thousands
   // of <path> elements). A single canvas paints them all in one element.
   const grid3CanvasRenderer = useMemo(() => L.canvas({ padding: 0.5 }), []);
+
+  // ─── Custom map layers (admin-uploaded roads/schools/travel-time/etc.) ───
+  // Fetch lightweight metadata for the active layers in the current tenant.
+  // The heavy GeoJSON / raster payloads are fetched per-layer only when shown.
+  const { data: customLayers = [] } = useQuery<any[]>({
+    queryKey: ["/api/custom-layers"],
+    staleTime: 5 * 60 * 1000,
+    queryFn: async () => {
+      if (!navigator.onLine) return [];
+      const res = await fetch("/api/custom-layers", { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+  // Per-session show/hide on top of the persisted `isActive` flag. A layer is
+  // shown when it is active AND the user has not hidden it this session.
+  const [hiddenCustomLayerIds, setHiddenCustomLayerIds] = useState<Set<string>>(new Set());
+  const [customLayersPanelOpen, setCustomLayersPanelOpen] = useState(true);
+  const activeCustomLayers = useMemo(
+    () => (customLayers ?? []).filter((l: any) => l.isActive),
+    [customLayers],
+  );
+  const toggleCustomLayer = (id: string) =>
+    setHiddenCustomLayerIds((prev) => {
+      const next = new Set<string>(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
 
   // Imperative ref to the GRID3 Leaflet layer so we can re-style features when
   // the active Province / District / LLG selection changes WITHOUT remounting
@@ -4146,6 +4228,24 @@ export function MapView({
           </>
         )}
 
+        {/* Admin-uploaded custom map layers (vector + raster). Each active
+            layer that the user has not hidden this session is rendered here.
+            Vector layers fetch their GeoJSON lazily; rasters stream the stored
+            GeoTIFF via the dedicated raster endpoint. */}
+        {activeCustomLayers
+          .filter((l: any) => !hiddenCustomLayerIds.has(l.id))
+          .map((l: any) =>
+            l.layerType === "raster" ? (
+              <GeoTIFFOverlay
+                key={`custom-raster-${l.id}`}
+                url={`/api/custom-layers/${l.id}/raster`}
+                cacheScope={`custom-${l.id}`}
+              />
+            ) : (
+              <CustomVectorLayer key={`custom-vector-${l.id}`} id={l.id} style={l.style} />
+            ),
+          )}
+
         {/* Plotted Session geofence drawing previews */}
         {isDrawingSessionPolygon && sessionPolygonPoints.length > 0 && (
           <>
@@ -5390,6 +5490,54 @@ export function MapView({
             className="absolute left-4 bottom-20 z-[1000]"
           />
         </>
+      )}
+
+      {/* Custom map layers toggle panel — lists admin-uploaded layers that are
+          active for this tenant so users can show/hide each one this session. */}
+      {!isPrinting && activeCustomLayers.length > 0 && (
+        <div
+          className="absolute right-4 bottom-20 z-[1000]"
+          ref={disableLeafletPropagation}
+          data-testid="panel-custom-layers"
+        >
+          <div className="bg-background/90 backdrop-blur-md border border-border shadow-lg rounded-lg text-xs w-52 overflow-hidden">
+            <button
+              className="w-full flex items-center justify-between px-3 py-2 font-semibold hover:bg-muted/50 transition-colors"
+              onClick={() => setCustomLayersPanelOpen((o) => !o)}
+              data-testid="button-toggle-custom-layers-panel"
+            >
+              <span className="flex items-center gap-1.5">
+                <Layers className="h-3.5 w-3.5 text-primary" />
+                Custom Layers
+              </span>
+              <span className="text-muted-foreground">{customLayersPanelOpen ? "−" : "+"}</span>
+            </button>
+            {customLayersPanelOpen && (
+              <div className="px-3 pb-2.5 pt-0.5 space-y-1.5 max-h-56 overflow-y-auto custom-scrollbar">
+                {activeCustomLayers.map((l: any) => {
+                  const shown = !hiddenCustomLayerIds.has(l.id);
+                  const color = l.style?.color ?? "#2563eb";
+                  return (
+                    <label
+                      key={l.id}
+                      className="flex items-center gap-2 cursor-pointer select-none"
+                      data-testid={`toggle-custom-layer-${l.id}`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={shown}
+                        onChange={() => toggleCustomLayer(l.id)}
+                        className="accent-primary h-3.5 w-3.5"
+                      />
+                      <span className="inline-block w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: color }} />
+                      <span className="truncate flex-1" title={l.name}>{l.name}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
       {/* Zero-dose / under-immunized graduated-pin legend.

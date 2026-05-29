@@ -38,6 +38,7 @@ import {
   ChevronDown,
   ChevronRight,
   FileText,
+  Layers,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useQuery } from "@tanstack/react-query";
@@ -85,6 +86,7 @@ const adminNavItems = [
   { title: "Access Requests", path: "/admin/signups", icon: UserPlus },
   { title: "Country Onboarding", path: "/admin/countries", icon: Globe },
   { title: "Boundary Manager", path: "/admin/boundaries", icon: Map },
+  { title: "Custom Layers", path: "/admin/custom-layers", icon: Layers },
   { title: "National Plan", path: "/national-plan", icon: FileText },
 ];
 

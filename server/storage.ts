@@ -24,6 +24,7 @@ import {
   signupRequests,
   tenantInterestRequests,
   adminBoundaries,
+  customLayers,
   facilityCatchments,
   vaccineConfigurations,
   clients,
@@ -74,6 +75,8 @@ import {
   type InsertAdminBoundary,
   type FacilityCatchment,
   type InsertFacilityCatchment,
+  type CustomLayer,
+  type InsertCustomLayer,
   tenants,
   tenantIdpConfigs,
   type Tenant,
@@ -97,7 +100,7 @@ import {
 } from "@shared/schema";
 import type { UserRole } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, desc, isNull, inArray } from "drizzle-orm";
+import { eq, and, desc, isNull, inArray, getTableColumns } from "drizzle-orm";
 
 export interface IStorage {
   // Users (cross-tenant operations — user identity is global, tenant assigned separately)
@@ -261,6 +264,13 @@ export interface IStorage {
   updateFacilityCatchment(tenantId: string, id: string, data: Partial<InsertFacilityCatchment>): Promise<FacilityCatchment | undefined>;
   deleteFacilityCatchment(tenantId: string, id: string): Promise<boolean>;
   getAllFacilityCatchments(tenantId: string): Promise<FacilityCatchment[]>;
+
+  // Custom Map Layers (admin-uploaded overlays)
+  listCustomLayers(tenantId: string): Promise<Omit<CustomLayer, "geojson">[]>;
+  getCustomLayer(tenantId: string, id: string): Promise<CustomLayer | undefined>;
+  createCustomLayer(data: InsertCustomLayer & { tenantId: string }): Promise<CustomLayer>;
+  updateCustomLayer(tenantId: string, id: string, data: Partial<InsertCustomLayer>): Promise<CustomLayer | undefined>;
+  deleteCustomLayer(tenantId: string, id: string): Promise<boolean>;
 
   // --- 1. Vaccine configurations (dynamic schedule config) ---
   getVaccineConfigs(tenantId: string): Promise<VaccineConfig[]>;
@@ -1506,6 +1516,50 @@ export class DatabaseStorage implements IStorage {
     const result = await db
       .delete(adminBoundaries)
       .where(and(eq(adminBoundaries.id, id), eq(adminBoundaries.tenantId, tenantId)));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  // --- Custom Map Layers ---
+
+  async listCustomLayers(tenantId: string): Promise<Omit<CustomLayer, "geojson">[]> {
+    const { geojson, ...cols } = getTableColumns(customLayers);
+    return await db
+      .select(cols)
+      .from(customLayers)
+      .where(eq(customLayers.tenantId, tenantId))
+      .orderBy(desc(customLayers.createdAt));
+  }
+
+  async getCustomLayer(tenantId: string, id: string): Promise<CustomLayer | undefined> {
+    const [layer] = await db
+      .select()
+      .from(customLayers)
+      .where(and(eq(customLayers.id, id), eq(customLayers.tenantId, tenantId)));
+    return layer;
+  }
+
+  async createCustomLayer(data: InsertCustomLayer & { tenantId: string }): Promise<CustomLayer> {
+    const [layer] = await db
+      .insert(customLayers)
+      .values(data as typeof customLayers.$inferInsert)
+      .returning();
+    return layer;
+  }
+
+  async updateCustomLayer(tenantId: string, id: string, data: Partial<InsertCustomLayer>): Promise<CustomLayer | undefined> {
+    const { tenantId: _t, ...safe } = data as any;
+    const [layer] = await db
+      .update(customLayers)
+      .set({ ...safe, updatedAt: new Date() })
+      .where(and(eq(customLayers.id, id), eq(customLayers.tenantId, tenantId)))
+      .returning();
+    return layer;
+  }
+
+  async deleteCustomLayer(tenantId: string, id: string): Promise<boolean> {
+    const result = await db
+      .delete(customLayers)
+      .where(and(eq(customLayers.id, id), eq(customLayers.tenantId, tenantId)));
     return (result.rowCount ?? 0) > 0;
   }
 

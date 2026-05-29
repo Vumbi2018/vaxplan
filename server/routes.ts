@@ -81,7 +81,7 @@ import {
 } from "./pipeline/settlementEngine";
 import { z } from "zod";
 import { db, pool } from "./db";
-import { readFileSync, existsSync, readdirSync, createReadStream, createWriteStream } from "fs";
+import { readFileSync, existsSync, readdirSync, createReadStream, createWriteStream, writeFileSync, mkdirSync, unlinkSync } from "fs";
 import { join } from "path";
 import { eq, and, desc, ne, inArray, gte, lte, like, isNull, gt, sql as dsql } from "drizzle-orm";
 import {
@@ -6172,6 +6172,249 @@ export async function registerRoutes(
     const deleted = await storage.deleteAdminBoundary(tenantId, req.params.id);
     if (!deleted) return res.status(404).json({ message: "Boundary not found" });
     res.json({ success: true });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // CUSTOM MAP LAYERS — admin-uploaded overlays (roads, travel-time, schools…)
+  // Formats: GeoJSON/JSON, Shapefile (.zip), CSV points, GeoTIFF raster.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  const customLayerUploadDir = join(process.cwd(), "data", "uploads", "custom-layers");
+
+  // Parse a CSV buffer of points into a GeoJSON FeatureCollection.
+  // Detects lat/lng columns by common header names; other columns become props.
+  function csvToGeoJSON(text: string): { type: "FeatureCollection"; features: any[] } {
+    const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
+    if (lines.length < 2) throw new Error("CSV must have a header row and at least one data row");
+    const splitRow = (row: string) => {
+      const out: string[] = [];
+      let cur = "", inQ = false;
+      for (let i = 0; i < row.length; i++) {
+        const ch = row[i];
+        if (ch === '"') { if (inQ && row[i + 1] === '"') { cur += '"'; i++; } else inQ = !inQ; }
+        else if (ch === "," && !inQ) { out.push(cur); cur = ""; }
+        else cur += ch;
+      }
+      out.push(cur);
+      return out.map((c) => c.trim());
+    };
+    const headers = splitRow(lines[0]);
+    const lower = headers.map((h) => h.toLowerCase());
+    const latIdx = lower.findIndex((h) => ["lat", "latitude", "y", "lat_dd", "ycoord", "y_coord"].includes(h));
+    const lngIdx = lower.findIndex((h) => ["lng", "lon", "long", "longitude", "x", "lon_dd", "xcoord", "x_coord"].includes(h));
+    if (latIdx === -1 || lngIdx === -1) {
+      throw new Error("CSV must include latitude and longitude columns (e.g. 'lat'/'latitude' and 'lng'/'lon'/'longitude')");
+    }
+    const features: any[] = [];
+    for (let r = 1; r < lines.length; r++) {
+      const cols = splitRow(lines[r]);
+      const lat = parseFloat(cols[latIdx]);
+      const lng = parseFloat(cols[lngIdx]);
+      if (!isFinite(lat) || !isFinite(lng)) continue;
+      const props: Record<string, any> = {};
+      headers.forEach((h, i) => { if (i !== latIdx && i !== lngIdx) props[h] = cols[i]; });
+      features.push({ type: "Feature", geometry: { type: "Point", coordinates: [lng, lat] }, properties: props });
+    }
+    if (features.length === 0) throw new Error("No valid coordinate rows found in CSV");
+    return { type: "FeatureCollection", features };
+  }
+
+  // GET /api/custom-layers — list metadata (no geojson payload) for current tenant
+  app.get("/api/custom-layers", isAuthenticated, requireTenant, async (req: any, res) => {
+    try {
+      const layers = await storage.listCustomLayers(req.tenantId as string);
+      res.json(layers);
+    } catch (err: any) {
+      console.error("GET /api/custom-layers failed:", err);
+      res.status(500).json({ message: "Failed to list custom layers" });
+    }
+  });
+
+  // GET /api/custom-layers/:id — full record incl. geojson (vector layers)
+  app.get("/api/custom-layers/:id", isAuthenticated, requireTenant, async (req: any, res) => {
+    try {
+      const layer = await storage.getCustomLayer(req.tenantId as string, req.params.id);
+      if (!layer) return res.status(404).json({ message: "Layer not found" });
+      res.json(layer);
+    } catch (err: any) {
+      console.error("GET /api/custom-layers/:id failed:", err);
+      res.status(500).json({ message: "Failed to fetch custom layer" });
+    }
+  });
+
+  // GET /api/custom-layers/:id/raster — stream the stored GeoTIFF file
+  app.get("/api/custom-layers/:id/raster", isAuthenticated, requireTenant, async (req: any, res) => {
+    try {
+      const layer = await storage.getCustomLayer(req.tenantId as string, req.params.id);
+      if (!layer || layer.layerType !== "raster" || !layer.filePath) {
+        return res.status(404).json({ message: "Raster not found" });
+      }
+      if (!existsSync(layer.filePath)) {
+        return res.status(404).json({ message: "Raster file missing on server" });
+      }
+      res.setHeader("Content-Type", "image/tiff");
+      createReadStream(layer.filePath).pipe(res);
+    } catch (err: any) {
+      console.error("GET /api/custom-layers/:id/raster failed:", err);
+      res.status(500).json({ message: "Failed to fetch raster" });
+    }
+  });
+
+  // POST /api/custom-layers — upload a new layer (admin only)
+  {
+    const _multer = (await import("multer")).default;
+    const layerUpload = _multer({
+      storage: _multer.memoryStorage(),
+      limits: { fileSize: 200 * 1024 * 1024 }, // 200MB for large rasters/shapefiles
+    });
+
+    app.post(
+      "/api/custom-layers",
+      isAuthenticated,
+      requireTenant,
+      loadRole,
+      requireAdmin,
+      layerUpload.single("file"),
+      async (req: any, res) => {
+        try {
+          const tenantId = req.tenantId as string;
+          const file = req.file;
+          if (!file) return res.status(400).json({ message: "No file uploaded" });
+
+          const metaSchema = z.object({
+            name: z.string().min(1).max(200),
+            description: z.string().max(2000).optional(),
+            category: z.enum([
+              "road_network", "travel_time", "schools", "health_features",
+              "water", "terrain", "settlement", "other",
+            ]),
+            usableInPlanning: z.coerce.boolean().optional().default(false),
+            color: z.string().max(20).optional(),
+          });
+          const parsed = metaSchema.safeParse(req.body);
+          if (!parsed.success) {
+            return res.status(400).json({ message: "Invalid metadata", errors: parsed.error.errors });
+          }
+          const { name, description, category, usableInPlanning, color } = parsed.data;
+
+          const fname = (file.originalname || "").toLowerCase();
+          const style = { color: color || "#2563eb", weight: 2, fillOpacity: 0.25, pointRadius: 5 };
+
+          let layerType: "vector" | "raster" = "vector";
+          let format: "geojson" | "shapefile" | "csv" | "geotiff" = "geojson";
+          let geojson: any = null;
+          let featureCount = 0;
+          let filePath: string | null = null;
+          let bbox: number[] | null = null;
+
+          if (fname.endsWith(".tif") || fname.endsWith(".tiff")) {
+            // Raster: persist the file, store a path reference.
+            layerType = "raster";
+            format = "geotiff";
+            try { mkdirSync(customLayerUploadDir, { recursive: true }); } catch {}
+            const safeName = `${Date.now()}-${(file.originalname || "layer.tif").replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+            filePath = join(customLayerUploadDir, safeName);
+            writeFileSync(filePath, file.buffer);
+          } else if (fname.endsWith(".geojson") || fname.endsWith(".json")) {
+            format = "geojson";
+            const raw = JSON.parse(file.buffer.toString("utf-8"));
+            geojson = raw.type === "FeatureCollection"
+              ? raw
+              : { type: "FeatureCollection", features: raw.type === "Feature" ? [raw] : (Array.isArray(raw) ? raw : []) };
+            featureCount = geojson.features?.length ?? 0;
+            bbox = calcBBox(geojson) ?? null;
+          } else if (fname.endsWith(".csv")) {
+            format = "csv";
+            geojson = csvToGeoJSON(file.buffer.toString("utf-8"));
+            featureCount = geojson.features.length;
+            bbox = calcBBox(geojson) ?? null;
+          } else if (fname.endsWith(".zip")) {
+            format = "shapefile";
+            const shp = (await import("shpjs")).default as any;
+            const parsedShp = await shp(file.buffer);
+            // shpjs returns a FeatureCollection, or an array of them for multi-layer zips.
+            if (Array.isArray(parsedShp)) {
+              geojson = { type: "FeatureCollection", features: parsedShp.flatMap((fc: any) => fc.features || []) };
+            } else {
+              geojson = parsedShp;
+            }
+            featureCount = geojson.features?.length ?? 0;
+            bbox = calcBBox(geojson) ?? null;
+          } else {
+            return res.status(400).json({
+              message: "Unsupported file type. Upload .geojson, .json, .csv, .zip (shapefile), or .tif/.tiff (GeoTIFF).",
+            });
+          }
+
+          const layer = await storage.createCustomLayer({
+            tenantId,
+            name,
+            description: description ?? null,
+            category,
+            layerType,
+            format,
+            geojson,
+            featureCount,
+            filePath,
+            fileSizeBytes: file.size ?? null,
+            bbox: bbox ?? undefined,
+            style,
+            usableInPlanning: !!usableInPlanning,
+            isActive: true,
+            uploadedByUserId: req.user?.claims?.sub ?? null,
+          } as any);
+
+          await logAudit(req, "upload_custom_layer", "custom_layer", layer.id, null, {
+            name, category, format, layerType, featureCount,
+          });
+
+          res.status(201).json({ ...layer, geojson: undefined, featureCount });
+        } catch (err: any) {
+          console.error("POST /api/custom-layers failed:", err);
+          res.status(500).json({ message: err?.message ?? "Failed to upload custom layer" });
+        }
+      },
+    );
+  }
+
+  // PATCH /api/custom-layers/:id — toggle active / planning / rename (admin only)
+  app.patch("/api/custom-layers/:id", isAuthenticated, requireTenant, loadRole, requireAdmin, async (req: any, res) => {
+    try {
+      const tenantId = req.tenantId as string;
+      const schema = z.object({
+        name: z.string().min(1).max(200).optional(),
+        description: z.string().max(2000).optional(),
+        isActive: z.boolean().optional(),
+        usableInPlanning: z.boolean().optional(),
+        style: z.record(z.any()).optional(),
+      });
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Invalid payload", errors: parsed.error.errors });
+      const updated = await storage.updateCustomLayer(tenantId, req.params.id, parsed.data as any);
+      if (!updated) return res.status(404).json({ message: "Layer not found" });
+      res.json({ ...updated, geojson: undefined });
+    } catch (err: any) {
+      console.error("PATCH /api/custom-layers/:id failed:", err);
+      res.status(500).json({ message: "Failed to update custom layer" });
+    }
+  });
+
+  // DELETE /api/custom-layers/:id — remove layer (and raster file if any)
+  app.delete("/api/custom-layers/:id", isAuthenticated, requireTenant, loadRole, requireAdmin, async (req: any, res) => {
+    try {
+      const tenantId = req.tenantId as string;
+      const layer = await storage.getCustomLayer(tenantId, req.params.id);
+      if (!layer) return res.status(404).json({ message: "Layer not found" });
+      const deleted = await storage.deleteCustomLayer(tenantId, req.params.id);
+      if (layer.filePath && existsSync(layer.filePath)) {
+        try { unlinkSync(layer.filePath); } catch {}
+      }
+      await logAudit(req, "delete_custom_layer", "custom_layer", req.params.id, null, { name: layer.name });
+      res.json({ success: deleted });
+    } catch (err: any) {
+      console.error("DELETE /api/custom-layers/:id failed:", err);
+      res.status(500).json({ message: "Failed to delete custom layer" });
+    }
   });
 
   // ─────────────────────────────────────────────────────────────────────────

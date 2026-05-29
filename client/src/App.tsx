@@ -44,6 +44,7 @@ const UserManagement = lazy(() => import("@/pages/UserManagement"));
 const SignupRequests = lazy(() => import("@/pages/SignupRequests"));
 const CountryOnboarding = lazy(() => import("@/pages/CountryOnboarding"));
 const BoundaryManager = lazy(() => import("@/pages/BoundaryManager"));
+const CustomLayers = lazy(() => import("@/pages/CustomLayers"));
 const ClientLogbook = lazy(() => import("@/pages/ClientLogbook"));
 const Defaulters = lazy(() => import("@/pages/Defaulters"));
 const StockLedger = lazy(() => import("@/pages/StockLedger"));
@@ -188,6 +189,7 @@ function AuthenticatedRouter() {
       <Route path="/admin/users" component={UserManagement} />
       <Route path="/admin/countries" component={CountryOnboarding} />
       <Route path="/admin/boundaries" component={BoundaryManager} />
+      <Route path="/admin/custom-layers" component={CustomLayers} />
       <Route path="/his-integrations">
         {modules.interop !== false ? <HisIntegrations /> : <NotFound />}
       </Route>

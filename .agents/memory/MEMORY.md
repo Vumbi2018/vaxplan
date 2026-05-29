@@ -2,4 +2,5 @@
 - [Client must never import from server/](client-server-import-boundary.md) — any client import of `server/*` drags pg into the browser bundle and crashes with "process is not defined". Put shared constants in `shared/`.
 - [Tenant header UUID guard](tenant-header-uuid-guard.md) — client sends x-tenant-id which can be a tenant CODE; must UUID-validate + check active before any getTenant() or Postgres throws 22P02 and poisons the session.
 - [Release token must be ASCII](release-token-ascii.md) — RELEASE_DOWNLOAD_TOKEN sent via x-release-token header; non-ASCII chars garble over HTTP (latin1) and cause phantom 401s. Use hex.
+- [Custom layers admin gating](custom-layers-admin-policy.md) — custom-layer management is national_admin only (server requireAdmin excludes gis_specialist); gate client on role, not isAdmin().
 - [Planning lead-time UTC arithmetic](planning-leadtime-utc.md) — session-date >=7-day rule must use Date.UTC/getUTC*; local-time math on UTC-midnight dates wrongly rejects today+7 in negative-offset zones. Client math lives in shared/schedulingDates.ts (server still inlines its own copy).

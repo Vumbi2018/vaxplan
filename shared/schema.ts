@@ -1094,6 +1094,63 @@ export const adminBoundaries = pgTable("admin_boundaries", {
 }));
 
 // ============================================================================
+// CUSTOM MAP LAYERS — admin-uploaded geographic overlays (roads, travel-time,
+// schools, etc.) in GeoJSON / Shapefile / CSV / GeoTIFF formats.
+// ============================================================================
+
+export const customLayerCategoryEnum = pgEnum("custom_layer_category", [
+  "road_network",
+  "travel_time",
+  "schools",
+  "health_features",
+  "water",
+  "terrain",
+  "settlement",
+  "other",
+]);
+
+export const customLayerTypeEnum = pgEnum("custom_layer_type", [
+  "vector",
+  "raster",
+]);
+
+export const customLayerFormatEnum = pgEnum("custom_layer_format", [
+  "geojson",
+  "shapefile",
+  "csv",
+  "geotiff",
+]);
+
+export const customLayers = pgTable("custom_layers", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  name: varchar("name", { length: 200 }).notNull(),
+  description: text("description"),
+  category: customLayerCategoryEnum("category").default("other").notNull(),
+  layerType: customLayerTypeEnum("layer_type").notNull(),
+  format: customLayerFormatEnum("format").notNull(),
+  // Vector layers store their GeoJSON FeatureCollection here.
+  geojson: jsonb("geojson").default(null),
+  featureCount: integer("feature_count").default(0),
+  // Raster layers (GeoTIFF) store a server file path instead of inline geojson.
+  filePath: varchar("file_path", { length: 500 }),
+  fileSizeBytes: integer("file_size_bytes"),
+  // Bounding box [minLng, minLat, maxLng, maxLat]
+  bbox: jsonb("bbox").default(null),
+  // Display styling for vector layers: { color, weight, fillOpacity, pointRadius }
+  style: jsonb("style").default({}),
+  // Tag so planning/calculation features can pull this layer in.
+  usableInPlanning: boolean("usable_in_planning").default(false).notNull(),
+  isActive: boolean("is_active").default(true).notNull(),
+  uploadedByUserId: varchar("uploaded_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  tenantIdx: index("custom_layers_tenant_idx").on(table.tenantId),
+  tenantCategoryIdx: index("custom_layers_tenant_category_idx").on(table.tenantId, table.category),
+}));
+
+// ============================================================================
 // FACILITY CATCHMENTS — HCW-drawn polygon catchment areas
 // ============================================================================
 
@@ -1578,6 +1635,11 @@ export const adminBoundariesRelations = relations(adminBoundaries, ({ one }) => 
   tenant: one(tenants, { fields: [adminBoundaries.tenantId], references: [tenants.id] }),
 }));
 
+export const customLayersRelations = relations(customLayers, ({ one }) => ({
+  tenant: one(tenants, { fields: [customLayers.tenantId], references: [tenants.id] }),
+  uploadedBy: one(users, { fields: [customLayers.uploadedByUserId], references: [users.id] }),
+}));
+
 export const facilityCatchmentsRelations = relations(facilityCatchments, ({ one }) => ({
   tenant: one(tenants, { fields: [facilityCatchments.tenantId], references: [tenants.id] }),
   facility: one(facilities, { fields: [facilityCatchments.facilityId], references: [facilities.id] }),
@@ -1644,6 +1706,12 @@ export const insertAdminBoundarySchema = createInsertSchema(adminBoundaries).omi
 });
 
 export const insertFacilityCatchmentSchema = createInsertSchema(facilityCatchments).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertCustomLayerSchema = createInsertSchema(customLayers).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
@@ -1865,6 +1933,8 @@ export type AdminBoundary = typeof adminBoundaries.$inferSelect;
 export type InsertAdminBoundary = z.infer<typeof insertAdminBoundarySchema>;
 export type FacilityCatchment = typeof facilityCatchments.$inferSelect;
 export type InsertFacilityCatchment = z.infer<typeof insertFacilityCatchmentSchema>;
+export type CustomLayer = typeof customLayers.$inferSelect;
+export type InsertCustomLayer = z.infer<typeof insertCustomLayerSchema>;
 
 // New WHO RED & UNICEF types
 export type VaccineConfig = typeof vaccineConfigurations.$inferSelect;
