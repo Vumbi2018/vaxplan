@@ -87,6 +87,11 @@ import type {
   PopulationData,
   HtrScore,
 } from "@shared/schema";
+import {
+  getMinScheduleDate,
+  toDateInputValue,
+  isAtLeastDaysAhead,
+} from "@shared/schedulingDates";
 
 // ─── Step metadata ────────────────────────────────────────────────────────
 type StepDef = {
@@ -1008,20 +1013,52 @@ export default function MicroplanWizard({ prePlanType }: MicroplanWizardProps = 
       typeof startYear === "number" ? startYear : today.getFullYear();
     const baseMonth =
       typeof startMonth === "number" ? startMonth : today.getMonth();
+    // The earliest date a session is allowed to be scheduled (UTC midnight),
+    // i.e. today + the lead-time minimum. Any generated session before this
+    // would later fail the >=7-day lead-time check, so we skip those rows.
+    const minDate = getMinScheduleDate();
+    const minDateValue = toDateInputValue(minDate);
     const rows: CalendarRow[] = [];
+    let skippedCount = 0;
     communities.forEach((c, idx) => {
       for (let m = 0; m < safeMonths; m++) {
         const d = new Date(baseYear, baseMonth + m, 15);
+        const dateValue = d.toISOString().slice(0, 10);
+        // Skip any session that falls before the lead-time minimum so the
+        // generated calendar only ever contains schedulable sessions.
+        if (!isAtLeastDaysAhead(dateValue)) {
+          skippedCount++;
+          continue;
+        }
         rows.push({
           rowId: `${c.rowId}-m${m}`,
           name: c.name,
           villageId: c.villageId,
           sessionType: c.strategy,
-          scheduledDate: d.toISOString().slice(0, 10),
+          scheduledDate: dateValue,
         });
       }
     });
     setCalendar(rows);
+    if (skippedCount > 0) {
+      toast({
+        title: rows.length
+          ? `Skipped ${skippedCount} past ${
+              skippedCount === 1 ? "session" : "sessions"
+            }`
+          : "No schedulable sessions",
+        description: rows.length
+          ? `${skippedCount} ${
+              skippedCount === 1 ? "session was" : "sessions were"
+            } before the earliest schedulable date (${minDateValue}) and were left out. ${
+              rows.length
+            } schedulable ${
+              rows.length === 1 ? "session" : "sessions"
+            } generated.`
+          : `Every session in this range falls before the earliest schedulable date (${minDateValue}). Pick a later start month to generate sessions.`,
+        variant: rows.length ? "default" : "destructive",
+      });
+    }
   }
 
   type StaffRow = {
