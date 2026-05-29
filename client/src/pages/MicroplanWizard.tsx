@@ -1883,6 +1883,8 @@ export default function MicroplanWizard({ prePlanType }: MicroplanWizardProps = 
             { items: popItems },
           );
           const failures: string[] = [];
+          let firstFailRow: string | undefined;
+          let firstFailMsg: string | undefined;
           for (const r of resp.results ?? []) {
             const idx = typeof r.clientId === "string" ? popRowIndex[r.clientId] : undefined;
             if (r.ok && idx != null) {
@@ -1893,15 +1895,28 @@ export default function MicroplanWizard({ prePlanType }: MicroplanWizardProps = 
               };
             } else if (!r.ok) {
               failures.push(r.error || "unknown error");
+              if (firstFailRow === undefined && typeof r.clientId === "string") {
+                firstFailRow = r.clientId;
+                firstFailMsg = r.error || "This population row could not be saved.";
+              }
             }
           }
           if (failures.length > 0) {
             console.warn(`Population bulk save: ${failures.length} row(s) skipped:`, failures);
-            toast({
-              title: `${failures.length} population row(s) skipped`,
-              description: failures[0],
-              variant: "destructive",
-            });
+            focusTarget = {
+              step: 2,
+              rowId: firstFailRow,
+              message:
+                firstFailMsg ??
+                "Fix the highlighted community — it was rejected on save.",
+            };
+            if (!silent) {
+              toast({
+                title: `${failures.length} population row(s) skipped`,
+                description: failures[0],
+                variant: "destructive",
+              });
+            }
           }
         }
         setCommunities(nextRows);
@@ -1946,16 +1961,33 @@ export default function MicroplanWizard({ prePlanType }: MicroplanWizardProps = 
             { items },
           );
           const failures: string[] = [];
+          let firstFailRow: string | undefined;
+          let firstFailMsg: string | undefined;
           for (const r of resp.results ?? []) {
-            if (!r.ok) failures.push(r.error || "unknown error");
+            if (!r.ok) {
+              failures.push(r.error || "unknown error");
+              if (firstFailRow === undefined && typeof r.clientId === "string") {
+                firstFailRow = r.clientId;
+                firstFailMsg = r.error || "This risk row could not be saved.";
+              }
+            }
           }
           if (failures.length > 0) {
             console.warn(`HTR bulk save: ${failures.length} row(s) skipped:`, failures);
-            toast({
-              title: `${failures.length} HTR row(s) skipped`,
-              description: failures[0],
-              variant: "destructive",
-            });
+            focusTarget = {
+              step: 3,
+              rowId: firstFailRow,
+              message:
+                firstFailMsg ??
+                "Fix the highlighted risk row — it was rejected on save.",
+            };
+            if (!silent) {
+              toast({
+                title: `${failures.length} HTR row(s) skipped`,
+                description: failures[0],
+                variant: "destructive",
+              });
+            }
           }
         }
         queryClient.invalidateQueries({ queryKey: ["/api/htr-scores"] });
@@ -2156,21 +2188,36 @@ export default function MicroplanWizard({ prePlanType }: MicroplanWizardProps = 
             { items },
           );
           const failures: string[] = [];
+          let firstFailRow: string | undefined;
+          let firstFailMsg: string | undefined;
           for (const r of resp.results ?? []) {
             if (r.ok && r.id != null && typeof r.clientId === "string") {
               const idx = indexByClientId.get(r.clientId);
               if (idx != null) nextVaccines[idx] = { ...nextVaccines[idx], id: r.id };
             } else if (!r.ok) {
               failures.push(r.error || "unknown error");
+              if (firstFailRow === undefined && typeof r.clientId === "string") {
+                firstFailRow = r.clientId;
+                firstFailMsg = r.error || "This vaccine row could not be saved.";
+              }
             }
           }
           if (failures.length > 0) {
             console.warn(`Vaccine req bulk save: ${failures.length} row(s) skipped:`, failures);
-            toast({
-              title: `${failures.length} vaccine row(s) skipped`,
-              description: failures[0],
-              variant: "destructive",
-            });
+            focusTarget = {
+              step: 6,
+              rowId: firstFailRow,
+              message:
+                firstFailMsg ??
+                "Fix the highlighted vaccine row — it was rejected on save.",
+            };
+            if (!silent) {
+              toast({
+                title: `${failures.length} vaccine row(s) skipped`,
+                description: failures[0],
+                variant: "destructive",
+              });
+            }
           }
         }
         setVaccines(nextVaccines);
@@ -2201,21 +2248,36 @@ export default function MicroplanWizard({ prePlanType }: MicroplanWizardProps = 
             { items },
           );
           const failures: string[] = [];
+          let firstFailRow: string | undefined;
+          let firstFailMsg: string | undefined;
           for (const r of resp.results ?? []) {
             if (r.ok && r.id != null && typeof r.clientId === "string") {
               const idx = indexByClientId.get(r.clientId);
               if (idx != null) nextMob[idx] = { ...nextMob[idx], id: r.id };
             } else if (!r.ok) {
               failures.push(r.error || "unknown error");
+              if (firstFailRow === undefined && typeof r.clientId === "string") {
+                firstFailRow = r.clientId;
+                firstFailMsg = r.error || "This mobilization row could not be saved.";
+              }
             }
           }
           if (failures.length > 0) {
             console.warn(`Mobilization bulk save: ${failures.length} row(s) skipped:`, failures);
-            toast({
-              title: `${failures.length} mobilization row(s) skipped`,
-              description: failures[0],
-              variant: "destructive",
-            });
+            focusTarget = {
+              step: 7,
+              rowId: firstFailRow,
+              message:
+                firstFailMsg ??
+                "Fix the highlighted mobilization row — it was rejected on save.",
+            };
+            if (!silent) {
+              toast({
+                title: `${failures.length} mobilization row(s) skipped`,
+                description: failures[0],
+                variant: "destructive",
+              });
+            }
           }
         }
         setMobilization(nextMob);
@@ -2254,21 +2316,36 @@ export default function MicroplanWizard({ prePlanType }: MicroplanWizardProps = 
             { items },
           );
           const failures: string[] = [];
+          let firstFailRow: string | undefined;
+          let firstFailMsg: string | undefined;
           for (const r of resp.results ?? []) {
             if (r.ok && r.id != null && typeof r.clientId === "string") {
               const idx = indexByClientId.get(r.clientId);
               if (idx != null) nextBudget[idx] = { ...nextBudget[idx], id: r.id };
             } else if (!r.ok) {
               failures.push(r.error || "unknown error");
+              if (firstFailRow === undefined && typeof r.clientId === "string") {
+                firstFailRow = r.clientId;
+                firstFailMsg = r.error || "This budget line could not be saved.";
+              }
             }
           }
           if (failures.length > 0) {
             console.warn(`Budget bulk save: ${failures.length} row(s) skipped:`, failures);
-            toast({
-              title: `${failures.length} budget row(s) skipped`,
-              description: failures[0],
-              variant: "destructive",
-            });
+            focusTarget = {
+              step: 9,
+              rowId: firstFailRow,
+              message:
+                firstFailMsg ??
+                "Fix the highlighted budget line — it was rejected on save.",
+            };
+            if (!silent) {
+              toast({
+                title: `${failures.length} budget row(s) skipped`,
+                description: failures[0],
+                variant: "destructive",
+              });
+            }
           }
         }
         setBudget(nextBudget);
@@ -2302,21 +2379,36 @@ export default function MicroplanWizard({ prePlanType }: MicroplanWizardProps = 
             { items },
           );
           const failures: string[] = [];
+          let firstFailRow: string | undefined;
+          let firstFailMsg: string | undefined;
           for (const r of resp.results ?? []) {
             if (r.ok && r.id != null && typeof r.clientId === "string") {
               const idx = indexByClientId.get(r.clientId);
               if (idx != null) nextSup[idx] = { ...nextSup[idx], id: r.id };
             } else if (!r.ok) {
               failures.push(r.error || "unknown error");
+              if (firstFailRow === undefined && typeof r.clientId === "string") {
+                firstFailRow = r.clientId;
+                firstFailMsg = r.error || "This supervision visit could not be saved.";
+              }
             }
           }
           if (failures.length > 0) {
             console.warn(`Supervision bulk save: ${failures.length} row(s) skipped:`, failures);
-            toast({
-              title: `${failures.length} supervision row(s) skipped`,
-              description: failures[0],
-              variant: "destructive",
-            });
+            focusTarget = {
+              step: 10,
+              rowId: firstFailRow,
+              message:
+                firstFailMsg ??
+                "Fix the highlighted supervision visit — it was rejected on save.",
+            };
+            if (!silent) {
+              toast({
+                title: `${failures.length} supervision row(s) skipped`,
+                description: failures[0],
+                variant: "destructive",
+              });
+            }
           }
         }
         setSupervision(nextSup);
@@ -2663,9 +2755,28 @@ export default function MicroplanWizard({ prePlanType }: MicroplanWizardProps = 
                       return next;
                     });
                   }}
+                  errorRowId={
+                    errorFocus?.step === 2 ? errorFocus.rowId : undefined
+                  }
+                  errorMessage={
+                    errorFocus?.step === 2 ? errorFocus.message : undefined
+                  }
+                  onClearError={() => setErrorFocus(null)}
                 />
               )}
-              {active === 3 && <Step3 risk={risk} setRisk={setRisk} />}
+              {active === 3 && (
+                <Step3
+                  risk={risk}
+                  setRisk={setRisk}
+                  errorRowId={
+                    errorFocus?.step === 3 ? errorFocus.rowId : undefined
+                  }
+                  errorMessage={
+                    errorFocus?.step === 3 ? errorFocus.message : undefined
+                  }
+                  onClearError={() => setErrorFocus(null)}
+                />
+              )}
               {active === 4 && (
                 <Step4
                   calendar={calendar}
@@ -2689,6 +2800,13 @@ export default function MicroplanWizard({ prePlanType }: MicroplanWizardProps = 
                   setVaccines={setVaccines}
                   coldChain={coldChain}
                   setColdChain={setColdChain}
+                  errorRowId={
+                    errorFocus?.step === 6 ? errorFocus.rowId : undefined
+                  }
+                  errorMessage={
+                    errorFocus?.step === 6 ? errorFocus.message : undefined
+                  }
+                  onClearError={() => setErrorFocus(null)}
                 />
               )}
               {active === 7 && (
@@ -2696,6 +2814,13 @@ export default function MicroplanWizard({ prePlanType }: MicroplanWizardProps = 
                   mobilization={mobilization}
                   setMobilization={setMobilization}
                   onDelete={deleteMobilizationRow}
+                  errorRowId={
+                    errorFocus?.step === 7 ? errorFocus.rowId : undefined
+                  }
+                  errorMessage={
+                    errorFocus?.step === 7 ? errorFocus.message : undefined
+                  }
+                  onClearError={() => setErrorFocus(null)}
                 />
               )}
               {active === 8 && (
@@ -2706,6 +2831,13 @@ export default function MicroplanWizard({ prePlanType }: MicroplanWizardProps = 
                   budget={budget}
                   setBudget={setBudget}
                   onDelete={deleteBudgetRow}
+                  errorRowId={
+                    errorFocus?.step === 9 ? errorFocus.rowId : undefined
+                  }
+                  errorMessage={
+                    errorFocus?.step === 9 ? errorFocus.message : undefined
+                  }
+                  onClearError={() => setErrorFocus(null)}
                 />
               )}
               {active === 10 && (
@@ -2713,6 +2845,13 @@ export default function MicroplanWizard({ prePlanType }: MicroplanWizardProps = 
                   supervision={supervision}
                   setSupervision={setSupervision}
                   onDelete={deleteSupervisionRow}
+                  errorRowId={
+                    errorFocus?.step === 10 ? errorFocus.rowId : undefined
+                  }
+                  errorMessage={
+                    errorFocus?.step === 10 ? errorFocus.message : undefined
+                  }
+                  onClearError={() => setErrorFocus(null)}
                 />
               )}
               {active === 11 && (
@@ -3070,6 +3209,9 @@ function Step2({
   excludedVillages,
   excludedDetails,
   onRestoreVillage,
+  errorRowId,
+  errorMessage,
+  onClearError,
 }: {
   communities: any[];
   setCommunities: (v: any[]) => void;
@@ -3078,8 +3220,21 @@ function Step2({
   excludedVillages: Village[];
   excludedDetails: Map<number, ExcludedVillageDetail>;
   onRestoreVillage: (v: Village) => void;
+  errorRowId?: string;
+  errorMessage?: string;
+  onClearError?: () => void;
 }) {
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
+  const errorRowRef = useRef<HTMLInputElement | null>(null);
+
+  // Scroll the flagged community into view and focus its population input
+  // whenever a new validation error points at this step.
+  useEffect(() => {
+    if (errorRowId && errorRowRef.current) {
+      errorRowRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+      errorRowRef.current.focus();
+    }
+  }, [errorRowId]);
   const { toast } = useToast();
   const [estimate, setEstimate] = useState<
     | {
@@ -3118,6 +3273,9 @@ function Step2({
     const next = [...communities];
     next[i] = { ...next[i], ...patch };
     setCommunities(next);
+    // Editing the flagged row clears the highlight so the inline message
+    // doesn't linger once the planner has acted on it.
+    if (errorRowId && `pop-${i}` === errorRowId) onClearError?.();
   };
 
   const runEstimate = async (index: number, radiusKm: number) => {
@@ -3506,6 +3664,7 @@ function Step2({
               const hasCoords =
                 c.latitude && c.longitude &&
                 !isNaN(parseFloat(c.latitude)) && !isNaN(parseFloat(c.longitude));
+              const isError = errorRowId != null && `pop-${i}` === errorRowId;
               return (
                 <tr
                   key={c.rowId}
@@ -3539,7 +3698,9 @@ function Step2({
                   <td className="p-1">
                     <div className="flex items-center gap-1">
                       <Input
+                        ref={isError ? errorRowRef : undefined}
                         type="number"
+                        className={isError ? "border-destructive ring-1 ring-destructive" : undefined}
                         value={c.targetPopulation}
                         onChange={(e) => update(i, { targetPopulation: e.target.value })}
                         onClick={(e) => e.stopPropagation()}
@@ -3563,6 +3724,14 @@ function Step2({
                         Estimate
                       </Button>
                     </div>
+                    {isError && errorMessage && (
+                      <p
+                        className="mt-1 text-xs text-destructive"
+                        data-testid="community-row-error"
+                      >
+                        {errorMessage}
+                      </p>
+                    )}
                   </td>
                   <td className="p-1">
                     <Select value={c.source} onValueChange={(v) => update(i, { source: v })}>
@@ -4657,11 +4826,37 @@ function Step2Map({
   );
 }
 
-function Step3({ risk, setRisk }: { risk: any[]; setRisk: (v: any[]) => void }) {
+function Step3({
+  risk,
+  setRisk,
+  errorRowId,
+  errorMessage,
+  onClearError,
+}: {
+  risk: any[];
+  setRisk: (v: any[]) => void;
+  errorRowId?: string;
+  errorMessage?: string;
+  onClearError?: () => void;
+}) {
+  const errorRowRef = useRef<HTMLTableRowElement | null>(null);
+
+  // Scroll the flagged risk row into view and focus it whenever a new
+  // validation error points at this step. The row carries tabIndex={-1} so
+  // it can receive focus even though its only controls are sliders/checkboxes.
+  useEffect(() => {
+    if (errorRowId && errorRowRef.current) {
+      errorRowRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+      errorRowRef.current.focus();
+    }
+  }, [errorRowId]);
+
   const upd = (i: number, patch: any) => {
     const next = [...risk];
     next[i] = { ...next[i], ...patch };
     setRisk(next);
+    // Editing the flagged row clears the highlight.
+    if (errorRowId && `htr-${i}` === errorRowId) onClearError?.();
   };
   return (
     <div className="overflow-x-auto">
@@ -4678,9 +4873,26 @@ function Step3({ risk, setRisk }: { risk: any[]; setRisk: (v: any[]) => void }) 
           </tr>
         </thead>
         <tbody>
-          {risk.map((r, i) => (
-            <tr key={i} className="border-b">
-              <td className="p-2">{r.name}</td>
+          {risk.map((r, i) => {
+            const isError = errorRowId != null && `htr-${i}` === errorRowId;
+            return (
+            <tr
+              key={i}
+              ref={isError ? errorRowRef : undefined}
+              tabIndex={isError ? -1 : undefined}
+              className={`border-b outline-none ${isError ? "ring-1 ring-destructive" : ""}`}
+            >
+              <td className="p-2">
+                {r.name}
+                {isError && errorMessage && (
+                  <p
+                    className="mt-1 text-xs text-destructive"
+                    data-testid="risk-row-error"
+                  >
+                    {errorMessage}
+                  </p>
+                )}
+              </td>
               {(["distance", "terrain", "season", "insecurity"] as const).map((k) => (
                 <td key={k} className="p-2">
                   <div className="flex items-center gap-2">
@@ -4703,7 +4915,8 @@ function Step3({ risk, setRisk }: { risk: any[]; setRisk: (v: any[]) => void }) 
                 <Checkbox checked={r.zeroDose} onCheckedChange={(v) => upd(i, { zeroDose: !!v })} />
               </td>
             </tr>
-          ))}
+            );
+          })}
           {risk.length === 0 && (
             <tr>
               <td colSpan={7} className="p-4 text-center text-muted-foreground">
@@ -4951,16 +5164,35 @@ function Step6({
   setVaccines,
   coldChain,
   setColdChain,
+  errorRowId,
+  errorMessage,
+  onClearError,
 }: {
   vaccines: any[];
   setVaccines: (v: any[]) => void;
   coldChain: any;
   setColdChain: (v: any) => void;
+  errorRowId?: string;
+  errorMessage?: string;
+  onClearError?: () => void;
 }) {
+  const errorRowRef = useRef<HTMLInputElement | null>(null);
+
+  // Scroll the flagged vaccine row into view and focus its target input
+  // whenever a new validation error points at this step.
+  useEffect(() => {
+    if (errorRowId && errorRowRef.current) {
+      errorRowRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+      errorRowRef.current.focus();
+    }
+  }, [errorRowId]);
+
   const upd = (i: number, patch: any) => {
     const next = [...vaccines];
     next[i] = { ...next[i], ...patch };
     setVaccines(next);
+    // Editing the flagged row clears the highlight.
+    if (errorRowId && `vr-${i}` === errorRowId) onClearError?.();
   };
   return (
     <div className="space-y-4">
@@ -4983,10 +5215,27 @@ function Step6({
               const dosesReq = tgt * v.doses;
               const total = Math.ceil(dosesReq * (1 + w / 100));
               const vials = Math.ceil(total / 10);
+              const isError = errorRowId != null && `vr-${i}` === errorRowId;
               return (
-                <tr key={v.name} className="border-b">
+                <tr key={v.name} className={`border-b ${isError ? "ring-1 ring-destructive" : ""}`}>
                   <td className="p-2 font-medium">{v.name}</td>
-                  <td className="p-1"><Input type="number" value={v.target} onChange={(e) => upd(i, { target: e.target.value })} /></td>
+                  <td className="p-1">
+                    <Input
+                      ref={isError ? errorRowRef : undefined}
+                      type="number"
+                      className={isError ? "border-destructive ring-1 ring-destructive" : undefined}
+                      value={v.target}
+                      onChange={(e) => upd(i, { target: e.target.value })}
+                    />
+                    {isError && errorMessage && (
+                      <p
+                        className="mt-1 text-xs text-destructive"
+                        data-testid="vaccine-row-error"
+                      >
+                        {errorMessage}
+                      </p>
+                    )}
+                  </td>
                   <td className="p-2 text-center">{v.doses}</td>
                   <td className="p-1"><Input type="number" value={v.wastage} onChange={(e) => upd(i, { wastage: e.target.value })} /></td>
                   <td className="p-2">{total.toLocaleString()}</td>
@@ -5013,15 +5262,34 @@ function Step7({
   mobilization,
   setMobilization,
   onDelete,
+  errorRowId,
+  errorMessage,
+  onClearError,
 }: {
   mobilization: any[];
   setMobilization: (v: any[]) => void;
   onDelete: (index: number) => void | Promise<void>;
+  errorRowId?: string;
+  errorMessage?: string;
+  onClearError?: () => void;
 }) {
+  const errorRowRef = useRef<HTMLInputElement | null>(null);
+
+  // Scroll the flagged mobilization row into view and focus its focal-point
+  // input whenever a new validation error points at this step.
+  useEffect(() => {
+    if (errorRowId && errorRowRef.current) {
+      errorRowRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+      errorRowRef.current.focus();
+    }
+  }, [errorRowId]);
+
   const upd = (i: number, patch: any) => {
     const next = [...mobilization];
     next[i] = { ...next[i], ...patch };
     setMobilization(next);
+    // Editing the flagged row clears the highlight.
+    if (errorRowId && `mob-${i}` === errorRowId) onClearError?.();
   };
   const toggle = (arr: string[], v: string) =>
     arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v];
@@ -5040,8 +5308,10 @@ function Step7({
           </tr>
         </thead>
         <tbody>
-          {mobilization.map((m, i) => (
-            <tr key={m.rowId} className="border-b align-top">
+          {mobilization.map((m, i) => {
+            const isError = errorRowId != null && `mob-${i}` === errorRowId;
+            return (
+            <tr key={m.rowId} className={`border-b align-top ${isError ? "ring-1 ring-destructive" : ""}`}>
               <td className="p-2 text-xs">{m.sessionLabel}</td>
               <td className="p-2">
                 <div className="flex flex-wrap gap-1">
@@ -5053,7 +5323,22 @@ function Step7({
                   ))}
                 </div>
               </td>
-              <td className="p-1"><Input value={m.focalPoint} onChange={(e) => upd(i, { focalPoint: e.target.value })} /></td>
+              <td className="p-1">
+                <Input
+                  ref={isError ? errorRowRef : undefined}
+                  className={isError ? "border-destructive ring-1 ring-destructive" : undefined}
+                  value={m.focalPoint}
+                  onChange={(e) => upd(i, { focalPoint: e.target.value })}
+                />
+                {isError && errorMessage && (
+                  <p
+                    className="mt-1 text-xs text-destructive"
+                    data-testid="mobilization-row-error"
+                  >
+                    {errorMessage}
+                  </p>
+                )}
+              </td>
               <td className="p-1"><Input value={m.focalPhone} onChange={(e) => upd(i, { focalPhone: e.target.value })} /></td>
               <td className="p-2">
                 <div className="flex flex-wrap gap-1">
@@ -5077,7 +5362,8 @@ function Step7({
                 </Button>
               </td>
             </tr>
-          ))}
+            );
+          })}
           {mobilization.length === 0 && (
             <tr><td colSpan={6} className="p-4 text-center text-muted-foreground">Finish Step 4 first.</td></tr>
           )}
@@ -5140,15 +5426,34 @@ function Step9({
   budget,
   setBudget,
   onDelete,
+  errorRowId,
+  errorMessage,
+  onClearError,
 }: {
   budget: any[];
   setBudget: (v: any[]) => void;
   onDelete: (index: number) => void | Promise<void>;
+  errorRowId?: string;
+  errorMessage?: string;
+  onClearError?: () => void;
 }) {
+  const errorRowRef = useRef<HTMLInputElement | null>(null);
+
+  // Scroll the flagged budget line into view and focus its description input
+  // whenever a new validation error points at this step.
+  useEffect(() => {
+    if (errorRowId && errorRowRef.current) {
+      errorRowRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+      errorRowRef.current.focus();
+    }
+  }, [errorRowId]);
+
   const upd = (i: number, patch: any) => {
     const next = [...budget];
     next[i] = { ...next[i], ...patch };
     setBudget(next);
+    // Editing the flagged row clears the highlight.
+    if (errorRowId && `bud-${i}` === errorRowId) onClearError?.();
   };
   const add = () =>
     setBudget([
@@ -5189,8 +5494,10 @@ function Step9({
             </tr>
           </thead>
           <tbody>
-            {budget.map((b, i) => (
-              <tr key={b.rowId} className="border-b">
+            {budget.map((b, i) => {
+              const isError = errorRowId != null && `bud-${i}` === errorRowId;
+              return (
+              <tr key={b.rowId} className={`border-b ${isError ? "ring-1 ring-destructive" : ""}`}>
                 <td className="p-1">
                   <Select value={b.category} onValueChange={(v) => upd(i, { category: v })}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
@@ -5201,7 +5508,22 @@ function Step9({
                     </SelectContent>
                   </Select>
                 </td>
-                <td className="p-1"><Input value={b.description} onChange={(e) => upd(i, { description: e.target.value })} /></td>
+                <td className="p-1">
+                  <Input
+                    ref={isError ? errorRowRef : undefined}
+                    className={isError ? "border-destructive ring-1 ring-destructive" : undefined}
+                    value={b.description}
+                    onChange={(e) => upd(i, { description: e.target.value })}
+                  />
+                  {isError && errorMessage && (
+                    <p
+                      className="mt-1 text-xs text-destructive"
+                      data-testid="budget-row-error"
+                    >
+                      {errorMessage}
+                    </p>
+                  )}
+                </td>
                 <td className="p-1"><Input type="number" value={b.quantity} onChange={(e) => upd(i, { quantity: e.target.value })} /></td>
                 <td className="p-1"><Input type="number" value={b.unitCost} onChange={(e) => upd(i, { unitCost: e.target.value })} /></td>
                 <td className="p-2">{(parseFloat(b.unitCost || "0") * parseInt(b.quantity || "0", 10)).toLocaleString()}</td>
@@ -5221,7 +5543,8 @@ function Step9({
                   </Button>
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -5233,15 +5556,34 @@ function Step10({
   supervision,
   setSupervision,
   onDelete,
+  errorRowId,
+  errorMessage,
+  onClearError,
 }: {
   supervision: any[];
   setSupervision: (v: any[]) => void;
   onDelete: (index: number) => void | Promise<void>;
+  errorRowId?: string;
+  errorMessage?: string;
+  onClearError?: () => void;
 }) {
+  const errorRowRef = useRef<HTMLInputElement | null>(null);
+
+  // Scroll the flagged supervision visit into view and focus its supervisor
+  // input whenever a new validation error points at this step.
+  useEffect(() => {
+    if (errorRowId && errorRowRef.current) {
+      errorRowRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+      errorRowRef.current.focus();
+    }
+  }, [errorRowId]);
+
   const upd = (i: number, patch: any) => {
     const next = [...supervision];
     next[i] = { ...next[i], ...patch };
     setSupervision(next);
+    // Editing the flagged row clears the highlight.
+    if (errorRowId && `sup-${i}` === errorRowId) onClearError?.();
   };
   const add = () =>
     setSupervision([
@@ -5275,8 +5617,10 @@ function Step10({
           </tr>
         </thead>
         <tbody>
-          {supervision.map((v, i) => (
-            <tr key={v.rowId} className="border-b align-top">
+          {supervision.map((v, i) => {
+            const isError = errorRowId != null && `sup-${i}` === errorRowId;
+            return (
+            <tr key={v.rowId} className={`border-b align-top ${isError ? "ring-1 ring-destructive" : ""}`}>
               <td className="p-1">
                 <Select value={String(v.quarter)} onValueChange={(x) => upd(i, { quarter: Number(x) })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
@@ -5286,7 +5630,22 @@ function Step10({
                 </Select>
               </td>
               <td className="p-1"><Input type="date" value={v.scheduledDate} onChange={(e) => upd(i, { scheduledDate: e.target.value })} /></td>
-              <td className="p-1"><Input value={v.supervisorName} onChange={(e) => upd(i, { supervisorName: e.target.value })} /></td>
+              <td className="p-1">
+                <Input
+                  ref={isError ? errorRowRef : undefined}
+                  className={isError ? "border-destructive ring-1 ring-destructive" : undefined}
+                  value={v.supervisorName}
+                  onChange={(e) => upd(i, { supervisorName: e.target.value })}
+                />
+                {isError && errorMessage && (
+                  <p
+                    className="mt-1 text-xs text-destructive"
+                    data-testid="supervision-row-error"
+                  >
+                    {errorMessage}
+                  </p>
+                )}
+              </td>
               <td className="p-1"><Input value={v.checklist} onChange={(e) => upd(i, { checklist: e.target.value })} /></td>
               <td className="p-1"><Textarea rows={2} value={v.followUp} onChange={(e) => upd(i, { followUp: e.target.value })} /></td>
               <td className="p-1">
@@ -5295,7 +5654,8 @@ function Step10({
                 </Button>
               </td>
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </table>
     </div>
