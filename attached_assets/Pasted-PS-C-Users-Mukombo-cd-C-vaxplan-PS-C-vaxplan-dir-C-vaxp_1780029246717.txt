@@ -1,0 +1,1742 @@
+PS C:\Users\Mukombo> cd C:\vaxplan
+PS C:\vaxplan> dir C:\vaxplan
+
+
+    Directory: C:\vaxplan
+
+
+Mode                 LastWriteTime         Length Name
+----                 -------------         ------ ----
+d-----        29/05/2026     00:54                .agents
+d-----        29/05/2026     00:54                .canvas
+d-----        29/05/2026     00:54                .config
+d-----        29/05/2026     00:54                .git
+d-----        29/05/2026     00:55                .local
+d-----        29/05/2026     00:55                attached_assets
+d-----        29/05/2026     00:55                client
+d-----        29/05/2026     00:55                data
+d-----        29/05/2026     00:55                dist
+d-----        29/05/2026     00:55                docs
+d-----        29/05/2026     01:14                electron
+d-----        29/05/2026     01:14                electron-dist
+d-----        29/05/2026     00:55                exports
+d-----        29/05/2026     00:55                migrations
+d-----        29/05/2026     01:09                node_modules
+d-----        29/05/2026     00:55                Resources
+d-----        29/05/2026     00:55                screenshots
+d-----        29/05/2026     00:55                script
+d-----        29/05/2026     00:55                scripts
+d-----        29/05/2026     00:55                server
+d-----        29/05/2026     00:55                shared
+-a----        29/05/2026     00:54              0 .env
+-a----        29/05/2026     00:54            182 .gitattributes
+-a----        29/05/2026     00:54              6 .gitignore
+-a----        29/05/2026     00:54            934 .replit
+-a----        29/05/2026     00:54           1292 capacitor.config.ts
+-a----        29/05/2026     00:54            459 components.json
+-a----        29/05/2026     00:54            325 drizzle.config.ts
+-a----        29/05/2026     00:54           2775 forge.config.cjs
+-a----        29/05/2026     01:10        1299420 package-lock.json
+-a----        29/05/2026     00:54           6379 package.json
+-a----        29/05/2026     00:54             80 postcss.config.js
+-a----        29/05/2026     00:54           5493 replit.md
+-a----        29/05/2026     00:54             43 replit.nix
+-a----        29/05/2026     00:54           4050 tailwind.config.ts
+-a----        29/05/2026     00:54            657 tsconfig.json
+-a----        29/05/2026     00:54           6807 vite.config.ts
+-a----        29/05/2026     00:54            488 vitest.config.ts
+-a----        29/05/2026     00:54        3391498 zipFile.zip
+
+
+PS C:\vaxplan> dir package.json
+
+
+    Directory: C:\vaxplan
+
+
+Mode                 LastWriteTime         Length Name
+----                 -------------         ------ ----
+-a----        29/05/2026     00:54           6379 package.json
+
+
+PS C:\vaxplan> npm install
+npm warn ERESOLVE overriding peer dependency
+npm warn While resolving: vite@8.0.14
+npm warn Found: @types/node@20.16.11
+npm warn node_modules/@types/node
+npm warn   dev @types/node@"20.16.11" from the root project
+npm warn   18 more (@types/body-parser, @types/cacheable-request, ...)
+npm warn
+npm warn Could not resolve dependency:
+npm warn peerOptional @types/node@"^20.19.0 || >=22.12.0" from vite@8.0.14
+npm warn node_modules/vitest/node_modules/vite
+npm warn   vite@"^6.0.0 || ^7.0.0 || ^8.0.0" from vitest@4.1.7
+npm warn   node_modules/vitest
+npm warn   1 more (@vitest/mocker)
+npm warn
+npm warn Conflicting peer dependency: @types/node@25.9.1
+npm warn node_modules/@types/node
+npm warn   peerOptional @types/node@"^20.19.0 || >=22.12.0" from vite@8.0.14
+npm warn   node_modules/vitest/node_modules/vite
+npm warn     vite@"^6.0.0 || ^7.0.0 || ^8.0.0" from vitest@4.1.7
+npm warn     node_modules/vitest
+npm warn     1 more (@vitest/mocker)
+
+up to date, audited 1998 packages in 23s
+
+443 packages are looking for funding
+  run `npm fund` for details
+
+45 vulnerabilities (8 low, 7 moderate, 30 high)
+
+To address issues that do not require attention, run:
+  npm audit fix
+
+To address all issues possible (including breaking changes), run:
+  npm audit fix --force
+
+Some issues need review, and may require choosing
+a different dependency.
+
+Run `npm audit` for details.
+PS C:\vaxplan> npm run build:windows
+
+> rest-express@1.0.0 build:windows
+> powershell -ExecutionPolicy Bypass -File scripts/Build-Windows.ps1
+
+
+======================================================
+  VaxPlan  Windows Installer Builder
+======================================================
+
+> Checking prerequisites...
+  Node.js: v26.1.0
+  npm: 11.13.0
+
+> Building Vite production bundle...
+
+> rest-express@1.0.0 build
+> tsx script/build.ts
+
+[build] Building client with Vite…
+vite v5.4.21 building for production...
+transforming (4) src\App.tsx
+A PostCSS plugin did not pass the `from` option to `postcss.parse`. This may cause imported assets to be incorrectly transformed. If you've recently added a PostCSS plugin that raised this warning, please contact the package author to fix the issue.
+✓ 4103 modules transformed.
+[plugin:vite:reporter] [plugin vite:reporter]
+(!) C:/vaxplan/client/src/hooks/use-toast.ts is dynamically imported by C:/vaxplan/client/src/lib/offlineDb.ts but also statically imported by C:/vaxplan/client/src/components/AddCommunityDialog.tsx, C:/vaxplan/client/src/components/DataTable.tsx, C:/vaxplan/client/src/components/MapView.tsx, C:/vaxplan/client/src/components/PopulationDialog.tsx, C:/vaxplan/client/src/components/PopulationOverlay.tsx, C:/vaxplan/client/src/components/TenantEmailSenderCard.tsx, C:/vaxplan/client/src/components/TenantSwitcher.tsx, C:/vaxplan/client/src/components/WastageThresholdsCard.tsx, C:/vaxplan/client/src/components/ui/toaster.tsx, C:/vaxplan/client/src/hooks/useProximityConflictWarnings.tsx, C:/vaxplan/client/src/hooks/useUnmappedAntigenWarnings.ts, C:/vaxplan/client/src/pages/AnnualNationalPlan.tsx, C:/vaxplan/client/src/pages/Approvals.tsx, C:/vaxplan/client/src/pages/BoundaryManager.tsx, C:/vaxplan/client/src/pages/ClientLogbook.tsx, C:/vaxplan/client/src/pages/CountryOnboarding.tsx, C:/vaxplan/client/src/pages/Dashboard.tsx, C:/vaxplan/client/src/pages/Defaulters.tsx, C:/vaxplan/client/src/pages/Facilities.tsx, C:/vaxplan/client/src/pages/HardToReach.tsx, C:/vaxplan/client/src/pages/Help.tsx, C:/vaxplan/client/src/pages/HisIntegrations.tsx, C:/vaxplan/client/src/pages/MicroplanWizard.tsx, C:/vaxplan/client/src/pages/MissedCommunities.tsx, C:/vaxplan/client/src/pages/Population.tsx, C:/vaxplan/client/src/pages/ReconcileUnmappedVaccines.tsx, C:/vaxplan/client/src/pages/SessionDayPlans.tsx, C:/vaxplan/client/src/pages/SessionPlanning.tsx, C:/vaxplan/client/src/pages/Settings.tsx, C:/vaxplan/client/src/pages/SettlementIntelligence.tsx, C:/vaxplan/client/src/pages/Signup.tsx, C:/vaxplan/client/src/pages/SignupRequests.tsx, C:/vaxplan/client/src/pages/StockLedger.tsx, C:/vaxplan/client/src/pages/Supervision.tsx, C:/vaxplan/client/src/pages/SyncConflicts.tsx, C:/vaxplan/client/src/pages/UserManagement.tsx, C:/vaxplan/client/src/pages/ZeroDoseVillages.tsx, dynamic import will not move module into another chunk.
+
+[plugin:vite:reporter] [plugin vite:reporter]
+(!) C:/vaxplan/client/src/lib/syncEngine.ts is dynamically imported by C:/vaxplan/client/src/lib/queryClient.ts but also statically imported by C:/vaxplan/client/src/components/SyncStatus.tsx, C:/vaxplan/client/src/hooks/useProximityConflictWarnings.tsx, C:/vaxplan/client/src/hooks/useSyncEngine.ts, C:/vaxplan/client/src/hooks/useUnmappedAntigenWarnings.ts, dynamic import will not move module into another chunk.
+
+[plugin:vite:reporter] [plugin vite:reporter]
+(!) C:/vaxplan/client/src/lib/backgroundSync.ts is dynamically imported by C:/vaxplan/client/src/lib/offlineDb.ts but also statically imported by C:/vaxplan/client/src/components/SyncStatus.tsx, dynamic import will not move module into another chunk.
+
+../dist/public/manifest.webmanifest                                 0.89 kB
+../dist/public/index.html                                           2.97 kB │ gzip:   1.13 kB
+../dist/public/assets/grid3Inside.worker-DeNBaOhD.js                6.50 kB
+../dist/public/assets/index-TfzCEEMm.css                          176.10 kB │ gzip:  30.55 kB
+../dist/public/assets/loader-circle-Bn7nFgwS.js                     0.31 kB │ gzip:   0.26 kB
+../dist/public/assets/arrow-left-B3xOa5eK.js                        0.33 kB │ gzip:   0.27 kB
+../dist/public/assets/message-square-C-kGTF2M.js                    0.35 kB │ gzip:   0.27 kB
+../dist/public/assets/info-B59gbq-z.js                              0.37 kB │ gzip:   0.28 kB
+../dist/public/assets/lock-vvTpn6Tn.js                              0.38 kB │ gzip:   0.30 kB
+../dist/public/assets/mail-DJfz9LM8.js                              0.39 kB │ gzip:   0.31 kB
+../dist/public/assets/history-BlubMm8q.js                           0.41 kB │ gzip:   0.30 kB
+../dist/public/assets/database-C9CrxmQZ.js                          0.41 kB │ gzip:   0.31 kB
+../dist/public/assets/external-link-kNRSm5b7.js                     0.42 kB │ gzip:   0.30 kB
+../dist/public/assets/pencil-JOHYRUwZ.js                            0.45 kB │ gzip:   0.33 kB
+../dist/public/assets/list-checks-BkzHtQ9t.js                       0.45 kB │ gzip:   0.29 kB
+../dist/public/assets/send-CiCD5KSb.js                              0.46 kB │ gzip:   0.34 kB
+../dist/public/assets/satellite-hSolzK5p.js                         0.48 kB │ gzip:   0.33 kB
+../dist/public/assets/square-pen-BOq4t0YE.js                        0.49 kB │ gzip:   0.34 kB
+../dist/public/assets/trash-2-BMIAVt9X.js                           0.53 kB │ gzip:   0.35 kB
+../dist/public/assets/droplets-BD_3PPes.js                          0.54 kB │ gzip:   0.39 kB
+../dist/public/assets/phone-MZf9H3fb.js                             0.56 kB │ gzip:   0.36 kB
+../dist/public/assets/vaccineSchedule-DIFQJGsC.js                   0.59 kB │ gzip:   0.38 kB
+../dist/public/assets/DeleteConfirmDialog-CVg5bPxG.js               0.69 kB │ gzip:   0.39 kB
+../dist/public/assets/sliders-vertical-FvljehF9.js                  0.75 kB │ gzip:   0.37 kB
+../dist/public/assets/alert-C3K3oegq.js                             0.92 kB │ gzip:   0.47 kB
+../dist/public/assets/web-5D0j6VIG.js                               1.18 kB │ gzip:   0.56 kB
+../dist/public/assets/geoHierarchy-CqNdqgTu.js                      1.19 kB │ gzip:   0.52 kB
+../dist/public/assets/ApprovalBadge-BkoTBkBR.js                     1.30 kB │ gzip:   0.69 kB
+../dist/public/assets/BasemapToggle-n0qmeUvJ.js                     1.53 kB │ gzip:   0.74 kB
+../dist/public/assets/useWastageThresholds-QGcxLRQx.js              1.64 kB │ gzip:   0.75 kB
+../dist/public/assets/MapPage-D24qt8Hd.js                           1.95 kB │ gzip:   0.77 kB
+../dist/public/assets/ship-DPGw5YZe.js                              2.14 kB │ gzip:   0.86 kB
+../dist/public/assets/index-7K8nrDSJ.js                             2.18 kB │ gzip:   0.97 kB
+../dist/public/assets/tabs-ifJCMUec.js                              3.20 kB │ gzip:   1.35 kB
+../dist/public/assets/checkbox-C5U8fGM-.js                          3.84 kB │ gzip:   1.70 kB
+../dist/public/assets/accordion-D0iR7AEM.js                         4.58 kB │ gzip:   1.83 kB
+../dist/public/assets/GeoCascadeFilter-Dd79Ubxf.js                  4.67 kB │ gzip:   1.49 kB
+../dist/public/assets/SyncConflicts-BTUmwZde.js                     4.71 kB │ gzip:   1.91 kB
+../dist/public/assets/alert-dialog-CoXi5IYT.js                      4.88 kB │ gzip:   1.80 kB
+../dist/public/assets/index-Dn7kg9-v.js                             5.13 kB │ gzip:   2.06 kB
+../dist/public/assets/FacilityCascadePicker-CnUxY89d.js             5.19 kB │ gzip:   1.56 kB
+../dist/public/assets/SignupRequests-CMA9X4NG.js                    5.22 kB │ gzip:   2.01 kB
+../dist/public/assets/DropoutRates-fdW-TeVM.js                      5.96 kB │ gzip:   1.78 kB
+../dist/public/assets/DataTable-C-EJGWHS.js                         6.19 kB │ gzip:   2.31 kB
+../dist/public/assets/ReconcileUnmappedVaccines-BHoAndAt.js         6.42 kB │ gzip:   2.43 kB
+../dist/public/assets/AnnualNationalPlan-CyPgM--N.js                8.16 kB │ gzip:   2.64 kB
+../dist/public/assets/slider-DYyueQGD.js                            8.25 kB │ gzip:   3.34 kB
+../dist/public/assets/index-CbuVN58M.js                             8.68 kB │ gzip:   3.59 kB
+../dist/public/assets/MissedCommunities-CA3C6jBJ.js                 8.95 kB │ gzip:   3.24 kB
+../dist/public/assets/SessionHistory-BqKPHRVw.js                    9.10 kB │ gzip:   3.06 kB
+../dist/public/assets/Approvals-UGjpuLKb.js                        10.79 kB │ gzip:   3.16 kB
+../dist/public/assets/Signup-CbKf9CQ9.js                           12.21 kB │ gzip:   3.88 kB
+../dist/public/assets/ZeroDoseVillages-DHB8Jm5L.js                 12.67 kB │ gzip:   4.18 kB
+../dist/public/assets/format-BiyvwRIj.js                           13.05 kB │ gzip:   3.47 kB
+../dist/public/assets/BoundaryManager-BWxEUPfs.js                  15.21 kB │ gzip:   4.78 kB
+../dist/public/assets/CountryOnboarding-JG_e_RT8.js                15.78 kB │ gzip:   4.92 kB
+../dist/public/assets/command-BBh-oveM.js                          20.84 kB │ gzip:   7.60 kB
+../dist/public/assets/Defaulters-Ct0ofOgA.js                       21.67 kB │ gzip:   6.33 kB
+../dist/public/assets/SettlementIntelligence-5yrobPAZ.js           24.67 kB │ gzip:   5.89 kB
+../dist/public/assets/StandardsAlignment-DsOlQHkE.js               35.44 kB │ gzip:  12.02 kB
+../dist/public/assets/Population-CmZPORpD.js                       35.96 kB │ gzip:   8.84 kB
+../dist/public/assets/Supervision-DcOTXiD2.js                      39.67 kB │ gzip:  11.20 kB
+../dist/public/assets/HisIntegrations-u9rxA52h.js                  41.00 kB │ gzip:   9.26 kB
+../dist/public/assets/HardToReach-Dp7uRjE8.js                      42.28 kB │ gzip:  11.36 kB
+../dist/public/assets/SessionsHub-B_RMHp-K.js                      43.90 kB │ gzip:  13.95 kB
+../dist/public/assets/StockLedger-CU9-oudr.js                      46.22 kB │ gzip:  11.11 kB
+../dist/public/assets/Facilities-BRBXV9rq.js                       54.38 kB │ gzip:  13.12 kB
+../dist/public/assets/SessionDayPlans-Bp3VHpcn.js                  54.50 kB │ gzip:  12.94 kB
+../dist/public/assets/SessionPlanning-Dzs0GTPo.js                  62.32 kB │ gzip:  15.81 kB
+../dist/public/assets/UserManagement-C8UmiSx7.js                   64.89 kB │ gzip:  14.24 kB
+../dist/public/assets/Settings-PIwO6ngz.js                         68.95 kB │ gzip:  15.45 kB
+../dist/public/assets/schema-DsG4PKJ6.js                           79.82 kB │ gzip:  20.29 kB
+../dist/public/assets/types-BWzjtMnW.js                            92.57 kB │ gzip:  25.87 kB
+../dist/public/assets/ClientLogbook-CAbXJ9aw.js                   101.74 kB │ gzip:  21.46 kB
+../dist/public/assets/MicroplanWizard-BnjFy-QV.js                 112.25 kB │ gzip:  29.76 kB
+../dist/public/assets/Help-fQFPltBa.js                            227.64 kB │ gzip:  66.55 kB
+../dist/public/assets/xlsx-CKN5doRT.js                            424.23 kB │ gzip: 141.75 kB
+../dist/public/assets/georaster.browser.bundle.min-BarKAeHX.js    580.57 kB │ gzip: 186.81 kB
+../dist/public/assets/index-By2WdWVG.js                           946.92 kB │ gzip: 281.93 kB
+../dist/public/assets/georaster-layer-for-leaflet-FcDCxxgE.js   1,300.43 kB │ gzip: 467.19 kB
+✓ built in 11.21s
+
+PWA v1.3.0
+mode      generateSW
+precache  91 entries (7407.59 KiB)
+files generated
+  ../dist/public/_vite-pwa-sw.js
+  ../dist/public/workbox-0562a5fe.js
+[build] Bundling server with esbuild → dist/index.cjs
+
+  dist\index.cjs      765.9kb
+  dist\index.cjs.map    1.5mb
+
+⚡ Done in 61ms
+[build] Done.
+  [OK] Vite build complete
+
+> Compiling Electron main/preload scripts...
+
+> Running Electron Forge make...
+  Using stable local Node.js v20: C:\mfl\node_env\node-v20.12.2-win-x64\node.exe
+✔ Checking your system
+✔ Loading configuration
+✔ Resolving make targets
+  › Making for the following targets: ,
+✔ Running package command
+  ✔ Preparing to package application
+  ✔ Running packaging hooks
+    ✔ Running generateAssets hook
+    ✔ Running prePackage hook
+  ✔ Packaging application
+    ✔ Packaging for x64 on win32 [7m3s]
+  ✔ Running postPackage hook
+✔ Running preMake hook
+❯ Making distributables
+  ✖ Making a squirrel distributable for win32/x64
+    › Failed with exit code: 1
+    Output:
+    Fatal error: Unable to set icon
+  ✖ Making a zip distributable for win32/x64
+◼ Running postMake hook
+
+Downloading electron-v42.3.0-win32-x64.zip: [----------------------------------------------------] 0% ETA: 0.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=---------------------------------------------------] 1% ETA: 0.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=--------------------------------------------------] 1% ETA: 78.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=-------------------------------------------------] 1% ETA: 202.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=-------------------------------------------------] 1% ETA: 256.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=-------------------------------------------------] 1% ETA: 311.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=-------------------------------------------------] 1% ETA: 364.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=-------------------------------------------------] 1% ETA: 424.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=-------------------------------------------------] 1% ETA: 572.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=-------------------------------------------------] 1% ETA: 601.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=-------------------------------------------------] 1% ETA: 705.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=-------------------------------------------------] 1% ETA: 778.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=-------------------------------------------------] 1% ETA: 810.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=-------------------------------------------------] 1% ETA: 897.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 1027.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 1084.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 1120.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 1155.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 1197.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 1253.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 1316.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 1403.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 1463.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 1567.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 1624.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 1682.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 1868.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 2086.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 2246.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 2378.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 2438.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 2660.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 2696.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 2735.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 2955.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 2995.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 3102.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 3183.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 3266.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 3320.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 3472.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 3541.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 3570.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 3686.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 3736.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 3847.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 3937.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 4199.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 4381.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 4447.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 4610.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 4673.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 4754.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 4803.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 4867.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 4918.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 5021.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 5105.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 5184.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 5238.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 5300.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 5341.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 5431.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 5477.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 5522.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 5577.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 5637.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 5738.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 5785.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 5840.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 5885.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 5913.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 5936.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 5966.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 6013.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 6066.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 6245.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 6334.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 6406.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 6504.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 6552.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 6628.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 6767.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 6814.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 6885.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 6923.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 6953.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 6991.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 7050.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [-------------------------------------------------] 1% ETA: 7176.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 3589.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 3632.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 3656.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 3695.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 3715.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 3743.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 3780.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 3812.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 3853.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 3912.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 3939.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 3963.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 3992.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 4031.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 4076.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 4139.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 4159.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 4199.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 4262.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 4308.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 4343.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 4397.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 4415.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 4427.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 4447.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 4475.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 4507.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 4533.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 4547.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 4574.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 4614.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 4640.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 4656.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 4675.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 4731.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 4783.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 4860.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 4865.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 4933.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 4943.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 4964.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 5017.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 5050.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 5082.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 5112.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 5157.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 5189.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 5239.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 5268.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 5313.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 5358.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 5381.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 5404.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 5436.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 5450.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 5461.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 5493.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 5504.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 5518.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 5544.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 5575.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 5600.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 5618.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 5654.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 5685.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 5727.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 5755.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 5783.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 5860.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 5889.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 5937.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 5965.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 6011.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 6047.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 6073.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 6107.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 6195.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 6241.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 6336.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 6374.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 6421.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 6451.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 6488.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 6526.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 6598.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 6615.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 6690.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 6722.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 6727.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 2% ETA: 6742.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 4457.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 4461.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 4471.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 4489.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 4496.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 4515.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 4540.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 4552.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 4591.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 4613.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 4638.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 4652.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 4668.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 4686.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 4708.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 4742.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 4778.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 4799.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 4819.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 4833.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 4842.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 4852.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 4859.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 4871.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 4880.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 4894.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 4916.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 4946.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 4961.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 4977.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 5011.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 5031.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 5056.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 5070.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 5102.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 5120.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 5136.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 5154.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 5171.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 5182.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 5207.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 5232.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 5257.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 5291.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 5343.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 5370.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 5395.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 5424.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 5437.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 5444.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 5463.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 5489.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 5509.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 5527.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 5542.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 5550.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 5556.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 5583.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 5603.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 5661.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 5688.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 5747.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 5770.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 5794.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 5816.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 5843.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 5847.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 5864.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 5884.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 5919.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 5935.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 5952.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 5988.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 6009.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 6028.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 6046.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 6060.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 6071.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 6098.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 6113.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 6134.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 6152.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 6173.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 6187.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 6198.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 6206.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 6230.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 6251.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=------------------------------------------------] 3% ETA: 6272.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 4675.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 4686.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 4695.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 4712.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 4728.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 4744.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 4754.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 4765.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 4809.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 4845.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 4881.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 4898.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 4926.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 4951.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 4996.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5017.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5031.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5040.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5044.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5048.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5062.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5080.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5095.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5111.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5132.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5159.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5170.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5189.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5215.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5267.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5303.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5313.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5454.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5464.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5470.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5479.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5485.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5490.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5497.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5500.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5505.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5511.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5514.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5517.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5522.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5523.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5525.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5527.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5528.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5530.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5530.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5532.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5533.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5535.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5536.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5537.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5538.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5539.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5540.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5546.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5548.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5550.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5551.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5553.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5554.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5556.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5558.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5559.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5561.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5563.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5565.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5565.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5566.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5567.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5568.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5569.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5571.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5572.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5574.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5575.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5576.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5577.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5577.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5582.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 4% ETA: 5585.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4422.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4424.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4425.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4427.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4429.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4430.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4434.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4436.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4437.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4438.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4439.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4440.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4441.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4442.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4443.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4447.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4449.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4450.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4451.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4453.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4453.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4454.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4454.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4455.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4455.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4456.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4456.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4457.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4457.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4457.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4458.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4458.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4459.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4459.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4460.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4460.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4461.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4462.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4462.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4463.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4464.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4465.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4465.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4465.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4466.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4467.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4467.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4467.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4468.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4469.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4469.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4470.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4470.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4471.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4475.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4476.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4477.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4478.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4479.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4479.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4480.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4480.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4481.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4481.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4482.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4482.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4483.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4483.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4484.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4484.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4484.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4485.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4485.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4486.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4486.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4487.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4487.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==-----------------------------------------------] 5% ETA: 4488.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 6% ETA: 3701.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 6% ETA: 3702.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 6% ETA: 3702.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 6% ETA: 3703.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 6% ETA: 3704.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 6% ETA: 3705.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 6% ETA: 3706.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 6% ETA: 3706.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 6% ETA: 3707.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 6% ETA: 3708.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 6% ETA: 3709.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 6% ETA: 3709.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 6% ETA: 3709.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 6% ETA: 3713.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 6% ETA: 3714.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 6% ETA: 3714.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 6% ETA: 3715.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 6% ETA: 3716.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 6% ETA: 3716.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 6% ETA: 3716.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 6% ETA: 3718.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 6% ETA: 3719.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 6% ETA: 3719.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 6% ETA: 3720.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 6% ETA: 3722.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 6% ETA: 3723.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 6% ETA: 3724.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 6% ETA: 3725.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 6% ETA: 3725.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 6% ETA: 3726.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 6% ETA: 3726.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 6% ETA: 3728.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 6% ETA: 3728.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 6% ETA: 3729.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 6% ETA: 3730.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 6% ETA: 3731.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 6% ETA: 3732.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 6% ETA: 3732.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 6% ETA: 3737.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 6% ETA: 3740.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 6% ETA: 3741.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 6% ETA: 3742.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 6% ETA: 3742.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 6% ETA: 3743.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 6% ETA: 3744.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 6% ETA: 3744.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 6% ETA: 3745.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 6% ETA: 3746.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 6% ETA: 3746.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 6% ETA: 3747.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 6% ETA: 3748.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 6% ETA: 3748.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 6% ETA: 3750.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 6% ETA: 3750.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 6% ETA: 3751.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 6% ETA: 3752.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 6% ETA: 3752.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 6% ETA: 3753.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 6% ETA: 3754.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 7% ETA: 3184.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 7% ETA: 3184.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 7% ETA: 3184.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 7% ETA: 3187.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 7% ETA: 3188.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 7% ETA: 3189.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 7% ETA: 3189.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 7% ETA: 3190.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 7% ETA: 3190.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 7% ETA: 3191.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 7% ETA: 3191.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 7% ETA: 3191.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 7% ETA: 3191.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 7% ETA: 3192.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 7% ETA: 3192.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 7% ETA: 3193.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 7% ETA: 3193.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 7% ETA: 3194.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 7% ETA: 3194.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 7% ETA: 3194.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 7% ETA: 3195.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 7% ETA: 3195.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 7% ETA: 3196.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 7% ETA: 3196.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 7% ETA: 3196.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 7% ETA: 3197.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 7% ETA: 3197.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 7% ETA: 3197.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 7% ETA: 3198.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 7% ETA: 3199.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 7% ETA: 3199.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 7% ETA: 3200.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 7% ETA: 3200.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 7% ETA: 3201.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 7% ETA: 3201.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 7% ETA: 3201.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 7% ETA: 3202.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 7% ETA: 3202.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 7% ETA: 3202.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 7% ETA: 3203.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 7% ETA: 3203.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 7% ETA: 3203.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 7% ETA: 3204.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 7% ETA: 3204.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 7% ETA: 3204.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 7% ETA: 3207.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 7% ETA: 3208.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 7% ETA: 3209.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 7% ETA: 3209.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 7% ETA: 3209.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 7% ETA: 3210.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 7% ETA: 3210.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 7% ETA: 3211.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 7% ETA: 3211.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 7% ETA: 3211.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 7% ETA: 3212.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 7% ETA: 3212.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 7% ETA: 3213.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 7% ETA: 3214.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 7% ETA: 3214.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===----------------------------------------------] 7% ETA: 3216.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 8% ETA: 2784.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 8% ETA: 2784.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 8% ETA: 2785.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 8% ETA: 2785.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 8% ETA: 2786.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 8% ETA: 2787.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 8% ETA: 2787.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 8% ETA: 2787.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 8% ETA: 2787.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 8% ETA: 2788.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 8% ETA: 2788.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 8% ETA: 2789.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 8% ETA: 2789.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 8% ETA: 2789.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 8% ETA: 2789.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 8% ETA: 2790.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 8% ETA: 2790.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 8% ETA: 2793.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 8% ETA: 2794.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 8% ETA: 2794.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 8% ETA: 2795.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 8% ETA: 2796.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 8% ETA: 2796.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 8% ETA: 2797.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 8% ETA: 2797.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 8% ETA: 2797.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 8% ETA: 2798.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 8% ETA: 2798.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 8% ETA: 2798.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 8% ETA: 2798.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 8% ETA: 2799.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 8% ETA: 2799.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 8% ETA: 2800.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 8% ETA: 2801.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 8% ETA: 2802.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 8% ETA: 2802.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 8% ETA: 2803.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 8% ETA: 2803.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 8% ETA: 2803.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 8% ETA: 2804.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 8% ETA: 2804.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 8% ETA: 2805.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 8% ETA: 2805.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 8% ETA: 2806.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 8% ETA: 2806.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 8% ETA: 2807.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 8% ETA: 2807.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 8% ETA: 2811.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 8% ETA: 2812.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 8% ETA: 2812.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 8% ETA: 2813.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 8% ETA: 2813.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 8% ETA: 2813.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 9% ETA: 2474.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 9% ETA: 2474.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 9% ETA: 2474.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 9% ETA: 2475.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 9% ETA: 2475.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 9% ETA: 2475.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 9% ETA: 2476.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 9% ETA: 2476.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 9% ETA: 2476.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 9% ETA: 2477.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 9% ETA: 2477.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 9% ETA: 2477.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 9% ETA: 2478.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 9% ETA: 2478.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 9% ETA: 2479.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 9% ETA: 2479.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 9% ETA: 2479.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 9% ETA: 2479.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 9% ETA: 2480.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 9% ETA: 2480.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 9% ETA: 2481.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 9% ETA: 2481.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 9% ETA: 2482.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 9% ETA: 2482.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 9% ETA: 2482.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 9% ETA: 2483.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 9% ETA: 2483.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 9% ETA: 2483.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 9% ETA: 2485.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 9% ETA: 2485.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 9% ETA: 2486.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 9% ETA: 2486.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 9% ETA: 2486.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 9% ETA: 2487.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 9% ETA: 2487.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 9% ETA: 2487.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 9% ETA: 2488.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 9% ETA: 2488.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 9% ETA: 2488.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====---------------------------------------------] 9% ETA: 2488.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 10% ETA: 2215.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 10% ETA: 2215.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 10% ETA: 2216.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 10% ETA: 2216.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 10% ETA: 2216.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 10% ETA: 2216.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 10% ETA: 2216.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 10% ETA: 2216.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 10% ETA: 2217.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 10% ETA: 2217.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 10% ETA: 2217.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 10% ETA: 2217.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 10% ETA: 2218.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 10% ETA: 2218.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 10% ETA: 2218.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 10% ETA: 2218.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 10% ETA: 2219.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 10% ETA: 2219.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 10% ETA: 2219.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 10% ETA: 2220.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 10% ETA: 2220.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 10% ETA: 2221.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 10% ETA: 2221.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 10% ETA: 2221.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 10% ETA: 2221.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 10% ETA: 2222.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 10% ETA: 2222.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 10% ETA: 2222.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 10% ETA: 2222.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 10% ETA: 2225.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 10% ETA: 2225.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 11% ETA: 2001.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 11% ETA: 2001.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 11% ETA: 2001.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 11% ETA: 2002.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 11% ETA: 2002.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 11% ETA: 2002.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 11% ETA: 2003.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 11% ETA: 2003.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 11% ETA: 2003.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 11% ETA: 2003.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 11% ETA: 2003.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 11% ETA: 2003.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 11% ETA: 2004.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 11% ETA: 2004.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 11% ETA: 2004.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 11% ETA: 2004.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 11% ETA: 2005.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 11% ETA: 2005.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 11% ETA: 2005.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 11% ETA: 2005.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 11% ETA: 2006.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 11% ETA: 2006.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 11% ETA: 2006.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 11% ETA: 2006.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 11% ETA: 2007.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 11% ETA: 2007.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 11% ETA: 2008.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 11% ETA: 2008.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 11% ETA: 2008.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 11% ETA: 2008.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 11% ETA: 2008.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====-------------------------------------------] 11% ETA: 2009.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======------------------------------------------] 12% ETA: 1821.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======------------------------------------------] 12% ETA: 1821.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======------------------------------------------] 12% ETA: 1822.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======------------------------------------------] 12% ETA: 1822.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======------------------------------------------] 12% ETA: 1822.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======------------------------------------------] 12% ETA: 1824.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======------------------------------------------] 12% ETA: 1824.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======------------------------------------------] 12% ETA: 1824.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======------------------------------------------] 12% ETA: 1824.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======------------------------------------------] 12% ETA: 1825.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======------------------------------------------] 12% ETA: 1825.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======------------------------------------------] 12% ETA: 1826.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======------------------------------------------] 12% ETA: 1826.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======------------------------------------------] 12% ETA: 1826.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======------------------------------------------] 12% ETA: 1826.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======------------------------------------------] 12% ETA: 1826.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======------------------------------------------] 12% ETA: 1827.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======------------------------------------------] 12% ETA: 1827.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======------------------------------------------] 12% ETA: 1827.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======------------------------------------------] 12% ETA: 1827.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======------------------------------------------] 12% ETA: 1827.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======------------------------------------------] 12% ETA: 1828.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======------------------------------------------] 12% ETA: 1828.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======------------------------------------------] 12% ETA: 1829.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======------------------------------------------] 12% ETA: 1829.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======------------------------------------------] 13% ETA: 1669.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======------------------------------------------] 13% ETA: 1670.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======------------------------------------------] 13% ETA: 1670.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======------------------------------------------] 13% ETA: 1670.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======------------------------------------------] 13% ETA: 1670.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======------------------------------------------] 13% ETA: 1670.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======------------------------------------------] 13% ETA: 1671.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======------------------------------------------] 13% ETA: 1671.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======------------------------------------------] 13% ETA: 1671.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======------------------------------------------] 13% ETA: 1671.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======------------------------------------------] 13% ETA: 1671.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======------------------------------------------] 13% ETA: 1671.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======------------------------------------------] 13% ETA: 1672.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======------------------------------------------] 13% ETA: 1672.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======------------------------------------------] 13% ETA: 1672.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======------------------------------------------] 13% ETA: 1672.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======------------------------------------------] 13% ETA: 1672.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======------------------------------------------] 13% ETA: 1672.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======------------------------------------------] 13% ETA: 1672.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======------------------------------------------] 13% ETA: 1673.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======------------------------------------------] 13% ETA: 1676.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======-----------------------------------------] 14% ETA: 1538.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======-----------------------------------------] 14% ETA: 1539.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======-----------------------------------------] 14% ETA: 1539.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======-----------------------------------------] 14% ETA: 1539.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======-----------------------------------------] 14% ETA: 1539.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======-----------------------------------------] 14% ETA: 1539.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======-----------------------------------------] 14% ETA: 1540.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======-----------------------------------------] 14% ETA: 1540.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======-----------------------------------------] 14% ETA: 1540.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======-----------------------------------------] 14% ETA: 1540.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======-----------------------------------------] 14% ETA: 1541.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======-----------------------------------------] 14% ETA: 1541.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======-----------------------------------------] 14% ETA: 1541.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======-----------------------------------------] 14% ETA: 1541.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======-----------------------------------------] 14% ETA: 1542.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======-----------------------------------------] 14% ETA: 1542.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======-----------------------------------------] 14% ETA: 1542.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======-----------------------------------------] 14% ETA: 1542.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======-----------------------------------------] 14% ETA: 1543.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======-----------------------------------------] 15% ETA: 1423.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======-----------------------------------------] 15% ETA: 1423.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======-----------------------------------------] 15% ETA: 1423.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======-----------------------------------------] 15% ETA: 1424.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======-----------------------------------------] 15% ETA: 1424.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======-----------------------------------------] 15% ETA: 1424.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======-----------------------------------------] 15% ETA: 1424.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======-----------------------------------------] 15% ETA: 1424.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======-----------------------------------------] 15% ETA: 1424.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======-----------------------------------------] 15% ETA: 1424.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======-----------------------------------------] 15% ETA: 1425.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======-----------------------------------------] 15% ETA: 1426.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======-----------------------------------------] 15% ETA: 1426.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======-----------------------------------------] 15% ETA: 1426.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======-----------------------------------------] 15% ETA: 1426.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======-----------------------------------------] 15% ETA: 1426.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======-----------------------------------------] 15% ETA: 1426.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======-----------------------------------------] 15% ETA: 1427.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======-----------------------------------------] 15% ETA: 1427.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======-----------------------------------------] 15% ETA: 1427.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======-----------------------------------------] 15% ETA: 1427.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======-----------------------------------------] 15% ETA: 1428.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======-----------------------------------------] 15% ETA: 1428.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======-----------------------------------------] 15% ETA: 1428.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======-----------------------------------------] 15% ETA: 1428.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======-----------------------------------------] 15% ETA: 1430.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======-----------------------------------------] 15% ETA: 1431.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======-----------------------------------------] 15% ETA: 1431.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======-----------------------------------------] 15% ETA: 1431.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======-----------------------------------------] 15% ETA: 1431.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======-----------------------------------------] 15% ETA: 1431.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======-----------------------------------------] 15% ETA: 1432.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [========----------------------------------------] 16% ETA: 1326.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [========----------------------------------------] 16% ETA: 1326.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [========----------------------------------------] 16% ETA: 1327.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [========----------------------------------------] 16% ETA: 1327.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [========----------------------------------------] 16% ETA: 1327.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [========----------------------------------------] 16% ETA: 1327.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [========----------------------------------------] 16% ETA: 1328.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [========----------------------------------------] 16% ETA: 1329.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [========----------------------------------------] 16% ETA: 1329.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [========----------------------------------------] 16% ETA: 1329.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [========----------------------------------------] 16% ETA: 1330.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [========----------------------------------------] 16% ETA: 1330.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [========----------------------------------------] 16% ETA: 1330.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [========----------------------------------------] 16% ETA: 1330.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [========----------------------------------------] 16% ETA: 1331.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [========----------------------------------------] 17% ETA: 1238.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [========----------------------------------------] 17% ETA: 1238.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [========----------------------------------------] 17% ETA: 1238.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [========----------------------------------------] 17% ETA: 1238.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [========----------------------------------------] 17% ETA: 1238.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [========----------------------------------------] 17% ETA: 1239.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [========----------------------------------------] 17% ETA: 1239.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [========----------------------------------------] 17% ETA: 1239.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [========----------------------------------------] 17% ETA: 1239.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [========----------------------------------------] 17% ETA: 1239.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [========----------------------------------------] 17% ETA: 1239.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [========----------------------------------------] 17% ETA: 1240.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [========----------------------------------------] 17% ETA: 1240.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [========----------------------------------------] 17% ETA: 1240.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [========----------------------------------------] 17% ETA: 1240.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=========---------------------------------------] 18% ETA: 1157.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=========---------------------------------------] 18% ETA: 1157.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=========---------------------------------------] 18% ETA: 1157.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=========---------------------------------------] 18% ETA: 1158.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=========---------------------------------------] 18% ETA: 1158.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=========---------------------------------------] 18% ETA: 1158.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=========---------------------------------------] 18% ETA: 1158.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=========---------------------------------------] 18% ETA: 1158.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=========---------------------------------------] 18% ETA: 1158.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=========---------------------------------------] 18% ETA: 1158.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=========---------------------------------------] 18% ETA: 1159.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=========---------------------------------------] 18% ETA: 1159.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=========---------------------------------------] 18% ETA: 1160.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=========---------------------------------------] 18% ETA: 1160.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=========---------------------------------------] 18% ETA: 1160.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=========---------------------------------------] 18% ETA: 1160.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=========---------------------------------------] 18% ETA: 1160.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=========---------------------------------------] 18% ETA: 1160.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=========---------------------------------------] 19% ETA: 1086.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=========---------------------------------------] 19% ETA: 1086.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=========---------------------------------------] 19% ETA: 1086.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=========---------------------------------------] 19% ETA: 1086.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=========---------------------------------------] 19% ETA: 1086.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=========---------------------------------------] 19% ETA: 1086.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=========---------------------------------------] 19% ETA: 1086.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=========---------------------------------------] 19% ETA: 1086.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=========---------------------------------------] 19% ETA: 1087.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=========---------------------------------------] 19% ETA: 1087.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=========---------------------------------------] 19% ETA: 1087.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=========---------------------------------------] 19% ETA: 1087.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=========---------------------------------------] 19% ETA: 1087.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=========---------------------------------------] 19% ETA: 1087.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=========---------------------------------------] 19% ETA: 1087.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=========---------------------------------------] 19% ETA: 1087.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=========---------------------------------------] 19% ETA: 1088.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==========--------------------------------------] 20% ETA: 1021.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==========--------------------------------------] 20% ETA: 1021.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==========--------------------------------------] 20% ETA: 1021.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==========--------------------------------------] 20% ETA: 1022.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==========--------------------------------------] 20% ETA: 1022.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==========--------------------------------------] 20% ETA: 1022.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==========---------------------------------------] 21% ETA: 961.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==========---------------------------------------] 21% ETA: 961.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==========---------------------------------------] 21% ETA: 961.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==========---------------------------------------] 21% ETA: 961.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==========---------------------------------------] 21% ETA: 961.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==========---------------------------------------] 21% ETA: 962.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==========---------------------------------------] 21% ETA: 962.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==========---------------------------------------] 21% ETA: 962.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==========---------------------------------------] 21% ETA: 962.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==========---------------------------------------] 21% ETA: 962.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==========---------------------------------------] 21% ETA: 962.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==========---------------------------------------] 21% ETA: 962.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===========--------------------------------------] 22% ETA: 907.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===========--------------------------------------] 22% ETA: 908.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===========--------------------------------------] 22% ETA: 908.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===========--------------------------------------] 22% ETA: 908.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===========--------------------------------------] 22% ETA: 908.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===========--------------------------------------] 22% ETA: 908.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===========--------------------------------------] 22% ETA: 908.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===========--------------------------------------] 22% ETA: 908.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===========--------------------------------------] 22% ETA: 908.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===========--------------------------------------] 22% ETA: 908.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===========--------------------------------------] 22% ETA: 909.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===========--------------------------------------] 22% ETA: 909.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===========--------------------------------------] 22% ETA: 909.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===========--------------------------------------] 22% ETA: 909.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===========--------------------------------------] 22% ETA: 909.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===========--------------------------------------] 22% ETA: 909.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===========--------------------------------------] 23% ETA: 858.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===========--------------------------------------] 23% ETA: 859.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===========--------------------------------------] 23% ETA: 859.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===========--------------------------------------] 23% ETA: 859.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===========--------------------------------------] 23% ETA: 859.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===========--------------------------------------] 23% ETA: 859.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===========--------------------------------------] 23% ETA: 859.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===========--------------------------------------] 23% ETA: 860.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===========--------------------------------------] 23% ETA: 860.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===========--------------------------------------] 23% ETA: 860.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===========--------------------------------------] 23% ETA: 861.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===========--------------------------------------] 23% ETA: 861.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===========--------------------------------------] 23% ETA: 861.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===========--------------------------------------] 23% ETA: 861.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===========--------------------------------------] 23% ETA: 863.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===========--------------------------------------] 23% ETA: 864.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===========--------------------------------------] 23% ETA: 864.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [============-------------------------------------] 24% ETA: 817.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [============-------------------------------------] 24% ETA: 817.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [============-------------------------------------] 24% ETA: 817.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [============-------------------------------------] 24% ETA: 818.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [============-------------------------------------] 24% ETA: 818.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [============-------------------------------------] 24% ETA: 818.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [============-------------------------------------] 24% ETA: 818.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [============-------------------------------------] 24% ETA: 818.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [============-------------------------------------] 24% ETA: 818.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [============-------------------------------------] 24% ETA: 818.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [============-------------------------------------] 24% ETA: 818.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [============-------------------------------------] 24% ETA: 818.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [============-------------------------------------] 24% ETA: 819.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [============-------------------------------------] 24% ETA: 819.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [============-------------------------------------] 24% ETA: 819.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [============-------------------------------------] 24% ETA: 819.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [============-------------------------------------] 24% ETA: 819.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [============-------------------------------------] 25% ETA: 776.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [============-------------------------------------] 25% ETA: 776.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [============-------------------------------------] 25% ETA: 776.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [============-------------------------------------] 25% ETA: 776.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [============-------------------------------------] 25% ETA: 776.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [============-------------------------------------] 25% ETA: 777.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [============-------------------------------------] 25% ETA: 777.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [============-------------------------------------] 25% ETA: 777.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [============-------------------------------------] 25% ETA: 777.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [============-------------------------------------] 25% ETA: 777.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [============-------------------------------------] 25% ETA: 777.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [============-------------------------------------] 25% ETA: 777.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [============-------------------------------------] 25% ETA: 777.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [============-------------------------------------] 25% ETA: 778.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [============-------------------------------------] 25% ETA: 778.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [============-------------------------------------] 25% ETA: 778.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [============-------------------------------------] 25% ETA: 778.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [============-------------------------------------] 25% ETA: 778.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [============-------------------------------------] 25% ETA: 778.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [============-------------------------------------] 25% ETA: 778.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [============-------------------------------------] 25% ETA: 778.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=============------------------------------------] 26% ETA: 738.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=============------------------------------------] 26% ETA: 738.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=============------------------------------------] 26% ETA: 739.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=============------------------------------------] 26% ETA: 739.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=============------------------------------------] 26% ETA: 739.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=============------------------------------------] 26% ETA: 739.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=============------------------------------------] 26% ETA: 739.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=============------------------------------------] 26% ETA: 739.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=============------------------------------------] 26% ETA: 739.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=============------------------------------------] 26% ETA: 739.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=============------------------------------------] 26% ETA: 739.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=============------------------------------------] 26% ETA: 739.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=============------------------------------------] 26% ETA: 740.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=============------------------------------------] 26% ETA: 740.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=============------------------------------------] 27% ETA: 703.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=============------------------------------------] 27% ETA: 703.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=============------------------------------------] 27% ETA: 703.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=============------------------------------------] 27% ETA: 703.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=============------------------------------------] 27% ETA: 703.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=============------------------------------------] 27% ETA: 703.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=============------------------------------------] 27% ETA: 703.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=============------------------------------------] 27% ETA: 704.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=============------------------------------------] 27% ETA: 704.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=============------------------------------------] 27% ETA: 704.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=============------------------------------------] 27% ETA: 704.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=============------------------------------------] 27% ETA: 704.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=============------------------------------------] 27% ETA: 704.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=============------------------------------------] 27% ETA: 704.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=============------------------------------------] 27% ETA: 704.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=============------------------------------------] 27% ETA: 705.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=============------------------------------------] 27% ETA: 705.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=============------------------------------------] 27% ETA: 705.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=============------------------------------------] 27% ETA: 705.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==============-----------------------------------] 28% ETA: 670.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==============-----------------------------------] 28% ETA: 671.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==============-----------------------------------] 28% ETA: 671.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==============-----------------------------------] 28% ETA: 671.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==============-----------------------------------] 28% ETA: 671.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==============-----------------------------------] 28% ETA: 671.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==============-----------------------------------] 28% ETA: 671.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==============-----------------------------------] 28% ETA: 671.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==============-----------------------------------] 28% ETA: 671.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==============-----------------------------------] 28% ETA: 672.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==============-----------------------------------] 28% ETA: 672.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==============-----------------------------------] 28% ETA: 672.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==============-----------------------------------] 28% ETA: 672.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==============-----------------------------------] 28% ETA: 672.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==============-----------------------------------] 28% ETA: 672.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==============-----------------------------------] 28% ETA: 672.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==============-----------------------------------] 28% ETA: 640.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==============-----------------------------------] 28% ETA: 640.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==============-----------------------------------] 28% ETA: 640.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==============-----------------------------------] 28% ETA: 640.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==============-----------------------------------] 28% ETA: 640.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==============-----------------------------------] 28% ETA: 640.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==============-----------------------------------] 28% ETA: 641.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==============-----------------------------------] 28% ETA: 641.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==============-----------------------------------] 28% ETA: 641.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==============-----------------------------------] 28% ETA: 642.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==============-----------------------------------] 28% ETA: 642.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==============-----------------------------------] 28% ETA: 642.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==============-----------------------------------] 28% ETA: 642.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==============-----------------------------------] 28% ETA: 642.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==============-----------------------------------] 28% ETA: 642.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==============-----------------------------------] 28% ETA: 642.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==============-----------------------------------] 28% ETA: 643.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==============-----------------------------------] 28% ETA: 643.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==============-----------------------------------] 28% ETA: 643.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==============-----------------------------------] 28% ETA: 643.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==============-----------------------------------] 28% ETA: 643.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==============-----------------------------------] 28% ETA: 643.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==============-----------------------------------] 28% ETA: 643.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===============----------------------------------] 30% ETA: 613.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===============----------------------------------] 30% ETA: 613.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===============----------------------------------] 30% ETA: 613.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===============----------------------------------] 30% ETA: 613.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===============----------------------------------] 30% ETA: 614.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===============----------------------------------] 30% ETA: 614.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===============----------------------------------] 30% ETA: 614.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===============----------------------------------] 30% ETA: 614.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===============----------------------------------] 30% ETA: 614.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===============----------------------------------] 30% ETA: 615.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===============----------------------------------] 30% ETA: 615.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===============----------------------------------] 30% ETA: 615.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===============----------------------------------] 30% ETA: 615.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===============----------------------------------] 30% ETA: 615.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===============----------------------------------] 30% ETA: 615.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===============----------------------------------] 30% ETA: 615.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===============----------------------------------] 30% ETA: 615.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===============----------------------------------] 30% ETA: 616.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===============----------------------------------] 31% ETA: 587.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===============----------------------------------] 31% ETA: 587.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===============----------------------------------] 31% ETA: 587.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===============----------------------------------] 31% ETA: 588.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===============----------------------------------] 31% ETA: 588.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===============----------------------------------] 31% ETA: 588.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===============----------------------------------] 31% ETA: 588.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===============----------------------------------] 31% ETA: 588.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===============----------------------------------] 31% ETA: 588.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===============----------------------------------] 31% ETA: 588.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===============----------------------------------] 31% ETA: 588.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===============----------------------------------] 31% ETA: 588.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===============----------------------------------] 31% ETA: 589.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===============----------------------------------] 31% ETA: 589.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===============----------------------------------] 31% ETA: 589.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===============----------------------------------] 31% ETA: 589.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===============----------------------------------] 31% ETA: 589.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [================---------------------------------] 32% ETA: 563.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [================---------------------------------] 32% ETA: 563.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [================---------------------------------] 32% ETA: 563.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [================---------------------------------] 32% ETA: 563.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [================---------------------------------] 32% ETA: 563.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [================---------------------------------] 32% ETA: 563.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [================---------------------------------] 32% ETA: 563.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [================---------------------------------] 32% ETA: 563.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [================---------------------------------] 32% ETA: 563.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [================---------------------------------] 32% ETA: 564.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [================---------------------------------] 32% ETA: 564.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [================---------------------------------] 32% ETA: 564.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [================---------------------------------] 32% ETA: 564.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [================---------------------------------] 32% ETA: 564.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [================---------------------------------] 32% ETA: 564.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [================---------------------------------] 32% ETA: 564.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [================---------------------------------] 32% ETA: 564.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [================---------------------------------] 32% ETA: 564.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [================---------------------------------] 32% ETA: 565.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [================---------------------------------] 32% ETA: 565.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [================---------------------------------] 32% ETA: 565.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [================---------------------------------] 33% ETA: 540.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [================---------------------------------] 33% ETA: 540.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [================---------------------------------] 33% ETA: 540.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [================---------------------------------] 33% ETA: 541.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [================---------------------------------] 33% ETA: 541.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [================---------------------------------] 33% ETA: 541.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [================---------------------------------] 33% ETA: 541.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [================---------------------------------] 33% ETA: 541.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [================---------------------------------] 33% ETA: 541.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [================---------------------------------] 33% ETA: 541.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [================---------------------------------] 33% ETA: 542.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [================---------------------------------] 33% ETA: 542.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [================---------------------------------] 33% ETA: 542.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [================---------------------------------] 33% ETA: 542.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [================---------------------------------] 33% ETA: 542.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [================---------------------------------] 33% ETA: 542.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [================---------------------------------] 33% ETA: 542.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [================---------------------------------] 33% ETA: 543.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [================---------------------------------] 33% ETA: 543.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=================--------------------------------] 34% ETA: 520.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=================--------------------------------] 34% ETA: 520.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=================--------------------------------] 34% ETA: 520.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=================--------------------------------] 34% ETA: 520.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=================--------------------------------] 34% ETA: 520.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=================--------------------------------] 34% ETA: 520.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=================--------------------------------] 34% ETA: 520.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=================--------------------------------] 34% ETA: 520.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=================--------------------------------] 34% ETA: 520.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=================--------------------------------] 34% ETA: 521.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=================--------------------------------] 34% ETA: 521.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=================--------------------------------] 34% ETA: 521.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=================--------------------------------] 34% ETA: 521.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=================--------------------------------] 34% ETA: 521.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=================--------------------------------] 34% ETA: 521.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=================--------------------------------] 34% ETA: 521.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=================--------------------------------] 34% ETA: 521.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=================--------------------------------] 34% ETA: 521.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=================--------------------------------] 34% ETA: 522.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=================--------------------------------] 34% ETA: 522.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=================--------------------------------] 34% ETA: 522.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=================--------------------------------] 34% ETA: 522.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=================--------------------------------] 34% ETA: 522.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=================--------------------------------] 34% ETA: 522.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=================--------------------------------] 35% ETA: 500.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=================--------------------------------] 35% ETA: 500.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=================--------------------------------] 35% ETA: 500.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=================--------------------------------] 35% ETA: 500.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=================--------------------------------] 35% ETA: 500.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=================--------------------------------] 35% ETA: 500.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=================--------------------------------] 35% ETA: 500.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=================--------------------------------] 35% ETA: 501.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=================--------------------------------] 35% ETA: 501.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=================--------------------------------] 35% ETA: 501.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=================--------------------------------] 35% ETA: 501.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=================--------------------------------] 35% ETA: 501.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=================--------------------------------] 35% ETA: 501.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=================--------------------------------] 35% ETA: 501.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=================--------------------------------] 35% ETA: 501.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=================--------------------------------] 35% ETA: 501.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=================--------------------------------] 35% ETA: 501.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=================--------------------------------] 35% ETA: 502.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=================--------------------------------] 35% ETA: 502.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=================--------------------------------] 35% ETA: 502.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==================-------------------------------] 36% ETA: 480.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==================-------------------------------] 36% ETA: 480.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==================-------------------------------] 36% ETA: 481.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==================-------------------------------] 36% ETA: 481.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==================-------------------------------] 36% ETA: 481.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==================-------------------------------] 36% ETA: 481.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==================-------------------------------] 36% ETA: 481.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==================-------------------------------] 36% ETA: 481.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==================-------------------------------] 36% ETA: 482.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==================-------------------------------] 36% ETA: 482.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==================-------------------------------] 36% ETA: 482.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==================-------------------------------] 36% ETA: 482.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==================-------------------------------] 36% ETA: 482.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==================-------------------------------] 36% ETA: 482.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==================-------------------------------] 37% ETA: 462.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==================-------------------------------] 37% ETA: 462.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==================-------------------------------] 37% ETA: 462.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==================-------------------------------] 37% ETA: 462.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==================-------------------------------] 37% ETA: 462.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==================-------------------------------] 37% ETA: 462.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==================-------------------------------] 37% ETA: 462.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==================-------------------------------] 37% ETA: 463.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==================-------------------------------] 37% ETA: 463.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==================-------------------------------] 37% ETA: 463.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==================-------------------------------] 37% ETA: 463.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==================-------------------------------] 37% ETA: 463.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==================-------------------------------] 37% ETA: 463.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==================-------------------------------] 37% ETA: 464.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==================-------------------------------] 37% ETA: 464.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==================-------------------------------] 37% ETA: 464.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==================-------------------------------] 37% ETA: 464.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==================-------------------------------] 37% ETA: 464.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==================-------------------------------] 37% ETA: 464.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===================------------------------------] 38% ETA: 445.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===================------------------------------] 38% ETA: 445.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===================------------------------------] 38% ETA: 445.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===================------------------------------] 38% ETA: 445.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===================------------------------------] 38% ETA: 445.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===================------------------------------] 38% ETA: 445.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===================------------------------------] 38% ETA: 445.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===================------------------------------] 38% ETA: 446.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===================------------------------------] 38% ETA: 446.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===================------------------------------] 38% ETA: 446.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===================------------------------------] 38% ETA: 446.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===================------------------------------] 38% ETA: 446.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===================------------------------------] 38% ETA: 446.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===================------------------------------] 38% ETA: 446.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===================------------------------------] 39% ETA: 428.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===================------------------------------] 39% ETA: 428.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===================------------------------------] 39% ETA: 428.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===================------------------------------] 39% ETA: 428.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===================------------------------------] 39% ETA: 428.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===================------------------------------] 39% ETA: 428.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===================------------------------------] 39% ETA: 428.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===================------------------------------] 39% ETA: 429.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===================------------------------------] 39% ETA: 429.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===================------------------------------] 39% ETA: 429.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===================------------------------------] 39% ETA: 429.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===================------------------------------] 39% ETA: 429.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===================------------------------------] 39% ETA: 429.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====================-----------------------------] 40% ETA: 411.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====================-----------------------------] 40% ETA: 412.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====================-----------------------------] 40% ETA: 412.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====================-----------------------------] 40% ETA: 412.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====================-----------------------------] 40% ETA: 412.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====================-----------------------------] 40% ETA: 412.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====================-----------------------------] 41% ETA: 395.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====================-----------------------------] 41% ETA: 396.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====================-----------------------------] 41% ETA: 396.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====================-----------------------------] 41% ETA: 396.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====================-----------------------------] 41% ETA: 396.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====================-----------------------------] 41% ETA: 396.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====================-----------------------------] 41% ETA: 396.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====================----------------------------] 42% ETA: 380.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====================----------------------------] 42% ETA: 380.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====================----------------------------] 42% ETA: 380.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====================----------------------------] 42% ETA: 380.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====================----------------------------] 42% ETA: 381.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====================----------------------------] 42% ETA: 381.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====================----------------------------] 42% ETA: 381.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====================----------------------------] 43% ETA: 365.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====================----------------------------] 43% ETA: 366.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====================----------------------------] 43% ETA: 366.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====================----------------------------] 43% ETA: 366.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====================----------------------------] 43% ETA: 366.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====================----------------------------] 43% ETA: 366.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====================----------------------------] 43% ETA: 366.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====================----------------------------] 43% ETA: 366.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=====================----------------------------] 43% ETA: 366.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======================---------------------------] 44% ETA: 352.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======================---------------------------] 44% ETA: 352.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======================---------------------------] 44% ETA: 352.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======================---------------------------] 44% ETA: 352.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======================---------------------------] 44% ETA: 352.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======================---------------------------] 44% ETA: 352.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======================---------------------------] 44% ETA: 352.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======================---------------------------] 44% ETA: 352.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======================---------------------------] 44% ETA: 353.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======================---------------------------] 44% ETA: 353.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======================---------------------------] 45% ETA: 339.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======================---------------------------] 45% ETA: 339.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======================---------------------------] 45% ETA: 339.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======================---------------------------] 45% ETA: 339.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======================---------------------------] 45% ETA: 339.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======================---------------------------] 45% ETA: 339.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======================---------------------------] 45% ETA: 339.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======================---------------------------] 45% ETA: 339.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======================---------------------------] 45% ETA: 340.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======================--------------------------] 46% ETA: 326.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======================--------------------------] 46% ETA: 326.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======================--------------------------] 46% ETA: 326.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======================--------------------------] 46% ETA: 326.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======================--------------------------] 46% ETA: 327.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======================--------------------------] 46% ETA: 327.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======================--------------------------] 46% ETA: 327.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======================--------------------------] 47% ETA: 314.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======================--------------------------] 47% ETA: 314.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======================--------------------------] 47% ETA: 314.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======================--------------------------] 47% ETA: 314.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======================--------------------------] 47% ETA: 314.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======================--------------------------] 47% ETA: 314.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======================--------------------------] 47% ETA: 314.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======================--------------------------] 47% ETA: 315.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [========================-------------------------] 48% ETA: 302.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [========================-------------------------] 48% ETA: 302.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [========================-------------------------] 48% ETA: 302.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [========================-------------------------] 48% ETA: 303.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [========================-------------------------] 48% ETA: 303.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [========================-------------------------] 49% ETA: 291.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [========================-------------------------] 49% ETA: 291.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [========================-------------------------] 49% ETA: 291.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [========================-------------------------] 49% ETA: 291.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [========================-------------------------] 49% ETA: 291.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [========================-------------------------] 49% ETA: 291.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=========================------------------------] 50% ETA: 280.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=========================------------------------] 50% ETA: 280.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=========================------------------------] 50% ETA: 280.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=========================------------------------] 50% ETA: 280.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=========================------------------------] 51% ETA: 269.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=========================------------------------] 51% ETA: 269.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=========================------------------------] 51% ETA: 269.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=========================------------------------] 51% ETA: 270.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=========================------------------------] 51% ETA: 270.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=========================------------------------] 51% ETA: 270.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=========================------------------------] 52% ETA: 259.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=========================------------------------] 52% ETA: 259.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=========================------------------------] 52% ETA: 259.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=========================------------------------] 52% ETA: 259.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=========================------------------------] 52% ETA: 260.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=========================------------------------] 52% ETA: 260.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==========================-----------------------] 53% ETA: 249.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==========================-----------------------] 53% ETA: 250.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==========================-----------------------] 53% ETA: 250.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==========================-----------------------] 53% ETA: 250.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==========================-----------------------] 53% ETA: 250.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==========================-----------------------] 53% ETA: 250.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==========================-----------------------] 53% ETA: 250.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==========================-----------------------] 53% ETA: 250.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==========================-----------------------] 54% ETA: 240.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==========================-----------------------] 54% ETA: 240.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==========================-----------------------] 54% ETA: 240.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==========================-----------------------] 54% ETA: 241.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==========================-----------------------] 54% ETA: 241.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==========================-----------------------] 54% ETA: 241.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===========================----------------------] 55% ETA: 231.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===========================----------------------] 55% ETA: 231.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===========================----------------------] 55% ETA: 231.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===========================----------------------] 55% ETA: 232.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===========================----------------------] 55% ETA: 232.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===========================----------------------] 56% ETA: 222.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===========================----------------------] 56% ETA: 223.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===========================----------------------] 56% ETA: 223.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===========================----------------------] 56% ETA: 223.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===========================----------------------] 56% ETA: 223.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===========================----------------------] 56% ETA: 223.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [============================---------------------] 56% ETA: 214.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [============================---------------------] 56% ETA: 214.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [============================---------------------] 56% ETA: 214.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [============================---------------------] 56% ETA: 214.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [============================---------------------] 56% ETA: 214.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [============================---------------------] 56% ETA: 215.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [============================---------------------] 57% ETA: 206.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [============================---------------------] 57% ETA: 206.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [============================---------------------] 57% ETA: 206.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [============================---------------------] 57% ETA: 206.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [============================---------------------] 57% ETA: 206.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [============================---------------------] 57% ETA: 206.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=============================--------------------] 59% ETA: 198.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=============================--------------------] 59% ETA: 198.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=============================--------------------] 59% ETA: 198.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=============================--------------------] 59% ETA: 198.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=============================--------------------] 60% ETA: 190.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=============================--------------------] 60% ETA: 191.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=============================--------------------] 60% ETA: 191.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=============================--------------------] 60% ETA: 191.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=============================--------------------] 60% ETA: 191.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=============================--------------------] 60% ETA: 191.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=============================--------------------] 60% ETA: 191.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=============================--------------------] 60% ETA: 191.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=============================--------------------] 60% ETA: 191.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==============================-------------------] 61% ETA: 183.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==============================-------------------] 61% ETA: 184.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==============================-------------------] 61% ETA: 184.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==============================-------------------] 61% ETA: 184.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==============================-------------------] 61% ETA: 184.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==============================-------------------] 61% ETA: 184.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==============================-------------------] 62% ETA: 176.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==============================-------------------] 62% ETA: 176.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==============================-------------------] 62% ETA: 177.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==============================-------------------] 62% ETA: 177.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==============================-------------------] 62% ETA: 177.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==============================-------------------] 62% ETA: 177.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==============================-------------------] 62% ETA: 177.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==============================-------------------] 62% ETA: 177.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===============================------------------] 63% ETA: 170.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===============================------------------] 63% ETA: 170.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===============================------------------] 63% ETA: 170.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===============================------------------] 63% ETA: 170.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===============================------------------] 63% ETA: 170.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===============================------------------] 64% ETA: 163.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===============================------------------] 64% ETA: 163.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===============================------------------] 64% ETA: 163.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===============================------------------] 64% ETA: 163.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [================================-----------------] 65% ETA: 156.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [================================-----------------] 65% ETA: 156.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [================================-----------------] 65% ETA: 156.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [================================-----------------] 65% ETA: 156.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [================================-----------------] 65% ETA: 157.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [================================-----------------] 66% ETA: 150.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [================================-----------------] 66% ETA: 150.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [================================-----------------] 66% ETA: 150.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [================================-----------------] 66% ETA: 150.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [================================-----------------] 66% ETA: 150.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=================================----------------] 67% ETA: 144.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=================================----------------] 67% ETA: 144.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=================================----------------] 67% ETA: 144.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=================================----------------] 67% ETA: 144.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=================================----------------] 67% ETA: 144.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=================================----------------] 67% ETA: 144.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=================================----------------] 67% ETA: 144.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=================================----------------] 67% ETA: 144.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=================================----------------] 68% ETA: 138.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=================================----------------] 68% ETA: 138.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=================================----------------] 68% ETA: 138.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=================================----------------] 68% ETA: 138.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=================================----------------] 68% ETA: 138.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==================================---------------] 69% ETA: 132.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==================================---------------] 69% ETA: 132.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==================================---------------] 69% ETA: 132.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==================================---------------] 70% ETA: 126.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==================================---------------] 70% ETA: 126.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==================================---------------] 70% ETA: 126.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===================================--------------] 71% ETA: 120.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===================================--------------] 71% ETA: 120.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===================================--------------] 72% ETA: 115.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===================================--------------] 72% ETA: 115.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===================================--------------] 72% ETA: 115.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====================================-------------] 73% ETA: 109.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====================================-------------] 73% ETA: 109.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====================================-------------] 73% ETA: 110.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====================================-------------] 74% ETA: 104.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====================================-------------] 74% ETA: 104.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [====================================-------------] 74% ETA: 104.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======================================------------] 75% ETA: 99.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======================================------------] 75% ETA: 99.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======================================------------] 75% ETA: 99.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======================================------------] 75% ETA: 99.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======================================------------] 76% ETA: 94.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======================================------------] 76% ETA: 94.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======================================------------] 76% ETA: 94.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [======================================------------] 76% ETA: 94.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======================================-----------] 77% ETA: 89.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======================================-----------] 77% ETA: 89.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======================================-----------] 78% ETA: 84.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======================================-----------] 78% ETA: 84.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=======================================-----------] 78% ETA: 84.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [========================================----------] 79% ETA: 79.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [========================================----------] 79% ETA: 80.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [========================================----------] 79% ETA: 80.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [========================================----------] 80% ETA: 75.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [========================================----------] 80% ETA: 75.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [========================================----------] 80% ETA: 75.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=========================================---------] 81% ETA: 70.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=========================================---------] 81% ETA: 70.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=========================================---------] 82% ETA: 66.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=========================================---------] 82% ETA: 66.5 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==========================================--------] 83% ETA: 62.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==========================================--------] 83% ETA: 62.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==========================================--------] 83% ETA: 62.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==========================================--------] 84% ETA: 57.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==========================================--------] 84% ETA: 57.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===========================================-------] 85% ETA: 53.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===========================================-------] 85% ETA: 53.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===========================================-------] 86% ETA: 49.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [============================================------] 87% ETA: 45.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [============================================------] 88% ETA: 41.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [============================================------] 88% ETA: 41.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=============================================-----] 89% ETA: 37.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=============================================-----] 90% ETA: 34.0 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==============================================----] 91% ETA: 30.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==============================================----] 91% ETA: 30.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==============================================----] 92% ETA: 26.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==============================================----] 92% ETA: 26.8 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===============================================---] 93% ETA: 23.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [===============================================---] 94% ETA: 19.7 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [================================================--] 95% ETA: 16.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [================================================--] 96% ETA: 12.9 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [=================================================--] 97% ETA: 9.6 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==================================================-] 98% ETA: 6.3 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==================================================-] 98% ETA: 6.4 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==================================================-] 99% ETA: 3.1 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==================================================-] 99% ETA: 3.2 seconds
+Downloading electron-v42.3.0-win32-x64.zip: [==================================================] 100% ETA: 0.0 seconds
+(node:78824) [DEP0147] DeprecationWarning: In future versions of Node.js, fs.rmdir(path, { recursive: true }) will be removed. Use fs.rm(path, { recursive: true }) instead
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+An unhandled rejection has occurred inside Forge:
+Error: Failed with exit code: 1
+Output:
+Fatal error: Unable to set icon
+at ChildProcess.<anonymous> (C:\vaxplan\node_modules\electron-winstaller\lib\spawn-promise.js:48:24)
+    at ChildProcess.emit (node:events:518:28)
+    at ChildProcess.emit (node:domain:488:12)
+    at maybeClose (node:internal/child_process:1105:16)
+    at Socket.<anonymous> (node:internal/child_process:457:11)
+    at Socket.emit (node:events:530:35)
+    at Socket.emit (node:domain:488:12)
+    at Pipe.<anonymous> (node:net:337:12)
+C:\vaxplan\scripts\Build-Windows.ps1 : electron-forge make failed
+At C:\vaxplan\scripts\Build-Windows.ps1:120 char:28
++ ... ASTEXITCODE -ne 0) { Write-Error "electron-forge make failed"; exit 1 ...
++                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (:) [Write-Error], WriteErrorException
+    + FullyQualifiedErrorId : Microsoft.PowerShell.Commands.WriteErrorException,Build-Windows.ps1
+
+PS C:\vaxplan>

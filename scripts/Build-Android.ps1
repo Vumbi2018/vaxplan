@@ -4,7 +4,7 @@
   
 .DESCRIPTION
   Builds a debug APK for VaxPlan using Capacitor + Android Gradle.
-  Requires: Node.js, Java 17+, Android SDK (with API 34 build tools).
+  Requires: Node.js, Java 21 (JDK 21), Android SDK (with API 34 build tools).
   Modified to use safe ASCII characters to prevent byte parsing corruption under standard Windows PowerShell.
 
 .EXAMPLE
@@ -33,7 +33,7 @@ if (-not (Get-Command "node" -ErrorAction SilentlyContinue)) {
 }
 
 if (-not (Get-Command "java" -ErrorAction SilentlyContinue)) {
-  Write-Error "Java 17+ is required. Install from https://adoptium.net"
+  Write-Error "Java 21 (JDK 21) is required. Install Temurin 21 from https://adoptium.net"
   exit 1
 }
 
