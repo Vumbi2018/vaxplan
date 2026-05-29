@@ -64,6 +64,7 @@ import type {
   Tenant,
   Microplan,
 } from "@shared/schema";
+import { isAtLeastDaysAhead, getMinScheduleDateInputValue } from "@shared/schedulingDates";
 
 type StaffingRow = {
   role: string;
@@ -222,15 +223,7 @@ export default function MicroplanBuilder({ prePlanType }: MicroplanBuilderProps 
 
   // STEP 4 States (Day Schedules)
   const [dayNumber, setDayNumber] = useState(1);
-  const [dayDate, setDayDate] = useState(() => {
-    // Default to UTC today + 7 so the picked day is a UTC calendar date that
-    // satisfies the server's UTC lead-time rule (mixing local setDate with a UTC
-    // toISOString can shift the default a day on negative-offset clients).
-    const d = new Date();
-    d.setUTCHours(0, 0, 0, 0);
-    d.setUTCDate(d.getUTCDate() + 7);
-    return d.toISOString().split("T")[0];
-  });
+  const [dayDate, setDayDate] = useState(() => getMinScheduleDateInputValue());
   const [visitedVillages, setVisitedVillages] = useState<number[]>([]);
   const [dayDistance, setDayDistance] = useState("15");
   const [dayFuel, setDayFuel] = useState("5");
@@ -256,18 +249,7 @@ export default function MicroplanBuilder({ prePlanType }: MicroplanBuilderProps 
   // Validate that the planned date is at least 7 days ahead
   const isDateValid = useMemo(() => {
     if (!dayDate) return false;
-    // Compare in UTC calendar days: the date input value is a YYYY-MM-DD string
-    // that parses as UTC midnight and is submitted as such, and the server
-    // enforces lead time in UTC. Local-time math (getDate/setHours) on a
-    // UTC-midnight date shifts it back a day on negative-offset clients and
-    // wrongly rejects the valid UTC today+7 default.
-    const selected = new Date(dayDate);
-    if (isNaN(selected.getTime())) return false;
-    const selectedMidnight = Date.UTC(selected.getUTCFullYear(), selected.getUTCMonth(), selected.getUTCDate());
-    const now = new Date();
-    const todayMidnight = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-    const diffDays = Math.round((selectedMidnight - todayMidnight) / (1000 * 60 * 60 * 24));
-    return diffDays >= 7;
+    return isAtLeastDaysAhead(dayDate);
   }, [dayDate]);
 
   // STEP 6 States (Mobilization)

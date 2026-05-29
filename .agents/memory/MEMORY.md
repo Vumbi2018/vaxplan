@@ -1,4 +1,4 @@
 - [Cross-tenant write enforcement](cross-tenant-writes.md) — replit.md claims a `crossTenantWriteGuard` middleware exists; it does not. Real isolation is tenantContext scoping + audit `crossTenant` flag only.
 - [Client must never import from server/](client-server-import-boundary.md) — any client import of `server/*` drags pg into the browser bundle and crashes with "process is not defined". Put shared constants in `shared/`.
 - [Tenant header UUID guard](tenant-header-uuid-guard.md) — client sends x-tenant-id which can be a tenant CODE; must UUID-validate + check active before any getTenant() or Postgres throws 22P02 and poisons the session.
-- [Planning lead-time UTC arithmetic](planning-leadtime-utc.md) — session-date >=7-day rule must use Date.UTC/getUTC*; local-time math on UTC-midnight dates wrongly rejects today+7 in negative-offset zones.
+- [Planning lead-time UTC arithmetic](planning-leadtime-utc.md) — session-date >=7-day rule must use Date.UTC/getUTC*; local-time math on UTC-midnight dates wrongly rejects today+7 in negative-offset zones. Client math lives in shared/schedulingDates.ts (server still inlines its own copy).

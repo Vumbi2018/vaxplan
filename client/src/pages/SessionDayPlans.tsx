@@ -91,6 +91,7 @@ import {
   type InsertSessionDayPlan,
   type Microplan,
 } from "@shared/schema";
+import { isAtLeastDaysAhead, getMinScheduleDateInputValue } from "@shared/schedulingDates";
 
 import {
   extractRoster,
@@ -111,21 +112,10 @@ const transportIcons: Record<string, typeof Car> = {
 
 const dayPlanFormSchema = z.object({
   dayNumber: z.number().min(1, "Day number is required"),
-  sessionDate: z.string().min(1, "Session date is required").refine((val) => {
-    // The picked day is a UTC calendar date (the date input value is a
-    // YYYY-MM-DD string, which `new Date(...)` parses as UTC midnight, and we
-    // submit it as UTC midnight). The server enforces the >= 7 day lead time in
-    // UTC, so do the same here. Using local-time components (getDate/setHours)
-    // on a UTC-midnight date shifts it back a day on negative-offset clients and
-    // wrongly rejects the valid UTC today+7 default.
-    const selected = new Date(val);
-    if (isNaN(selected.getTime())) return false;
-    const selectedMidnight = Date.UTC(selected.getUTCFullYear(), selected.getUTCMonth(), selected.getUTCDate());
-    const now = new Date();
-    const todayMidnight = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-    const diffDays = Math.round((selectedMidnight - todayMidnight) / (1000 * 60 * 60 * 24));
-    return diffDays >= 7;
-  }, "Session date must be scheduled at least 7 days in advance"),
+  sessionDate: z.string().min(1, "Session date is required").refine(
+    (val) => isAtLeastDaysAhead(val),
+    "Session date must be scheduled at least 7 days in advance",
+  ),
   communitiesVisited: z.array(z.number()).min(1, "Select at least one community"),
   targetPopulation: z.number().min(1, "Target population must be at least 1"),
   vitaminADoses: z.number().min(0),
@@ -770,12 +760,9 @@ export default function SessionDayPlans() {
 
   const handleOpenAddDialog = () => {
     setEditingPlan(null);
-    const d = new Date();
-    d.setUTCHours(0, 0, 0, 0);
-    d.setUTCDate(d.getUTCDate() + 7);
     form.reset({
       dayNumber: (dayPlans?.length ?? 0) + 1,
-      sessionDate: d.toISOString().split("T")[0],
+      sessionDate: getMinScheduleDateInputValue(),
       communitiesVisited: [],
       targetPopulation: 50,
       vitaminADoses: 25,

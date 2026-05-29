@@ -68,6 +68,7 @@ import {
   Plus,
 } from "lucide-react";
 import type { Facility, Village, FacilityCatchment } from "@shared/schema";
+import { getMinScheduleDateInputValue } from "@shared/schedulingDates";
 import { deriveSessionLifecycle } from "@/lib/sessionStatus";
 import { distance, centroid as turfCentroid, polygon as turfPolygon } from "@turf/turf";
 import RBush from "rbush";
@@ -1757,21 +1758,9 @@ export function MapView({
   const [selectedParentFacilityId, setSelectedParentFacilityId] = useState<number | null>(null);
 
   // Minimum scheduled date is 7 days out. The server measures lead time in UTC
-  // calendar days and we submit the picked date as a UTC calendar date, so compute
-  // the minimum from UTC "today" + 7 to guarantee it always satisfies the rule.
-  const toDateInputValue = (d: Date) => {
-    const yyyy = d.getUTCFullYear();
-    const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
-    const dd = String(d.getUTCDate()).padStart(2, "0");
-    return `${yyyy}-${mm}-${dd}`;
-  };
-  const getMinSessionDate = () => {
-    const d = new Date();
-    d.setUTCHours(0, 0, 0, 0);
-    d.setUTCDate(d.getUTCDate() + 7);
-    return d;
-  };
-  const [newSessionDate, setNewSessionDate] = useState<string>(() => toDateInputValue(getMinSessionDate()));
+  // calendar days and we submit the picked date as a UTC calendar date, so use the
+  // shared scheduling-date helper (UTC "today" + 7) to always satisfy the rule.
+  const [newSessionDate, setNewSessionDate] = useState<string>(() => getMinScheduleDateInputValue());
 
   // Real-time map checklist progress tracking state
   const [checklistOpen, setChecklistOpen] = useState(true);
@@ -5602,7 +5591,7 @@ export function MapView({
                       const pop = calculateGeofencePopulation(sessionPolygonPoints, newSessionType === "mobile" ? "mobile" : "outreach");
                       setNewSessionTargetPop(pop);
                       setIsDrawingSessionPolygon(false);
-                      setNewSessionDate(toDateInputValue(getMinSessionDate()));
+                      setNewSessionDate(getMinScheduleDateInputValue());
                       setCreateSessionDialogOpen(true);
                       
                       toast({
@@ -6529,7 +6518,7 @@ export function MapView({
               size="sm"
               onClick={() => {
                 setClickDialogOpen(false);
-                setNewSessionDate(toDateInputValue(getMinSessionDate()));
+                setNewSessionDate(getMinScheduleDateInputValue());
                 setCreateSessionDialogOpen(true);
               }}
               className="text-xs font-semibold bg-primary hover:bg-primary/90 text-white"
@@ -6696,7 +6685,7 @@ export function MapView({
                 id="session-date"
                 type="date"
                 value={newSessionDate}
-                min={toDateInputValue(getMinSessionDate())}
+                min={getMinScheduleDateInputValue()}
                 onChange={(e) => setNewSessionDate(e.target.value)}
                 className="h-8 text-xs"
               />
