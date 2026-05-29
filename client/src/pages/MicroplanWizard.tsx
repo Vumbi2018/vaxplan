@@ -992,16 +992,26 @@ export default function MicroplanWizard({ prePlanType }: MicroplanWizardProps = 
     hydratedRef.current.calendar = true;
   }, [existingSessions, microplanId]);
 
-  function generateCalendar(months: number = 12) {
+  function generateCalendar(
+    months: number = 12,
+    startYear?: number,
+    startMonth?: number,
+  ) {
     if (!communities.length) return;
     // Only the four supported periods are allowed; anything else falls back to
     // a full 12-month calendar so a stale value can never produce odd lengths.
     const safeMonths = [1, 3, 6, 12].includes(months) ? months : 12;
     const today = new Date();
+    // Default to the current month so existing behaviour is unchanged when the
+    // planner doesn't pick a start month.
+    const baseYear =
+      typeof startYear === "number" ? startYear : today.getFullYear();
+    const baseMonth =
+      typeof startMonth === "number" ? startMonth : today.getMonth();
     const rows: CalendarRow[] = [];
     communities.forEach((c, idx) => {
       for (let m = 0; m < safeMonths; m++) {
-        const d = new Date(today.getFullYear(), today.getMonth() + m, 15);
+        const d = new Date(baseYear, baseMonth + m, 15);
         rows.push({
           rowId: `${c.rowId}-m${m}`,
           name: c.name,
@@ -4717,7 +4727,7 @@ function Step4({
 }: {
   calendar: any[];
   setCalendar: (v: any[]) => void;
-  generate: (months: number) => void;
+  generate: (months: number, startYear?: number, startMonth?: number) => void;
   errorRowId?: string;
   errorMessage?: string;
   onClearError?: () => void;
@@ -4725,6 +4735,31 @@ function Step4({
   // Chosen calendar length, in months. Drives how many monthly sessions are
   // generated per community.
   const [period, setPeriod] = useState("12");
+  // Chosen start month/year for the generated calendar. Defaults to the current
+  // month so behaviour is unchanged when the planner doesn't touch it.
+  const now = new Date();
+  const [startMonth, setStartMonth] = useState(String(now.getMonth()));
+  const [startYear, setStartYear] = useState(String(now.getFullYear()));
+  const MONTH_NAMES = [
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+  ];
+  // Offer the current year plus a few ahead so planners can build next-year
+  // microplans in advance.
+  const YEAR_OPTIONS = Array.from(
+    { length: 4 },
+    (_, i) => now.getFullYear() + i,
+  );
   const errorRowRef = useRef<HTMLInputElement | null>(null);
 
   // Scroll the flagged row into view and focus its date input whenever a new
@@ -4748,6 +4783,31 @@ function Step4({
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-end gap-2">
+        <Label className="text-xs text-muted-foreground">Start month</Label>
+        <Select value={startMonth} onValueChange={setStartMonth}>
+          <SelectTrigger className="w-36" data-testid="select-calendar-start-month">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {MONTH_NAMES.map((name, i) => (
+              <SelectItem key={i} value={String(i)}>
+                {name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={startYear} onValueChange={setStartYear}>
+          <SelectTrigger className="w-28" data-testid="select-calendar-start-year">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {YEAR_OPTIONS.map((y) => (
+              <SelectItem key={y} value={String(y)}>
+                {y}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <Label className="text-xs text-muted-foreground">Calendar period</Label>
         <Select value={period} onValueChange={setPeriod}>
           <SelectTrigger className="w-44" data-testid="select-calendar-period">
@@ -4763,7 +4823,9 @@ function Step4({
         <Button
           variant="outline"
           size="sm"
-          onClick={() => generate(Number(period))}
+          onClick={() =>
+            generate(Number(period), Number(startYear), Number(startMonth))
+          }
           data-testid="button-generate-calendar"
         >
           Generate calendar
