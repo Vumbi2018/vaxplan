@@ -52,6 +52,12 @@ module.exports = {
       name: "@electron-forge/maker-squirrel",
       config: {
         name: "VaxPlan",
+        // electron-winstaller generates a NuGet .nuspec and requires both
+        // Authors and Description — without these the Squirrel maker fails
+        // with "Authors is required. / Description is required." (package.json
+        // has no author/description fields).
+        authors: "VaxPlan",
+        description: "VaxPlan offline-first microplanning workstation",
         setupExe: "VaxPlanSetup.exe",
         setupIcon: path.resolve(__dirname, "Resources", "icon.ico"),
         // Code-signing — both must be set or signing is skipped (a warning
