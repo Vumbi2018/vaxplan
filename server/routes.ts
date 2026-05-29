@@ -481,8 +481,8 @@ export async function registerRoutes(
   //      header or `?token=` query string — this lets laptop build scripts
   //      pull the source headlessly without anonymous access being open.
   const releaseDownloadGate: import("express").RequestHandler = (req, res, next) => {
-    const expected = process.env.RELEASE_DOWNLOAD_TOKEN;
-    const provided = (req.get("x-release-token") || (req.query.token as string) || "").toString();
+    const expected = (process.env.RELEASE_DOWNLOAD_TOKEN || "").trim();
+    const provided = (req.get("x-release-token") || (req.query.token as string) || "").toString().trim();
     if (expected && provided) {
       const a = Buffer.from(provided);
       const b = Buffer.from(expected);
