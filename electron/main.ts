@@ -16,12 +16,88 @@
  *   how to publish releases and rotate the code-signing certificate.
  */
 
-import { app, BrowserWindow, ipcMain, safeStorage, net, shell } from "electron";
+import { app, BrowserWindow, ipcMain, safeStorage, net, shell, protocol } from "electron";
 import * as path from "path";
 import * as fs from "fs";
 
 const isDev = !app.isPackaged;
 const DEV_URL = process.env.VITE_DEV_URL ?? "http://localhost:5000";
+
+// In production the renderer is served from a custom "app://local" scheme
+// instead of file://. file:// pages have a "null" origin, which breaks
+// credentialed cross-origin API calls (the session cookie never gets sent and
+// CORS can't allowlist "null" safely). A registered standard+secure scheme
+// gives the renderer a real, stable origin ("app://local") that the server
+// CORS allowlist accepts, and it's a secure context so SameSite=None cookies
+// flow. The scheme must be registered as privileged BEFORE app "ready".
+const APP_SCHEME = "app";
+const APP_ORIGIN_HOST = "local";
+
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: APP_SCHEME,
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+    },
+  },
+]);
+
+const MIME_TYPES: Record<string, string> = {
+  ".html": "text/html",
+  ".js": "text/javascript",
+  ".mjs": "text/javascript",
+  ".css": "text/css",
+  ".json": "application/json",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".svg": "image/svg+xml",
+  ".webp": "image/webp",
+  ".ico": "image/x-icon",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
+  ".ttf": "font/ttf",
+  ".map": "application/json",
+  ".webmanifest": "application/manifest+json",
+  ".wasm": "application/wasm",
+};
+
+// Maps "app://local/<path>" requests to files in the bundled dist/public dir.
+// Unknown paths fall back to index.html so client-side routing works.
+function registerAppProtocol() {
+  const root = path.join(__dirname, "..", "dist", "public");
+  protocol.handle(APP_SCHEME, async (request) => {
+    try {
+      const url = new URL(request.url);
+      let pathname = decodeURIComponent(url.pathname);
+      if (!pathname || pathname === "/") pathname = "/index.html";
+      const indexHtml = path.join(root, "index.html");
+      let filePath = path.normalize(path.join(root, pathname));
+      // Prevent path traversal outside the bundle root: the resolved path's
+      // location relative to root must not climb out ("..") or be absolute.
+      const rel = path.relative(root, filePath);
+      const escapesRoot = rel === "" || rel.startsWith("..") || path.isAbsolute(rel);
+      if (
+        escapesRoot ||
+        !fs.existsSync(filePath) ||
+        !fs.statSync(filePath).isFile()
+      ) {
+        filePath = indexHtml;
+      }
+      const data = await fs.promises.readFile(filePath);
+      const ext = path.extname(filePath).toLowerCase();
+      const mime = MIME_TYPES[ext] ?? "application/octet-stream";
+      return new Response(new Uint8Array(data), {
+        headers: { "content-type": mime },
+      });
+    } catch (err) {
+      return new Response("Not found", { status: 404 });
+    }
+  });
+}
 
 let mainWindow: BrowserWindow | null = null;
 let netPollTimer: NodeJS.Timeout | null = null;
@@ -81,7 +157,7 @@ function createWindow() {
     mainWindow.loadURL(DEV_URL);
     mainWindow.webContents.openDevTools({ mode: "detach" });
   } else {
-    mainWindow.loadFile(path.join(__dirname, "..", "dist", "public", "index.html"));
+    mainWindow.loadURL(`${APP_SCHEME}://${APP_ORIGIN_HOST}/index.html`);
   }
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -104,6 +180,7 @@ function createWindow() {
 }
 
 app.whenReady().then(async () => {
+  if (!isDev) registerAppProtocol();
   createWindow();
 
   ipcMain.handle("device-token:get", () => readEncryptedToken());

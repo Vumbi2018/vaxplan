@@ -30,8 +30,41 @@ if (import.meta.env.DEV && "serviceWorker" in navigator) {
 }
 
 // ─── Global Fetch Interceptor for Tenant Context Persistence ─────────────────
+import { resolveApiUrl, isNativeShell } from "./lib/apiBase";
+
 const originalFetch = window.fetch;
 window.fetch = async (input, init) => {
+  // In a packaged native shell (Android/Windows), rewrite relative "/api/..."
+  // calls to the configured remote server. On the web this is a no-op so
+  // requests stay same-origin/relative.
+  if (isNativeShell()) {
+    try {
+      if (typeof input === "string") {
+        const resolved = resolveApiUrl(input);
+        if (resolved !== input) {
+          input = resolved;
+          // Force cross-origin credentials so the session cookie is sent
+          // (overrides any caller default of "same-origin").
+          init = { ...(init || {}), credentials: "include" };
+        }
+      } else if (input instanceof URL) {
+        const resolved = resolveApiUrl(input.toString());
+        if (resolved !== input.toString()) {
+          input = resolved;
+          init = { ...(init || {}), credentials: "include" };
+        }
+      } else if (input instanceof Request) {
+        const resolved = resolveApiUrl(input.url);
+        if (resolved !== input.url) {
+          input = new Request(resolved, input);
+          init = { ...(init || {}), credentials: "include" };
+        }
+      }
+    } catch {
+      /* fall through with the original input */
+    }
+  }
+
   let activeTenantId: string | null = null;
   try {
     const raw = localStorage.getItem("vaxplan_active_tenant");

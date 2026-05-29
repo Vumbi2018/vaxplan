@@ -8,10 +8,24 @@ import { readFileSync } from "fs";
 const pkg = JSON.parse(readFileSync(path.resolve(import.meta.dirname, "package.json"), "utf8")) as { version: string };
 const BUILD_TIME = new Date().toISOString();
 
+// When building the packaged native shells (Android/Windows) we set
+// VITE_NATIVE_BUILD=1. Those shells load the UI from local files, so assets
+// must use relative paths ("./assets/...") — an absolute "/assets/..." path
+// resolves to the filesystem root under Electron's file:// and produces a
+// blank window. The web build keeps an absolute "/" base so SPA deep links
+// work when served from the server.
+const isNativeBuild = !!process.env.VITE_NATIVE_BUILD;
+
 export default defineConfig({
+  base: isNativeBuild ? "./" : "/",
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
     __BUILD_TIME__: JSON.stringify(BUILD_TIME),
+    // Baked-in server address for packaged native apps (empty on the web,
+    // where requests stay relative/same-origin).
+    "import.meta.env.VITE_API_BASE_URL": JSON.stringify(
+      process.env.VITE_API_BASE_URL ?? "",
+    ),
   },
   plugins: [
     react(),

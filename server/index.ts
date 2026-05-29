@@ -38,6 +38,51 @@ app.use(
 
 app.use(express.urlencoded({ extended: false, limit: "50mb" }));
 
+// ─── CORS for packaged native apps ───────────────────────────────────────────
+// The web app is same-origin and needs no CORS. The packaged Android
+// (Capacitor) and Windows (Electron) shells, however, load their UI from a
+// local origin and call this server cross-origin, so we must explicitly allow
+// those origins (with credentials so the session cookie flows).
+//
+// Explicit allowlist only. The web app is same-origin and never needs CORS,
+// so we deliberately do NOT wildcard *.replit.dev / *.replit.app — reflecting
+// credentialed CORS for arbitrary Replit origins would let any other Replit
+// site read this app's authenticated responses. Only the packaged native
+// shells (which load from these fixed local origins) are allowed.
+const NATIVE_ALLOWED_ORIGINS = new Set<string>([
+  "https://localhost", // Capacitor Android (androidScheme: "https")
+  "capacitor://localhost", // Capacitor (iOS / alt scheme)
+  "app://local", // Electron packaged app (custom secure scheme)
+  // Electron dev (loadURL to dev server) — development only, never expand the
+  // credentialed CORS surface to a localhost origin in production.
+  ...(process.env.NODE_ENV === "production" ? [] : ["http://localhost:5000"]),
+]);
+
+function isAllowedCorsOrigin(origin: string): boolean {
+  return NATIVE_ALLOWED_ORIGINS.has(origin);
+}
+
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && isAllowedCorsOrigin(origin)) {
+    res.header("Access-Control-Allow-Origin", origin);
+    res.header("Vary", "Origin");
+    res.header("Access-Control-Allow-Credentials", "true");
+    res.header(
+      "Access-Control-Allow-Methods",
+      "GET,POST,PUT,PATCH,DELETE,OPTIONS",
+    );
+    res.header(
+      "Access-Control-Allow-Headers",
+      "Content-Type, Authorization, x-tenant-id, x-release-token",
+    );
+    if (req.method === "OPTIONS") {
+      return res.sendStatus(204);
+    }
+  }
+  next();
+});
+
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
     hour: "numeric",

@@ -49,6 +49,16 @@ Write-Host "  npm: $(npm --version)" -ForegroundColor Gray
 if (-not $SkipViteBuild) {
   Write-Host ""
   Write-Host "> Building Vite production bundle..." -ForegroundColor Yellow
+
+  # The packaged app loads its UI from local files and must call the remote
+  # server by its full address. Override VITE_API_BASE_URL to point at your
+  # published server; defaults to the Replit development URL.
+  if (-not $env:VITE_API_BASE_URL) {
+    $env:VITE_API_BASE_URL = "https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit.dev"
+  }
+  $env:VITE_NATIVE_BUILD = "1"
+  Write-Host "  Server address: $env:VITE_API_BASE_URL" -ForegroundColor Gray
+
   npm run build
   if ($LASTEXITCODE -ne 0) { Write-Error "Vite build failed"; exit 1 }
   Write-Host "  [OK] Vite build complete" -ForegroundColor Green

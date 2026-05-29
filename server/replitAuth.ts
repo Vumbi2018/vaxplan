@@ -75,6 +75,12 @@ export function getSession() {
     cookie: {
       httpOnly: true,
       secure: reqSecureOnlyInProd(), // Only require secure cookies in production or HTTPS setups
+      // Packaged native apps (Android/Windows) call this server cross-site from
+      // their local origin, so the session cookie must be SameSite=None to be
+      // sent on those requests. SameSite=None requires Secure, so we only set
+      // it when cookies are secure (HTTPS/production); otherwise fall back to
+      // "lax" for plain-HTTP local dev.
+      sameSite: reqSecureOnlyInProd() ? "none" : "lax",
       maxAge: sessionTtl,
     },
   });
