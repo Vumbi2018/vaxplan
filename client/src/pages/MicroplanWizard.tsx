@@ -768,17 +768,18 @@ export default function MicroplanWizard({ prePlanType }: MicroplanWizardProps = 
 
   // ─── Save draft ────────────────────────────────────────────────────────
   const saveDraft = async () => {
-    try {
-      await ensureMicroplan();
+    // Persist the current step through the shared save path so a manual save
+    // also benefits from validation-error focus. persistStep handles its own
+    // error toasts and field focus; we only add the success confirmation.
+    // Capture the dispatched snapshot up front so concurrent edits aren't
+    // wrongly marked clean.
+    const snap = snapshotForStep(active);
+    const ok = await persistStep(active);
+    if (ok) {
+      savedSnapshots.current[active] = snap;
       toast({
         title: "Draft saved",
         description: "You can leave and come back without losing progress.",
-      });
-    } catch (e: any) {
-      toast({
-        title: "Could not save",
-        description: e?.message ?? String(e),
-        variant: "destructive",
       });
     }
   };
@@ -986,12 +987,15 @@ export default function MicroplanWizard({ prePlanType }: MicroplanWizardProps = 
     hydratedRef.current.calendar = true;
   }, [existingSessions, microplanId]);
 
-  function generateCalendar() {
+  function generateCalendar(months: number = 12) {
     if (!communities.length) return;
+    // Only the four supported periods are allowed; anything else falls back to
+    // a full 12-month calendar so a stale value can never produce odd lengths.
+    const safeMonths = [1, 3, 6, 12].includes(months) ? months : 12;
     const today = new Date();
     const rows: CalendarRow[] = [];
     communities.forEach((c, idx) => {
-      for (let m = 0; m < 12; m++) {
+      for (let m = 0; m < safeMonths; m++) {
         const d = new Date(today.getFullYear(), today.getMonth() + m, 15);
         rows.push({
           rowId: `${c.rowId}-m${m}`,
@@ -1328,6 +1332,160 @@ export default function MicroplanWizard({ prePlanType }: MicroplanWizardProps = 
   // ─── Per-step persistence ──────────────────────────────────────────────
   const [busy, setBusy] = useState(false);
 
+  // ─── Validation error focus ────────────────────────────────────────────
+  // When a save (manual, auto, or on Next) detects a validation problem we
+  // record which step + field/row is at fault here, switch the wizard to that
+  // step, and let the step component scroll/highlight/focus the offending
+  // input. Cleared at the start of every save and when the user edits the
+  // flagged field.
+  const [errorFocus, setErrorFocus] = useState<{
+    step: number;
+    rowId?: string;
+    field?: string;
+    message: string;
+  } | null>(null);
+
+  // ─── Background auto-save ──────────────────────────────────────────────
+  // Per-step snapshot of the last-persisted user-editable data, so the
+  // debounced auto-save only fires when something actually changed and the
+  // first visit to a step doesn't trigger a needless save.
+  const savedSnapshots = useRef<Record<number, string>>({});
+  const autoSaveInFlight = useRef(false);
+  // Set when a debounced save fires while another save is still in flight (or
+  // when edits arrive mid-save). Bumping autoSaveTick re-runs the effect with
+  // fresh state so the newer edits are persisted deterministically.
+  const pendingResave = useRef(false);
+  const [autoSaveTick, setAutoSaveTick] = useState(0);
+  // Synchronous mirror of `busy` so the debounced auto-save callback always
+  // sees the latest in-flight state without depending on a (possibly stale)
+  // captured `busy` value. Set in lockstep with setBusy at every save site.
+  const busyRef = useRef(false);
+
+  // Serialise only the user-editable data for a step (no server ids / saved
+  // flags) so the snapshot is stable across a save round-trip and only real
+  // edits mark the step dirty.
+  function snapshotForStep(step: number): string {
+    switch (step) {
+      case 1:
+        return JSON.stringify({
+          coverage,
+          planType,
+          campaignAntigen,
+          campaignTargetAge,
+          campaignScope,
+        });
+      case 2:
+        return JSON.stringify(
+          communities.map((c) => ({
+            name: c.name,
+            type: c.type,
+            targetPopulation: c.targetPopulation,
+            source: c.source,
+            strategy: c.strategy,
+            villageId: c.villageId,
+            latitude: c.latitude,
+            longitude: c.longitude,
+          })),
+        );
+      case 3:
+        return JSON.stringify(risk);
+      case 4:
+        return JSON.stringify(
+          calendar.map((c) => ({
+            name: c.name,
+            villageId: c.villageId,
+            sessionType: c.sessionType,
+            scheduledDate: c.scheduledDate,
+          })),
+        );
+      case 5:
+        return JSON.stringify(staffing);
+      case 6:
+        return JSON.stringify(vaccines);
+      case 7:
+        return JSON.stringify(mobilization);
+      case 8:
+        return JSON.stringify({ staffing, transport });
+      case 9:
+        return JSON.stringify(budget);
+      case 10:
+        return JSON.stringify(supervision);
+      default:
+        return "";
+    }
+  }
+
+  // Debounced background auto-save. After the planner stops editing the
+  // current step for a short interval, persist it through the same path as a
+  // manual save. We skip saving when there's no facility yet, when nothing
+  // changed since the last save, on the first visit to a step (baseline only),
+  // and while another save is in flight.
+  useEffect(() => {
+    if (!facilityId) return;
+    if (active < 1 || active > 10) return; // only steps with a persist path
+    const snap = snapshotForStep(active);
+    const saved = savedSnapshots.current[active];
+    if (saved === undefined) {
+      // First time we've seen this step's data — establish a baseline so we
+      // don't auto-save unedited (e.g. freshly hydrated) content.
+      savedSnapshots.current[active] = snap;
+      return;
+    }
+    if (saved === snap) return; // nothing changed
+    const timer = setTimeout(async () => {
+      // Another save is still in flight — don't fire a second concurrent save.
+      // Use the synchronous busyRef (not the captured `busy`, which can be
+      // stale) so a manual/Next save started after this timer was scheduled is
+      // always observed. Remember outstanding work so we re-evaluate on settle.
+      if (autoSaveInFlight.current || busyRef.current) {
+        pendingResave.current = true;
+        return;
+      }
+      autoSaveInFlight.current = true;
+      try {
+        const ok = await persistStep(active, { silent: true });
+        if (ok) {
+          // Mark ONLY the snapshot we actually dispatched as clean — never the
+          // current UI state, which may have newer edits made while the save
+          // was in flight. Marking those clean would silently drop them.
+          savedSnapshots.current[active] = snap;
+          toast({
+            title: "Draft saved",
+            description: "You can leave and come back without losing progress.",
+          });
+        }
+      } finally {
+        autoSaveInFlight.current = false;
+        // If edits arrived during the save (snapshot moved on) or a debounced
+        // save fired while we were busy, schedule another pass with fresh state.
+        if (pendingResave.current || snapshotForStep(active) !== savedSnapshots.current[active]) {
+          pendingResave.current = false;
+          setAutoSaveTick((t) => t + 1);
+        }
+      }
+    }, 2000);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    autoSaveTick,
+    active,
+    facilityId,
+    coverage,
+    planType,
+    campaignAntigen,
+    campaignTargetAge,
+    campaignScope,
+    communities,
+    risk,
+    calendar,
+    staffing,
+    vaccines,
+    mobilization,
+    budget,
+    supervision,
+    transport,
+  ]);
+
   // ─── Per-row deletion helpers ──────────────────────────────────────────
   // Each helper removes the row from local state and, when the row has
   // already been saved to the server, deletes the matching backend row so it
@@ -1550,10 +1708,36 @@ export default function MicroplanWizard({ prePlanType }: MicroplanWizardProps = 
     }
   }
 
-  async function persistStep(step: number): Promise<boolean> {
+  async function persistStep(
+    step: number,
+    opts: { silent?: boolean } = {},
+  ): Promise<boolean> {
+    const { silent } = opts;
+    busyRef.current = true;
     setBusy(true);
+    // A fresh save attempt clears any previously flagged field.
+    setErrorFocus(null);
+    // Set by the per-step logic below when a validation error should pull the
+    // user to a specific field/row instead of just showing a toast.
+    let focusTarget:
+      | { step: number; rowId?: string; field?: string; message: string }
+      | null = null;
     try {
-      if (!facilityId) throw new Error("Pick a facility first.");
+      if (!facilityId) {
+        focusTarget = {
+          step,
+          field: "facility",
+          message: "Pick a facility before saving.",
+        };
+        if (!silent) {
+          toast({
+            title: "Pick a facility first",
+            description: "Choose a facility before the microplan can be saved.",
+            variant: "destructive",
+          });
+        }
+        return false;
+      }
       const mpId = await ensureMicroplan();
 
       if (step === 1) {
@@ -1781,23 +1965,38 @@ export default function MicroplanWizard({ prePlanType }: MicroplanWizardProps = 
             { items },
           );
           const failures: string[] = [];
+          let firstFailRow: string | undefined;
+          let firstFailMsg: string | undefined;
           for (const r of resp.results ?? []) {
             if (r.ok && r.id != null && typeof r.clientId === "string") {
               persisted[r.clientId] = r.id;
             } else if (!r.ok) {
               failures.push(r.error || "unknown error");
+              if (firstFailRow === undefined && typeof r.clientId === "string") {
+                firstFailRow = r.clientId;
+                firstFailMsg = r.error || "This session could not be saved.";
+              }
             }
           }
           if (failures.length > 0) {
-            // Match the pre-existing per-row "skipped silently" behavior — the
-            // wizard didn't fail the whole save when one row 4xx'd. We still
-            // surface the count so the user knows something didn't land.
             console.warn(`Session bulk save: ${failures.length} row(s) skipped:`, failures);
-            toast({
-              title: `${failures.length} session row(s) skipped`,
-              description: failures[0],
-              variant: "destructive",
-            });
+            // Pull the user straight to the offending row instead of leaving
+            // them to hunt for it after a toast. A toast still fires for
+            // context, but the highlighted date field is the primary fix path.
+            focusTarget = {
+              step: 4,
+              rowId: firstFailRow,
+              message:
+                firstFailMsg ??
+                "Fix the highlighted session date — it was rejected on save.",
+            };
+            if (!silent) {
+              toast({
+                title: `${failures.length} session row(s) need fixing`,
+                description: failures[0],
+                variant: "destructive",
+              });
+            }
           }
         }
         setSessionIdMap(persisted);
@@ -2095,22 +2294,39 @@ export default function MicroplanWizard({ prePlanType }: MicroplanWizardProps = 
         setSupervision(nextSup);
         queryClient.invalidateQueries({ queryKey: ["/api/supervision-visits"] });
       }
+      // A per-row validation rejection isn't a thrown error, but we still
+      // treat it as a failed save so callers don't advance past the problem.
+      if (focusTarget) return false;
       return true;
     } catch (e: any) {
-      toast({
-        title: `Could not save step ${step}`,
-        description: e?.message ?? String(e),
-        variant: "destructive",
-      });
+      if (!silent) {
+        toast({
+          title: `Could not save step ${step}`,
+          description: e?.message ?? String(e),
+          variant: "destructive",
+        });
+      }
       return false;
     } finally {
+      busyRef.current = false;
       setBusy(false);
+      if (focusTarget) {
+        setErrorFocus(focusTarget);
+        setActive(focusTarget.step);
+      }
     }
   }
 
   async function handleNext() {
+    // Capture the dispatched snapshot before the save so edits made during the
+    // request aren't wrongly marked clean (mirrors the auto-save fix).
+    const snap = snapshotForStep(active);
     const ok = await persistStep(active);
-    if (ok && active < 12) setActive(active + 1);
+    if (ok) {
+      // Mark the step we just saved as clean so auto-save doesn't re-fire it.
+      savedSnapshots.current[active] = snap;
+      if (active < 12) setActive(active + 1);
+    }
   }
 
   async function handleSubmit() {
@@ -2118,6 +2334,7 @@ export default function MicroplanWizard({ prePlanType }: MicroplanWizardProps = 
       toast({ title: "Nothing to submit yet", variant: "destructive" });
       return;
     }
+    busyRef.current = true;
     setBusy(true);
     try {
       // File a real approval request so the microplan flows through the same
@@ -2145,6 +2362,7 @@ export default function MicroplanWizard({ prePlanType }: MicroplanWizardProps = 
         variant: "destructive",
       });
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   }
@@ -2332,14 +2550,31 @@ export default function MicroplanWizard({ prePlanType }: MicroplanWizardProps = 
               {/* Facility & name (always available, drives ensureMicroplan) */}
               {!microplanId && (
                 <div className="space-y-3 rounded-md border bg-muted/30 p-3">
-                  <div>
+                  <div
+                    className={
+                      errorFocus?.field === "facility"
+                        ? "rounded-md ring-1 ring-destructive p-2"
+                        : undefined
+                    }
+                  >
                     <Label className="mb-2 block">Facility</Label>
                     <FacilityCascadePicker
                       value={facilityId}
-                      onChange={(id) => setFacilityId(id)}
+                      onChange={(id) => {
+                        setFacilityId(id);
+                        if (errorFocus?.field === "facility") setErrorFocus(null);
+                      }}
                       required
                       testIdPrefix="wizard"
                     />
+                    {errorFocus?.field === "facility" && (
+                      <p
+                        className="mt-1 text-xs text-destructive"
+                        data-testid="facility-error"
+                      >
+                        {errorFocus.message}
+                      </p>
+                    )}
                   </div>
                   <div>
                     <Label>Plan name</Label>
@@ -2408,6 +2643,13 @@ export default function MicroplanWizard({ prePlanType }: MicroplanWizardProps = 
                   calendar={calendar}
                   setCalendar={setCalendar}
                   generate={generateCalendar}
+                  errorRowId={
+                    errorFocus?.step === 4 ? errorFocus.rowId : undefined
+                  }
+                  errorMessage={
+                    errorFocus?.step === 4 ? errorFocus.message : undefined
+                  }
+                  onClearError={() => setErrorFocus(null)}
                 />
               )}
               {active === 5 && (
@@ -4427,22 +4669,62 @@ function Step4({
   calendar,
   setCalendar,
   generate,
+  errorRowId,
+  errorMessage,
+  onClearError,
 }: {
   calendar: any[];
   setCalendar: (v: any[]) => void;
-  generate: () => void;
+  generate: (months: number) => void;
+  errorRowId?: string;
+  errorMessage?: string;
+  onClearError?: () => void;
 }) {
+  // Chosen calendar length, in months. Drives how many monthly sessions are
+  // generated per community.
+  const [period, setPeriod] = useState("12");
+  const errorRowRef = useRef<HTMLInputElement | null>(null);
+
+  // Scroll the flagged row into view and focus its date input whenever a new
+  // validation error points at this step.
+  useEffect(() => {
+    if (errorRowId && errorRowRef.current) {
+      errorRowRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+      errorRowRef.current.focus();
+    }
+  }, [errorRowId]);
+
   const upd = (i: number, patch: any) => {
     const next = [...calendar];
     next[i] = { ...next[i], ...patch };
     setCalendar(next);
+    // Editing the flagged row clears the highlight so the inline message
+    // doesn't linger once the planner has acted on it.
+    if (errorRowId && calendar[i]?.rowId === errorRowId) onClearError?.();
   };
   const remove = (i: number) => setCalendar(calendar.filter((_, idx) => idx !== i));
   return (
     <div className="space-y-3">
-      <div className="flex justify-end gap-2">
-        <Button variant="outline" size="sm" onClick={generate} data-testid="button-generate-calendar">
-          Generate 12-month calendar
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <Label className="text-xs text-muted-foreground">Calendar period</Label>
+        <Select value={period} onValueChange={setPeriod}>
+          <SelectTrigger className="w-44" data-testid="select-calendar-period">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="1">1 month</SelectItem>
+            <SelectItem value="3">Quarterly (3 months)</SelectItem>
+            <SelectItem value="6">6 months</SelectItem>
+            <SelectItem value="12">12 months</SelectItem>
+          </SelectContent>
+        </Select>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => generate(Number(period))}
+          data-testid="button-generate-calendar"
+        >
+          Generate calendar
         </Button>
       </div>
       <div className="max-h-[420px] overflow-y-auto">
@@ -4456,33 +4738,51 @@ function Step4({
             </tr>
           </thead>
           <tbody>
-            {calendar.map((c, i) => (
-              <tr key={c.rowId} className="border-b">
-                <td className="p-1">{c.name}</td>
-                <td className="p-1">
-                  <Input type="date" value={c.scheduledDate} onChange={(e) => upd(i, { scheduledDate: e.target.value })} />
-                </td>
-                <td className="p-1">
-                  <Select value={c.sessionType} onValueChange={(v) => upd(i, { sessionType: v })}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="static">Static</SelectItem>
-                      <SelectItem value="outreach">Outreach</SelectItem>
-                      <SelectItem value="mobile">Mobile</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </td>
-                <td className="p-1">
-                  <Button size="icon" variant="ghost" onClick={() => remove(i)}>
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </td>
-              </tr>
-            ))}
+            {calendar.map((c, i) => {
+              const isError = errorRowId != null && c.rowId === errorRowId;
+              return (
+                <tr key={c.rowId} className="border-b">
+                  <td className="p-1">{c.name}</td>
+                  <td className="p-1">
+                    <Input
+                      ref={isError ? errorRowRef : undefined}
+                      type="date"
+                      className={isError ? "border-destructive ring-1 ring-destructive" : undefined}
+                      value={c.scheduledDate}
+                      onChange={(e) => upd(i, { scheduledDate: e.target.value })}
+                      data-testid={`input-session-date-${i}`}
+                    />
+                    {isError && errorMessage && (
+                      <p
+                        className="mt-1 text-xs text-destructive"
+                        data-testid="calendar-row-error"
+                      >
+                        {errorMessage}
+                      </p>
+                    )}
+                  </td>
+                  <td className="p-1">
+                    <Select value={c.sessionType} onValueChange={(v) => upd(i, { sessionType: v })}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="static">Static</SelectItem>
+                        <SelectItem value="outreach">Outreach</SelectItem>
+                        <SelectItem value="mobile">Mobile</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </td>
+                  <td className="p-1">
+                    <Button size="icon" variant="ghost" onClick={() => remove(i)}>
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </td>
+                </tr>
+              );
+            })}
             {calendar.length === 0 && (
               <tr>
                 <td colSpan={4} className="p-4 text-center text-muted-foreground">
-                  No sessions yet — click "Generate 12-month calendar" to start.
+                  No sessions yet — choose a period and click "Generate calendar" to start.
                 </td>
               </tr>
             )}
