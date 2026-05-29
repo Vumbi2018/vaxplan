@@ -1755,6 +1755,23 @@ export function MapView({
   const [newSessionMicroplanId, setNewSessionMicroplanId] = useState<string>("none");
   const [selectedParentFacilityId, setSelectedParentFacilityId] = useState<number | null>(null);
 
+  // Minimum scheduled date is 7 days out. The server measures lead time in UTC
+  // calendar days and we submit the picked date as a UTC calendar date, so compute
+  // the minimum from UTC "today" + 7 to guarantee it always satisfies the rule.
+  const toDateInputValue = (d: Date) => {
+    const yyyy = d.getUTCFullYear();
+    const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+    const dd = String(d.getUTCDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+  };
+  const getMinSessionDate = () => {
+    const d = new Date();
+    d.setUTCHours(0, 0, 0, 0);
+    d.setUTCDate(d.getUTCDate() + 7);
+    return d;
+  };
+  const [newSessionDate, setNewSessionDate] = useState<string>(() => toDateInputValue(getMinSessionDate()));
+
   // Real-time map checklist progress tracking state
   const [checklistOpen, setChecklistOpen] = useState(true);
 
@@ -5584,6 +5601,7 @@ export function MapView({
                       const pop = calculateGeofencePopulation(sessionPolygonPoints, newSessionType === "mobile" ? "mobile" : "outreach");
                       setNewSessionTargetPop(pop);
                       setIsDrawingSessionPolygon(false);
+                      setNewSessionDate(toDateInputValue(getMinSessionDate()));
                       setCreateSessionDialogOpen(true);
                       
                       toast({
@@ -6510,6 +6528,7 @@ export function MapView({
               size="sm"
               onClick={() => {
                 setClickDialogOpen(false);
+                setNewSessionDate(toDateInputValue(getMinSessionDate()));
                 setCreateSessionDialogOpen(true);
               }}
               className="text-xs font-semibold bg-primary hover:bg-primary/90 text-white"
@@ -6675,6 +6694,22 @@ export function MapView({
               </div>
             </div>
 
+            {/* Scheduled Date */}
+            <div className="space-y-1">
+              <Label htmlFor="session-date" className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Scheduled Date *</Label>
+              <Input
+                id="session-date"
+                type="date"
+                value={newSessionDate}
+                min={toDateInputValue(getMinSessionDate())}
+                onChange={(e) => setNewSessionDate(e.target.value)}
+                className="h-8 text-xs"
+              />
+              <p className="text-[10px] text-muted-foreground leading-normal">
+                Sessions must be scheduled at least 7 days in advance.
+              </p>
+            </div>
+
             {/* Multi-Source Population Consensus Panel */}
             {sessionPolygonPoints.length >= 2 && (
               <div className="p-3 bg-muted/30 border border-border/80 rounded-xl space-y-2 mt-1">
@@ -6737,7 +6772,7 @@ export function MapView({
             </Button>
             <Button
               size="sm"
-              disabled={!selectedParentFacilityId || !newSessionName || createSessionPlanMutation.isPending}
+              disabled={!selectedParentFacilityId || !newSessionName || !newSessionDate || createSessionPlanMutation.isPending}
               onClick={() => {
                 if (!mapClickDetails || !selectedParentFacilityId) return;
                 const lat = mapClickDetails.lat;
@@ -6758,7 +6793,7 @@ export function MapView({
                   microplanId: newSessionMicroplanId === "none" ? null : Number(newSessionMicroplanId),
                   name: newSessionName,
                   sessionType: newSessionType,
-                  scheduledDate: new Date().toISOString(),
+                  scheduledDate: `${newSessionDate}T00:00:00.000Z`,
                   transportMode: newSessionTransport,
                   estimatedDuration: 180,
                   targetPopulation: newSessionTargetPop,
