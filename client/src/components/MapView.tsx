@@ -1966,7 +1966,7 @@ export function MapView({
   const [isLegendExpanded, setIsLegendExpanded] = useState(true);
   const handleToggleCategory = (category: string) => {
     setHiddenCategories((prev) => {
-      const next = new Set(prev);
+      const next = new Set<string>(prev);
       if (next.has(category)) {
         next.delete(category);
       } else {
