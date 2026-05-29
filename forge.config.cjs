@@ -39,6 +39,12 @@ module.exports = {
       /^\/exports/,
       /^\/attached_assets/,
       /^\/zipFile\.zip/,
+      // The headless build pipeline downloads the source archive into the
+      // project root; never bundle it into the installer (it's huge and gets
+      // locked during packaging -> EBUSY).
+      /\.tar\.gz$/,
+      /\.tgz$/,
+      /\.zip$/,
     ],
     win32metadata: {
       CompanyName: "VaxPlan",

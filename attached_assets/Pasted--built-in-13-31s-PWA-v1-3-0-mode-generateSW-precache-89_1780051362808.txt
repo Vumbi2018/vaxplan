@@ -1,0 +1,57 @@
+✓ built in 13.31s
+
+PWA v1.3.0
+mode      generateSW
+precache  89 entries (7394.51 KiB)
+files generated
+  ../dist/public/_vite-pwa-sw.js
+  ../dist/public/workbox-0562a5fe.js
+[build] Bundling server with esbuild → dist/index.cjs
+
+  dist\index.cjs      766.3kb
+  dist\index.cjs.map    1.5mb
+
+⚡ Done in 57ms
+[build] Done.
+  [OK] Vite build complete
+
+> Compiling Electron main/preload scripts...
+
+> Running Electron Forge make...
+  Using stable local Node.js v20: C:\mfl\node_env\node-v20.12.2-win-x64\node.exe
+✔ Checking your system
+✔ Loading configuration
+✔ Resolving make targets
+  › Making for the following targets: ,
+❯ Running package command
+  ✔ Preparing to package application
+  ✔ Running packaging hooks
+    ✔ Running generateAssets hook
+    ✔ Running prePackage hook
+  ❯ Packaging application
+    ❯ Packaging for x64 on win32
+      ✖ Copying files
+        › EBUSY: resource busy or locked, copyfile 'C:\vaxplan\vaxplan-source.tar.gz' ->
+        'C:\Users\Mukombo\AppData\Local\Temp\electron-packager\tmp-cYJtFZ\resources\app\vaxplan-source.tar.gz'
+      ✖ Preparing native dependencies
+        › EBUSY: resource busy or locked, copyfile 'C:\vaxplan\vaxplan-source.tar.gz' ->
+        'C:\Users\Mukombo\AppData\Local\Temp\electron-packager\tmp-cYJtFZ\resources\app\vaxplan-source.tar.gz'
+      ✖ Finalizing package
+        › EBUSY: resource busy or locked, copyfile 'C:\vaxplan\vaxplan-source.tar.gz' ->
+        'C:\Users\Mukombo\AppData\Local\Temp\electron-packager\tmp-cYJtFZ\resources\app\vaxplan-source.tar.gz'
+  ◼ Running postPackage hook
+◼ Running preMake hook
+◼ Making distributables
+◼ Running postMake hook
+
+An unhandled rejection has occurred inside Forge:
+Error: EBUSY: resource busy or locked, copyfile 'C:\vaxplan\vaxplan-source.tar.gz' -> 'C:\Users\Mukombo\AppData\Local\Temp\electron-packager\tmp-cYJtFZ\resources\app\vaxplan-source.tar.gz'
+
+C:\vaxplan\scripts\Build-Windows.ps1 : electron-forge make failed
+At C:\vaxplan\scripts\Build-Windows.ps1:120 char:28
++ ... ASTEXITCODE -ne 0) { Write-Error "electron-forge make failed"; exit 1 ...
++                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (:) [Write-Error], WriteErrorException
+    + FullyQualifiedErrorId : Microsoft.PowerShell.Commands.WriteErrorException,Build-Windows.ps1
+
+PS C:\vaxplan>
