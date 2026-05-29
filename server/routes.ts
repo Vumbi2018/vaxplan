@@ -12,6 +12,7 @@ import {
 import { registerSsoRoutes } from "./auth/ssoRoutes";
 import { registerPasswordAuthRoutes, requireAdmin as requirePlatformOrNationalAdmin } from "./auth/passwordAuth";
 import { spawn } from "child_process";
+import { timingSafeEqual } from "crypto";
 import { readFileSync as _readFileSync } from "fs";
 import { tenantContext, requireTenant } from "./auth/tenantResolver";
 import { loadDbUser, requireDbUser } from "./auth/loadDbUser";
@@ -474,7 +475,25 @@ export async function registerRoutes(
   // GET /release/vaxplan-source-<anything>.tar.gz → streams a git archive
   // of HEAD. The "<anything>" is purely cosmetic so users can pin a name
   // in their PowerShell scripts; we always serve the current HEAD.
-  app.get(/^\/release\/vaxplan-source-[^/]+\.tar\.gz$/, requirePlatformOrNationalAdmin, (_req, res) => {
+  // Access is allowed two ways:
+  //   1. An authenticated platform/national admin session (browser), OR
+  //   2. A valid RELEASE_DOWNLOAD_TOKEN supplied via the `x-release-token`
+  //      header or `?token=` query string — this lets laptop build scripts
+  //      pull the source headlessly without anonymous access being open.
+  const releaseDownloadGate: import("express").RequestHandler = (req, res, next) => {
+    const expected = process.env.RELEASE_DOWNLOAD_TOKEN;
+    const provided = (req.get("x-release-token") || (req.query.token as string) || "").toString();
+    if (expected && provided) {
+      const a = Buffer.from(provided);
+      const b = Buffer.from(expected);
+      if (a.length === b.length && timingSafeEqual(a, b)) {
+        return next();
+      }
+    }
+    return requirePlatformOrNationalAdmin(req, res, next);
+  };
+
+  app.get(/^\/release\/vaxplan-source-[^/]+\.tar\.gz$/, releaseDownloadGate, (_req, res) => {
     res.setHeader("Content-Type", "application/gzip");
     res.setHeader("Content-Disposition", `attachment; filename="vaxplan-source-${APP_VERSION}.tar.gz"`);
     const child = spawn("git", ["archive", "--format=tar.gz", "HEAD"], { cwd: process.cwd() });
