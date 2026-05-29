@@ -1,0 +1,70 @@
+../dist/public/assets/xlsx-CKN5doRT.js                            424.23 kB │ gzip: 141.75 kB
+../dist/public/assets/georaster.browser.bundle.min-D6hm3U46.js    580.57 kB │ gzip: 186.81 kB
+../dist/public/assets/index-203XwOox.js                           957.83 kB │ gzip: 285.15 kB
+../dist/public/assets/georaster-layer-for-leaflet-Bo4uBk6i.js   1,300.43 kB │ gzip: 467.19 kB
+✓ built in 45.96s
+
+PWA v1.3.0
+mode      generateSW
+precache  89 entries (7384.34 KiB)
+files generated
+  ../dist/public/_vite-pwa-sw.js
+  ../dist/public/workbox-0562a5fe.js
+[build] Bundling server with esbuild → dist/index.cjs
+
+  dist\index.cjs      766.3kb
+  dist\index.cjs.map    1.5mb
+
+⚡ Done in 121ms
+[build] Done.
+  [OK] Vite build complete
+
+> Compiling Electron main/preload scripts...
+
+> Running Electron Forge make...
+  Using stable local Node.js v20: C:\mfl\node_env\node-v20.12.2-win-x64\node.exe
+✔ Checking your system
+✔ Loading configuration
+✔ Resolving make targets
+  › Making for the following targets: ,
+✔ Running package command
+  ✔ Preparing to package application
+  ✔ Running packaging hooks
+    ✔ Running generateAssets hook
+    ✔ Running prePackage hook
+  ✔ Packaging application
+    ✔ Packaging for x64 on win32 [34s]
+  ✔ Running postPackage hook
+✔ Running preMake hook
+❯ Making distributables
+  ✖ Making a squirrel distributable for win32/x64
+    › Failed with exit code: 1
+    Output:
+    Attempting to build package from 'VaxPlan.nuspec'.
+    Authors is required.
+    Description is required.
+  ✖ Making a zip distributable for win32/x64
+◼ Running postMake hook
+
+(node:36460) [DEP0147] DeprecationWarning: In future versions of Node.js, fs.rmdir(path, { recursive: true }) will be removed. Use fs.rm(path, { recursive: true }) instead
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+An unhandled rejection has occurred inside Forge:
+Error: Failed with exit code: 1
+Output:
+Attempting to build package from 'VaxPlan.nuspec'.
+Authors is required.
+Description is required.
+at ChildProcess.<anonymous> (C:\vaxplan\node_modules\electron-winstaller\lib\spawn-promise.js:48:24)
+    at ChildProcess.emit (node:events:518:28)
+    at ChildProcess.emit (node:domain:488:12)
+    at maybeClose (node:internal/child_process:1105:16)
+    at ChildProcess._handle.onexit (node:internal/child_process:305:5)
+C:\vaxplan\scripts\Build-Windows.ps1 : electron-forge make failed
+At C:\vaxplan\scripts\Build-Windows.ps1:120 char:28
++ ... ASTEXITCODE -ne 0) { Write-Error "electron-forge make failed"; exit 1 ...
++                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (:) [Write-Error], WriteErrorException
+    + FullyQualifiedErrorId : Microsoft.PowerShell.Commands.WriteErrorException,Build-Windows.ps1
+
+PS C:\vaxplan>

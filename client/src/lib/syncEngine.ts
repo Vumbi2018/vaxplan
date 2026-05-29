@@ -176,7 +176,7 @@ class SyncEngine {
     if (this.networkUnsub) this.networkUnsub();
     this.networkUnsub = onNetworkChange((online) => {
       if (online && this._state.status !== "syncing") {
-        this.sync(tenantId);
+        this.sync(tenantId, { silent: true });
       } else if (!online) {
         this.setState({ status: "offline", currentStage: "Offline", progressPercent: 0 });
       }
@@ -189,14 +189,17 @@ class SyncEngine {
     // fast path; this is a safety net for any missed events)
     this.periodicTimer = setInterval(() => {
       if (navigator.onLine && this._state.status !== "syncing") {
-        this.sync(tenantId);
+        this.sync(tenantId, { silent: true });
       }
     }, 5 * 60 * 1000);
 
-    // If we're online right now, sync immediately
+    // If we're online right now, sync immediately. For returning users (a
+    // persisted lastSyncAt already exists) this on-load refresh runs silently
+    // so it never interrupts. On true first run (no lastSyncAt) we sync
+    // visibly so the FirstRunSync setup screen can show progress.
     isOnline().then((online) => {
       if (online) {
-        this.sync(tenantId);
+        this.sync(tenantId, { silent: !!lastSyncAt });
       } else {
         this.setState({ status: "offline", currentStage: "Offline", progressPercent: 0 });
       }
@@ -431,43 +434,83 @@ class SyncEngine {
 
   // ── Orchestrator ──────────────────────────────────────────────────────────
 
-  async sync(tenantId: string): Promise<void> {
+  /**
+   * @param opts.silent  When true, the sync runs entirely in the background
+   *   without flipping the visible status into "syncing"/"error" (no progress
+   *   banner, no spinner, no error banner). Automatic triggers — connectivity
+   *   changes, the periodic safety-net timer, the Service Worker background
+   *   drain, and the on-load refresh for returning users — use this so routine
+   *   syncing never interrupts the user. Only the last-sync time + pending
+   *   count are updated. Manual "Sync Now" and first-run setup pass silent=false
+   *   so they still show progress.
+   */
+  async sync(tenantId: string, opts: { silent?: boolean } = {}): Promise<void> {
+    const silent = opts.silent ?? false;
     if (this.syncing) return;
     if (!navigator.onLine) {
-      this.setState({ status: "offline", currentStage: "Offline", progressPercent: 0 });
+      // Background polling stays quiet when offline; only an explicit sync
+      // surfaces the offline state.
+      if (!silent) {
+        this.setState({ status: "offline", currentStage: "Offline", progressPercent: 0 });
+      }
       return;
     }
 
     this.syncing = true;
-    this.setState({
-      status: "syncing",
-      errorMessage: null,
-      currentStage: "Initializing sync...",
-      progressPercent: 5,
-    });
+    if (!silent) {
+      this.setState({
+        status: "syncing",
+        errorMessage: null,
+        currentStage: "Initializing sync...",
+        progressPercent: 5,
+      });
+    }
 
     try {
       await this.flush(tenantId);   // push local changes first
       await this.pull(tenantId);    // then pull server changes
-      this.setState({
-        status: "success",
-        currentStage: "Sync completed successfully!",
-        progressPercent: 100,
-      });
-      // Clear stage after 3 seconds
-      setTimeout(() => {
-        if (this._state.status === "success") {
-          this.setState({ currentStage: "", progressPercent: 0 });
-        }
-      }, 3000);
+      if (silent) {
+        // Silent: lastSyncAt was just updated in pull(); leave the UI calm.
+        // Use "success" (banner stays hidden when there are no pending rows)
+        // and clear any stale progress text without animating anything.
+        this.setState({
+          status: "success",
+          currentStage: "",
+          progressPercent: 0,
+          errorMessage: null,
+        });
+      } else {
+        this.setState({
+          status: "success",
+          currentStage: "Sync completed successfully!",
+          progressPercent: 100,
+        });
+        // Clear stage after 3 seconds
+        setTimeout(() => {
+          if (this._state.status === "success") {
+            this.setState({ currentStage: "", progressPercent: 0 });
+          }
+        }, 3000);
+      }
     } catch (err: any) {
       console.error("[SyncEngine] sync failed:", err);
-      this.setState({
-        status: "error",
-        errorMessage: err?.message ?? "Sync failed",
-        currentStage: "Sync failed",
-        progressPercent: 0,
-      });
+      if (silent) {
+        // Background failure — stay quiet and keep the last-known state so we
+        // don't flash a red banner during routine polling. Network/'online'
+        // events and the periodic timer will retry.
+        this.setState({
+          status: navigator.onLine ? "idle" : "offline",
+          currentStage: "",
+          progressPercent: 0,
+        });
+      } else {
+        this.setState({
+          status: "error",
+          errorMessage: err?.message ?? "Sync failed",
+          currentStage: "Sync failed",
+          progressPercent: 0,
+        });
+      }
     } finally {
       this.syncing = false;
     }
@@ -494,42 +537,17 @@ class SyncEngine {
     }
   }
 
-  /** Reflect SW-driven Background Sync activity in the shared SyncState
-   *  so UI shows "Syncing" while the Service Worker is draining the
-   *  outbox, then transitions back to success/idle when it finishes. */
+  /** React to SW-driven Background Sync activity. This is an automatic
+   *  background drain, so it runs silently (no "Syncing" banner/spinner);
+   *  we only refresh the pending count when it finishes. */
   reportBackgroundSync(phase: "started" | "finished", info?: { ok?: boolean; reason?: string }): void {
-    if (phase === "started") {
-      // Don't trample an in-page sync that's already running.
-      if (this._state.status === "syncing") return;
-      this.setState({
-        status: "syncing",
-        currentStage: "Background sync in progress...",
-        progressPercent: 25,
-        errorMessage: null,
-      });
-    } else {
-      // finished
-      if (info?.ok) {
-        this.setState({
-          status: "success",
-          currentStage: "Background sync completed.",
-          progressPercent: 100,
-        });
-        setTimeout(() => {
-          if (this._state.status === "success") {
-            this.setState({ currentStage: "", progressPercent: 0 });
-          }
-        }, 3000);
-      } else if (info?.reason === "auth") {
-        this.setState({ status: "error", errorMessage: "Sign in to resume sync", currentStage: "" });
-      } else if (info?.reason !== "network") {
-        this.setState({ status: "error", errorMessage: info?.reason ?? "Background sync failed", currentStage: "" });
-      } else {
-        // network drop — stay idle/offline; periodic + 'online' event will retry
-        this.setState({ status: navigator.onLine ? "idle" : "offline", currentStage: "" });
-      }
-      void this.refreshPending();
-    }
+    // Service Worker Background Sync is, by definition, automatic — it must run
+    // silently. We never flip the visible status into "syncing"/"error" here so
+    // the outbox drains in the background without a banner or spinner. We only
+    // refresh the pending count (and last-sync time) when it finishes so the
+    // status badge stays accurate.
+    if (phase === "started") return;
+    void this.refreshPending();
   }
 
   /** Plain accessor for components that don't want the getter syntax. */

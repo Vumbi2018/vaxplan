@@ -81,6 +81,9 @@ export function OfflineBanner() {
   const lastSyncLabel = lastSyncAt
     ? `Last sync ${formatDistanceToNow(new Date(lastSyncAt), { addSuffix: true })}`
     : "Never synced";
+  const lastSyncExact = lastSyncAt
+    ? `Last sync: ${new Date(lastSyncAt).toLocaleString()}`
+    : "Never synced";
 
   return (
     <div
@@ -120,7 +123,7 @@ export function OfflineBanner() {
             <span title={errorMessage}>Error: {errorMessage.slice(0, 60)}{errorMessage.length > 60 ? "…" : ""}</span>
           )}
           {status !== "error" && status !== "syncing" && (
-            <span className="opacity-70">{lastSyncLabel}</span>
+            <span className="opacity-70" title={lastSyncExact}>{lastSyncLabel}</span>
           )}
           {status === "syncing" && (
             <div className="flex flex-col gap-1 w-full max-w-sm sm:max-w-md md:max-w-lg mt-0.5">

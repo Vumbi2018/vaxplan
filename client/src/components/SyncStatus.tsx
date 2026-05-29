@@ -75,7 +75,16 @@ export function SyncStatus(props: SyncStatusProps = {}) {
   }
 
   return (
-    <Badge variant="secondary" className="gap-1" data-testid="sync-synced">
+    <Badge
+      variant="secondary"
+      className="gap-1"
+      data-testid="sync-synced"
+      title={
+        lastSyncTime
+          ? `Last sync: ${lastSyncTime.toLocaleString()}`
+          : undefined
+      }
+    >
       <Cloud className="h-3 w-3" />
       <span className="text-xs">
         {lastSyncTime ? `Synced ${formatTimeAgo(lastSyncTime)}` : "Online"}
