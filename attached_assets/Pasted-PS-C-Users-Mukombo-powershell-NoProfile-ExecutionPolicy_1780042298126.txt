@@ -1,0 +1,37 @@
+PS C:\Users\Mukombo> powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; $z=Join-Path $env:TEMP 'vaxplan.zip'; $s=Join-Path $env:TEMP ('vp_'+[guid]::NewGuid().ToString('N')); Invoke-WebRequest -Uri 'PASTE-LINK-HERE' -OutFile $z -UseBasicParsing; Expand-Archive $z $s -Force; $r=(Get-ChildItem $s -Recurse -Filter package.json | Sort-Object {$_.FullName.Length} | Select-Object -First 1).Directory.FullName; New-Item -ItemType Directory -Force -Path 'C:\vaxplan' | Out-Null; robocopy $r 'C:\vaxplan' /E /NFL /NDL /NJH /NJS /NP | Out-Null; Set-Location 'C:\vaxplan'; npm install; npm run build:windows"
+Continue=Stop : The term 'Continue=Stop' is not recognized as the name of a cmdlet, function, script file, or operable
+program. Check the spelling of the name, or if a path was included, verify that the path is correct and try again.
+At line:1 char:1
++ Continue='Stop'; [Net.ServicePointManager]::SecurityProtocol=[Net.Sec ...
++ ~~~~~~~~~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (Continue=Stop:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+=Join-Path : The term '=Join-Path' is not recognized as the name of a cmdlet, function, script file, or operable
+program. Check the spelling of the name, or if a path was included, verify that the path is correct and try again.
+At line:1 char:97
++ ... ecurityProtocol=[Net.SecurityProtocolType]::Tls12; =Join-Path C:\User ...
++                                                        ~~~~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (=Join-Path:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+=Join-Path : The term '=Join-Path' is not recognized as the name of a cmdlet, function, script file, or operable
+program. Check the spelling of the name, or if a path was included, verify that the path is correct and try again.
+At line:1 char:159
++ ... C:\Users\Mukombo\AppData\Local\Temp 'vaxplan.zip'; =Join-Path C:\User ...
++                                                        ~~~~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (=Join-Path:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+Invoke-WebRequest : Missing an argument for parameter 'OutFile'. Specify a parameter of type 'System.String' and try
+again.
+At line:1 char:288
++ ... ring('N')); Invoke-WebRequest -Uri 'PASTE-LINK-HERE' -OutFile  -UseBa ...
++                                                          ~~~~~~~~
+    + CategoryInfo          : InvalidArgument: (:) [Invoke-WebRequest], ParameterBindingException
+    + FullyQualifiedErrorId : MissingArgument,Microsoft.PowerShell.Commands.InvokeWebRequestCommand
+
+
+cmdlet Expand-Archive at command pipeline position 1
+Supply values for the following parameters:
+Path:
