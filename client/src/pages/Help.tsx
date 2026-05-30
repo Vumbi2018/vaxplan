@@ -96,6 +96,16 @@ const defaultFaqs = [
       "Day-to-day microplan and session-plan authoring belongs to facility staff (Facility Clerk and Facility In-charge), keeping accountability with the people who run the sessions. National admins can also author when setting up or correcting a country's data. District and provincial roles are reviewers and approvers only — they review and approve plans but do not author them.",
   },
   {
+    question: "How do I schedule and run a supervision visit?",
+    answer:
+      "Open Supervision and click 'Schedule Visit'. Pick the facility, date, and supervisor, and choose which checklist to use — the built-in WHO checklist or any custom one your national admin has set up. When the supervisor arrives, they open the visit and answer the checklist questions (Yes/No, True/False, text, number, choices, rating, date, GPS location, or a photo), then record findings and follow-up actions. The score is the share of Yes/True answers among the Yes/No and True/False questions.",
+  },
+  {
+    question: "Can I build my own supervision checklist?",
+    answer:
+      "Yes — national admins can. Open Supervision and click 'Manage Checklists', then 'New checklist'. Give it a name and add questions, choosing a type for each (Yes/No, True/False, short text, number, single choice, multiple choice, rating, date, GPS location, or photo). Mark it Active and everyone in the country can pick it when scheduling a visit. Only national admins can create, edit, or delete the checklists.",
+  },
+  {
     question: "Where can I see a full list of everything VaxPlan can do?",
     answer:
       "Open the Standards Alignment page from the sidebar and look at the 'Features' tab. It lists every feature currently in the platform — grouped by area (dashboards, microplanning, vaccines & stock, maps & GIS, supervision, users & access, offline & sync, security, and more) — in plain language. Use the filter box on that page to jump straight to anything.",

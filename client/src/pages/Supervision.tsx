@@ -19,8 +19,17 @@ import { useToast } from "@/hooks/use-toast";
 import {
   ClipboardCheck, Calendar, Plus, CheckCircle2, AlertCircle, XCircle, MinusCircle,
   Building2, User, FileText, ListChecks, Trash2, Pencil, Activity, Mail, NotebookPen,
+  Settings2, MapPin, Camera, Star, Loader2,
 } from "lucide-react";
 import { GeoCascadeFilter } from "@/components/GeoCascadeFilter";
+import { useAuth } from "@/hooks/useAuth";
+import {
+  templateToAnswers,
+  computeChecklistScore,
+  type ChecklistAnswer,
+  type ChecklistTemplate,
+  type ChecklistQuestionType,
+} from "@shared/supervisionChecklist";
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100, 250] as const;
 
@@ -106,9 +115,12 @@ type SupervisionVisit = {
   createdAt: string;
 };
 
-type ChecklistItem = { key: string; label: string; response: "yes" | "no" | "na" | ""; note?: string };
+// Captured-answer shape, shared with the server and the configurable templates.
+type ChecklistItem = ChecklistAnswer;
 
-// WHO RED supportive supervision checklist (seeded; tenants can evolve over time).
+// WHO RED supportive supervision checklist (seeded; used when no configurable
+// template is chosen). Tenants can also build their own checklists — see the
+// "Manage checklists" builder (national admins) at /supervision/templates.
 const DEFAULT_CHECKLIST: ChecklistItem[] = [
   { key: "cold_chain_temp", label: "Cold chain log shows in-range temps for last 7 days", response: "" },
   { key: "vaccines_in_stock", label: "All antigens in stock with ≥1 month buffer", response: "" },
@@ -146,14 +158,13 @@ function parseAutoCancel(findings: string | null | undefined): { reason: string;
 }
 
 function computeScore(checklist: ChecklistItem[]): number {
-  const scorable = checklist.filter((c) => c.response === "yes" || c.response === "no");
-  if (!scorable.length) return 0;
-  const yes = scorable.filter((c) => c.response === "yes").length;
-  return Math.round((yes / scorable.length) * 100);
+  return computeChecklistScore(checklist);
 }
 
 export default function Supervision() {
   const { toast } = useToast();
+  const { user } = useAuth();
+  const admin = (user as any)?.role === "national_admin";
   const [, setLocation] = useLocation();
   const searchString = useSearch();
   const urlProvinceId = useMemo(() => {
@@ -224,6 +235,8 @@ export default function Supervision() {
     },
   });
   const { data: microplans = [] } = useQuery<any[]>({ queryKey: ["/api/microplans"] });
+  const { data: templates = [] } = useQuery<ChecklistTemplate[]>({ queryKey: ["/api/supervision-checklist-templates"] });
+  const activeTemplates = useMemo(() => templates.filter((t) => t.isActive), [templates]);
 
   const facById = useMemo(() => {
     const m = new Map<number, any>();
@@ -325,7 +338,7 @@ export default function Supervision() {
   const scheduleMutation = useMutation({
     mutationFn: async (data: any) => {
       const r = await apiRequest("POST", "/api/supervision-visits", data);
-      return (r as Response).json();
+      return r;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/supervision-visits"] });
@@ -338,7 +351,7 @@ export default function Supervision() {
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: number; data: any }) => {
       const r = await apiRequest("PATCH", `/api/supervision-visits/${id}`, data);
-      return (r as Response).json();
+      return r;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/supervision-visits"] });
@@ -351,7 +364,7 @@ export default function Supervision() {
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
       const r = await apiRequest("DELETE", `/api/supervision-visits/${id}`);
-      return (r as Response).json();
+      return r;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/supervision-visits"] });
@@ -373,6 +386,16 @@ export default function Supervision() {
         </div>
         <div className="flex items-center gap-2">
           <DigestPrefsPopover />
+          {admin && (
+            <Button
+              variant="outline"
+              className="gap-2"
+              onClick={() => setLocation("/supervision/templates")}
+              data-testid="btn-manage-checklists"
+            >
+              <Settings2 className="h-4 w-4" /> Manage Checklists
+            </Button>
+          )}
           <Dialog open={scheduleOpen} onOpenChange={(o) => { setScheduleOpen(o); if (!o) setPresetFacilityId(null); }}>
             <DialogTrigger asChild>
               <Button data-testid="btn-schedule-visit" className="gap-2" onClick={() => setPresetFacilityId(null)}>
@@ -383,6 +406,7 @@ export default function Supervision() {
               key={presetFacilityId ?? "new"}
               facilities={facilities}
               microplans={microplans}
+              templates={activeTemplates}
               initialFacilityId={presetFacilityId}
               onSubmit={(d) => scheduleMutation.mutate(d)}
               isSubmitting={scheduleMutation.isPending}
@@ -752,8 +776,8 @@ function DigestPrefsPopover() {
   const enabled = prefs?.supervisionDigest !== false;
   const updateMutation = useMutation({
     mutationFn: async (supervisionDigest: boolean) => {
-      const r = await apiRequest("PATCH", "/api/me/notification-prefs", { supervisionDigest });
-      return (r as Response).json();
+      const r = await apiRequest<{ supervisionDigest: boolean }>("PATCH", "/api/me/notification-prefs", { supervisionDigest });
+      return r;
     },
     onSuccess: (data) => {
       queryClient.setQueryData(["/api/me/notification-prefs"], data);
@@ -799,12 +823,13 @@ function DigestPrefsPopover() {
   );
 }
 
-function ScheduleDialog({ facilities, microplans, onSubmit, isSubmitting, initialFacilityId }: { facilities: any[]; microplans: any[]; onSubmit: (d: any) => void; isSubmitting: boolean; initialFacilityId?: number | null }) {
+function ScheduleDialog({ facilities, microplans, templates, onSubmit, isSubmitting, initialFacilityId }: { facilities: any[]; microplans: any[]; templates: ChecklistTemplate[]; onSubmit: (d: any) => void; isSubmitting: boolean; initialFacilityId?: number | null }) {
   const [facilityId, setFacilityId] = useState<string>(initialFacilityId ? String(initialFacilityId) : "");
   const [microplanId, setMicroplanId] = useState<string>("");
   const [scheduledDate, setScheduledDate] = useState<string>(new Date().toISOString().slice(0, 10));
   const [supervisorName, setSupervisorName] = useState<string>("");
   const [visitType, setVisitType] = useState<string>("routine");
+  const [templateId, setTemplateId] = useState<string>("__default__");
 
   return (
     <DialogContent className="max-w-md">
@@ -853,25 +878,245 @@ function ScheduleDialog({ facilities, microplans, onSubmit, isSubmitting, initia
           <Label>Supervisor name</Label>
           <Input value={supervisorName} onChange={(e) => setSupervisorName(e.target.value)} placeholder="e.g. District Health Officer" data-testid="schedule-supervisor" />
         </div>
+        <div>
+          <Label>Checklist</Label>
+          <Select value={templateId} onValueChange={setTemplateId}>
+            <SelectTrigger data-testid="schedule-template"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__default__">Default WHO checklist</SelectItem>
+              {templates.map((t) => <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground mt-1">
+            {templateId === "__default__"
+              ? "The built-in WHO supportive-supervision checklist will be used."
+              : "This custom checklist will be filled in when the visit is conducted."}
+          </p>
+        </div>
       </div>
       <DialogFooter>
         <Button
           disabled={!facilityId || !scheduledDate || isSubmitting}
-          onClick={() => onSubmit({
-            facilityId: parseInt(facilityId),
-            microplanId: microplanId ? parseInt(microplanId) : null,
-            scheduledDate,
-            supervisorName: supervisorName || null,
-            visitType,
-            status: "scheduled",
-            checklist: DEFAULT_CHECKLIST,
-          })}
+          onClick={() => {
+            const chosen = templateId !== "__default__"
+              ? templates.find((t) => String(t.id) === templateId)
+              : undefined;
+            const checklist = chosen ? templateToAnswers(chosen.items) : DEFAULT_CHECKLIST;
+            onSubmit({
+              facilityId: parseInt(facilityId),
+              microplanId: microplanId ? parseInt(microplanId) : null,
+              scheduledDate,
+              supervisorName: supervisorName || null,
+              visitType,
+              status: "scheduled",
+              checklist,
+              templateId: chosen ? chosen.id : null,
+            });
+          }}
           data-testid="btn-submit-schedule"
         >
           {isSubmitting ? "Scheduling…" : "Schedule visit"}
         </Button>
       </DialogFooter>
     </DialogContent>
+  );
+}
+
+function ChecklistQuestion({
+  item,
+  index,
+  setResp,
+  setNote,
+  setValue,
+}: {
+  item: ChecklistItem;
+  index: number;
+  setResp: (idx: number, r: ChecklistItem["response"]) => void;
+  setNote: (idx: number, n: string) => void;
+  setValue: (idx: number, v: unknown) => void;
+}) {
+  const { toast } = useToast();
+  const [capturing, setCapturing] = useState(false);
+  const type: ChecklistQuestionType = item.type || "yes_no";
+
+  const captureGps = () => {
+    if (!navigator.geolocation) {
+      toast({ title: "GPS not available", description: "This device can't report its location.", variant: "destructive" });
+      return;
+    }
+    setCapturing(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setValue(index, {
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          accuracy: pos.coords.accuracy,
+          capturedAt: new Date().toISOString(),
+        });
+        setCapturing(false);
+      },
+      (err) => {
+        setCapturing(false);
+        toast({ title: "Couldn't get location", description: err.message, variant: "destructive" });
+      },
+      { enableHighAccuracy: true, timeout: 15000 },
+    );
+  };
+
+  const onImage = (file: File | undefined) => {
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      toast({ title: "Image too large", description: "Please use a photo under 5 MB.", variant: "destructive" });
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => setValue(index, { dataUrl: reader.result as string, name: file.name });
+    reader.readAsDataURL(file);
+  };
+
+  const gps = (item.value as any) || null;
+  const img = (item.value as any) || null;
+  const multi: string[] = Array.isArray(item.value) ? (item.value as string[]) : [];
+
+  return (
+    <div className="border rounded-lg p-3 space-y-2" data-testid={`check-${item.key}`}>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div className="text-sm font-medium flex-1 min-w-[200px]">
+          {index + 1}. {item.label}
+          {item.required && <span className="text-rose-500 ml-1">*</span>}
+          {item.helpText && <p className="text-xs text-muted-foreground font-normal mt-0.5">{item.helpText}</p>}
+        </div>
+
+        {(type === "yes_no" || type === "true_false") && (
+          <div className="flex gap-1">
+            <RespBtn active={item.response === "yes"} onClick={() => setResp(index, "yes")} icon={CheckCircle2} label={type === "true_false" ? "True" : "Yes"} tone="emerald" testId={`${item.key}-yes`} />
+            <RespBtn active={item.response === "no"} onClick={() => setResp(index, "no")} icon={XCircle} label={type === "true_false" ? "False" : "No"} tone="rose" testId={`${item.key}-no`} />
+            <RespBtn active={item.response === "na"} onClick={() => setResp(index, "na")} icon={MinusCircle} label="N/A" tone="muted" testId={`${item.key}-na`} />
+          </div>
+        )}
+      </div>
+
+      {type === "text" && (
+        <Textarea
+          rows={2}
+          placeholder="Type the answer"
+          value={(item.value as string) || ""}
+          onChange={(e) => setValue(index, e.target.value)}
+          data-testid={`${item.key}-text`}
+        />
+      )}
+
+      {type === "number" && (
+        <Input
+          type="number"
+          placeholder="Enter a number"
+          value={item.value === undefined || item.value === null ? "" : String(item.value)}
+          onChange={(e) => setValue(index, e.target.value === "" ? null : Number(e.target.value))}
+          data-testid={`${item.key}-number`}
+        />
+      )}
+
+      {type === "date" && (
+        <Input
+          type="date"
+          value={(item.value as string) || ""}
+          onChange={(e) => setValue(index, e.target.value)}
+          data-testid={`${item.key}-date`}
+        />
+      )}
+
+      {type === "rating" && (
+        <div className="flex gap-1" data-testid={`${item.key}-rating`}>
+          {[1, 2, 3, 4, 5].map((n) => (
+            <Button
+              key={n}
+              type="button"
+              size="icon"
+              variant={Number(item.value) >= n ? "default" : "outline"}
+              className="h-8 w-8"
+              onClick={() => setValue(index, n)}
+              data-testid={`${item.key}-rating-${n}`}
+            >
+              <Star className="h-4 w-4" />
+            </Button>
+          ))}
+        </div>
+      )}
+
+      {type === "single_select" && (
+        <Select value={(item.value as string) || ""} onValueChange={(v) => setValue(index, v)}>
+          <SelectTrigger data-testid={`${item.key}-single`}><SelectValue placeholder="Pick one" /></SelectTrigger>
+          <SelectContent>
+            {(item.options || []).map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      )}
+
+      {type === "multi_select" && (
+        <div className="space-y-1" data-testid={`${item.key}-multi`}>
+          {(item.options || []).map((o) => {
+            const checked = multi.includes(o);
+            return (
+              <label key={o} className="flex items-center gap-2 text-sm cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={(e) => {
+                    const next = e.target.checked ? [...multi, o] : multi.filter((x) => x !== o);
+                    setValue(index, next);
+                  }}
+                />
+                {o}
+              </label>
+            );
+          })}
+        </div>
+      )}
+
+      {type === "gps" && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button type="button" variant="outline" size="sm" className="gap-1" onClick={captureGps} disabled={capturing} data-testid={`${item.key}-gps`}>
+            {capturing ? <Loader2 className="h-4 w-4 animate-spin" /> : <MapPin className="h-4 w-4" />}
+            {capturing ? "Capturing…" : gps?.lat != null ? "Re-capture location" : "Capture location"}
+          </Button>
+          {gps?.lat != null && (
+            <span className="text-xs text-muted-foreground">
+              {Number(gps.lat).toFixed(5)}, {Number(gps.lng).toFixed(5)}
+              {gps.accuracy != null ? ` (±${Math.round(gps.accuracy)}m)` : ""}
+            </span>
+          )}
+        </div>
+      )}
+
+      {type === "image" && (
+        <div className="space-y-2">
+          <label className="inline-flex items-center gap-1 text-sm border rounded-md px-3 py-1.5 cursor-pointer hover:bg-muted" data-testid={`${item.key}-image-label`}>
+            <Camera className="h-4 w-4" />
+            {img?.dataUrl ? "Replace photo" : "Add photo"}
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={(e) => onImage(e.target.files?.[0])}
+              data-testid={`${item.key}-image`}
+            />
+          </label>
+          {img?.dataUrl && (
+            <img src={img.dataUrl} alt={img.name || "captured"} className="max-h-40 rounded-md border" />
+          )}
+        </div>
+      )}
+
+      {(type === "yes_no" || type === "true_false") && item.response === "no" && (
+        <Input
+          placeholder="Note the gap (optional)"
+          value={item.note || ""}
+          onChange={(e) => setNote(index, e.target.value)}
+          className="text-xs"
+        />
+      )}
+    </div>
   );
 }
 
@@ -890,6 +1135,9 @@ function ConductDialog({ visit, facility, onClose, onSave, isSaving }: { visit: 
   const setNote = (idx: number, n: string) => {
     setChecklist((prev) => prev.map((c, i) => i === idx ? { ...c, note: n } : c));
   };
+  const setValue = (idx: number, v: unknown) => {
+    setChecklist((prev) => prev.map((c, i) => i === idx ? { ...c, value: v } : c));
+  };
 
   return (
     <Dialog open={true} onOpenChange={(o) => !o && onClose()}>
@@ -907,30 +1155,20 @@ function ConductDialog({ visit, facility, onClose, onSave, isSaving }: { visit: 
 
           <TabsContent value="checklist" className="space-y-2 mt-3">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-sm text-muted-foreground">Mark each item Yes / No / N/A. Score = % of Yes among Yes+No.</p>
+              <p className="text-sm text-muted-foreground">Answer each question. Score = % of Yes/True among the Yes-No and True-False questions answered.</p>
               <Badge variant="outline" className={score >= 80 ? STATUS_STYLES.conducted : score >= 60 ? "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30" : STATUS_STYLES.missed}>
                 Current score: {score}%
               </Badge>
             </div>
             {checklist.map((c, idx) => (
-              <div key={c.key} className="border rounded-lg p-3 space-y-2" data-testid={`check-${c.key}`}>
-                <div className="flex items-start justify-between gap-3 flex-wrap">
-                  <div className="text-sm font-medium flex-1 min-w-[200px]">{idx + 1}. {c.label}</div>
-                  <div className="flex gap-1">
-                    <RespBtn active={c.response === "yes"} onClick={() => setResp(idx, "yes")} icon={CheckCircle2} label="Yes" tone="emerald" testId={`${c.key}-yes`} />
-                    <RespBtn active={c.response === "no"} onClick={() => setResp(idx, "no")} icon={XCircle} label="No" tone="rose" testId={`${c.key}-no`} />
-                    <RespBtn active={c.response === "na"} onClick={() => setResp(idx, "na")} icon={MinusCircle} label="N/A" tone="muted" testId={`${c.key}-na`} />
-                  </div>
-                </div>
-                {c.response === "no" && (
-                  <Input
-                    placeholder="Note the gap (optional)"
-                    value={c.note || ""}
-                    onChange={(e) => setNote(idx, e.target.value)}
-                    className="text-xs"
-                  />
-                )}
-              </div>
+              <ChecklistQuestion
+                key={c.key}
+                item={c}
+                index={idx}
+                setResp={setResp}
+                setNote={setNote}
+                setValue={setValue}
+              />
             ))}
           </TabsContent>
 

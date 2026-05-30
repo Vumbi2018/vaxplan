@@ -805,6 +805,12 @@ export default function UserManagement() {
       setAddProvinceId(null);
       setAddDistrictId(null);
       setAddFacilityId(null);
+      // Clear any active search / geo filters so the newly created user is
+      // never hidden behind a filter the admin had set earlier.
+      setSearchTerm("");
+      setGeoFilterProvinceId(null);
+      setGeoFilterDistrictId(null);
+      setGeoFilterFacilityId(null);
     },
     onError: (err: any) => {
       toast({

@@ -27,6 +27,7 @@ import {
   insertVaccineRequirementSchema,
   insertMobilizationActivitySchema,
   insertSupervisionVisitSchema,
+  insertSupervisionChecklistTemplateSchema,
   supervisionVisits,
   insertQuarterlyReviewSchema,
   insertApprovalRequestSchema,
@@ -5875,6 +5876,10 @@ export async function registerRoutes(
         const sp = await storage.getSessionPlan(req.tenantId, data.sessionPlanId);
         if (!sp) return res.status(400).json({ message: "Session plan does not belong to this tenant" });
       }
+      if (data.templateId) {
+        const t = await storage.getChecklistTemplate(req.tenantId, data.templateId);
+        if (!t) return res.status(400).json({ message: "Checklist template does not belong to this tenant" });
+      }
       const v = await storage.createSupervisionVisit(req.tenantId, data);
       await logAudit(req, "create", "supervision_visit", v.id, null, v);
       res.status(201).json(v);
@@ -5904,6 +5909,10 @@ export async function registerRoutes(
         const sp = await storage.getSessionPlan(req.tenantId, body.sessionPlanId);
         if (!sp) return res.status(400).json({ message: "Session plan does not belong to this tenant" });
       }
+      if (body.templateId) {
+        const t = await storage.getChecklistTemplate(req.tenantId, body.templateId);
+        if (!t) return res.status(400).json({ message: "Checklist template does not belong to this tenant" });
+      }
       const v = await storage.updateSupervisionVisit(req.tenantId, id, body);
       if (!v) return res.status(404).json({ message: "Supervision visit not found" });
       await logAudit(req, "update", "supervision_visit", id, old, v);
@@ -5925,6 +5934,70 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error deleting supervision visit:", error);
       res.status(500).json({ message: "Failed to delete supervision visit" });
+    }
+  });
+
+  // ─── Configurable supervision checklist templates ───────────────────
+  // National admins author reusable checklist templates with varied question
+  // types; every lower level in the tenant reads the active ones and uses them
+  // when scheduling/conducting a visit.
+  app.get("/api/supervision-checklist-templates", ...auth, async (req: any, res) => {
+    try {
+      res.json(await storage.listChecklistTemplates(req.tenantId));
+    } catch (error) {
+      console.error("Error fetching checklist templates:", error);
+      res.status(500).json({ message: "Failed to fetch checklist templates" });
+    }
+  });
+
+  app.get("/api/supervision-checklist-templates/:id", ...auth, async (req: any, res) => {
+    try {
+      const t = await storage.getChecklistTemplate(req.tenantId, parseInt(req.params.id));
+      if (!t) return res.status(404).json({ message: "Checklist template not found" });
+      res.json(t);
+    } catch (error) {
+      console.error("Error fetching checklist template:", error);
+      res.status(500).json({ message: "Failed to fetch checklist template" });
+    }
+  });
+
+  app.post("/api/supervision-checklist-templates", ...auth, loadRole, requireAdmin, async (req: any, res) => {
+    try {
+      const data = insertSupervisionChecklistTemplateSchema.parse(req.body);
+      const t = await storage.createChecklistTemplate(req.tenantId, req.user?.claims?.sub ?? null, data);
+      await logAudit(req, "create", "supervision_checklist_template", t.id, null, t);
+      res.status(201).json(t);
+    } catch (error: any) {
+      console.error("Error creating checklist template:", error);
+      res.status(400).json({ message: error?.message || "Invalid checklist template data" });
+    }
+  });
+
+  app.patch("/api/supervision-checklist-templates/:id", ...auth, loadRole, requireAdmin, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const old = await storage.getChecklistTemplate(req.tenantId, id);
+      const t = await storage.updateChecklistTemplate(req.tenantId, id, req.body);
+      if (!t) return res.status(404).json({ message: "Checklist template not found" });
+      await logAudit(req, "update", "supervision_checklist_template", id, old, t);
+      res.json(t);
+    } catch (error: any) {
+      console.error("Error updating checklist template:", error);
+      res.status(400).json({ message: error?.message || "Failed to update checklist template" });
+    }
+  });
+
+  app.delete("/api/supervision-checklist-templates/:id", ...auth, loadRole, requireAdmin, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const old = await storage.getChecklistTemplate(req.tenantId, id);
+      const ok = await storage.deleteChecklistTemplate(req.tenantId, id);
+      if (!ok) return res.status(404).json({ message: "Checklist template not found" });
+      await logAudit(req, "delete", "supervision_checklist_template", id, old, null);
+      res.json({ ok: true });
+    } catch (error) {
+      console.error("Error deleting checklist template:", error);
+      res.status(500).json({ message: "Failed to delete checklist template" });
     }
   });
 

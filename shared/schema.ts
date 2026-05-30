@@ -1558,6 +1558,7 @@ export const supervisionVisits = pgTable(
     supervisorName: varchar("supervisor_name", { length: 255 }),
     visitType: varchar("visit_type", { length: 40 }).notNull().default("routine"), // routine | followup | adhoc | campaign
     status: varchar("status", { length: 20 }).notNull().default("scheduled"), // scheduled | conducted | cancelled | missed
+    templateId: integer("template_id"), // optional configurable checklist template used for this visit
     checklist: jsonb("checklist").default([]).notNull(),
     score: integer("score"), // 0-100 derived from checklist
     findings: text("findings"),
@@ -1573,6 +1574,41 @@ export const supervisionVisits = pgTable(
     scheduledIdx: index("idx_supervision_scheduled").on(table.tenantId, table.scheduledDate),
   }),
 );
+
+// Configurable supervision checklist templates. National admins author these and
+// publish them (isActive=true) so every lower level in the tenant can pick one
+// when scheduling/conducting a supervisory visit. The questions are stored as a
+// JSON array of items (see ChecklistTemplateItem in shared/supervisionChecklist.ts)
+// so admins can add varied question types without a schema change.
+export const supervisionChecklistTemplates = pgTable(
+  "supervision_checklist_templates",
+  {
+    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+    tenantId: varchar("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 200 }).notNull(),
+    description: text("description"),
+    items: jsonb("items").default([]).notNull(), // ChecklistTemplateItem[]
+    isActive: boolean("is_active").notNull().default(true), // published & usable by lower levels
+    createdByUserId: varchar("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    tenantIdx: index("idx_supervision_template_tenant").on(table.tenantId),
+  }),
+);
+
+export const insertSupervisionChecklistTemplateSchema = createInsertSchema(supervisionChecklistTemplates).omit({
+  id: true,
+  tenantId: true,
+  createdByUserId: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertSupervisionChecklistTemplate = z.infer<typeof insertSupervisionChecklistTemplateSchema>;
+export type SupervisionChecklistTemplate = typeof supervisionChecklistTemplates.$inferSelect;
 
 // Annual national immunization plan (NIMP / cMYP). One row per (tenant, year).
 // Owned by national_admin / platform_admin. HF microplans inherit targets and

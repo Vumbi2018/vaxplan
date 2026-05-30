@@ -17,6 +17,7 @@ import {
   vaccineRequirements,
   mobilizationActivities,
   supervisionVisits,
+  supervisionChecklistTemplates,
   quarterlyReviews,
   approvalRequests,
   auditLogs,
@@ -66,6 +67,8 @@ import {
   type InsertMobilizationActivity,
   type SupervisionVisit,
   type InsertSupervisionVisit,
+  type SupervisionChecklistTemplate,
+  type InsertSupervisionChecklistTemplate,
   type QuarterlyReview,
   type InsertQuarterlyReview,
   type ApprovalRequest,
@@ -257,6 +260,11 @@ export interface IStorage {
   createSupervisionVisit(tenantId: string, data: InsertSupervisionVisit): Promise<SupervisionVisit>;
   updateSupervisionVisit(tenantId: string, id: number, data: Partial<InsertSupervisionVisit>): Promise<SupervisionVisit | undefined>;
   deleteSupervisionVisit(tenantId: string, id: number): Promise<boolean>;
+  listChecklistTemplates(tenantId: string): Promise<SupervisionChecklistTemplate[]>;
+  getChecklistTemplate(tenantId: string, id: number): Promise<SupervisionChecklistTemplate | undefined>;
+  createChecklistTemplate(tenantId: string, createdByUserId: string | null, data: InsertSupervisionChecklistTemplate): Promise<SupervisionChecklistTemplate>;
+  updateChecklistTemplate(tenantId: string, id: number, data: Partial<InsertSupervisionChecklistTemplate>): Promise<SupervisionChecklistTemplate | undefined>;
+  deleteChecklistTemplate(tenantId: string, id: number): Promise<boolean>;
 
   listQuarterlyReviews(tenantId: string, filters?: { facilityId?: number; year?: number; quarter?: number }): Promise<(QuarterlyReview & { updatedByName: string | null; createdByName: string | null })[]>;
   getQuarterlyReview(tenantId: string, facilityId: number, year: number, quarter: number): Promise<QuarterlyReview | undefined>;
@@ -1284,6 +1292,44 @@ export class DatabaseStorage implements IStorage {
       .delete(supervisionVisits)
       .where(and(eq(supervisionVisits.id, id), eq(supervisionVisits.tenantId, tenantId)))
       .returning({ id: supervisionVisits.id });
+    return r.length > 0;
+  }
+
+  async listChecklistTemplates(tenantId: string): Promise<SupervisionChecklistTemplate[]> {
+    return await db
+      .select()
+      .from(supervisionChecklistTemplates)
+      .where(eq(supervisionChecklistTemplates.tenantId, tenantId))
+      .orderBy(desc(supervisionChecklistTemplates.updatedAt));
+  }
+  async getChecklistTemplate(tenantId: string, id: number): Promise<SupervisionChecklistTemplate | undefined> {
+    const [t] = await db
+      .select()
+      .from(supervisionChecklistTemplates)
+      .where(and(eq(supervisionChecklistTemplates.id, id), eq(supervisionChecklistTemplates.tenantId, tenantId)));
+    return t;
+  }
+  async createChecklistTemplate(tenantId: string, createdByUserId: string | null, data: InsertSupervisionChecklistTemplate): Promise<SupervisionChecklistTemplate> {
+    const [t] = await db
+      .insert(supervisionChecklistTemplates)
+      .values({ ...data, tenantId, createdByUserId } as typeof supervisionChecklistTemplates.$inferInsert)
+      .returning();
+    return t;
+  }
+  async updateChecklistTemplate(tenantId: string, id: number, data: Partial<InsertSupervisionChecklistTemplate>): Promise<SupervisionChecklistTemplate | undefined> {
+    const { tenantId: _i, ...safe } = data as any;
+    const [t] = await db
+      .update(supervisionChecklistTemplates)
+      .set({ ...safe, updatedAt: new Date() })
+      .where(and(eq(supervisionChecklistTemplates.id, id), eq(supervisionChecklistTemplates.tenantId, tenantId)))
+      .returning();
+    return t;
+  }
+  async deleteChecklistTemplate(tenantId: string, id: number): Promise<boolean> {
+    const r = await db
+      .delete(supervisionChecklistTemplates)
+      .where(and(eq(supervisionChecklistTemplates.id, id), eq(supervisionChecklistTemplates.tenantId, tenantId)))
+      .returning({ id: supervisionChecklistTemplates.id });
     return r.length > 0;
   }
 

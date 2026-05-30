@@ -548,18 +548,36 @@ country:
 
 Supervision is a first-class workflow:
 
-1. **Schedule visits.** District managers open **Supervision → New
-   visit**, pick a facility, a date, and a supervisor.
+1. **Schedule visits.** Open **Supervision → Schedule Visit**, pick a
+   facility, a date, and a supervisor. You can also choose which
+   **checklist** to use — the built-in WHO checklist, or any custom
+   checklist your national admin has built (see below).
 2. **Visit checklist.** When the supervisor arrives, they open the
-   visit on their phone and tick the checklist (cold chain, records,
-   stock, session register, etc.).
-3. **Findings and actions.** Any "non-compliant" item becomes an
-   action item with an owner and a due date.
-4. **Submit.** The facility in-charge co-signs the report; both get
-   a copy.
+   visit on their phone and answer the checklist questions. Questions
+   can be Yes/No, True/False, short text, a number, single- or
+   multiple-choice, a 1–5 rating, a date, a captured **GPS location**,
+   or a **photo** taken on the device.
+3. **Findings and actions.** Record findings and follow-up actions,
+   and set the next visit date.
+4. **Score.** The visit score is the share of "Yes"/"True" answers
+   among the Yes/No and True/False questions that were answered.
 
 The **Supervision digest** (a weekly summary) rolls up overdue
-actions to the district and provincial dashboards.
+visits to the district and provincial dashboards.
+
+### Custom supervision checklists (national admins)
+
+National admins can build their own checklists so every facility in
+the country uses the same questions:
+
+1. Open **Supervision → Manage Checklists**.
+2. Click **New checklist**, give it a name, and add questions. For
+   each question pick a type (Yes/No, True/False, short text, number,
+   single choice, multiple choice, rating, date, GPS location, or
+   photo), and add options for choice questions.
+3. Mark a checklist **Active** to make it available when scheduling
+   visits. Anyone in the country can then pick it; only national
+   admins can create, edit, or delete the checklists themselves.
 
 ---
 

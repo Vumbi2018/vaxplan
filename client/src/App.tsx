@@ -39,6 +39,7 @@ const HardToReach = lazy(() => import("@/pages/HardToReach"));
 // the wizard (see <PreserveQueryRedirect> below).
 const Approvals = lazy(() => import("@/pages/Approvals"));
 const Supervision = lazy(() => import("@/pages/Supervision"));
+const SupervisionTemplates = lazy(() => import("@/pages/SupervisionTemplates"));
 const Settings = lazy(() => import("@/pages/Settings"));
 const Help = lazy(() => import("@/pages/Help"));
 const Signup = lazy(() => import("@/pages/Signup"));
@@ -187,6 +188,7 @@ function AuthenticatedRouter() {
       </Route>
       <Route path="/approvals" component={Approvals} />
       <Route path="/supervision" component={Supervision} />
+      <Route path="/supervision/templates" component={SupervisionTemplates} />
       <Route path="/admin/signups" component={SignupRequests} />
       <Route path="/admin/users" component={UserManagement} />
       <Route path="/admin/countries" component={CountryOnboarding} />
