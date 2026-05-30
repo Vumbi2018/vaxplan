@@ -1768,7 +1768,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/me/tenant", isAuthenticated, requireTenant, async (req: any, res) => {
+  app.patch("/api/me/tenant", isAuthenticated, requireTenant, loadRole, requireAdmin, async (req: any, res) => {
     try {
       const schema = z.object({
         name: z.string().min(1).optional(),

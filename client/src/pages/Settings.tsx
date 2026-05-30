@@ -916,7 +916,7 @@ export default function Settings() {
         </div>
       </div>
 
-      <Tabs defaultValue="microplanning" className="w-full space-y-6">
+      <Tabs defaultValue={isNationalAdmin ? "microplanning" : "profile"} className="w-full space-y-6">
         <TabsList className="flex flex-wrap h-auto p-1.5 bg-muted/60 dark:bg-muted/30 border border-border/40 backdrop-blur-md rounded-2xl w-full gap-1 shadow-lg overflow-x-auto custom-scrollbar">
           <TabsTrigger 
             value="profile" 
@@ -925,27 +925,31 @@ export default function Settings() {
             <User className="h-4 w-4 mr-2 flex-shrink-0" />
             <span>Profile & Security</span>
           </TabsTrigger>
-          <TabsTrigger 
-            value="microplanning" 
-            className="py-2.5 px-4 rounded-xl text-xs font-semibold flex items-center justify-center transition-all duration-300 hover:bg-accent/40 hover:text-foreground data-[state=active]:bg-gradient-to-r data-[state=active]:from-indigo-600 data-[state=active]:to-sky-600 data-[state=active]:text-white data-[state=active]:shadow-md dark:data-[state=active]:from-indigo-500 dark:data-[state=active]:to-sky-500 data-[state=active]:font-bold"
-          >
-            <SettingsIcon className="h-4 w-4 mr-2 flex-shrink-0" />
-            <span>Microplanning Settings</span>
-          </TabsTrigger>
-          <TabsTrigger 
-            value="data_import" 
-            className="py-2.5 px-4 rounded-xl text-xs font-semibold flex items-center justify-center transition-all duration-300 hover:bg-accent/40 hover:text-foreground data-[state=active]:bg-gradient-to-r data-[state=active]:from-indigo-600 data-[state=active]:to-sky-600 data-[state=active]:text-white data-[state=active]:shadow-md dark:data-[state=active]:from-indigo-500 dark:data-[state=active]:to-sky-500 data-[state=active]:font-bold"
-          >
-            <Database className="h-4 w-4 mr-2 flex-shrink-0" />
-            <span>Data Seeding</span>
-          </TabsTrigger>
-          <TabsTrigger 
-            value="access" 
-            className="py-2.5 px-4 rounded-xl text-xs font-semibold flex items-center justify-center transition-all duration-300 hover:bg-accent/40 hover:text-foreground data-[state=active]:bg-gradient-to-r data-[state=active]:from-indigo-600 data-[state=active]:to-sky-600 data-[state=active]:text-white data-[state=active]:shadow-md dark:data-[state=active]:from-indigo-500 dark:data-[state=active]:to-sky-500 data-[state=active]:font-bold"
-          >
-            <Shield className="h-4 w-4 mr-2 flex-shrink-0" />
-            <span>Permissions & Modules</span>
-          </TabsTrigger>
+          {isNationalAdmin && (
+            <>
+              <TabsTrigger 
+                value="microplanning" 
+                className="py-2.5 px-4 rounded-xl text-xs font-semibold flex items-center justify-center transition-all duration-300 hover:bg-accent/40 hover:text-foreground data-[state=active]:bg-gradient-to-r data-[state=active]:from-indigo-600 data-[state=active]:to-sky-600 data-[state=active]:text-white data-[state=active]:shadow-md dark:data-[state=active]:from-indigo-500 dark:data-[state=active]:to-sky-500 data-[state=active]:font-bold"
+              >
+                <SettingsIcon className="h-4 w-4 mr-2 flex-shrink-0" />
+                <span>Microplanning Settings</span>
+              </TabsTrigger>
+              <TabsTrigger 
+                value="data_import" 
+                className="py-2.5 px-4 rounded-xl text-xs font-semibold flex items-center justify-center transition-all duration-300 hover:bg-accent/40 hover:text-foreground data-[state=active]:bg-gradient-to-r data-[state=active]:from-indigo-600 data-[state=active]:to-sky-600 data-[state=active]:text-white data-[state=active]:shadow-md dark:data-[state=active]:from-indigo-500 dark:data-[state=active]:to-sky-500 data-[state=active]:font-bold"
+              >
+                <Database className="h-4 w-4 mr-2 flex-shrink-0" />
+                <span>Data Seeding</span>
+              </TabsTrigger>
+              <TabsTrigger 
+                value="access" 
+                className="py-2.5 px-4 rounded-xl text-xs font-semibold flex items-center justify-center transition-all duration-300 hover:bg-accent/40 hover:text-foreground data-[state=active]:bg-gradient-to-r data-[state=active]:from-indigo-600 data-[state=active]:to-sky-600 data-[state=active]:text-white data-[state=active]:shadow-md dark:data-[state=active]:from-indigo-500 dark:data-[state=active]:to-sky-500 data-[state=active]:font-bold"
+              >
+                <Shield className="h-4 w-4 mr-2 flex-shrink-0" />
+                <span>Permissions & Modules</span>
+              </TabsTrigger>
+            </>
+          )}
 
           {/* Dynamic Administrative Triggers inside Systems settings */}
           {canAccessUserManagement && (
