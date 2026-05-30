@@ -420,7 +420,9 @@ National admins are the power users for your country. Your modules:
   away, and you can **reset any user's password** later from the
   user's edit screen (open a user → **Reset Password**). Passwords must
   be at least 8 characters — share them with the user securely. (Only
-  national/platform admins see these password controls.)
+  national/platform admins see these password controls, and national
+  admins can only set passwords for users in **their own country** —
+  the controls are hidden while you're viewing another country.)
 - **Facilities.** The registry of all facilities. Import from CSV (a
   template is downloadable), edit GPS coordinates, merge duplicates,
   or retire facilities.

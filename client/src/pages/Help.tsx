@@ -113,7 +113,7 @@ const defaultFaqs = [
   {
     question: "How do I change or reset my password?",
     answer:
-      "To change your own password, click your name in the top-right corner and choose 'Change password'. Enter your current password (leave it blank if you've never set one — for example if you normally sign in through your organisation's single sign-on), then type your new password twice. Passwords must be at least 8 characters. If you've forgotten your password, click 'Forgot password?' on the sign-in screen and enter your email — your administrator is notified so they can set a new one for you and share it securely. National and platform administrators can also set an initial password when creating a user, and reset any user's password from that user's edit screen under 'Reset Password'.",
+      "To change your own password, click your name in the top-right corner and choose 'Change password'. Enter your current password (leave it blank if you've never set one — for example if you normally sign in through your organisation's single sign-on), then type your new password twice. Passwords must be at least 8 characters. If you've forgotten your password, click 'Forgot password?' on the sign-in screen and enter your email — your administrator is notified so they can set a new one for you and share it securely. National and platform administrators can also set an initial password when creating a user, and reset any user's password from that user's edit screen under 'Reset Password'. National admins can only set passwords for users in their own country, so these controls are hidden while viewing another country.",
   },
   {
     question: "What is the number next to my name at the top?",

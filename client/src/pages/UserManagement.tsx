@@ -528,14 +528,32 @@ export default function UserManagement() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { user: currentUser } = useAuth();
+  // The currently-viewed tenant (may differ from the user's home tenant when
+  // browsing another country). Used to gate write-only controls.
+  const { data: viewedTenant } = useQuery<{ id: string }>({
+    queryKey: ["/api/me/tenant"],
+    retry: false,
+  });
   // Admin password create/reset is only allowed server-side for national
-  // admins (and platform admins). Gate the UI to those roles so we never show
-  // a control that would 403. Provincial coordinators can manage users but not
-  // set passwords.
-  const canManagePasswords =
+  // admins (same tenant) and platform admins (any tenant). Gate the UI to match
+  // so we never show a control that would 403:
+  //  - Platform admins can set passwords in any tenant.
+  //  - National admins / program managers can only do so in their HOME tenant;
+  //    cross-tenant password writes are rejected by the server, so hide the
+  //    controls while viewing another country.
+  //  - Provincial coordinators can manage users but never set passwords.
+  const isPlatformAdmin = !!(currentUser as any)?.isPlatformAdmin;
+  const hasPasswordRole =
     currentUser?.role === "national_admin" ||
-    (currentUser?.role as string) === "national_program_manager" ||
-    !!(currentUser as any)?.isPlatformAdmin;
+    (currentUser?.role as string) === "national_program_manager";
+  // Fail-closed: only treat the view as "home" once the viewed tenant is
+  // known AND matches the user's home tenant. While the query is loading or
+  // errors, non-platform admins do not see password controls (the server would
+  // 403 anyway), avoiding a brief window where a stale control is shown.
+  const isViewingHomeTenant =
+    !!viewedTenant?.id && viewedTenant.id === (currentUser as any)?.tenantId;
+  const canManagePasswords =
+    isPlatformAdmin || (hasPasswordRole && isViewingHomeTenant);
   const [searchTerm, setSearchTerm] = useState("");
   const [geoFilterProvinceId, setGeoFilterProvinceId] = useState<number | null>(null);
   const [geoFilterDistrictId, setGeoFilterDistrictId] = useState<number | null>(null);

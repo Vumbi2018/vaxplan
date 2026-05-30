@@ -5130,7 +5130,16 @@ export async function registerRoutes(
     try {
       const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
       const all = await storage.getSessionPlans(req.tenantId);
-      const overlaid = await overlayCampaignFromParent(req.tenantId, all as any[]);
+      // The campaign overlay is a best-effort enrichment; if it fails (e.g. a
+      // missing parent microplan) fall back to the raw sessions rather than
+      // failing the whole map request.
+      let overlaid: any[];
+      try {
+        overlaid = await overlayCampaignFromParent(req.tenantId, all as any[]);
+      } catch (overlayErr) {
+        console.error("GET /api/sessions/map overlay failed (using raw):", overlayErr);
+        overlaid = all as any[];
+      }
       const active = overlaid.filter((s: any) => {
         if (s.status === "cancelled" || s.status === "archived") return false;
         if (s.status !== "completed") return true;
@@ -5154,8 +5163,25 @@ export async function registerRoutes(
 
       const out: any[] = [];
       for (const s of active) {
-        const loc = await resolveSessionLocation(req.tenantId, s, vilMap, facMap, svByPlan);
-        if (!loc) continue;
+        // Never let one malformed session (e.g. bad geojson) fail the whole
+        // map — resolve its location defensively and skip on error.
+        let loc: { lat: number; lng: number } | null = null;
+        try {
+          loc = await resolveSessionLocation(req.tenantId, s, vilMap, facMap, svByPlan);
+        } catch (locErr) {
+          console.error(`GET /api/sessions/map: location resolve failed for session ${s.id}:`, locErr);
+          continue;
+        }
+        // Drop entries with missing, non-finite, or out-of-range coordinates so
+        // the client never receives NaN/null or invalid markers.
+        if (
+          !loc ||
+          !Number.isFinite(loc.lat) ||
+          !Number.isFinite(loc.lng) ||
+          loc.lat < -90 || loc.lat > 90 ||
+          loc.lng < -180 || loc.lng > 180
+        )
+          continue;
         const vc = (s.vaccinatedCounts as any) || null;
         out.push({
           id: s.id,
