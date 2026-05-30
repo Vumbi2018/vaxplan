@@ -159,6 +159,15 @@ export function isAdmin(user: User | null | undefined): boolean {
   return user.role === "national_admin" || user.role === "gis_specialist";
 }
 
+// Site-traffic analytics (online users, IPs, locations, visits) is sensitive
+// platform data, so it mirrors the server gate on /api/analytics/summary:
+// platform admins and national-level administrators only.
+export function canViewSiteAnalytics(user: User | null | undefined): boolean {
+  if (!user) return false;
+  if ((user as any).isPlatformAdmin) return true;
+  return user.role === "national_admin" || (user as any).role === "national_program_manager";
+}
+
 // Task #142 — reconciliation of stale per-antigen codes is destructive across
 // every historical session in the tenant, so we limit it to national and
 // district admins (matches the server-side gate in routes.ts).

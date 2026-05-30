@@ -12,6 +12,7 @@ import { SyncStatus } from "@/components/SyncStatus";
 import { ConflictBadge } from "@/components/ConflictBadge";
 import { useDeviceTokenBootstrap } from "@/hooks/useDeviceTokenBootstrap";
 import { useRealtimeSync } from "@/hooks/useRealtimeSync";
+import { useAnalyticsTracker } from "@/hooks/useAnalyticsTracker";
 import { UserMenu } from "@/components/UserMenu";
 import { useAuth } from "@/hooks/useAuth";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -214,6 +215,7 @@ function AuthenticatedLayout() {
   useProximityConflictWarnings();
   useDeviceTokenBootstrap(user);
   useRealtimeSync();
+  useAnalyticsTracker(!!user);
 
   if (isLoading) {
     return (

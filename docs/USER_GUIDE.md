@@ -420,6 +420,10 @@ National admins are the power users for your country. Your modules:
   rejected escalates to you.
 - **Audit log.** Every change to sensitive data is logged with who,
   when, and what.
+- **Site activity.** A panel on your country dashboard shows who is
+  online right now and where they are signed in from, visits today and
+  over the last two weeks, your busiest pages, and a breakdown of login
+  locations. It is visible only to national and platform administrators.
 
 National admins can also configure **scheduled jobs** — population
 refresh from WorldPop, stock-alert digests, and supervision digests

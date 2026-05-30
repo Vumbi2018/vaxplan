@@ -103,6 +103,7 @@ import {
 } from "./services/hisInteropService";
 // Offline sync service
 import { pullChanges, batchMutate, getSyncStats, type OutboxMutation } from "./services/syncService";
+import { lookupGeo, normalizeIp } from "./services/geo";
 import {
   checkProximityAndPopulation,
   resolveSessionLocation,
@@ -1537,6 +1538,79 @@ export async function registerRoutes(
     } catch {}
     next();
   }
+
+  // ─── Site-traffic analytics ────────────────────────────────────────
+  // Every authenticated user records their page navigations here; the data
+  // powers the admin-only dashboard "Site activity" panel below. Fire-and-
+  // forget from the client — failures must never disrupt navigation.
+  //
+  // Lightweight per-user rate limit so an authenticated client cannot flood the
+  // table (or the geo lookup) with writes. Page-view tracking is bursty but low
+  // volume in normal use; over the cap we silently drop (204) so navigation is
+  // never disrupted.
+  const TRACK_WINDOW_MS = 60_000;
+  const TRACK_MAX_PER_WINDOW = 40;
+  const trackHits = new Map<string, { count: number; resetAt: number }>();
+  app.post("/api/analytics/track", isAuthenticated, requireTenant, async (req: any, res) => {
+    try {
+      const limiterKey = `${req.tenantId}:${req.user?.claims?.sub ?? req.user?.id ?? "anon"}`;
+      const nowMs = Date.now();
+      const bucket = trackHits.get(limiterKey);
+      if (!bucket || bucket.resetAt <= nowMs) {
+        trackHits.set(limiterKey, { count: 1, resetAt: nowMs + TRACK_WINDOW_MS });
+      } else if (bucket.count >= TRACK_MAX_PER_WINDOW) {
+        return res.status(204).end();
+      } else {
+        bucket.count += 1;
+      }
+      // Opportunistically evict expired buckets so the map can't grow unbounded.
+      if (trackHits.size > 5000) {
+        trackHits.forEach((v, k) => {
+          if (v.resetAt <= nowMs) trackHits.delete(k);
+        });
+      }
+      const rawPath = typeof req.body?.path === "string" ? req.body.path : "";
+      // Keep only the path portion, capped to the column width.
+      const path = rawPath.split("?")[0].split("#")[0].slice(0, 300) || "/";
+      const userId = req.user?.claims?.sub ?? req.user?.id ?? null;
+      const fwd = req.headers["x-forwarded-for"];
+      const ip = normalizeIp(typeof fwd === "string" ? fwd : req.ip);
+      const ua = req.headers["user-agent"];
+      const userAgent = typeof ua === "string" ? ua.slice(0, 400) : null;
+      const geo = await lookupGeo(ip);
+      await storage.recordPageView(req.tenantId, {
+        userId,
+        path,
+        ipAddress: ip,
+        country: geo.country,
+        region: geo.region,
+        city: geo.city,
+        userAgent,
+      });
+      res.status(204).end();
+    } catch (err) {
+      // Analytics is non-critical — swallow errors so navigation never breaks.
+      console.warn("analytics track failed:", err);
+      res.status(204).end();
+    }
+  });
+
+  // Admin-only traffic summary: online users + locations, visits today,
+  // visits over time, top pages. Platform / national admins only.
+  app.get(
+    "/api/analytics/summary",
+    isAuthenticated,
+    requireTenant,
+    requirePlatformOrNationalAdmin,
+    async (req: any, res) => {
+      try {
+        res.json(await storage.getTrafficAnalytics(req.tenantId));
+      } catch (err) {
+        console.error("getTrafficAnalytics failed:", err);
+        res.status(500).json({ message: "Failed to load site analytics" });
+      }
+    },
+  );
 
   app.get("/api/signup-requests", isAuthenticated, requireTenant, loadRole, requireAdmin, async (req: any, res) => {
     try {

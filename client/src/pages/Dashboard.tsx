@@ -7,6 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/useAuth";
+import { canViewSiteAnalytics } from "@/lib/permissions";
+import { SiteActivityPanel } from "@/components/SiteActivityPanel";
 import {
   Building2,
   Users,
@@ -1599,6 +1601,8 @@ export default function Dashboard() {
       )}
 
       <ImmunizationIndicatorCards />
+
+      {canViewSiteAnalytics(user) && <SiteActivityPanel />}
 
       <SupervisionCoverageByDistrictCard />
 

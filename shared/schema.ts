@@ -706,6 +706,29 @@ export const auditLogs = pgTable("audit_logs", {
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [index("idx_audit_logs_tenant").on(table.tenantId)]);
 
+// Page Views — lightweight site-traffic / activity analytics.
+// One row per authenticated page navigation. Powers the dashboard "Site
+// activity" panel: visits over time, visits today, online users (rows in the
+// last few minutes), top pages and login locations. Geo fields are best-effort
+// (resolved from the request IP) and may be null when lookup is unavailable.
+export const pageViews = pgTable("page_views", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  tenantId: varchar("tenant_id").references(() => tenants.id),
+  userId: varchar("user_id").references(() => users.id),
+  path: varchar("path", { length: 300 }).notNull(),
+  ipAddress: varchar("ip_address", { length: 100 }),
+  country: varchar("country", { length: 120 }),
+  region: varchar("region", { length: 120 }),
+  city: varchar("city", { length: 120 }),
+  userAgent: varchar("user_agent", { length: 400 }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+}, (table) => [
+  index("idx_page_views_tenant_created").on(table.tenantId, table.createdAt),
+  index("idx_page_views_tenant_user").on(table.tenantId, table.userId),
+]);
+export type PageView = typeof pageViews.$inferSelect;
+export type InsertPageView = Omit<PageView, "id" | "createdAt" | "tenantId">;
+
 /*
 // Original htr_scores table definition preserved for backward compatibility
 export const htrScores = pgTable("htr_scores", {

@@ -20,6 +20,7 @@ import {
   quarterlyReviews,
   approvalRequests,
   auditLogs,
+  pageViews,
   htrScores,
   signupRequests,
   tenantInterestRequests,
@@ -70,6 +71,8 @@ import {
   type ApprovalRequest,
   type InsertApprovalRequest,
   type AuditLog,
+  type PageView,
+  type InsertPageView,
   type HtrScore,
   type AdminBoundary,
   type InsertAdminBoundary,
@@ -100,7 +103,28 @@ import {
 } from "@shared/schema";
 import type { UserRole } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, desc, isNull, inArray, getTableColumns } from "drizzle-orm";
+import { eq, and, desc, isNull, inArray, getTableColumns, sql, gte } from "drizzle-orm";
+
+export interface OnlineUser {
+  userId: string | null;
+  name: string;
+  role: string | null;
+  path: string;
+  location: string | null;
+  ipAddress: string | null;
+  lastSeen: Date | null;
+}
+
+export interface TrafficAnalytics {
+  online: OnlineUser[];
+  onlineCount: number;
+  visitsToday: number;
+  uniqueVisitorsToday: number;
+  visitsLast30Days: number;
+  visitsOverTime: Array<{ date: string; visits: number; visitors: number }>;
+  topPages: Array<{ path: string; visits: number }>;
+  locations: Array<{ location: string; visits: number; visitors: number }>;
+}
 
 export interface IStorage {
   // Users (cross-tenant operations — user identity is global, tenant assigned separately)
@@ -249,6 +273,10 @@ export interface IStorage {
   upsertHtrScore(tenantId: string, data: any): Promise<HtrScore>;
 
   createAuditLog(tenantId: string, data: Omit<AuditLog, "id" | "createdAt" | "tenantId">): Promise<AuditLog>;
+
+  // Site-traffic analytics
+  recordPageView(tenantId: string, data: InsertPageView): Promise<void>;
+  getTrafficAnalytics(tenantId: string): Promise<TrafficAnalytics>;
 
   // Admin Boundaries
   listAdminBoundaries(tenantId: string, adminLevel?: number): Promise<Omit<AdminBoundary, "geojson">[]>;
@@ -1445,6 +1473,133 @@ export class DatabaseStorage implements IStorage {
   async createAuditLog(tenantId: string, data: Omit<AuditLog, "id" | "createdAt" | "tenantId">): Promise<AuditLog> {
     const [l] = await db.insert(auditLogs).values({ ...data, tenantId } as typeof auditLogs.$inferInsert).returning();
     return l;
+  }
+
+  // --- Site-traffic analytics ---
+  async recordPageView(tenantId: string, data: InsertPageView): Promise<void> {
+    await db.insert(pageViews).values({ ...data, tenantId } as typeof pageViews.$inferInsert);
+  }
+
+  async getTrafficAnalytics(tenantId: string): Promise<TrafficAnalytics> {
+    const now = new Date();
+    const onlineSince = new Date(now.getTime() - 5 * 60 * 1000);
+    const startOfTodayUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    const since30d = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const since14d = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+    const since7d = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+    // Online = users with a page view in the last 5 minutes. Take each user's
+    // most recent row (latest path / location) by ordering desc and de-duping.
+    const recentRows = await db
+      .select({
+        userId: pageViews.userId,
+        path: pageViews.path,
+        ipAddress: pageViews.ipAddress,
+        country: pageViews.country,
+        region: pageViews.region,
+        city: pageViews.city,
+        createdAt: pageViews.createdAt,
+        firstName: users.firstName,
+        lastName: users.lastName,
+        email: users.email,
+        role: users.role,
+      })
+      .from(pageViews)
+      .leftJoin(users, eq(users.id, pageViews.userId))
+      .where(and(eq(pageViews.tenantId, tenantId), gte(pageViews.createdAt, onlineSince)))
+      .orderBy(desc(pageViews.createdAt));
+
+    const seen = new Set<string>();
+    const online: OnlineUser[] = [];
+    for (const r of recentRows) {
+      const key = r.userId ?? `anon:${r.ipAddress ?? "?"}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const name =
+        [r.firstName, r.lastName].filter(Boolean).join(" ").trim() ||
+        r.email ||
+        "Unknown user";
+      const location =
+        [r.city, r.region, r.country].filter(Boolean).join(", ") || null;
+      online.push({
+        userId: r.userId,
+        name,
+        role: r.role ?? null,
+        path: r.path,
+        location,
+        ipAddress: r.ipAddress,
+        lastSeen: r.createdAt,
+      });
+    }
+
+    const [todayRow] = await db
+      .select({
+        visits: sql<number>`count(*)::int`,
+        visitors: sql<number>`count(distinct ${pageViews.userId})::int`,
+      })
+      .from(pageViews)
+      .where(and(eq(pageViews.tenantId, tenantId), gte(pageViews.createdAt, startOfTodayUtc)));
+
+    const [thirtyRow] = await db
+      .select({ visits: sql<number>`count(*)::int` })
+      .from(pageViews)
+      .where(and(eq(pageViews.tenantId, tenantId), gte(pageViews.createdAt, since30d)));
+
+    const overTimeRows = await db
+      .select({
+        date: sql<string>`to_char(date_trunc('day', ${pageViews.createdAt} AT TIME ZONE 'UTC'), 'YYYY-MM-DD')`,
+        visits: sql<number>`count(*)::int`,
+        visitors: sql<number>`count(distinct ${pageViews.userId})::int`,
+      })
+      .from(pageViews)
+      .where(and(eq(pageViews.tenantId, tenantId), gte(pageViews.createdAt, since14d)))
+      .groupBy(sql`date_trunc('day', ${pageViews.createdAt} AT TIME ZONE 'UTC')`)
+      .orderBy(sql`date_trunc('day', ${pageViews.createdAt} AT TIME ZONE 'UTC')`);
+
+    // Fill missing days so the chart has a continuous 14-day axis.
+    const typedOverTime = overTimeRows as Array<{ date: string; visits: number; visitors: number }>;
+    const byDate: Record<string, { visits: number; visitors: number }> = {};
+    for (const r of typedOverTime) {
+      byDate[r.date] = { visits: r.visits, visitors: r.visitors };
+    }
+    const visitsOverTime: TrafficAnalytics["visitsOverTime"] = [];
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - i));
+      const key = d.toISOString().slice(0, 10);
+      const row = byDate[key];
+      visitsOverTime.push({ date: key, visits: row?.visits ?? 0, visitors: row?.visitors ?? 0 });
+    }
+
+    const topPages = await db
+      .select({ path: pageViews.path, visits: sql<number>`count(*)::int` })
+      .from(pageViews)
+      .where(and(eq(pageViews.tenantId, tenantId), gte(pageViews.createdAt, since7d)))
+      .groupBy(pageViews.path)
+      .orderBy(desc(sql`count(*)`))
+      .limit(8);
+
+    const locations = await db
+      .select({
+        location: sql<string>`coalesce(${pageViews.country}, 'Unknown')`,
+        visits: sql<number>`count(*)::int`,
+        visitors: sql<number>`count(distinct ${pageViews.userId})::int`,
+      })
+      .from(pageViews)
+      .where(and(eq(pageViews.tenantId, tenantId), gte(pageViews.createdAt, since30d)))
+      .groupBy(sql`coalesce(${pageViews.country}, 'Unknown')`)
+      .orderBy(desc(sql`count(*)`))
+      .limit(8);
+
+    return {
+      online,
+      onlineCount: online.length,
+      visitsToday: todayRow?.visits ?? 0,
+      uniqueVisitorsToday: todayRow?.visitors ?? 0,
+      visitsLast30Days: thirtyRow?.visits ?? 0,
+      visitsOverTime,
+      topPages,
+      locations,
+    };
   }
 
   // --- Admin Boundaries ---

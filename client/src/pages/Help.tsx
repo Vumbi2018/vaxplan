@@ -100,6 +100,11 @@ const defaultFaqs = [
     answer:
       "Open the Standards Alignment page from the sidebar and look at the 'Features' tab. It lists every feature currently in the platform — grouped by area (dashboards, microplanning, vaccines & stock, maps & GIS, supervision, users & access, offline & sync, security, and more) — in plain language. Use the filter box on that page to jump straight to anything.",
   },
+  {
+    question: "How do I see who's online and how the site is being used?",
+    answer:
+      "National and platform administrators have a 'Site activity' panel on the dashboard. It shows who is online right now (with their role, current page, and the city/country they're signed in from), how many visits there were today, a 14-day visits trend, your most-visited pages, and a breakdown of login locations. Locations are a best-effort estimate from the network address, and the panel refreshes on its own every 30 seconds.",
+  },
 ];
 
 const quickLinks = [
