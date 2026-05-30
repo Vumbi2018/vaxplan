@@ -2014,7 +2014,6 @@ export function MapView({
   // order and cause it to flicker / disappear under boundary polygons).
   const grid3LayerRef = useRef<any>(null);
 
-  const [facilityPanelOpen, setFacilityPanelOpen] = useState(true);
   const [filterPanelOpen, setFilterPanelOpen] = useState(true);
   /*
   // Original Code: Hidden by default, which can cause users to overlook the geographic filters on the sidebar
@@ -2047,6 +2046,24 @@ export function MapView({
       return next;
     });
   };
+
+  // Unified panel visibility for the floating map "dock". On phones every panel
+  // starts hidden so the map fills the screen; users reveal a panel by tapping
+  // its dock button. On larger screens the panels keep their previous defaults.
+  const [panelVis, setPanelVis] = useState(() => {
+    const mobile = typeof window !== "undefined" && window.innerWidth < 768;
+    return {
+      layers: !mobile,
+      filters: !mobile,
+      facilities: !mobile,
+      checklist: !mobile,
+      legend: !mobile,
+      tools: !mobile,
+    };
+  });
+  type PanelKey = keyof typeof panelVis;
+  const togglePanel = (key: PanelKey) =>
+    setPanelVis((prev) => ({ ...prev, [key]: !prev[key] }));
 
   // States to keep track of active zoom level and conditionally hide village markers
   const [currentZoom, setCurrentZoom] = useState(zoom);
@@ -5479,6 +5496,44 @@ export function MapView({
         <MapController center={effectiveCenter} zoom={effectiveZoom} onZoomChange={setCurrentZoom} onBoundsChange={setMapBounds} />
       </MapContainer>
 
+      {/* Floating panel dock — one tap shows/hides each map panel so the map
+          stays uncluttered, especially on phones where panels start hidden. */}
+      {!isPrinting && (
+        <div
+          className="absolute left-3 top-3 z-[1100] flex flex-col gap-1.5"
+          ref={disableLeafletPropagation}
+          data-testid="map-panel-dock"
+        >
+          {[
+            { key: "layers" as PanelKey, icon: Layers, label: "Layers", show: true },
+            { key: "filters" as PanelKey, icon: Filter, label: "Filters", show: showFacilityList },
+            { key: "facilities" as PanelKey, icon: Building2, label: "Facilities", show: showFacilityList },
+            { key: "checklist" as PanelKey, icon: CheckCircle, label: "Checklist", show: activeSessionPlans.length > 0 },
+            { key: "legend" as PanelKey, icon: MapPin, label: "Legend", show: true },
+            { key: "tools" as PanelKey, icon: SlidersHorizontal, label: "Tools", show: true },
+          ]
+            .filter((b) => b.show)
+            .map((b) => {
+              const Icon = b.icon;
+              const active = panelVis[b.key];
+              return (
+                <Button
+                  key={b.key}
+                  size="icon"
+                  variant={active ? "default" : "secondary"}
+                  onClick={() => togglePanel(b.key)}
+                  title={active ? `Hide ${b.label}` : `Show ${b.label}`}
+                  aria-pressed={active}
+                  className="h-9 w-9 shadow-md"
+                  data-testid={`button-dock-${b.key}`}
+                >
+                  <Icon className="h-4 w-4" />
+                </Button>
+              );
+            })}
+        </div>
+      )}
+
       {!isPrinting && (
         <>
           <PopulationOverlayToggle
@@ -5762,23 +5817,25 @@ export function MapView({
 
 
       {!isPrinting && (
-        <div className="absolute left-4 top-4 z-[1000] flex flex-col gap-3 pointer-events-none w-64 max-h-[calc(100vh-220px)] overflow-y-auto custom-scrollbar">
+        <div className="absolute left-16 top-4 z-[1000] flex flex-col gap-3 pointer-events-none w-64 max-h-[calc(100vh-220px)] overflow-y-auto custom-scrollbar">
 
-          <div className="pointer-events-auto" ref={disableLeafletPropagation}>
-            <LayerPanel
-              isOpen={layerPanelOpen}
-              onToggle={() => setLayerPanelOpen(!layerPanelOpen)}
-              layers={layers}
-              onLayerToggle={handleLayerToggle}
-              basemap={basemap}
-              onBasemapChange={setBasemap}
-              boundaryList={boundaryList}
-              countryCode={tenantInfo?.countryCode}
-              adminLabels={adminLabels}
-            />
-          </div>
+          {panelVis.layers && (
+            <div className="pointer-events-auto" ref={disableLeafletPropagation}>
+              <LayerPanel
+                isOpen={layerPanelOpen}
+                onToggle={() => setLayerPanelOpen(!layerPanelOpen)}
+                layers={layers}
+                onLayerToggle={handleLayerToggle}
+                basemap={basemap}
+                onBasemapChange={setBasemap}
+                boundaryList={boundaryList}
+                countryCode={tenantInfo?.countryCode}
+                adminLabels={adminLabels}
+              />
+            </div>
+          )}
 
-          {showFacilityList && (
+          {showFacilityList && panelVis.filters && (
             <div className="pointer-events-auto" ref={disableLeafletPropagation}>
               <FilterPanel
                 isOpen={filterPanelOpen}
@@ -5828,9 +5885,9 @@ export function MapView({
       {!isPrinting && <MapLegend leftOffset={showFacilityList && (layerPanelOpen || filterPanelOpen)} />}
       */}
       {/* Updated Code: MapLegend rendered with dynamic offset, interactive selection, and collapsible triggers */}
-      {!isPrinting && (
+      {!isPrinting && panelVis.legend && (
         <MapLegend
-          leftOffset={showFacilityList && (layerPanelOpen || filterPanelOpen)}
+          leftOffset={showFacilityList && ((panelVis.layers && layerPanelOpen) || (panelVis.filters && filterPanelOpen))}
           hiddenCategories={hiddenCategories}
           onToggleCategory={handleToggleCategory}
           isExpanded={isLegendExpanded}
@@ -5842,7 +5899,7 @@ export function MapView({
       )}
 
       {/* Premium measurement, drawing & export buttons */}
-      {!isPrinting && (
+      {!isPrinting && panelVis.tools && (
         <div className="absolute right-4 top-4 z-[1000] flex gap-2 items-center flex-wrap" ref={disableLeafletPropagation}>
           {rasterListData?.success && rasterListData?.files && (
             <Select
@@ -5970,12 +6027,12 @@ export function MapView({
           {showFacilityList && (
             <Button
               size="sm"
-              variant={facilityPanelOpen ? "default" : "secondary"}
-              onClick={() => setFacilityPanelOpen(!facilityPanelOpen)}
+              variant={panelVis.facilities ? "default" : "secondary"}
+              onClick={() => togglePanel("facilities")}
               className="shadow-md"
             >
               <Building2 className="h-4 w-4 mr-1" />
-              {facilityPanelOpen ? "Hide Facilities" : "Facilities"}
+              {panelVis.facilities ? "Hide Facilities" : "Facilities"}
             </Button>
           )}
 
@@ -5993,10 +6050,10 @@ export function MapView({
       )}
 
       {/* Floating Glassmorphic Checklist Sidebar for Real-Time Derived Session Progress Tracking */}
-      {!isPrinting && activeSessionPlans.length > 0 && (
+      {!isPrinting && activeSessionPlans.length > 0 && panelVis.checklist && (
         <div
           className={`absolute top-16 ${
-            showFacilityList && facilityPanelOpen ? "right-[350px]" : "right-4"
+            showFacilityList && panelVis.facilities ? "right-[350px]" : "right-4"
           } w-72 z-[1000] flex flex-col pointer-events-auto transition-all duration-300`}
           ref={disableLeafletPropagation}
         >
@@ -6095,7 +6152,7 @@ export function MapView({
       )}
 
       {/* Floating Facility List Panel */}
-      {showFacilityList && facilityPanelOpen && !isPrinting && (
+      {showFacilityList && panelVis.facilities && !isPrinting && (
         <div 
           className="absolute right-4 top-16 w-80 h-[calc(100vh-140px)] max-h-[700px] z-[1000] flex flex-col bg-background/95 backdrop-blur-md border border-border shadow-2xl rounded-xl overflow-hidden transition-all duration-300"
           ref={disableLeafletPropagation}
@@ -6114,7 +6171,7 @@ export function MapView({
                   size="icon"
                   variant="ghost"
                   className="h-6 w-6 rounded-full hover:bg-muted"
-                  onClick={() => setFacilityPanelOpen(false)}
+                  onClick={() => togglePanel("facilities")}
                 >
                   <X className="h-3.5 w-3.5" />
                 </Button>
