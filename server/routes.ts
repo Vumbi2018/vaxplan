@@ -3832,6 +3832,30 @@ export async function registerRoutes(
       res.setHeader("Content-Disposition", `inline; filename="${geotiffFile}"`);
 
       const stream = createReadStream(filePath);
+
+      // Large rasters (the Zambia 100m file is ~63 MB) are streamed over slow /
+      // mobile connections and the client frequently unmounts the overlay mid-load
+      // (navigating between Dashboard and Map View). Without these handlers a read
+      // error or premature client disconnect becomes an *unhandled* stream error,
+      // which surfaced to the client as a hard "HTTP Error 500" and could leak the
+      // open file descriptor. Clean up on disconnect and fail gracefully instead.
+      const cleanup = () => stream.destroy();
+      res.once("close", cleanup);
+
+      stream.on("error", (streamErr: any) => {
+        res.off("close", cleanup);
+        console.error("GeoTIFF raster stream error:", streamErr);
+        if (!res.headersSent) {
+          res
+            .status(500)
+            .json({ message: "Failed to stream GeoTIFF raster file." });
+        } else {
+          // Headers already flushed — we can no longer change the status code, so
+          // just tear down the response cleanly rather than crashing the process.
+          res.destroy(streamErr);
+        }
+      });
+
       stream.pipe(res);
     } catch (error: any) {
       console.error("Error serving GeoTIFF raster file:", error);
