@@ -36,6 +36,18 @@ Use an **explicit allowlist** of the fixed native origins only
 `*.replit.dev` / `*.replit.app`. Gate any `http://localhost:*` dev origin to
 `NODE_ENV !== "production"`.
 
+## WS handshake auth piggybacks on the cross-site cookie (untestable without a device)
+A browser/WebView `WebSocket(...)` can't set headers or `credentials` — it only
+sends whatever cookies the cookie jar already holds for the target origin. So
+native `/ws` auth relies on the *same* SameSite=None;Secure session cookie as
+REST. If REST cross-origin auth works in a shell, WS should too; if the cookie
+isn't sent the server upgrade returns **401** and the client just keeps retrying
+while interval sync carries on (graceful degradation by design). Whether a given
+Android WebView / Electron build actually attaches that cookie on the handshake
+is genuinely **not verifiable in the Linux container** — needs a real build on a
+device. Server-side is verifiable here: boot, native-origin CORS preflight, and
+`401` on cookieless `/ws` upgrade all check out via curl.
+
 ## Electron protocol handler path-traversal
 Containment with `filePath.startsWith(root)` is bypassable via sibling
 prefixes (`/root/../publicity` still startsWith `/root/public`). Use
