@@ -173,7 +173,7 @@ function PasswordLoginDialog({ open, onOpenChange }: { open: boolean; onOpenChan
         </DialogDescription>
         <div className="grid md:grid-cols-2">
           {/* Brand panel */}
-          <div className="relative hidden md:flex flex-col justify-between p-8 bg-gradient-to-br from-primary via-primary to-blue-700 text-primary-foreground overflow-hidden">
+          <div className="relative hidden md:flex flex-col justify-between p-8 bg-gradient-to-br from-primary via-sky-700 to-sky-800 text-white overflow-hidden">
             <div className="pointer-events-none absolute inset-0 opacity-10">
               <Syringe className="absolute top-6 left-6 h-24 w-24 -rotate-12" />
               <HeartPulse className="absolute bottom-10 left-10 h-28 w-28" />
@@ -185,7 +185,7 @@ function PasswordLoginDialog({ open, onOpenChange }: { open: boolean; onOpenChan
               </div>
               <div className="flex flex-col leading-tight">
                 <span className="font-semibold">VaxPlan</span>
-                <span className="text-xs text-primary-foreground/80">
+                <span className="text-xs text-white/80">
                   Health microplanning for Ministries
                 </span>
               </div>
@@ -196,12 +196,12 @@ function PasswordLoginDialog({ open, onOpenChange }: { open: boolean; onOpenChan
                 <br />
                 Plan every session.
               </h2>
-              <p className="text-sm text-primary-foreground/85 max-w-xs">
+              <p className="text-sm text-white/85 max-w-xs">
                 Secure, country-isolated microplanning for national immunization
                 programs — from the capital down to the last village.
               </p>
             </div>
-            <div className="relative flex items-center gap-2 text-xs text-primary-foreground/80">
+            <div className="relative flex items-center gap-2 text-xs text-white/80">
               <Shield className="h-4 w-4" />
               Encrypted · Audit-logged · Per-country data isolation
             </div>

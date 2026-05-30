@@ -206,7 +206,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
     <Sidebar collapsible="icon">
       <SidebarHeader className="p-4">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-md bg-primary text-primary-foreground shrink-0">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary via-sky-600 to-sky-700 text-white shadow-md shadow-primary/30 ring-1 ring-white/20 shrink-0">
             <HeartPulse className="h-5 w-5" />
           </div>
           <div className="flex flex-col min-w-0 group-data-[collapsible=icon]:hidden">
