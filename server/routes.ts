@@ -1613,6 +1613,17 @@ export async function registerRoutes(
     },
   );
 
+  // Lightweight presence: number of people online now in the current tenant.
+  // Available to every authenticated user (no PII — just a count).
+  app.get("/api/presence/online-count", isAuthenticated, requireTenant, async (req: any, res) => {
+    try {
+      res.json({ count: await storage.getOnlineCount(req.tenantId) });
+    } catch (err) {
+      console.warn("getOnlineCount failed:", err);
+      res.json({ count: 0 });
+    }
+  });
+
   app.get("/api/signup-requests", isAuthenticated, requireTenant, loadRole, requireAdmin, async (req: any, res) => {
     try {
       const status = typeof req.query.status === "string" ? req.query.status : undefined;

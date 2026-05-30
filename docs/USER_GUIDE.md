@@ -557,10 +557,18 @@ Supervision is a first-class workflow:
    can be Yes/No, True/False, short text, a number, single- or
    multiple-choice, a 1–5 rating, a date, a captured **GPS location**,
    or a **photo** taken on the device.
+   Some questions are **follow-ups** that only appear after a
+   particular answer (for example, an "If No, why?" box that shows up
+   only when the previous question is answered "No"). Other questions
+   are **repeatable** — tap **Add another** to record one entry per
+   vaccinator, session, or child, and remove an entry you don't need.
 3. **Findings and actions.** Record findings and follow-up actions,
    and set the next visit date.
-4. **Score.** The visit score is the share of "Yes"/"True" answers
-   among the Yes/No and True/False questions that were answered.
+4. **Score.** The visit score is the average of the scored questions —
+   Yes/No and True/False answers, plus any ratings the checklist author
+   chose to count. Every repeated entry counts, so the entries are
+   averaged together automatically. N/A and hidden follow-ups are
+   ignored.
 
 The **Supervision digest** (a weekly summary) rolls up overdue
 visits to the district and provincial dashboards.
@@ -575,7 +583,17 @@ the country uses the same questions:
    each question pick a type (Yes/No, True/False, short text, number,
    single choice, multiple choice, rating, date, GPS location, or
    photo), and add options for choice questions.
-3. Mark a checklist **Active** to make it available when scheduling
+3. Make any question highly configurable:
+   - **Follow-up:** under "Show only as a follow-up", point the
+     question at an earlier question and choose which answer reveals it
+     (e.g. show it only when the parent is answered "No", or whenever
+     it has any answer).
+   - **Repeat:** turn on "Allow multiple entries" so supervisors can
+     add as many entries as needed during a visit. You can name each
+     entry (e.g. "Vaccinator") and cap how many are allowed.
+   - **Scoring:** choose whether each Yes/No or True/False question
+     counts toward the score, and opt a rating in so it counts too.
+4. Mark a checklist **Active** to make it available when scheduling
    visits. Anyone in the country can then pick it; only national
    admins can create, edit, or delete the checklists themselves.
 

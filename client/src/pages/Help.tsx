@@ -98,12 +98,17 @@ const defaultFaqs = [
   {
     question: "How do I schedule and run a supervision visit?",
     answer:
-      "Open Supervision and click 'Schedule Visit'. Pick the facility, date, and supervisor, and choose which checklist to use — the built-in WHO checklist or any custom one your national admin has set up. When the supervisor arrives, they open the visit and answer the checklist questions (Yes/No, True/False, text, number, choices, rating, date, GPS location, or a photo), then record findings and follow-up actions. The score is the share of Yes/True answers among the Yes/No and True/False questions.",
+      "Open Supervision and click 'Schedule Visit'. Pick the facility, date, and supervisor, and choose which checklist to use — the built-in WHO checklist or any custom one your national admin has set up. When the supervisor arrives, they open the visit and answer the checklist questions (Yes/No, True/False, text, number, choices, rating, date, GPS location, or a photo), then record findings and follow-up actions. Some questions are follow-ups that only appear after a certain answer, and some are repeatable — tap 'Add another' to record one entry per vaccinator, session, or child. The score is the average of the scored questions (Yes/No and True/False, plus any ratings the author chose to count); every repeated entry is included.",
   },
   {
     question: "Can I build my own supervision checklist?",
     answer:
-      "Yes — national admins can. Open Supervision and click 'Manage Checklists', then 'New checklist'. Give it a name and add questions, choosing a type for each (Yes/No, True/False, short text, number, single choice, multiple choice, rating, date, GPS location, or photo). Mark it Active and everyone in the country can pick it when scheduling a visit. Only national admins can create, edit, or delete the checklists.",
+      "Yes — national admins can. Open Supervision and click 'Manage Checklists', then 'New checklist'. Give it a name and add questions, choosing a type for each (Yes/No, True/False, short text, number, single choice, multiple choice, rating, date, GPS location, or photo). Each question is highly configurable: make it a follow-up that only appears when an earlier question gets a certain answer, allow multiple entries (a repeat, with an optional name and limit per entry), and decide whether it counts toward the visit score. Mark the checklist Active and everyone in the country can pick it when scheduling a visit. Only national admins can create, edit, or delete the checklists.",
+  },
+  {
+    question: "What is the number next to my name at the top?",
+    answer:
+      "That's a live count of how many people are online in your country right now — anyone active in the last few minutes. It sits beside your profile in the header with a small green dot and refreshes on its own. It's just a count; the detailed 'who's online' list stays with administrators on the Site activity panel.",
   },
   {
     question: "Where can I see a full list of everything VaxPlan can do?",

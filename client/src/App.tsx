@@ -14,6 +14,7 @@ import { useDeviceTokenBootstrap } from "@/hooks/useDeviceTokenBootstrap";
 import { useRealtimeSync } from "@/hooks/useRealtimeSync";
 import { useAnalyticsTracker } from "@/hooks/useAnalyticsTracker";
 import { UserMenu } from "@/components/UserMenu";
+import { OnlinePresence } from "@/components/OnlinePresence";
 import { useAuth } from "@/hooks/useAuth";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useQuery } from "@tanstack/react-query";
@@ -258,6 +259,7 @@ function AuthenticatedLayout() {
               <div className="flex items-center gap-2">
                 <ConflictBadge />
                 <SyncStatus />
+                <OnlinePresence />
                 <ThemeToggle />
                 <UserMenu user={user} />
               </div>

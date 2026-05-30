@@ -285,6 +285,7 @@ export interface IStorage {
   // Site-traffic analytics
   recordPageView(tenantId: string, data: InsertPageView): Promise<void>;
   getTrafficAnalytics(tenantId: string): Promise<TrafficAnalytics>;
+  getOnlineCount(tenantId: string): Promise<number>;
 
   // Admin Boundaries
   listAdminBoundaries(tenantId: string, adminLevel?: number): Promise<Omit<AdminBoundary, "geojson">[]>;
@@ -1524,6 +1525,17 @@ export class DatabaseStorage implements IStorage {
   // --- Site-traffic analytics ---
   async recordPageView(tenantId: string, data: InsertPageView): Promise<void> {
     await db.insert(pageViews).values({ ...data, tenantId } as typeof pageViews.$inferInsert);
+  }
+
+  async getOnlineCount(tenantId: string): Promise<number> {
+    const onlineSince = new Date(Date.now() - 5 * 60 * 1000);
+    const [row] = await db
+      .select({
+        count: sql<number>`count(distinct coalesce(${pageViews.userId}, 'anon:' || coalesce(${pageViews.ipAddress}, '?')))::int`,
+      })
+      .from(pageViews)
+      .where(and(eq(pageViews.tenantId, tenantId), gte(pageViews.createdAt, onlineSince)));
+    return (row as { count: number } | undefined)?.count ?? 0;
   }
 
   async getTrafficAnalytics(tenantId: string): Promise<TrafficAnalytics> {

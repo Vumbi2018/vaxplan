@@ -26,6 +26,8 @@ import { useAuth } from "@/hooks/useAuth";
 import {
   templateToAnswers,
   computeChecklistScore,
+  isAnswerVisible,
+  makeRepeatAnswer,
   type ChecklistAnswer,
   type ChecklistTemplate,
   type ChecklistQuestionType,
@@ -924,20 +926,25 @@ function ScheduleDialog({ facilities, microplans, templates, onSubmit, isSubmitt
 
 function ChecklistQuestion({
   item,
-  index,
+  displayNumber,
+  instanceLabel,
+  onRemove,
   setResp,
   setNote,
   setValue,
 }: {
   item: ChecklistItem;
-  index: number;
-  setResp: (idx: number, r: ChecklistItem["response"]) => void;
-  setNote: (idx: number, n: string) => void;
-  setValue: (idx: number, v: unknown) => void;
+  displayNumber?: number;
+  instanceLabel?: string;
+  onRemove?: () => void;
+  setResp: (key: string, r: ChecklistItem["response"]) => void;
+  setNote: (key: string, n: string) => void;
+  setValue: (key: string, v: unknown) => void;
 }) {
   const { toast } = useToast();
   const [capturing, setCapturing] = useState(false);
   const type: ChecklistQuestionType = item.type || "yes_no";
+  const key = item.key;
 
   const captureGps = () => {
     if (!navigator.geolocation) {
@@ -947,7 +954,7 @@ function ChecklistQuestion({
     setCapturing(true);
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        setValue(index, {
+        setValue(key, {
           lat: pos.coords.latitude,
           lng: pos.coords.longitude,
           accuracy: pos.coords.accuracy,
@@ -970,7 +977,7 @@ function ChecklistQuestion({
       return;
     }
     const reader = new FileReader();
-    reader.onload = () => setValue(index, { dataUrl: reader.result as string, name: file.name });
+    reader.onload = () => setValue(key, { dataUrl: reader.result as string, name: file.name });
     reader.readAsDataURL(file);
   };
 
@@ -979,21 +986,29 @@ function ChecklistQuestion({
   const multi: string[] = Array.isArray(item.value) ? (item.value as string[]) : [];
 
   return (
-    <div className="border rounded-lg p-3 space-y-2" data-testid={`check-${item.key}`}>
+    <div className={`border rounded-lg p-3 space-y-2 ${item.parentId ? "ml-4 border-l-2 border-l-indigo-400/60 bg-muted/30" : ""}`} data-testid={`check-${item.key}`}>
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div className="text-sm font-medium flex-1 min-w-[200px]">
-          {index + 1}. {item.label}
+          {instanceLabel ? <span className="text-muted-foreground">{instanceLabel}: </span> : displayNumber != null ? `${displayNumber}. ` : ""}
+          {item.label}
           {item.required && <span className="text-rose-500 ml-1">*</span>}
           {item.helpText && <p className="text-xs text-muted-foreground font-normal mt-0.5">{item.helpText}</p>}
         </div>
 
-        {(type === "yes_no" || type === "true_false") && (
-          <div className="flex gap-1">
-            <RespBtn active={item.response === "yes"} onClick={() => setResp(index, "yes")} icon={CheckCircle2} label={type === "true_false" ? "True" : "Yes"} tone="emerald" testId={`${item.key}-yes`} />
-            <RespBtn active={item.response === "no"} onClick={() => setResp(index, "no")} icon={XCircle} label={type === "true_false" ? "False" : "No"} tone="rose" testId={`${item.key}-no`} />
-            <RespBtn active={item.response === "na"} onClick={() => setResp(index, "na")} icon={MinusCircle} label="N/A" tone="muted" testId={`${item.key}-na`} />
-          </div>
-        )}
+        <div className="flex items-center gap-1">
+          {(type === "yes_no" || type === "true_false") && (
+            <div className="flex gap-1">
+              <RespBtn active={item.response === "yes"} onClick={() => setResp(key, "yes")} icon={CheckCircle2} label={type === "true_false" ? "True" : "Yes"} tone="emerald" testId={`${item.key}-yes`} />
+              <RespBtn active={item.response === "no"} onClick={() => setResp(key, "no")} icon={XCircle} label={type === "true_false" ? "False" : "No"} tone="rose" testId={`${item.key}-no`} />
+              <RespBtn active={item.response === "na"} onClick={() => setResp(key, "na")} icon={MinusCircle} label="N/A" tone="muted" testId={`${item.key}-na`} />
+            </div>
+          )}
+          {onRemove && (
+            <Button type="button" size="icon" variant="ghost" className="text-destructive h-8 w-8" onClick={onRemove} data-testid={`${item.key}-remove`} title="Remove this entry">
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
       </div>
 
       {type === "text" && (
@@ -1001,7 +1016,7 @@ function ChecklistQuestion({
           rows={2}
           placeholder="Type the answer"
           value={(item.value as string) || ""}
-          onChange={(e) => setValue(index, e.target.value)}
+          onChange={(e) => setValue(key, e.target.value)}
           data-testid={`${item.key}-text`}
         />
       )}
@@ -1011,7 +1026,7 @@ function ChecklistQuestion({
           type="number"
           placeholder="Enter a number"
           value={item.value === undefined || item.value === null ? "" : String(item.value)}
-          onChange={(e) => setValue(index, e.target.value === "" ? null : Number(e.target.value))}
+          onChange={(e) => setValue(key, e.target.value === "" ? null : Number(e.target.value))}
           data-testid={`${item.key}-number`}
         />
       )}
@@ -1020,7 +1035,7 @@ function ChecklistQuestion({
         <Input
           type="date"
           value={(item.value as string) || ""}
-          onChange={(e) => setValue(index, e.target.value)}
+          onChange={(e) => setValue(key, e.target.value)}
           data-testid={`${item.key}-date`}
         />
       )}
@@ -1034,7 +1049,7 @@ function ChecklistQuestion({
               size="icon"
               variant={Number(item.value) >= n ? "default" : "outline"}
               className="h-8 w-8"
-              onClick={() => setValue(index, n)}
+              onClick={() => setValue(key, n)}
               data-testid={`${item.key}-rating-${n}`}
             >
               <Star className="h-4 w-4" />
@@ -1044,7 +1059,7 @@ function ChecklistQuestion({
       )}
 
       {type === "single_select" && (
-        <Select value={(item.value as string) || ""} onValueChange={(v) => setValue(index, v)}>
+        <Select value={(item.value as string) || ""} onValueChange={(v) => setValue(key, v)}>
           <SelectTrigger data-testid={`${item.key}-single`}><SelectValue placeholder="Pick one" /></SelectTrigger>
           <SelectContent>
             {(item.options || []).map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}
@@ -1063,7 +1078,7 @@ function ChecklistQuestion({
                   checked={checked}
                   onChange={(e) => {
                     const next = e.target.checked ? [...multi, o] : multi.filter((x) => x !== o);
-                    setValue(index, next);
+                    setValue(key, next);
                   }}
                 />
                 {o}
@@ -1112,7 +1127,7 @@ function ChecklistQuestion({
         <Input
           placeholder="Note the gap (optional)"
           value={item.note || ""}
-          onChange={(e) => setNote(index, e.target.value)}
+          onChange={(e) => setNote(key, e.target.value)}
           className="text-xs"
         />
       )}
@@ -1129,15 +1144,37 @@ function ConductDialog({ visit, facility, onClose, onSave, isSaving }: { visit: 
   const [status, setStatus] = useState<string>(visit.status === "scheduled" ? "conducted" : visit.status);
 
   const score = computeScore(checklist);
-  const setResp = (idx: number, r: ChecklistItem["response"]) => {
-    setChecklist((prev) => prev.map((c, i) => i === idx ? { ...c, response: r } : c));
+  const setResp = (key: string, r: ChecklistItem["response"]) => {
+    setChecklist((prev) => prev.map((c) => c.key === key ? { ...c, response: r } : c));
   };
-  const setNote = (idx: number, n: string) => {
-    setChecklist((prev) => prev.map((c, i) => i === idx ? { ...c, note: n } : c));
+  const setNote = (key: string, n: string) => {
+    setChecklist((prev) => prev.map((c) => c.key === key ? { ...c, note: n } : c));
   };
-  const setValue = (idx: number, v: unknown) => {
-    setChecklist((prev) => prev.map((c, i) => i === idx ? { ...c, value: v } : c));
+  const setValue = (key: string, v: unknown) => {
+    setChecklist((prev) => prev.map((c) => c.key === key ? { ...c, value: v } : c));
   };
+
+  const addRepeat = (baseKey: string) => {
+    setChecklist((prev) => {
+      const instances = prev.filter((c) => (c.baseKey || c.key) === baseKey);
+      const base = instances[0];
+      if (!base) return prev;
+      if (base.maxRepeats && instances.length >= base.maxRepeats) return prev;
+      const nextIndex = Math.max(...instances.map((c) => c.repeatIndex ?? 0)) + 1;
+      const inst = makeRepeatAnswer(base, nextIndex);
+      let lastIdx = -1;
+      prev.forEach((c, i) => { if ((c.baseKey || c.key) === baseKey) lastIdx = i; });
+      const next = [...prev];
+      next.splice(lastIdx + 1, 0, inst);
+      return next;
+    });
+  };
+  const removeRepeat = (key: string) => {
+    setChecklist((prev) => prev.filter((c) => c.key !== key));
+  };
+
+  // Number only the visible, top-level (entry-0, non-follow-up) base questions.
+  let visibleNumber = 0;
 
   return (
     <Dialog open={true} onOpenChange={(o) => !o && onClose()}>
@@ -1155,21 +1192,50 @@ function ConductDialog({ visit, facility, onClose, onSave, isSaving }: { visit: 
 
           <TabsContent value="checklist" className="space-y-2 mt-3">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-sm text-muted-foreground">Answer each question. Score = % of Yes/True among the Yes-No and True-False questions answered.</p>
+              <p className="text-sm text-muted-foreground">Answer each question. Score = average of the scored questions (Yes/No, True/False, and any ratings the author counts). Follow-up questions appear based on earlier answers.</p>
               <Badge variant="outline" className={score >= 80 ? STATUS_STYLES.conducted : score >= 60 ? "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30" : STATUS_STYLES.missed}>
                 Current score: {score}%
               </Badge>
             </div>
-            {checklist.map((c, idx) => (
-              <ChecklistQuestion
-                key={c.key}
-                item={c}
-                index={idx}
-                setResp={setResp}
-                setNote={setNote}
-                setValue={setValue}
-              />
-            ))}
+            {checklist.map((c) => {
+              if (!isAnswerVisible(c, checklist)) return null;
+              const isFollowUp = !!c.parentId;
+              const repeatIndex = c.repeatIndex ?? 0;
+              const isEntryZero = repeatIndex === 0;
+              if (isEntryZero && !isFollowUp) visibleNumber += 1;
+
+              const instances = c.repeatable ? checklist.filter((x) => (x.baseKey || x.key) === (c.baseKey || c.key)) : [];
+              const isLastInstance = c.repeatable && instances[instances.length - 1]?.key === c.key;
+              const entryLabelBase = c.repeatLabel?.trim() || "Entry";
+              const instanceLabel = c.repeatable ? `${entryLabelBase} ${repeatIndex + 1}` : undefined;
+              const canAddMore = c.repeatable && (!c.maxRepeats || instances.length < c.maxRepeats);
+
+              return (
+                <div key={c.key} className="space-y-2">
+                  <ChecklistQuestion
+                    item={c}
+                    displayNumber={isEntryZero && !isFollowUp ? visibleNumber : undefined}
+                    instanceLabel={instanceLabel}
+                    onRemove={c.repeatable && !isEntryZero ? () => removeRepeat(c.key) : undefined}
+                    setResp={setResp}
+                    setNote={setNote}
+                    setValue={setValue}
+                  />
+                  {isLastInstance && canAddMore && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="gap-1.5 ml-1"
+                      onClick={() => addRepeat(c.baseKey || c.key)}
+                      data-testid={`add-repeat-${c.baseKey || c.key}`}
+                    >
+                      <Plus className="h-3.5 w-3.5" /> Add another {entryLabelBase.toLowerCase()}
+                    </Button>
+                  )}
+                </div>
+              );
+            })}
           </TabsContent>
 
           <TabsContent value="findings" className="space-y-3 mt-3">
