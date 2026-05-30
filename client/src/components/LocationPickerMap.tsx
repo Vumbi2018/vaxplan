@@ -35,6 +35,24 @@ function ClickToPlace({ onPick }: { onPick: (lat: number, lng: number) => void }
   return null;
 }
 
+// Leaflet measures its container at mount. Inside a dialog the container is
+// still animating/zero-size then, so the map renders gray and ignores clicks.
+// Re-measure once it's visible and whenever the container resizes.
+function InvalidateSize() {
+  const map = useMap();
+  useEffect(() => {
+    const fix = () => map.invalidateSize();
+    const timers = [setTimeout(fix, 100), setTimeout(fix, 400)];
+    const ro = new ResizeObserver(fix);
+    ro.observe(map.getContainer());
+    return () => {
+      timers.forEach(clearTimeout);
+      ro.disconnect();
+    };
+  }, [map]);
+  return null;
+}
+
 // Flies the map to `center` whenever it changes (e.g. after "use my location").
 function FlyTo({ center }: { center: [number, number] | null }) {
   const map = useMap();
@@ -98,6 +116,7 @@ export default function LocationPickerMap({ value, onChange, defaultCenter, heig
             attribution='&copy; OpenStreetMap'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
+          <InvalidateSize />
           <ClickToPlace onPick={(lat, lng) => onChange({ lat, lng })} />
           <FlyTo center={flyCenter} />
           {value && (
