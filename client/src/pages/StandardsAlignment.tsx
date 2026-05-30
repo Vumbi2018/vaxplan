@@ -368,7 +368,7 @@ const SECTIONS: Section[] = [
       { area: "Multitenant isolation", status: "aligned", evidence: "tenantContext scopes reads/writes to the currently viewed tenant (session.viewTenantId); cross-tenant operations are recorded in the audit log with a crossTenant flag." },
       { area: "Audit log (who/what/when/old/new + IP)", status: "aligned", evidence: "logAudit in server/routes.ts." },
       { area: "Granular user management (invite, role, geographic scope, bulk CSV import)", status: "aligned", evidence: "UserManagement.tsx — per-user role + province/district/facility scope, hierarchical approval workflow, CSV bulk import, custom role permissions editor." },
-      { area: "Platform super-admin (break-glass cross-tenant operator)", status: "aligned", evidence: "users.is_platform_admin BOOLEAN (DB-only grant, no API to set) short-circuits hasPermission() across all tenants for Replit operators." },
+      { area: "Platform super-admin (break-glass cross-tenant operator)", status: "aligned", evidence: "users.is_platform_admin BOOLEAN (DB-only grant, no API to set) short-circuits hasPermission() across all tenants for platform operators." },
       { area: "Encryption at rest", status: "partial", recommendation: "Document in SECURITY.md; confirm provider setting." },
       { area: "Encryption in transit", status: "aligned" },
       { area: "PII minimization", status: "partial", recommendation: "Add per-tenant PII redaction toggle for analytics exports." },

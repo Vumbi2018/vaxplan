@@ -32,7 +32,7 @@ export function isNativeShell(): boolean {
 
 /**
  * The absolute origin the native app should call, e.g.
- * "https://my-app.replit.dev". Empty string on the web (relative requests).
+ * "https://api.your-domain.org". Empty string on the web (relative requests).
  */
 export function getApiBase(): string {
   if (!isNativeShell()) return "";

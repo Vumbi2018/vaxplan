@@ -12,3 +12,27 @@ id = "ZepsYkWkwP83BBHkmEsWg"
 uri = "file://Resources/icon.ico"
 type = "unspecified"
 title = "VaxPlan Windows icon (place in C:\\vaxplan\\Resources\\)"
+
+[[outputs]]
+id = "eyqShHv9-wKE6V94wHSRd"
+uri = "file://attached_assets/screenshots/01-landing.png"
+type = "image"
+title = "Dashboard (logged in as National Admin)"
+
+[[outputs]]
+id = "PjfhnQUY1dBOFeFBncQv6"
+uri = "file://attached_assets/screenshots/03-help.png"
+type = "image"
+title = "Help & Support Hub (after cleanup)"
+
+[[outputs]]
+id = "ls9xcsjx7lScP63qFvD_A"
+uri = "file://attached_assets/screenshots/04-settings.png"
+type = "image"
+title = "Settings Panel"
+
+[[outputs]]
+id = "zic2Fig88_cDJRI5IURSL"
+uri = "file://attached_assets/screenshots/05-facilities.png"
+type = "image"
+title = "Facilities"

@@ -253,7 +253,7 @@ WHO/UNICEF *Microplanning for Immunization Service Delivery using the RED Strate
 | **Role-based + location-aware (row-level) access** | ✅ *(2026-05-30)* | `hasPermission` + `GeographicContext` and `userCanAccessGeo` scope reads to the user's facility/district/province on **both list and single-record (`/:id`) endpoints**. A `facility_clerk` sees only their facility; `district_manager`/`provincial_coordinator` see only their area; `national_admin` sees the whole tenant. Authoring is restricted to facility roles. |
 | Audit log (who/what/when/old/new + IP) | ✅ | Export to SIEM (CEF/JSON over syslog) for ISO 27001 |
 | Encryption at rest | 🟡 | Document in `SECURITY.md` |
-| Encryption in transit | ✅ | TLS via Replit | — |
+| Encryption in transit | ✅ | TLS (managed by the hosting platform) |
 | PII minimization | 🟡 | Add per-tenant PII redaction for analytics exports |
 | Right to erasure (GDPR Art. 17) | 🔴 | Add "purge client" admin action that cascades and writes audit |
 | Data residency | 🟡 | Document in-country hosting options for MoH procurement |

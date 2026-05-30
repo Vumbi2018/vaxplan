@@ -100,8 +100,8 @@ they cannot author plans on a facility's behalf.
 
 VaxPlan supports two sign-in modes:
 
-1. **Replit sign-in** (used in the demo environment and during
-   onboarding).
+1. **Email and password** (used during onboarding and colleague
+   testing).
 2. **Tenant SSO** — once your Ministry of Health is fully onboarded,
    you sign in with your own organisational identity (OIDC or SAML —
    for example Microsoft Entra, Google Workspace, Okta).

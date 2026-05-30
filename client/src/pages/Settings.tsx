@@ -1182,7 +1182,7 @@ export default function Settings() {
                 <div className="p-3 rounded-lg bg-muted/50">
                   <p className="text-sm font-medium">Session Active</p>
                   <p className="text-xs text-muted-foreground">
-                    Logged in via Replit Auth
+                    Logged in via secure single sign-on
                   </p>
                 </div>
                 <Button

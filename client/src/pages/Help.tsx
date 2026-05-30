@@ -105,9 +105,9 @@ const quickLinks = [
 ];
 
 const defaultSupport = {
-  email: "support@health.gov",
-  phone: "+675 301 3601",
-  hours: "Monday - Friday, 8:00 AM - 4:00 PM (your local time)"
+  email: "",
+  phone: "",
+  hours: "Monday – Friday, business hours (your local time)"
 };
 
 const defaultGuides = [
@@ -140,54 +140,22 @@ const defaultResources = [
   { name: "EPI Program Reference Manual", url: "https://www.cdc.gov/vaccines/imz-managers/index.html" },
 ];
 
-const defaultVideos = [
-  { title: "System Overview", duration: "5:30", url: "" },
-  { title: "Adding Population Data", duration: "8:15", url: "" },
-  { title: "Planning Vaccination Sessions", duration: "10:45", url: "" },
-  { title: "Generating Reports", duration: "6:20", url: "" },
-];
+const defaultVideos: { title: string; duration: string; url: string }[] = [];
 
-function SimulatedUpload({ onUploadComplete, initialUrl = "" }: { onUploadComplete: (url: string) => void; initialUrl?: string }) {
-  const [uploading, setUploading] = useState(false);
+function DocumentUrlInput({ onUploadComplete, initialUrl = "" }: { onUploadComplete: (url: string) => void; initialUrl?: string }) {
   const [currentUrl, setCurrentUrl] = useState(initialUrl);
-  const { toast } = useToast();
-
-  const handleUpload = () => {
-    setUploading(true);
-    setTimeout(() => {
-      setUploading(false);
-      const randomId = Math.floor(Math.random() * 10000);
-      const generatedUrl = `/uploads/ref_document_${randomId}.pdf`;
-      setCurrentUrl(generatedUrl);
-      onUploadComplete(generatedUrl);
-      toast({
-        title: "Upload Successful",
-        description: `Simulated upload complete: ${generatedUrl}`,
-      });
-    }, 800);
-  };
 
   return (
-    <div className="flex items-center gap-3">
-      <Input
-        value={currentUrl}
-        onChange={(e) => {
-          setCurrentUrl(e.target.value);
-          onUploadComplete(e.target.value);
-        }}
-        placeholder="No document URL or upload path specified"
-        className="flex-1 bg-background border-border text-foreground placeholder:text-muted-foreground rounded-xl"
-      />
-      <Button
-        type="button"
-        variant="outline"
-        disabled={uploading}
-        onClick={handleUpload}
-        className="rounded-xl flex-shrink-0"
-      >
-        {uploading ? "Uploading..." : "Simulate Upload"}
-      </Button>
-    </div>
+    <Input
+      type="url"
+      value={currentUrl}
+      onChange={(e) => {
+        setCurrentUrl(e.target.value);
+        onUploadComplete(e.target.value);
+      }}
+      placeholder="https://… link to a PDF or web page"
+      className="bg-background border-border text-foreground placeholder:text-muted-foreground rounded-xl"
+    />
   );
 }
 
@@ -341,19 +309,15 @@ export default function Help() {
 
   // Support CRUD handler
   const handleEditSupport = () => {
-    if (!supportEmail.trim() || !supportPhone.trim()) {
-      toast({
-        title: "Validation Error",
-        description: "Please supply both support email and phone number.",
-        variant: "destructive",
-      });
-      return;
-    }
     const updatedSettings = {
       ...(tenant?.settings as any),
       help: {
         ...helpSettings,
-        support: { email: supportEmail, phone: supportPhone, hours: supportHours },
+        support: {
+          email: supportEmail.trim(),
+          phone: supportPhone.trim(),
+          hours: supportHours,
+        },
       },
     };
     updateSettings.mutate({ settings: updatedSettings });
@@ -905,23 +869,37 @@ export default function Help() {
               )}
             </CardHeader>
             <CardContent className="space-y-4 pt-4">
-              <div className="p-4 rounded-lg bg-muted/50 space-y-3">
-                <div className="flex items-center gap-2 text-sm text-foreground">
-                  <Mail className="h-4 w-4 text-muted-foreground" />
-                  <span>{support.email}</span>
-                </div>
-                <div className="flex items-center gap-2 text-sm text-foreground">
-                  <Phone className="h-4 w-4 text-muted-foreground" />
-                  <span>{support.phone}</span>
-                </div>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Support hours: {support.hours}
-              </p>
-              <Button className="w-full" data-testid="button-contact-support" onClick={() => window.location.href = `mailto:${support.email}`}>
-                <MessageCircle className="h-4 w-4 mr-2" />
-                Send Email
-              </Button>
+              {support.email || support.phone ? (
+                <>
+                  <div className="p-4 rounded-lg bg-muted/50 space-y-3">
+                    {support.email && (
+                      <div className="flex items-center gap-2 text-sm text-foreground">
+                        <Mail className="h-4 w-4 text-muted-foreground" />
+                        <span>{support.email}</span>
+                      </div>
+                    )}
+                    {support.phone && (
+                      <div className="flex items-center gap-2 text-sm text-foreground">
+                        <Phone className="h-4 w-4 text-muted-foreground" />
+                        <span>{support.phone}</span>
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Support hours: {support.hours}
+                  </p>
+                  {support.email && (
+                    <Button className="w-full" data-testid="button-contact-support" onClick={() => window.location.href = `mailto:${support.email}`}>
+                      <MessageCircle className="h-4 w-4 mr-2" />
+                      Send Email
+                    </Button>
+                  )}
+                </>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Support contact details have not been added yet. Your VaxPlan administrator can add them here.
+                </p>
+              )}
             </CardContent>
           </Card>
 
@@ -989,35 +967,6 @@ export default function Help() {
             </CardContent>
           </Card>
 
-          {/* System Status Card */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">System Status</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {[
-                  { service: "Application", status: "Operational" },
-                  { service: "Database", status: "Operational" },
-                  { service: "Map Services", status: "Operational" },
-                  { service: "Sync Service", status: "Operational" },
-                ].map((item) => (
-                  <div
-                    key={item.service}
-                    className="flex items-center justify-between text-sm text-foreground"
-                  >
-                    <span>{item.service}</span>
-                    <Badge
-                      variant="outline"
-                      className="bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20"
-                    >
-                      {item.status}
-                    </Badge>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
         </div>
       </div>
 
@@ -1126,7 +1075,7 @@ export default function Help() {
               <Label htmlFor="add-faq-doc-url" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Reference Document Attachment URL
               </Label>
-              <SimulatedUpload
+              <DocumentUrlInput
                 initialUrl={faqDocUrl}
                 onUploadComplete={(url) => setFaqDocUrl(url)}
               />
@@ -1185,7 +1134,7 @@ export default function Help() {
               <Label htmlFor="edit-faq-doc-url" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Reference Document Attachment URL
               </Label>
-              <SimulatedUpload
+              <DocumentUrlInput
                 initialUrl={faqDocUrl}
                 onUploadComplete={(url) => setFaqDocUrl(url)}
               />
@@ -1256,7 +1205,7 @@ export default function Help() {
               <Label htmlFor="guide-add-doc-url" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Upload Guide Reference Document URL
               </Label>
-              <SimulatedUpload
+              <DocumentUrlInput
                 initialUrl={guideDocUrl}
                 onUploadComplete={(url) => setGuideDocUrl(url)}
               />
@@ -1324,7 +1273,7 @@ export default function Help() {
               <Label htmlFor="guide-edit-doc-url" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Upload Guide Reference Document URL
               </Label>
-              <SimulatedUpload
+              <DocumentUrlInput
                 initialUrl={guideDocUrl}
                 onUploadComplete={(url) => setGuideDocUrl(url)}
               />
@@ -1478,7 +1427,7 @@ export default function Help() {
               <Label htmlFor="video-add-url" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Upload / Video Link URL
               </Label>
-              <SimulatedUpload
+              <DocumentUrlInput
                 initialUrl={videoUrl}
                 onUploadComplete={(url) => setVideoUrl(url)}
               />
@@ -1534,7 +1483,7 @@ export default function Help() {
               <Label htmlFor="video-edit-url" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Upload / Video Link URL
               </Label>
-              <SimulatedUpload
+              <DocumentUrlInput
                 initialUrl={videoUrl}
                 onUploadComplete={(url) => setVideoUrl(url)}
               />
