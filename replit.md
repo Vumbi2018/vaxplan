@@ -5,6 +5,7 @@ This GIS-based health microplanning application is designed to support vaccinati
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.
+Keep the Help page current: whenever a user-facing feature changes, update the End-User Guide (`docs/USER_GUIDE.md`), the Facility Quick-Start (`docs/QUICKSTART_FACILITY.md`), and the in-app FAQs (`defaultFaqs` in `client/src/pages/Help.tsx`) as part of the same change.
 
 ## System Architecture
 
@@ -26,7 +27,7 @@ The system supports a multitenant SaaS model, allowing different Ministries of H
 - A real cross-tenant browsing model: any authenticated user lands on their **home tenant** (resolved from `users.tenantId`, then SSO domain mapping, then approved signup invite) and sees a slim country switcher in the app header. Selecting another active tenant calls `POST /api/me/switch-tenant`, which sets `session.viewTenantId`; subsequent requests scope reads to that tenant. Writes outside the user's home tenant are rejected with HTTP 403 by `crossTenantWriteGuard`, keeping foreign data clean. The DEMO sandbox tenant and `demo-*` user rows remain in the database but are filtered out of the switcher dropdown — there are no `/demo` routes, demo CTAs, or demo banners in the UI.
 - A product rebrand to "VaxPlan" to support its multitenant nature, removing country-specific labels.
 - **Mark-done antigen validation**: `POST /api/sessions/:id/mark-done` validates `perAntigen` keys against the tenant's expanded vaccine schedule (via `expandVaccineSchedule` in `shared/vaccineSchedule.ts`). Known codes are canonicalized to the schedule's exact code (case- and whitespace-insensitive lookup, e.g. `opv-1` → `OPV-1`) and stored under `vaccinatedCounts.perAntigen`; unknown codes (stale clients or older offline outbox entries) are kept under `vaccinatedCounts.perAntigenUnmapped` so they still count toward totals but don't pollute per-antigen rollups. Each occurrence writes a `mark_done_unmapped_antigens` audit log entry and the response includes an `unmappedAntigenCodes` array so offline-sync clients can surface a warning instead of silently dropping the data.
-- **Microplan authoring is restricted to facility staff** (`facility_clerk` and `facility_in_charge`). All higher roles (district / provincial / national) are reviewers/approvers only — enforced both in the UI (`canCreateSessionPlan` / `canApproveSessionPlan` in `client/src/lib/permissions.ts`, role-aware `pages/SessionPlanning.tsx` with cascading Province → District → Facility picker) and on the server (`POST /api/sessions` returns 403 for non-facility roles).
+- **Microplan authoring is reserved for facility staff** (`facility_clerk` and `facility_in_charge`), with `national_admin` also permitted (for setup/seed/corrections). District and provincial roles are reviewers/approvers only — enforced both in the UI (`canCreateSessionPlan` / `canApproveSessionPlan` in `client/src/lib/permissions.ts`, role-aware `pages/SessionPlanning.tsx` with cascading Province → District → Facility picker) and on the server (`authorRoles` allowlist on `POST /api/sessions` returns 403 for district/provincial roles).
 
 ### Role-Based Access Control
 The application implements multi-level user roles (e.g., Facility Clerk, District Manager, National Admin) with hierarchical approval workflows to manage access and operations.

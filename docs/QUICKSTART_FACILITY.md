@@ -44,9 +44,13 @@
 - [ ] Open today's sessions before leaving for outreach.
 - [ ] Capture clients during the session (offline is fine).
 - [ ] Mark session done before packing up.
-- [ ] Sync the cloud icon when back in cellular range.
+- [ ] Tap the **sync badge** (top-right) to sync when back in cellular range.
 - [ ] Skim the **Under-immunised list** weekly for defaulters.
 - [ ] Submit the **Monthly stock summary** on the last working day.
+
+> **Good to know.** When you're online, the app updates on its own
+> within seconds if anything changes for your facility — no need to
+> refresh. You only ever see your own facility's data.
 
 ## Who to call
 

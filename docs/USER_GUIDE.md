@@ -88,10 +88,11 @@ facility staff.
 | **Tenant superadmin** | Onboards new tenants, configures SSO, and provisions the first national admin. | Cross-tenant. |
 
 Microplan authoring (creating new microplans and session plans) is
-**restricted to facility staff** (clerk and in-charge). Higher roles
-are reviewers and approvers; they cannot author plans on behalf of a
-facility. This keeps accountability with the people who actually run
-the sessions.
+**reserved for facility staff** (clerk and in-charge), so accountability
+stays with the people who actually run the sessions. National admins can
+also author when setting up or correcting a country's data. District
+managers and provincial coordinators are reviewers and approvers only —
+they cannot author plans on a facility's behalf.
 
 ---
 
@@ -143,6 +144,15 @@ a read-only viewer of that tenant's data. The system rejects any write
 you try to perform outside your home tenant with a clear error
 message. This is intentional — it lets a regional advisor see
 neighbouring countries' plans without risking accidental edits.
+
+**What you can see within your country.** VaxPlan also scopes data by
+your place in the hierarchy. A facility clerk or in-charge sees only
+their **own facility's** facilities, villages, population, microplans,
+sessions, and reports. A district manager sees their district; a
+provincial coordinator sees their province; a national admin sees the
+whole country. You won't see — or be able to open — a record that
+belongs to a facility outside your area, even with a direct link. This
+keeps each facility's data private to the people responsible for it.
 
 ---
 
@@ -309,10 +319,23 @@ to know:
   on-device IndexedDB.
 - When you create or update something offline (a session result, a
   stock movement, a new defaulter session), it goes into an
-  **outbox**. The header shows a small cloud icon with the number of
-  pending items.
-- When connectivity returns, the outbox syncs automatically. You can
-  also tap the cloud icon to sync manually.
+  **outbox**. The header shows a small cloud/sync badge with the number
+  of pending items.
+- **"Sync now" is built into the header.** The sync badge is always
+  visible. Whenever you're online, tap it to push your outbox and pull
+  the latest server data immediately — whether you have items queued or
+  just want a refresh. While you're offline it shows your status and
+  pending count, and syncs as soon as you're back online.
+- When connectivity returns, the outbox **syncs automatically in the
+  background** — even if you've closed the tab or locked the phone, on
+  devices that support background sync (most Android browsers). On
+  devices that don't (for example iPhones), it syncs the next time you
+  open the app.
+- **Live updates across devices.** While you're online, VaxPlan keeps a
+  lightweight live connection open. If a colleague — or you on another
+  device — changes something for your facility, your screen refreshes
+  within a few seconds, with no manual reload. If that live connection
+  drops, the app quietly falls back to periodic checks.
 - If a sync entry is rejected (for example, a session was already
   closed on the server), the system shows the rejection inline and
   asks you to resolve it.

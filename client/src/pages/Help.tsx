@@ -73,7 +73,27 @@ const defaultFaqs = [
   {
     question: "How does offline mode work?",
     answer:
-      "The application caches essential data locally for offline use. You can view and edit data while offline, and changes will sync automatically when connectivity is restored. Check the sync indicator in the header to see your current status.",
+      "The app caches your reference data on the device, so you can view and edit while offline. Anything you create or change goes into an outbox and syncs automatically when you're back online — including in the background, even if you've closed the tab (on devices that support it). Watch the sync badge in the header for your current status and pending count.",
+  },
+  {
+    question: "How do I sync my changes manually?",
+    answer:
+      "The sync badge in the top-right of the header is always visible. Whenever you're online, tap it to push your outbox to the server and pull down any new data right away — whether you have items queued or just want a refresh. While you're offline it shows your pending count and syncs automatically once you're back online.",
+  },
+  {
+    question: "Why did my screen update on its own?",
+    answer:
+      "When you're online, VaxPlan keeps a lightweight live connection open. If a colleague (or you on another device) changes something for your facility, your screen refreshes within a few seconds — no manual reload needed. If that connection drops, the app quietly falls back to periodic checks.",
+  },
+  {
+    question: "Who can see my facility's data?",
+    answer:
+      "Data is scoped to your place in the hierarchy. Facility staff see only their own facility's facilities, villages, population, microplans, sessions, and reports. District managers see their district, provincial coordinators their province, and national admins the whole country. You can't open a record belonging to a facility outside your area, even with a direct link.",
+  },
+  {
+    question: "Who can create microplans and session plans?",
+    answer:
+      "Day-to-day microplan and session-plan authoring belongs to facility staff (Facility Clerk and Facility In-charge), keeping accountability with the people who run the sessions. National admins can also author when setting up or correcting a country's data. District and provincial roles are reviewers and approvers only — they review and approve plans but do not author them.",
   },
 ];
 
