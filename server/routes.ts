@@ -104,7 +104,7 @@ import {
 } from "./services/hisInteropService";
 // Offline sync service
 import { pullChanges, batchMutate, getSyncStats, type OutboxMutation } from "./services/syncService";
-import { lookupGeo, normalizeIp } from "./services/geo";
+import { lookupGeo, reverseGeo, normalizeIp } from "./services/geo";
 import {
   checkProximityAndPopulation,
   resolveSessionLocation,
@@ -1578,18 +1578,63 @@ export async function registerRoutes(
       const ip = normalizeIp(typeof fwd === "string" ? fwd : req.ip);
       const ua = req.headers["user-agent"];
       const userAgent = typeof ua === "string" ? ua.slice(0, 400) : null;
-      const geo = await lookupGeo(ip);
-      await storage.recordPageView(req.tenantId, {
+      const isHeartbeat = req.body?.heartbeat === true;
+
+      // The browser may share its precise device position (GPS). Prefer that for
+      // the live map — IP geolocation often resolves only to the ISP's city
+      // (frequently the capital), so it can't show where a field user actually
+      // is. Fall back to IP-based geolocation when no usable GPS is sent.
+      const rawLat = Number(req.body?.lat);
+      const rawLng = Number(req.body?.lng);
+      const hasGps =
+        Number.isFinite(rawLat) &&
+        Number.isFinite(rawLng) &&
+        rawLat >= -90 &&
+        rawLat <= 90 &&
+        rawLng >= -180 &&
+        rawLng <= 180 &&
+        !(rawLat === 0 && rawLng === 0);
+
+      let country: string | null;
+      let region: string | null;
+      let city: string | null;
+      let latitude: number | null;
+      let longitude: number | null;
+      if (hasGps) {
+        const place = await reverseGeo(rawLat, rawLng);
+        country = place.country;
+        region = place.region;
+        city = place.city;
+        latitude = rawLat;
+        longitude = rawLng;
+      } else {
+        const geo = await lookupGeo(ip);
+        country = geo.country;
+        region = geo.region;
+        city = geo.city;
+        latitude = geo.latitude;
+        longitude = geo.longitude;
+      }
+
+      const record = {
         userId,
         path,
         ipAddress: ip,
-        country: geo.country,
-        region: geo.region,
-        city: geo.city,
-        latitude: geo.latitude != null ? String(geo.latitude) : null,
-        longitude: geo.longitude != null ? String(geo.longitude) : null,
+        country,
+        region,
+        city,
+        latitude: latitude != null ? String(latitude) : null,
+        longitude: longitude != null ? String(longitude) : null,
         userAgent,
-      });
+      };
+
+      if (isHeartbeat && userId) {
+        // A heartbeat just keeps an idle-but-present user "online" — refresh
+        // their latest activity instead of logging a fresh visit.
+        await storage.touchPresence(req.tenantId, userId, record);
+      } else {
+        await storage.recordPageView(req.tenantId, record);
+      }
       res.status(204).end();
     } catch (err) {
       // Analytics is non-critical — swallow errors so navigation never breaks.

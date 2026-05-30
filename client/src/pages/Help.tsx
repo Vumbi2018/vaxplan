@@ -113,7 +113,7 @@ const defaultFaqs = [
   {
     question: "What is the number next to my name at the top?",
     answer:
-      "That's a live count of how many people are online in your country right now — anyone active in the last few minutes. It sits beside your profile in the header with a small green dot and refreshes on its own. It's just a count; the detailed 'who's online' list stays with administrators on the Site activity panel.",
+      "That's a live count of how many people are online in your country right now — anyone with the app open in the last few minutes. The app sends a quiet heartbeat while your tab is open, so you stay counted even if you pause on one page without clicking around. It sits beside your profile in the header with a small green dot and refreshes on its own. It's just a count; the detailed 'who's online' list stays with administrators on the Site activity panel.",
   },
   {
     question: "Where can I see a full list of everything VaxPlan can do?",
@@ -123,7 +123,7 @@ const defaultFaqs = [
   {
     question: "How do I see who's online and how the site is being used?",
     answer:
-      "National and platform administrators have a 'Site activity' panel on the dashboard. It shows who is online right now (with their role, current page, and the city/country they're signed in from), a live map pinning where those users are, how many visits there were today, a 14-day visits trend, your most-visited pages, and a breakdown of login locations. Platform super admins get full detail: tap any person to see their email, IP address, device, and exact coordinates. Locations are a best-effort estimate from the network address, and the panel refreshes on its own every 30 seconds.",
+      "National and platform administrators have a 'Site activity' panel on the dashboard. It shows who is online right now (with their role, current page, and the city/country they're signed in from), a live map pinning where those users are, how many visits there were today, a 14-day visits trend, your most-visited pages, and a breakdown of login locations. Platform super admins get full detail: tap any person to see their email, IP address, device, and exact coordinates. If a user allows location access in their browser, the map uses their device's real GPS position; otherwise it falls back to a best-effort estimate from the network address (which often only resolves to the nearest large city). The panel refreshes on its own every 30 seconds.",
   },
 ];
 

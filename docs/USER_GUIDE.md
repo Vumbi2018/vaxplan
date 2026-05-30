@@ -423,10 +423,16 @@ National admins are the power users for your country. Your modules:
 - **Site activity.** A panel on your country dashboard shows who is
   online right now and where they are signed in from, a live map
   pinning those users, visits today and over the last two weeks, your
-  busiest pages, and a breakdown of login locations. Platform super
-  admins can tap any online person for full detail — email, IP address,
-  device, and exact coordinates. It is visible only to national and
-  platform administrators.
+  busiest pages, and a breakdown of login locations. Users stay counted
+  as online while their tab is open — the app sends a quiet heartbeat —
+  so someone reading a single page without clicking around still shows
+  up. When a user allows location access in their browser, the map uses
+  their device's real GPS position; otherwise it falls back to a
+  best-effort estimate from the network address, which often resolves
+  only to the nearest large city. Platform super admins can tap any
+  online person for full detail — email, IP address, device, and exact
+  coordinates. It is visible only to national and platform
+  administrators.
 
 National admins can also configure **scheduled jobs** — population
 refresh from WorldPop, stock-alert digests, and supervision digests

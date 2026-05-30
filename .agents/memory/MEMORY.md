@@ -1,7 +1,8 @@
 - [Cross-tenant write enforcement](cross-tenant-writes.md) — replit.md claims a `crossTenantWriteGuard` middleware exists; it does not. Real isolation is tenantContext scoping + audit `crossTenant` flag only.
 - [Row-level geo read access (IDOR)](row-level-geo-access.md) — within-tenant facility/district/province scoping; single-record `/:id`, hydration & nested reads need a 404-on-deny gate; userCanAccessGeo must mirror hasPermission (cross-tenant skip + dataAccessScope).
 - [Client must never import from server/](client-server-import-boundary.md) — any client import of `server/*` drags pg into the browser bundle and crashes with "process is not defined". Put shared constants in `shared/`.
-- [Tenant header UUID guard](tenant-header-uuid-guard.md) — client sends x-tenant-id which can be a tenant CODE; must UUID-validate + check active before any getTenant() or Postgres throws 22P02 and poisons the session.
+- [Tenant header UUID guard](tenant-header-uuid-guard.md) — x-tenant-id may be a tenant CODE; UUID-validate + check active before getTenant() or Postgres 22P02 poisons the session.
+- [Site-activity presence & map](analytics-presence.md) — never bump created_at for presence (use last_seen_at); prefer device GPS over IP geo (IP→capital) for the live map.
 - [Release token must be ASCII](release-token-ascii.md) — RELEASE_DOWNLOAD_TOKEN sent via x-release-token header; non-ASCII chars garble over HTTP (latin1) and cause phantom 401s. Use hex.
 - [Custom layers admin gating](custom-layers-admin-policy.md) — custom-layer management is national_admin only (server requireAdmin excludes gis_specialist); gate client on role, not isAdmin().
 - [National-admin-only client gates](national-admin-client-gating.md) — isAdmin() includes gis_specialist; for any national_admin-only server gate (requireAdmin) gate the client on user.role === "national_admin", never isAdmin().

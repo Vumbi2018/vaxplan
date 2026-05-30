@@ -288,6 +288,7 @@ export interface IStorage {
 
   // Site-traffic analytics
   recordPageView(tenantId: string, data: InsertPageView): Promise<void>;
+  touchPresence(tenantId: string, userId: string, data: InsertPageView): Promise<void>;
   getTrafficAnalytics(tenantId: string): Promise<TrafficAnalytics>;
   getOnlineCount(tenantId: string): Promise<number>;
 
@@ -1528,7 +1529,50 @@ export class DatabaseStorage implements IStorage {
 
   // --- Site-traffic analytics ---
   async recordPageView(tenantId: string, data: InsertPageView): Promise<void> {
-    await db.insert(pageViews).values({ ...data, tenantId } as typeof pageViews.$inferInsert);
+    await db
+      .insert(pageViews)
+      .values({ ...data, tenantId, lastSeenAt: new Date() } as typeof pageViews.$inferInsert);
+  }
+
+  // Keep a logged-in user's presence "fresh" without distorting visit history.
+  // A heartbeat updates only the presence fields (lastSeenAt + latest coords/
+  // location for the live map) on the user's most recent row when that row is
+  // recent (≤30 min); it never touches createdAt or path, so visit/trend/
+  // top-page aggregates — which all key off the immutable createdAt — are
+  // unaffected, including across day boundaries. If the latest row is older
+  // than the window (the user genuinely returned after being away), a fresh row
+  // is inserted so it counts as a new visit at the correct time.
+  async touchPresence(tenantId: string, userId: string, data: InsertPageView): Promise<void> {
+    const cutoff = new Date(Date.now() - 30 * 60 * 1000);
+    const [latest] = await db
+      .select({ id: pageViews.id })
+      .from(pageViews)
+      .where(
+        and(
+          eq(pageViews.tenantId, tenantId),
+          eq(pageViews.userId, userId),
+          gte(sql`coalesce(${pageViews.lastSeenAt}, ${pageViews.createdAt})`, cutoff),
+        ),
+      )
+      .orderBy(desc(sql`coalesce(${pageViews.lastSeenAt}, ${pageViews.createdAt})`))
+      .limit(1);
+    if (latest) {
+      await db
+        .update(pageViews)
+        .set({
+          lastSeenAt: new Date(),
+          country: data.country,
+          region: data.region,
+          city: data.city,
+          latitude: data.latitude,
+          longitude: data.longitude,
+        } as Partial<typeof pageViews.$inferInsert>)
+        .where(eq(pageViews.id, latest.id));
+      return;
+    }
+    await db
+      .insert(pageViews)
+      .values({ ...data, userId, tenantId, lastSeenAt: new Date() } as typeof pageViews.$inferInsert);
   }
 
   async getOnlineCount(tenantId: string): Promise<number> {
@@ -1538,7 +1582,12 @@ export class DatabaseStorage implements IStorage {
         count: sql<number>`count(distinct coalesce(${pageViews.userId}, 'anon:' || coalesce(${pageViews.ipAddress}, '?')))::int`,
       })
       .from(pageViews)
-      .where(and(eq(pageViews.tenantId, tenantId), gte(pageViews.createdAt, onlineSince)));
+      .where(
+        and(
+          eq(pageViews.tenantId, tenantId),
+          gte(sql`coalesce(${pageViews.lastSeenAt}, ${pageViews.createdAt})`, onlineSince),
+        ),
+      );
     return (row as { count: number } | undefined)?.count ?? 0;
   }
 
@@ -1563,7 +1612,7 @@ export class DatabaseStorage implements IStorage {
         latitude: pageViews.latitude,
         longitude: pageViews.longitude,
         userAgent: pageViews.userAgent,
-        createdAt: pageViews.createdAt,
+        lastSeen: sql<Date>`coalesce(${pageViews.lastSeenAt}, ${pageViews.createdAt})`,
         firstName: users.firstName,
         lastName: users.lastName,
         email: users.email,
@@ -1571,8 +1620,13 @@ export class DatabaseStorage implements IStorage {
       })
       .from(pageViews)
       .leftJoin(users, eq(users.id, pageViews.userId))
-      .where(and(eq(pageViews.tenantId, tenantId), gte(pageViews.createdAt, onlineSince)))
-      .orderBy(desc(pageViews.createdAt));
+      .where(
+        and(
+          eq(pageViews.tenantId, tenantId),
+          gte(sql`coalesce(${pageViews.lastSeenAt}, ${pageViews.createdAt})`, onlineSince),
+        ),
+      )
+      .orderBy(desc(sql`coalesce(${pageViews.lastSeenAt}, ${pageViews.createdAt})`));
 
     const seen = new Set<string>();
     const online: OnlineUser[] = [];
@@ -1597,7 +1651,7 @@ export class DatabaseStorage implements IStorage {
         userAgent: r.userAgent ?? null,
         latitude: r.latitude != null ? Number(r.latitude) : null,
         longitude: r.longitude != null ? Number(r.longitude) : null,
-        lastSeen: r.createdAt,
+        lastSeen: r.lastSeen,
       });
     }
 

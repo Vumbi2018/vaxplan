@@ -724,12 +724,17 @@ export const pageViews = pgTable("page_views", {
   longitude: decimal("longitude", { precision: 10, scale: 6 }),
   userAgent: varchar("user_agent", { length: 400 }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  // Presence freshness, kept separate from createdAt so heartbeats can mark a
+  // user "still here" without mutating the immutable event time that visit/
+  // trend/top-page analytics are aggregated on.
+  lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
 }, (table) => [
   index("idx_page_views_tenant_created").on(table.tenantId, table.createdAt),
   index("idx_page_views_tenant_user").on(table.tenantId, table.userId),
+  index("idx_page_views_tenant_last_seen").on(table.tenantId, table.lastSeenAt),
 ]);
 export type PageView = typeof pageViews.$inferSelect;
-export type InsertPageView = Omit<PageView, "id" | "createdAt" | "tenantId">;
+export type InsertPageView = Omit<PageView, "id" | "createdAt" | "tenantId" | "lastSeenAt">;
 
 /*
 // Original htr_scores table definition preserved for backward compatibility

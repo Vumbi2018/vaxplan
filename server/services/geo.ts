@@ -69,6 +69,82 @@ export async function lookupGeo(rawIp: string | null | undefined): Promise<GeoIn
   return promise;
 }
 
+// Reverse-geocode precise device GPS coordinates (sent by the browser) into a
+// coarse place name. IP geolocation in many countries resolves only to the
+// ISP's registered city (e.g. always the capital), so when a client shares its
+// real GPS position we prefer that for the live map. Best-effort and cached by
+// rounded coordinates; any failure resolves to nulls (the map still pins the
+// exact coordinates, it just lacks a textual label).
+const revCache = new Map<string, { value: GeoInfo; expires: number }>();
+const revInFlight = new Map<string, Promise<GeoInfo>>();
+// Nominatim's usage policy allows at most ~1 request/second. Cache + in-flight
+// coalescing absorb repeats; this global gate bounds genuinely-new lookups so a
+// burst of distinct positions can't breach the limit. When throttled we skip
+// the label (the pin still shows from the raw coordinates).
+const REV_MIN_INTERVAL_MS = 1100;
+let lastRevNetworkAt = 0;
+
+export async function reverseGeo(
+  lat: number | null | undefined,
+  lng: number | null | undefined,
+): Promise<GeoInfo> {
+  if (lat == null || lng == null || !Number.isFinite(lat) || !Number.isFinite(lng)) return EMPTY;
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return EMPTY;
+  // ~1 km cache buckets so nearby pings reuse one lookup and stay well within
+  // the geocoder's rate limit.
+  const key = `${lat.toFixed(2)},${lng.toFixed(2)}`;
+  const cached = revCache.get(key);
+  if (cached && cached.expires > Date.now()) return cached.value;
+  const pending = revInFlight.get(key);
+  if (pending) return pending;
+  const now = Date.now();
+  if (now - lastRevNetworkAt < REV_MIN_INTERVAL_MS) return EMPTY;
+  lastRevNetworkAt = now;
+  const promise = fetchReverseGeo(lat, lng).finally(() => revInFlight.delete(key));
+  revInFlight.set(key, promise);
+  return promise;
+}
+
+async function fetchReverseGeo(lat: number, lng: number): Promise<GeoInfo> {
+  const key = `${lat.toFixed(2)},${lng.toFixed(2)}`;
+  let value: GeoInfo = EMPTY;
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 2500);
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=10&lat=${encodeURIComponent(
+        String(lat),
+      )}&lon=${encodeURIComponent(String(lng))}`,
+      {
+        signal: controller.signal,
+        headers: { "User-Agent": "VaxPlan/1.0 (health microplanning analytics)" },
+      },
+    );
+    clearTimeout(timer);
+    if (res.ok) {
+      const data: any = await res.json();
+      const a = data?.address ?? {};
+      if (a && Object.keys(a).length > 0) {
+        const city =
+          a.city || a.town || a.village || a.municipality || a.county || a.suburb || null;
+        value = {
+          country: a.country || null,
+          region: a.state || a.region || null,
+          city,
+          latitude: lat,
+          longitude: lng,
+        };
+      }
+    }
+  } catch {
+    value = EMPTY;
+  }
+  if (value.country || value.region || value.city) {
+    revCache.set(key, { value, expires: Date.now() + TTL_MS });
+  }
+  return value;
+}
+
 async function fetchGeo(ip: string): Promise<GeoInfo> {
   let value: GeoInfo = EMPTY;
   try {
