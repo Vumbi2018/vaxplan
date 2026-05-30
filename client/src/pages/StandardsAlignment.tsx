@@ -29,6 +29,13 @@ import {
   ClipboardCheck,
   Wifi,
   Target,
+  Map as MapIcon,
+  Syringe,
+  Users,
+  Building2,
+  LifeBuoy,
+  RefreshCw,
+  BarChart3,
 } from "lucide-react";
 
 type Status = "aligned" | "partial" | "gap";
@@ -398,6 +405,160 @@ const SECTIONS: Section[] = [
   },
 ];
 
+interface Feature {
+  name: string;
+  detail: string;
+}
+
+interface FeatureGroup {
+  id: string;
+  title: string;
+  icon: React.ComponentType<{ className?: string }>;
+  features: Feature[];
+}
+
+// Plain-language catalogue of what VaxPlan can actually do today. Every entry
+// maps to a real page/route or a shipped capability — keep it in sync as
+// features change.
+const FEATURES: FeatureGroup[] = [
+  {
+    id: "dashboards",
+    title: "Dashboards & immunization indicators",
+    icon: BarChart3,
+    features: [
+      { name: "Executive dashboard", detail: "The home screen shows headline immunization numbers — zero-dose children, dropout rates and upcoming sessions — with a per-district breakdown you can click into." },
+      { name: "Zero-dose villages", detail: "Map and ranked list of villages with zero-dose children (no DTP1 by 12 months), with a Province → District → Facility filter and a satellite/street basemap toggle." },
+      { name: "Dropout rates", detail: "Calculates DTP1→DTP3 and DTP1→MCV1 dropout from the client register, broken down by district." },
+      { name: "Defaulter tracking", detail: "Lists children who have missed scheduled doses and lets a planner book a defaulter follow-up session in one click." },
+      { name: "Missed communities", detail: "Surfaces villages with no immunization contact in the past 12 months, with CSV import from DHIS2." },
+    ],
+  },
+  {
+    id: "microplanning",
+    title: "Microplanning & sessions",
+    icon: Workflow,
+    features: [
+      { name: "12-step guided microplan wizard", detail: "A step-by-step wizard that walks a facility through strategy, catchment, target population, vaccine and supply needs, staffing, transport, mobilization, budget, supervision and approval." },
+      { name: "Routine immunization microplans", detail: "Build and manage facility routine (RI) microplans as the parent of their sessions." },
+      { name: "SIA / campaign microplans", detail: "A parallel campaign workspace for supplementary immunization activities, with campaign antigen, target age group and scope." },
+      { name: "Session planning", detail: "Schedule fixed, outreach and mobile sessions; the system enforces a minimum 7-day lead time and warns about double-bookings and sessions placed too close together." },
+      { name: "Sessions hub", detail: "One searchable place for every planned, overdue, conducted or cancelled session, shown as both a list and a month calendar." },
+      { name: "Session day plans", detail: "Day-by-day plans capturing the vaccinator team, transport, cold boxes and the actual doses given." },
+      { name: "Session history", detail: "A record of past sessions and their outcomes." },
+      { name: "Annual national plan", detail: "National EPI / annual immunization plan per country and year — targets, budget envelope, funding mix and strategic priorities — that facility microplans can read from." },
+      { name: "Approvals", detail: "Hierarchical review and sign-off of microplans and reports across facility → district → province → national levels." },
+    ],
+  },
+  {
+    id: "vaccines",
+    title: "Vaccines, stock & budget",
+    icon: Syringe,
+    features: [
+      { name: "Vaccine calculator", detail: "Calculates required doses, vials and wastage buffer from the target population and the country's vaccine schedule." },
+      { name: "Configurable vaccine schedule", detail: "Each country sets its own schedule (antigens, doses, ages); the schedule drives calculations and indicators." },
+      { name: "Stock ledger", detail: "Tracks vaccine and supply transactions with a running ledger and low-stock alerts." },
+      { name: "Budget planning", detail: "Plan budget lines tagged to a funding source — government, Gavi, WHO, UNICEF or other." },
+      { name: "Reconcile unmapped vaccines", detail: "Admin tool to map any unrecognized antigen codes coming from offline clients back to the official schedule." },
+    ],
+  },
+  {
+    id: "geography",
+    title: "Facilities, population & geography",
+    icon: Building2,
+    features: [
+      { name: "Facilities registry", detail: "Manage health facilities — location, catchment radius, cold-chain flag and external IDs such as DHIS2." },
+      { name: "Population data", detail: "Store and compare population figures from multiple sources — national census, HMIS, WorldPop and surveys." },
+      { name: "Boundary manager", detail: "Manage the administrative hierarchy — provinces, districts, LLGs/wards — and their map shapes." },
+      { name: "Hard-to-reach communities", detail: "Flag and plan for hard-to-reach communities using terrain, distance, travel time and insecurity level." },
+    ],
+  },
+  {
+    id: "gis",
+    title: "Maps & GIS",
+    icon: MapIcon,
+    features: [
+      { name: "Interactive map", detail: "Leaflet map showing facilities, villages, catchments and population, with a toggle between OpenStreetMap and satellite imagery." },
+      { name: "Custom map layers", detail: "National admins can add custom overlays to the map." },
+      { name: "Settlement intelligence", detail: "Uses gridded population data to highlight likely settlements that may not yet be registered." },
+      { name: "Map exports", detail: "Download facilities, villages, sessions and catchments as GeoJSON or KML for QGIS or Google Earth." },
+    ],
+  },
+  {
+    id: "supervision",
+    title: "Supervision & community demand",
+    icon: ClipboardCheck,
+    features: [
+      { name: "Supportive supervision", detail: "Schedule and record supervisory visits using a 12-item WHO RED checklist with an automatic score, findings and follow-up actions." },
+      { name: "Social mobilization", detail: "Plan community mobilization and demand-generation activities linked to sessions." },
+    ],
+  },
+  {
+    id: "clients",
+    title: "Client records",
+    icon: Users,
+    features: [
+      { name: "Client logbook", detail: "An electronic register of children and the doses they have received, which feeds the coverage, dropout and zero-dose indicators." },
+    ],
+  },
+  {
+    id: "tenancy",
+    title: "Countries, users & access",
+    icon: Globe,
+    features: [
+      { name: "Country switcher", detail: "Users land on their home country and can switch to view other active countries from the header; edits outside the home country are blocked." },
+      { name: "User management", detail: "Create users, assign roles and a geographic scope (province/district/facility), bulk-import via CSV and edit custom role permissions." },
+      { name: "Role-based access", detail: "Six built-in roles — facility clerk, facility in-charge, district manager, provincial coordinator, national admin and GIS specialist — plus a platform super-admin, each seeing only the data in their area." },
+      { name: "Country onboarding", detail: "Set up a new country (tenant) on the platform." },
+      { name: "Self-service signup & approval", detail: "People can request access and admins approve them through a hierarchical workflow." },
+    ],
+  },
+  {
+    id: "interop",
+    title: "Interoperability & data exchange",
+    icon: Layers,
+    features: [
+      { name: "HIS integrations", detail: "Connect to health information systems — DHIS2 aggregate reporting and HL7 FHIR R4 (Patient + Immunization)." },
+      { name: "Standard vaccine codes", detail: "Vaccines can carry standard CVX and WHO ATC codes for interoperable exchange." },
+      { name: "Import & export", detail: "Import facility lists, population figures and missed communities; export indicator and GIS data." },
+    ],
+  },
+  {
+    id: "offline",
+    title: "Offline use & live sync",
+    icon: RefreshCw,
+    features: [
+      { name: "Offline-first", detail: "The app keeps a local copy of your data so you can keep working with no connection." },
+      { name: "Sync engine with outbox", detail: "Changes made offline are queued and replayed to the server automatically when you reconnect." },
+      { name: "Conflict resolution", detail: "When the same record changes in two places, the conflict is logged so it can be reviewed." },
+      { name: "Offline map cache", detail: "Map boundaries and population layers are cached for use without a connection." },
+      { name: "Live sync", detail: "When online, changes made by other users appear in near real time." },
+      { name: "Browser, desktop & mobile", detail: "Runs in the browser and can be packaged as Windows and Android builds for field devices." },
+    ],
+  },
+  {
+    id: "support",
+    title: "Settings, help & standards",
+    icon: LifeBuoy,
+    features: [
+      { name: "Settings", detail: "Per-country configuration — vaccine schedule, feature toggles, support contacts and branding." },
+      { name: "Help & support hub", detail: "In-app user guides, FAQs and resource links, plus your country's support contact." },
+      { name: "Standards alignment", detail: "This page — a transparent review of how VaxPlan maps to WHO, UNICEF, Gavi and Ministry-of-Health standards, alongside this feature catalogue." },
+    ],
+  },
+  {
+    id: "security",
+    title: "Security & governance",
+    icon: Shield,
+    features: [
+      { name: "Single sign-on", detail: "Email and password plus OIDC and SAML SSO, so ministries can use their own identity providers." },
+      { name: "Audit log", detail: "Every create, update and delete is recorded with who, what, when, the before/after values and the IP address." },
+      { name: "Tenant isolation", detail: "Each country's data is kept separate; any cross-country action is flagged in the audit log." },
+      { name: "Right to erasure", detail: "Admins can permanently purge a client's records with a stated reason (GDPR Article 17)." },
+      { name: "Encryption in transit", detail: "All traffic is served over TLS." },
+    ],
+  },
+];
+
 const STATUS_META: Record<Status, { label: string; icon: React.ComponentType<{ className?: string }>; badgeClass: string; chipClass: string }> = {
   aligned: {
     label: "Aligned",
@@ -561,6 +722,75 @@ function SectionView({ section, filter }: { section: Section; filter: string }) 
   );
 }
 
+function FeaturesView({ filter }: { filter: string }) {
+  const q = filter.trim().toLowerCase();
+  const groups = useMemo(() => {
+    if (!q) return FEATURES;
+    return FEATURES.map((g) => ({
+      ...g,
+      features: g.features.filter(
+        (f) => f.name.toLowerCase().includes(q) || f.detail.toLowerCase().includes(q),
+      ),
+    })).filter((g) => g.features.length > 0);
+  }, [q]);
+
+  const total = useMemo(() => FEATURES.reduce((n, g) => n + g.features.length, 0), []);
+
+  return (
+    <div className="space-y-4" data-testid="features-view">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">What VaxPlan can do today</CardTitle>
+          <CardDescription>
+            A complete, plain-language catalogue of what VaxPlan can do today — {total} features across {FEATURES.length} areas. Use the filter box above to jump to anything.
+          </CardDescription>
+        </CardHeader>
+      </Card>
+      {groups.length === 0 ? (
+        <p className="text-sm text-muted-foreground italic">No features match the current filter.</p>
+      ) : (
+        groups.map((g) => {
+          const Icon = g.icon;
+          return (
+            <Card key={g.id} data-testid={`feature-group-${g.id}`}>
+              <CardHeader>
+                <div className="flex items-start gap-3">
+                  <div className="rounded-md bg-primary/10 p-2 text-primary">
+                    <Icon className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-base">{g.title}</CardTitle>
+                    <CardDescription>
+                      {g.features.length} feature{g.features.length === 1 ? "" : "s"}
+                    </CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <ul className="space-y-3">
+                  {g.features.map((f, idx) => (
+                    <li
+                      key={`${g.id}-${idx}`}
+                      className="flex items-start gap-2.5"
+                      data-testid={`feature-${g.id}-${idx}`}
+                    >
+                      <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0 text-primary" />
+                      <div className="text-sm">
+                        <span className="font-medium">{f.name}</span>
+                        <span className="text-muted-foreground"> — {f.detail}</span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+          );
+        })
+      )}
+    </div>
+  );
+}
+
 function TopActionsCard() {
   return (
     <Card data-testid="top-actions-card">
@@ -605,9 +835,10 @@ export default function StandardsAlignment() {
           Standards Alignment
         </h1>
         <p className="text-sm text-muted-foreground max-w-3xl">
-          A grounded review of how VaxPlan aligns with WHO, UNICEF, Gavi and Ministry-of-Health standards
-          for microplanning and GIS-microplanning. Every row cites concrete evidence from this codebase or
-          a concrete gap-closure recommendation. Mirror copy:{" "}
+          Start with the <strong>Features</strong> tab for a plain-language list of what
+          VaxPlan can do today. The remaining tabs are a grounded review of how VaxPlan aligns with WHO,
+          UNICEF, Gavi and Ministry-of-Health standards for microplanning and GIS-microplanning — every row
+          cites concrete evidence from this codebase or a concrete gap-closure recommendation. Mirror copy:{" "}
           <code className="text-xs">docs/who-unicef-gavi-alignment.md</code>.
         </p>
       </div>
@@ -625,8 +856,11 @@ export default function StandardsAlignment() {
         />
       </div>
 
-      <Tabs defaultValue={SECTIONS[0].id} className="w-full">
+      <Tabs defaultValue="features" className="w-full">
         <TabsList className="flex flex-wrap h-auto w-full justify-start gap-1">
+          <TabsTrigger value="features" data-testid="tab-features">
+            Features
+          </TabsTrigger>
           {SECTIONS.map((s) => (
             <TabsTrigger key={s.id} value={s.id} data-testid={`tab-${s.id}`}>
               {s.title.split(".")[0]}
@@ -636,6 +870,9 @@ export default function StandardsAlignment() {
             Actions
           </TabsTrigger>
         </TabsList>
+        <TabsContent value="features" className="mt-4">
+          <FeaturesView filter={filter} />
+        </TabsContent>
         {SECTIONS.map((s) => (
           <TabsContent key={s.id} value={s.id} className="mt-4">
             <SectionView section={s} filter={filter} />

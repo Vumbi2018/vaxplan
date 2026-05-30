@@ -68,6 +68,13 @@ immunisation activities (SIAs).
   with its own data, users, and SSO. Users with cross-tenant access
   can switch between countries from the header.
 
+**See the full feature list.** For a complete, plain-language catalogue
+of everything VaxPlan can do today, open **Standards Alignment** from the
+sidebar and select the **Features** tab. It groups every feature by area
+(dashboards, microplanning, vaccines & stock, maps & GIS, supervision,
+users & access, offline & sync, security, and more), and the filter box
+lets you jump straight to anything.
+
 **Where the data lives.** Everything is stored in PostgreSQL on a
 tenant-isolated schema. Facility and village reference data is loaded
 once during onboarding and then maintained by national administrators.

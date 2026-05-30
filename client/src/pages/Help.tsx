@@ -95,6 +95,11 @@ const defaultFaqs = [
     answer:
       "Day-to-day microplan and session-plan authoring belongs to facility staff (Facility Clerk and Facility In-charge), keeping accountability with the people who run the sessions. National admins can also author when setting up or correcting a country's data. District and provincial roles are reviewers and approvers only — they review and approve plans but do not author them.",
   },
+  {
+    question: "Where can I see a full list of everything VaxPlan can do?",
+    answer:
+      "Open the Standards Alignment page from the sidebar and look at the 'Features' tab. It lists every feature currently in the platform — grouped by area (dashboards, microplanning, vaccines & stock, maps & GIS, supervision, users & access, offline & sync, security, and more) — in plain language. Use the filter box on that page to jump straight to anything.",
+  },
 ];
 
 const quickLinks = [
