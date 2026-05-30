@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/useAuth";
-import { canViewSiteAnalytics } from "@/lib/permissions";
+import { canViewSiteAnalytics, canApproveSessionPlan } from "@/lib/permissions";
 import { SiteActivityPanel } from "@/components/SiteActivityPanel";
 import {
   Building2,
@@ -987,6 +987,8 @@ export default function Dashboard() {
 
   const { data: approvals, isLoading: loadingApprovals } = useQuery<ApprovalRequest[]>({
     queryKey: ["/api/approvals"],
+    enabled: canApproveSessionPlan(user),
+    retry: false,
   });
 
   const { data: populationDataList, isLoading: loadingPopulation } = useQuery<PopulationData[]>({
