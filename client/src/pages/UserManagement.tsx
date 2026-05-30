@@ -524,55 +524,29 @@ const ALL_PERMISSIONS: { value: Permission; label: string; desc: string }[] = [
   { value: "manage_users", label: "Manage User Access", desc: "Allows editing user roles and data scopes" }
 ];
 
-// Reads the currently-viewed tenant id from the same localStorage value the
-// country switcher writes and `main.tsx` sends as the `x-tenant-id` header.
-// Returns null when no explicit tenant has been selected (i.e. home tenant).
-function getActiveTenantId(): string | null {
-  try {
-    const raw = localStorage.getItem("vaxplan_active_tenant");
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed.id === "string") return parsed.id;
-    if (parsed && typeof parsed.id === "number") return String(parsed.id);
-    if (typeof parsed === "string") return parsed;
-  } catch {
-    /* ignore malformed value — treat as home tenant */
-  }
-  return null;
-}
-
 export default function UserManagement() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { user: currentUser } = useAuth();
-  // Admin password create/reset is only allowed server-side for national
-  // admins (same tenant) and platform admins (any tenant). Gate the UI to match
-  // so we never show a control that would 403:
-  //  - Platform admins can set passwords in any tenant.
-  //  - National admins / program managers can only do so in their HOME tenant;
-  //    cross-tenant password writes are rejected by the server, so hide the
-  //    controls while viewing another country.
-  //  - Provincial coordinators can manage users but never set passwords.
+  // Who may see the admin password create/reset controls. The SERVER is the
+  // real security boundary: `/api/auth/set-password` only authorizes platform
+  // admins (any tenant) and national admins / program managers in their own
+  // home tenant, and rejects cross-tenant writes with a 403 that the reset
+  // mutation surfaces as a toast.
   //
-  // The viewed tenant is read synchronously from the same localStorage value
-  // that drives the `x-tenant-id` header (set by the country switcher). This is
-  // the exact client-side mirror of how the server resolves `req.tenantId`, so
-  // it never disagrees with the server and — unlike an async /api/me/tenant
-  // query — is always available on first render (no flicker / no false hide
-  // of the control for a legitimate home-tenant admin). The server-side 403
-  // remains the actual security boundary; this only governs UI affordance.
+  // We deliberately gate the UI on ROLE ONLY and do NOT try to detect
+  // "home vs viewed tenant" on the client. A user's home tenant can be
+  // resolved server-side from SSO domain mapping or an approved signup invite
+  // — not just `users.tenantId` — so `currentUser.tenantId` is frequently null
+  // for legitimate home-tenant admins. Comparing it against the viewed tenant
+  // therefore produced false negatives that hid the control on the user's own
+  // tenant. Showing it for the right roles and letting the server 403 handle
+  // the rare cross-tenant case is correct and robust.
   const isPlatformAdmin = !!(currentUser as any)?.isPlatformAdmin;
   const hasPasswordRole =
     currentUser?.role === "national_admin" ||
     (currentUser?.role as string) === "national_program_manager";
-  const homeTenantId = (currentUser as any)?.tenantId ?? null;
-  const activeTenantId = getActiveTenantId();
-  // Home view when no explicit switch is stored, or the stored tenant matches
-  // the user's home tenant.
-  const isViewingHomeTenant =
-    !activeTenantId || activeTenantId === homeTenantId;
-  const canManagePasswords =
-    isPlatformAdmin || (hasPasswordRole && isViewingHomeTenant);
+  const canManagePasswords = isPlatformAdmin || hasPasswordRole;
   const [searchTerm, setSearchTerm] = useState("");
   const [geoFilterProvinceId, setGeoFilterProvinceId] = useState<number | null>(null);
   const [geoFilterDistrictId, setGeoFilterDistrictId] = useState<number | null>(null);
