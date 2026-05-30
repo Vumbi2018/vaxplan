@@ -153,7 +153,7 @@ export function FacilityCascadePicker({
         {showLabels && (
           <Label className="text-xs">{provinceLabel}</Label>
         )}
-        <Popover open={provOpen} onOpenChange={setProvOpen} modal>
+        <Popover open={provOpen} onOpenChange={setProvOpen}>
           <PopoverTrigger asChild>
             <Button
               type="button"
@@ -220,7 +220,7 @@ export function FacilityCascadePicker({
         {showLabels && (
           <Label className="text-xs">{districtLabel}</Label>
         )}
-        <Popover open={distOpen} onOpenChange={setDistOpen} modal>
+        <Popover open={distOpen} onOpenChange={setDistOpen}>
           <PopoverTrigger asChild>
             <Button
               type="button"
@@ -290,7 +290,7 @@ export function FacilityCascadePicker({
             {required ? " *" : ""}
           </Label>
         )}
-        <Popover open={facOpen} onOpenChange={setFacOpen} modal>
+        <Popover open={facOpen} onOpenChange={setFacOpen}>
           <PopoverTrigger asChild>
             <Button
               type="button"
