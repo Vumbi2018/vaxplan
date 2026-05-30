@@ -749,43 +749,53 @@ function FeaturesView({ filter }: { filter: string }) {
       {groups.length === 0 ? (
         <p className="text-sm text-muted-foreground italic">No features match the current filter.</p>
       ) : (
-        groups.map((g) => {
-          const Icon = g.icon;
-          return (
-            <Card key={g.id} data-testid={`feature-group-${g.id}`}>
-              <CardHeader>
-                <div className="flex items-start gap-3">
-                  <div className="rounded-md bg-primary/10 p-2 text-primary">
-                    <Icon className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <CardTitle className="text-base">{g.title}</CardTitle>
-                    <CardDescription>
-                      {g.features.length} feature{g.features.length === 1 ? "" : "s"}
-                    </CardDescription>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <ul className="space-y-3">
-                  {g.features.map((f, idx) => (
-                    <li
-                      key={`${g.id}-${idx}`}
-                      className="flex items-start gap-2.5"
-                      data-testid={`feature-${g.id}-${idx}`}
-                    >
-                      <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0 text-primary" />
-                      <div className="text-sm">
-                        <span className="font-medium">{f.name}</span>
-                        <span className="text-muted-foreground"> — {f.detail}</span>
+        <Card>
+          <CardContent className="p-2 sm:p-4">
+            <Accordion
+              type="multiple"
+              defaultValue={q ? groups.map((g) => g.id) : [groups[0].id]}
+              className="w-full"
+            >
+              {groups.map((g) => {
+                const Icon = g.icon;
+                return (
+                  <AccordionItem key={g.id} value={g.id} data-testid={`feature-group-${g.id}`}>
+                    <AccordionTrigger className="hover:no-underline">
+                      <div className="flex items-center gap-3 text-left flex-1 pr-3">
+                        <div className="rounded-md bg-primary/10 p-2 text-primary shrink-0">
+                          <Icon className="h-5 w-5" />
+                        </div>
+                        <div>
+                          <div className="font-semibold text-sm sm:text-base">{g.title}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {g.features.length} feature{g.features.length === 1 ? "" : "s"}
+                          </div>
+                        </div>
                       </div>
-                    </li>
-                  ))}
-                </ul>
-              </CardContent>
-            </Card>
-          );
-        })
+                    </AccordionTrigger>
+                    <AccordionContent>
+                      <ul className="space-y-3 pl-1 pt-1">
+                        {g.features.map((f, idx) => (
+                          <li
+                            key={`${g.id}-${idx}`}
+                            className="flex items-start gap-2.5"
+                            data-testid={`feature-${g.id}-${idx}`}
+                          >
+                            <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0 text-primary" />
+                            <div className="text-sm">
+                              <span className="font-medium">{f.name}</span>
+                              <span className="text-muted-foreground"> — {f.detail}</span>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </AccordionContent>
+                  </AccordionItem>
+                );
+              })}
+            </Accordion>
+          </CardContent>
+        </Card>
       )}
     </div>
   );
