@@ -1,6 +1,6 @@
 # VaxPlan — Alignment with WHO, UNICEF, Gavi & MoH Standards for Microplanning and GIS-Microplanning
 
-> Living document. Mirrored in-app at **Settings → Standards Alignment** (`/standards-alignment`). Last refreshed: 2026-05-27.
+> Living document. Mirrored in-app at **Settings → Standards Alignment** (`/standards-alignment`). Last refreshed: 2026-05-30.
 >
 > **Grading scale**
 > - ✅ **Aligned** — implemented end-to-end and enforced.
@@ -13,15 +13,17 @@
 
 VaxPlan has the **right shape** for a WHO/UNICEF/Gavi-aligned microplanning platform: a clean multitenant model per MoH, a parent `microplans` table distinguishing routine vs SIA, a `sessionPlans` table that *can* link to a parent microplan, an approval workflow, an offline-first client, and FHIR + DHIS2 adapters.
 
-The **biggest correctness gap is workflow enforcement**. The data model permits the WHO/UNICEF "annual microplan → quarterly sessions" cascade, but the code does not enforce it:
+**Update (2026-05-30): the workflow-enforcement gap is now largely closed.** The WHO/UNICEF "annual microplan → quarterly sessions" cascade is enforced in code:
 
-1. `sessionPlans.microplanId` is **nullable** — a session can be created with no parent plan.
-2. `sessionPlans.planType` (`routine` / `campaign`) can **drift** from the parent microplan's `planType` (no validation).
-3. SIA fields (`campaignAntigen`, `campaignTargetAge`, `campaignScope`) are **duplicated** on each session instead of being inherited.
-4. There is no **"lock"** semantics — even though `microplans.status` includes `locked`, sessions can be edited after the parent is locked.
-5. The UI does not visually segregate **Routine RI planning** from **SIA / campaign planning**; they share the same `/sessions` page with a `planType` field hidden inside the form.
+1. ✅ `sessionPlans.microplanId` is now **NOT NULL** — every session must belong to a parent microplan. Session writes go through a shared `validateParentMicroplan` guard.
+2. ✅ `validateParentMicroplan` rejects a session whose `planType` would **drift** from the parent microplan's plan type (routine vs campaign), on create, update, and offline-sync batch replay.
+3. ✅ **Lock semantics** are enforced: once the parent microplan is `locked`/`approved`, its sessions are read-only (writes are rejected).
+4. 🟡 SIA fields (`campaignAntigen`, `campaignTargetAge`, `campaignScope`) are still *overlaid* from the parent at read time rather than being fully normalized away from `sessionPlans`.
+5. 🔴 The UI still does not visually segregate **Routine RI planning** from **SIA / campaign planning** in separate workspaces; they share the session-planning surface with a plan-type distinction.
 
 The remaining gaps fall into well-known global-standards buckets: AEFI surveillance, EVM 2.0 cold-chain, GS1 traceability, SMART Guidelines IMMZ, zero-dose indicator, supportive supervision, and full FHIR/DHIS2 mapping.
+
+**Data-isolation update (2026-05-30):** role-based **and** location-aware (row-level geographic) access control is now enforced consistently — see §11. A facility user only sees their own facility's records; single-record (`/:id`) reads are scoped, not just list views.
 
 A prioritized 12-item action list at the end (§13) lists exactly what to change, with file references and effort estimates.
 
@@ -81,9 +83,9 @@ WHO/UNICEF *Microplanning for Immunization Service Delivery using the RED Strate
 | National / sub-national annual plan | 🔴 **Missing** as a distinct entity (`cMYP` / NIMP) | — |
 | HF microplan (routine) | ✅ Present | `shared/schema.ts:395` `microplans`, `planType = facility_routine` |
 | SIA / campaign master microplan | ✅ Present (same table) | `shared/schema.ts:400` `planType = sia_campaign` + `campaign*` columns |
-| Session plan parented to microplan | 🟡 FK exists but **nullable & unvalidated** | `shared/schema.ts:449` `microplanId integer references microplans.id` |
-| Session day plan | ✅ Present | `shared/schema.ts:~1075` `session_day_plans` |
-| Approval cascade (microplan → sessions) | 🟡 `approvalStatus` per row; no parent-locks-children rule | `shared/schema.ts:382`, `:430`, `:459` + `server/routes.ts:3443` |
+| Session plan parented to microplan | ✅ FK is **NOT NULL & validated** on every write | `shared/schema.ts` `microplanId integer NOT NULL references microplans.id`; `validateParentMicroplan` in `server/routes.ts` |
+| Session day plan | ✅ Present | `shared/schema.ts` `session_day_plans` |
+| Approval cascade (microplan → sessions) | ✅ Parent **lock cascades** — locked/approved parent makes child sessions read-only | `validateParentMicroplan` (create / update / sync-batch) |
 | UI segregation (Routine vs SIA) | 🔴 Both live on `/sessions`; SIA fields hidden in same form | `client/src/pages/SessionPlanning.tsx`; sidebar has only one "Session Planning" entry |
 
 ---
@@ -102,14 +104,16 @@ WHO/UNICEF *Microplanning for Immunization Service Delivery using the RED Strate
 - SIA-specific fields (`campaign_antigen`, `campaign_target_age`, `campaign_scope`, `target_population`, `budget`) live on the master microplan row.
 - `sessionPlans.microplanId` FK *allows* linking each session back to either a routine or campaign master plan.
 
+✅ **Now enforced (2026-05-30)**
+- `sessionPlans.microplanId` is **NOT NULL** — every session must derive from a parent microplan.
+- A server-side guard (`validateParentMicroplan`) runs on session **create, update, and offline-sync batch replay**. It rejects a session whose `planType` does not match the parent microplan's, so a "routine" session can no longer be attached to a campaign microplan (and vice-versa) — keeping JRF/WUENIC reporting clean.
+- Parent **lock semantics** are enforced: when the parent microplan is `locked`/`approved`, its child sessions are read-only.
+
 🟡 **Partial**
-- `sessionPlans.planType` is a `varchar` with default `"routine"` — **not an enum**. A user could enter any string.
-- There is **no DB-level or server-level constraint** that `sessionPlans.planType == microplans.planType` for its parent microplan. So a "routine" session could be attached to an "sia_campaign" microplan, polluting reporting.
-- SIA fields (`campaign_antigen`, `campaign_target_age`, `campaign_scope`) are duplicated on `sessionPlans` — they should be *inherited* (read-only) from the parent microplan.
+- SIA fields (`campaign_antigen`, `campaign_target_age`, `campaign_scope`) are *overlaid* (read-only) from the parent microplan at API-read time, but the columns still physically exist on `sessionPlans` rather than being fully normalized away.
 
 🔴 **Gap**
-- `sessionPlans.microplanId` is **nullable**. A session can be created with no parent — and 100% of legacy seeded sessions currently have `microplanId = NULL`. WHO microplanning rules require every session to derive from a microplan.
-- The UI has **one** "Session Planning" sidebar entry. There is no dedicated **"SIA Campaigns"** workspace separating campaign master plans, campaign sessions, independent monitoring, and post-campaign coverage survey from the routine RI workflow.
+- The UI has **one** "Session Planning" surface. There is no dedicated **"SIA Campaigns"** workspace separating campaign master plans, campaign sessions, independent monitoring, and post-campaign coverage survey from the routine RI workflow.
 - There is no SIA-specific module for: (i) independent monitoring, (ii) post-campaign coverage survey, (iii) finger-marking, (iv) micro-census of households visited.
 
 ### 2.3 Recommended workflow enforcement
@@ -245,7 +249,8 @@ WHO/UNICEF *Microplanning for Immunization Service Delivery using the RED Strate
 | Standard | Status | Gap-closure |
 |---|---|---|
 | Authentication & SSO (OIDC + SAML for MoH IdPs) | ✅ | Add WebAuthn / passkey for field |
-| Multitenant isolation | ✅ | `tenantContext` + `crossTenantWriteGuard` | — |
+| Multitenant isolation (per-country) | ✅ | Enforced by tenant-scoped storage (`withTenant`) on every query + cross-tenant write rejection and an audit `crossTenant` flag. (There is **no** `crossTenantWriteGuard` middleware — isolation is the storage tenant filter, not a single guard.) |
+| **Role-based + location-aware (row-level) access** | ✅ *(2026-05-30)* | `hasPermission` + `GeographicContext` and `userCanAccessGeo` scope reads to the user's facility/district/province on **both list and single-record (`/:id`) endpoints**. A `facility_clerk` sees only their facility; `district_manager`/`provincial_coordinator` see only their area; `national_admin` sees the whole tenant. Authoring is restricted to facility roles. |
 | Audit log (who/what/when/old/new + IP) | ✅ | Export to SIEM (CEF/JSON over syslog) for ISO 27001 |
 | Encryption at rest | 🟡 | Document in `SECURITY.md` |
 | Encryption in transit | ✅ | TLS via Replit | — |
@@ -265,8 +270,10 @@ WHO/UNICEF *Microplanning for Immunization Service Delivery using the RED Strate
 | Mutation outbox + replay | ✅ `syncEngine.ts` |
 | Conflict log | ✅ `ConflictLog` table |
 | GIS binary cache (GeoJSON + GeoTIFF) | ✅ `gisCache` |
+| Manual "Sync now" control | ✅ *(2026-05-30)* Always-visible in the header (`SyncStatus` badge is clickable) plus the contextual button in `OfflineBanner` |
+| Real-time live-sync across devices | ✅ Tenant-scoped websocket (`server/services/realtime.ts` + `client/src/lib/realtimeClient.ts`) pokes peers to pull after a write; falls back to interval polling |
 | PWA install on Android | 🟡 Manifest exists; add onboarding UX |
-| Service Worker Background Sync | 🔴 Outbox flushes only when page is open |
+| Service Worker Background Sync | ✅ *(2026-05-30)* `client/src/lib/backgroundSync.ts` registers SW Background Sync (`SyncManager`) to flush the outbox even when the page is closed; graceful hint + fallback where the API is unavailable (e.g. iOS Safari) |
 
 ---
 
@@ -274,7 +281,7 @@ WHO/UNICEF *Microplanning for Immunization Service Delivery using the RED Strate
 
 | # | Action | Standard satisfied | Effort | Files most affected |
 |---|---|---|---|---|
-| 1 | **Enforce session → microplan parenthood** (NOT NULL, plan-type match, lock on parent.locked, backfill) | WHO/UNICEF Microplanning §1.3; workflow integrity | M | `shared/schema.ts`, `server/routes.ts` `/api/sessions`, migration |
+| 1 | ✅ **DONE (2026-05-30)** — **Enforce session → microplan parenthood** (NOT NULL, plan-type match, lock on parent.locked) via `validateParentMicroplan` on create/update/sync-batch | WHO/UNICEF Microplanning §1.3; workflow integrity | M | `shared/schema.ts`, `server/routes.ts` `/api/sessions` |
 | 2 | **Split the UI** into Routine RI vs SIA workspaces; separate sidebar entries | WHO RED + IA2030 SP5; JRF separation | M | `App.tsx`, `AppSidebar.tsx`, new `pages/CampaignWorkspace.tsx` |
 | 3 | **Zero-dose children indicator** on Dashboard (no DTP1 by 12 mo, by district) | Gavi 5.0 flagship; IA2030 SP1 | S | `Dashboard.tsx`, new SQL view |
 | 4 | **AEFI reports** entity + DHIS2 push | JRF; IHR 2005; Gavi safety | M | `shared/schema.ts`, `pages/AefiReports.tsx`, `hisInteropService.ts` |

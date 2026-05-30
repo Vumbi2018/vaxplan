@@ -177,6 +177,94 @@ async function getFacilityHierarchy(facilityId: number, tenantId: string) {
   }
 }
 
+// Row-level read-access check used by single-record GET endpoints so they mirror
+// the geographic narrowing the matching list endpoints already apply. Without
+// it, a non-admin user who knows (or guesses) a record's integer id could read
+// a record outside their facility/district/province even though the list view
+// would never show it. National admins — and users with no geographic scope at
+// all (e.g. national-level reviewers) — keep tenant-wide read access, exactly as
+// the list routes do. Records are located either by their own
+// district/province columns (population, villages) or by resolving the owning
+// facility's hierarchy (facilities, microplans, sessions, monthly reports).
+async function userCanAccessGeo(
+  dbUser: any,
+  tenantId: string,
+  geo: { facilityId?: number | null; districtId?: number | null; provinceId?: number | null },
+): Promise<boolean> {
+  // Platform super-admin and national admins keep full read access in their
+  // tenant — mirrors hasPermission's role bypass exactly.
+  if (dbUser?.isPlatformAdmin === true) return true;
+  const isNationalAdmin =
+    dbUser?.role === "national_admin" ||
+    (Array.isArray(dbUser?.roles) && (dbUser.roles as string[]).includes("national_admin"));
+  if (isNationalAdmin) return true;
+
+  // Cross-tenant browsing: dbUser.facilityId / districtId / provinceId and
+  // dataAccessScope all hold IDs from the user's HOME tenant, which are
+  // meaningless in a visited tenant (PKs aren't shared and may collide). When
+  // the record's tenant isn't the user's home tenant we skip the row-level geo
+  // check entirely — identical to hasPermission's cross-tenant decision. Writes
+  // to a visited tenant are blocked elsewhere, so reads-only browsing is safe.
+  const isVisitingOtherTenant =
+    !!dbUser?.tenantId && !!tenantId && tenantId !== dbUser.tenantId;
+  if (isVisitingOtherTenant) return true;
+
+  // Resolve the caller's geographic scope. Prefer the explicit multi-scope
+  // (dataAccessScope), falling back to the legacy single-hierarchy columns —
+  // same precedence hasPermission uses.
+  const scope = (dbUser?.dataAccessScope as {
+    provinces?: number[];
+    districts?: number[];
+    facilities?: number[];
+  }) || {};
+  const scopeFacilities = Array.isArray(scope.facilities) ? scope.facilities : [];
+  const scopeDistricts = Array.isArray(scope.districts) ? scope.districts : [];
+  const scopeProvinces = Array.isArray(scope.provinces) ? scope.provinces : [];
+  const hasExplicitScope =
+    scopeFacilities.length > 0 || scopeDistricts.length > 0 || scopeProvinces.length > 0;
+  const hasLegacyScope = !!(dbUser?.facilityId || dbUser?.districtId || dbUser?.provinceId);
+
+  // No geographic restriction at all → tenant-wide read access, exactly as the
+  // list endpoints behave (they only narrow when a scope is set).
+  if (!hasExplicitScope && !hasLegacyScope) return true;
+
+  const facilityId = geo.facilityId ?? null;
+  let districtId = geo.districtId ?? null;
+  let provinceId = geo.provinceId ?? null;
+
+  // Resolve any missing district/province from the owning facility's hierarchy
+  // when the record doesn't carry them directly.
+  if ((districtId == null || provinceId == null) && facilityId != null) {
+    const h: any = await getFacilityHierarchy(Number(facilityId), tenantId);
+    if (h) {
+      districtId = districtId ?? (h.districtId ?? null);
+      provinceId = provinceId ?? (h.provinceId ?? null);
+    }
+  }
+
+  // Explicit multi-scope users: the record must intersect one of their granted
+  // facilities / districts / provinces.
+  if (hasExplicitScope) {
+    if (facilityId != null && scopeFacilities.includes(Number(facilityId))) return true;
+    if (districtId != null && scopeDistricts.includes(Number(districtId))) return true;
+    if (provinceId != null && scopeProvinces.includes(Number(provinceId))) return true;
+    return false;
+  }
+
+  // Legacy single-column scope. Facility-scoped users only see their exact
+  // facility; a record with no facility association is therefore not visible.
+  if (dbUser.facilityId) {
+    return facilityId != null && Number(facilityId) === Number(dbUser.facilityId);
+  }
+  if (dbUser.districtId) {
+    return districtId != null && Number(districtId) === Number(dbUser.districtId);
+  }
+  if (dbUser.provinceId) {
+    return provinceId != null && Number(provinceId) === Number(dbUser.provinceId);
+  }
+  return true;
+}
+
 // Granular RBAC and Row-Level permission validation middleware
 function requirePermission(
   permission: Permission,
@@ -2148,8 +2236,12 @@ export async function registerRoutes(
 
   app.get("/api/facilities/:id", ...auth, async (req: any, res) => {
     try {
+      const dbUser = req.dbUser!;
       const facility = await storage.getFacility(req.tenantId, parseInt(req.params.id));
       if (!facility) return res.status(404).json({ message: "Facility not found" });
+      if (!(await userCanAccessGeo(dbUser, req.tenantId, { facilityId: facility.id }))) {
+        return res.status(404).json({ message: "Facility not found" });
+      }
       res.json(facility);
     } catch (error) {
       console.error("Error fetching facility:", error);
@@ -2209,6 +2301,9 @@ export async function registerRoutes(
       }
       const facility = await storage.getFacility(req.tenantId, facilityId);
       if (!facility) return res.status(404).json({ message: "Facility not found" });
+      if (!(await userCanAccessGeo(req.dbUser, req.tenantId, { facilityId }))) {
+        return res.status(404).json({ message: "Facility not found" });
+      }
       const rich = await storage.getFacilityExcludedVillages(req.tenantId, facilityId);
       // Keep the flat `villageIds` field for backward-compatibility with older
       // clients that hydrated this endpoint into a `Set<number>` directly.
@@ -2414,6 +2509,12 @@ export async function registerRoutes(
   app.get("/api/facilities/:id/catchments", ...auth, async (req: any, res) => {
     try {
       const facilityId = parseInt(req.params.id);
+      if (!Number.isFinite(facilityId)) {
+        return res.status(400).json({ message: "Invalid facility id" });
+      }
+      if (!(await userCanAccessGeo(req.dbUser, req.tenantId, { facilityId }))) {
+        return res.status(404).json({ message: "Facility not found" });
+      }
       const catchments = await db
         .select()
         .from(facilityCatchments)
@@ -2568,8 +2669,15 @@ export async function registerRoutes(
 
   app.get("/api/villages/:id", ...auth, async (req: any, res) => {
     try {
+      const dbUser = req.dbUser!;
       const village = await storage.getVillage(req.tenantId, parseInt(req.params.id));
       if (!village) return res.status(404).json({ message: "Village not found" });
+      if (!(await userCanAccessGeo(dbUser, req.tenantId, {
+        facilityId: (village as any).assignedFacilityId,
+        districtId: (village as any).districtId,
+      }))) {
+        return res.status(404).json({ message: "Village not found" });
+      }
       res.json(village);
     } catch (error) {
       console.error("Error fetching village:", error);
@@ -3914,8 +4022,16 @@ export async function registerRoutes(
 
   app.get("/api/population/:id", ...auth, async (req: any, res) => {
     try {
+      const dbUser = req.dbUser!;
       const pop = await storage.getPopulationDataById(req.tenantId, parseInt(req.params.id));
       if (!pop) return res.status(404).json({ message: "Population data not found" });
+      if (!(await userCanAccessGeo(dbUser, req.tenantId, {
+        facilityId: (pop as any).facilityId,
+        districtId: (pop as any).districtId,
+        provinceId: (pop as any).provinceId,
+      }))) {
+        return res.status(404).json({ message: "Population data not found" });
+      }
       res.json(pop);
     } catch (error) {
       console.error("Error fetching population data:", error);
@@ -3966,7 +4082,25 @@ export async function registerRoutes(
   // ─── Master Microplans (Routine & Campaign) ───────────────────────────
   app.get("/api/microplans", ...auth, async (req: any, res) => {
     try {
+      const dbUser = req.dbUser!;
       const list = await storage.getMicroplans(req.tenantId);
+
+      const isNationalAdmin =
+        dbUser.role === "national_admin" ||
+        (Array.isArray(dbUser.roles) && (dbUser.roles as string[]).includes("national_admin"));
+      // Mirror the per-record id endpoint: a non-admin facility/district/province
+      // user only sees microplans for facilities inside their own area, instead
+      // of every microplan in the country.
+      if (!isNationalAdmin && (dbUser.facilityId || dbUser.districtId || dbUser.provinceId)) {
+        const scoped: typeof list = [];
+        for (const plan of list) {
+          if (await userCanAccessGeo(dbUser, req.tenantId, { facilityId: (plan as any).facilityId })) {
+            scoped.push(plan);
+          }
+        }
+        return res.json(scoped);
+      }
+
       res.json(list);
     } catch (error) {
       console.error("Error fetching master microplans:", error);
@@ -3976,8 +4110,12 @@ export async function registerRoutes(
 
   app.get("/api/microplans/:id", ...auth, async (req: any, res) => {
     try {
+      const dbUser = req.dbUser!;
       const plan = await storage.getMicroplan(req.tenantId, parseInt(req.params.id));
       if (!plan) return res.status(404).json({ message: "Master microplan not found" });
+      if (!(await userCanAccessGeo(dbUser, req.tenantId, { facilityId: (plan as any).facilityId }))) {
+        return res.status(404).json({ message: "Master microplan not found" });
+      }
       res.json(plan);
     } catch (error) {
       console.error("Error fetching master microplan:", error);
@@ -3997,6 +4135,13 @@ export async function registerRoutes(
       }
       const microplan = await storage.getMicroplan(req.tenantId, microplanId);
       if (!microplan) {
+        return res.status(404).json({ message: "Master microplan not found" });
+      }
+      // Row-level gate: a user outside this microplan's facility scope must not
+      // be able to hydrate it (would otherwise leak vaccineRequirements,
+      // mobilization, budgetItems and excluded-village data for a foreign
+      // facility). Mirrors GET /api/microplans/:id.
+      if (!(await userCanAccessGeo(dbUser, req.tenantId, { facilityId: microplan.facilityId ?? null }))) {
         return res.status(404).json({ message: "Master microplan not found" });
       }
       const facilityId = microplan.facilityId ?? undefined;
@@ -4330,8 +4475,13 @@ export async function registerRoutes(
 
   app.get("/api/sessions/:id", ...auth, async (req: any, res) => {
     try {
+      const dbUser = req.dbUser!;
       const session = await storage.getSessionPlan(req.tenantId, parseInt(req.params.id));
       if (!session) return res.status(404).json({ message: "Session not found" });
+      const geoContext = await getFacilityHierarchy(session.facilityId, req.tenantId);
+      if (!hasPermission(dbUser, "view_session_plans", geoContext)) {
+        return res.status(404).json({ message: "Session not found" });
+      }
       const [overlaid] = await overlayCampaignFromParent(req.tenantId, [session]);
       res.json(overlaid);
     } catch (error) {
@@ -7624,10 +7774,19 @@ export async function registerRoutes(
   });
 
   // GET /api/sessions/:sessionId/days — Fetch all day plans for a session microplan
-  app.get("/api/sessions/:sessionId/days", isAuthenticated, requireTenant, async (req: any, res) => {
+  app.get("/api/sessions/:sessionId/days", ...auth, async (req: any, res) => {
     try {
       const sessionPlanId = parseInt(req.params.sessionId);
       if (isNaN(sessionPlanId)) return res.status(400).json({ message: "Invalid session plan ID" });
+      // Row-level gate: don't leak another facility's itinerary days to a user
+      // who couldn't see the parent session in the first place. Mirrors the
+      // view_session_plans check on GET /api/sessions/:id.
+      const session = await storage.getSessionPlan(req.tenantId, sessionPlanId);
+      if (!session) return res.status(404).json({ message: "Session plan not found" });
+      const geoContext = await getFacilityHierarchy(session.facilityId, req.tenantId);
+      if (!hasPermission(req.dbUser, "view_session_plans", geoContext)) {
+        return res.status(404).json({ message: "Session plan not found" });
+      }
       const list = await storage.getSessionDayPlans(req.tenantId, sessionPlanId);
       res.json(list);
     } catch (err: any) {
@@ -7896,14 +8055,35 @@ export async function registerRoutes(
   // ─────────────────────────────────────────────────────────────────────────
 
   // GET /api/monthly-reports — Fetch all monthly reports compiled by a facility
-  app.get("/api/monthly-reports", isAuthenticated, requireTenant, async (req: any, res) => {
+  app.get("/api/monthly-reports", ...auth, async (req: any, res) => {
     try {
+      const dbUser = req.dbUser!;
       const facilityIdRaw = req.query.facilityId as string | undefined;
-      const facilityId = facilityIdRaw ? parseInt(facilityIdRaw) : undefined;
+      let facilityId = facilityIdRaw ? parseInt(facilityIdRaw) : undefined;
       if (facilityIdRaw && (facilityId === undefined || isNaN(facilityId))) {
         return res.status(400).json({ message: "Invalid facility ID parameter" });
       }
-      const list = await storage.getMonthlyReports(req.tenantId, facilityId);
+      const isNationalAdmin =
+        dbUser.role === "national_admin" ||
+        (Array.isArray(dbUser.roles) && (dbUser.roles as string[]).includes("national_admin"));
+      // Facility-scoped users can only ever see their own facility's reports —
+      // force the filter so passing ?facilityId=<other> can't leak another
+      // facility's reports.
+      if (!isNationalAdmin && dbUser.facilityId) {
+        facilityId = dbUser.facilityId;
+      }
+      let list = await storage.getMonthlyReports(req.tenantId, facilityId);
+      // District / province users: narrow to reports whose facility falls inside
+      // their area.
+      if (!isNationalAdmin && (dbUser.districtId || dbUser.provinceId)) {
+        const scoped: typeof list = [];
+        for (const r of list) {
+          if (await userCanAccessGeo(dbUser, req.tenantId, { facilityId: (r as any).facilityId })) {
+            scoped.push(r);
+          }
+        }
+        list = scoped;
+      }
       res.json(list);
     } catch (err: any) {
       console.error("GET /api/monthly-reports failed:", err);
@@ -7912,12 +8092,16 @@ export async function registerRoutes(
   });
 
   // GET /api/monthly-reports/:id — Retrieve a single monthly report details
-  app.get("/api/monthly-reports/:id", isAuthenticated, requireTenant, async (req: any, res) => {
+  app.get("/api/monthly-reports/:id", ...auth, async (req: any, res) => {
     try {
+      const dbUser = req.dbUser!;
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ message: "Invalid report ID" });
       const report = await storage.getMonthlyReport(req.tenantId, id);
       if (!report) return res.status(404).json({ message: "Monthly report not found" });
+      if (!(await userCanAccessGeo(dbUser, req.tenantId, { facilityId: (report as any).facilityId }))) {
+        return res.status(404).json({ message: "Monthly report not found" });
+      }
       res.json(report);
     } catch (err: any) {
       console.error("GET /api/monthly-reports/:id failed:", err);

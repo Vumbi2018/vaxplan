@@ -1,4 +1,5 @@
 - [Cross-tenant write enforcement](cross-tenant-writes.md) — replit.md claims a `crossTenantWriteGuard` middleware exists; it does not. Real isolation is tenantContext scoping + audit `crossTenant` flag only.
+- [Row-level geo read access (IDOR)](row-level-geo-access.md) — within-tenant facility/district/province scoping; single-record `/:id`, hydration & nested reads need a 404-on-deny gate; userCanAccessGeo must mirror hasPermission (cross-tenant skip + dataAccessScope).
 - [Client must never import from server/](client-server-import-boundary.md) — any client import of `server/*` drags pg into the browser bundle and crashes with "process is not defined". Put shared constants in `shared/`.
 - [Tenant header UUID guard](tenant-header-uuid-guard.md) — client sends x-tenant-id which can be a tenant CODE; must UUID-validate + check active before any getTenant() or Postgres throws 22P02 and poisons the session.
 - [Release token must be ASCII](release-token-ascii.md) — RELEASE_DOWNLOAD_TOKEN sent via x-release-token header; non-ASCII chars garble over HTTP (latin1) and cause phantom 401s. Use hex.
