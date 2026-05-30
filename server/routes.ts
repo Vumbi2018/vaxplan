@@ -267,6 +267,102 @@ async function userCanAccessGeo(
   return true;
 }
 
+// Precomputed geographic scope for list endpoints. Resolves the caller's
+// effective scope into concrete sets of province/district/facility IDs so a
+// list route can filter its rows synchronously (no per-record hierarchy
+// lookup). Mirrors userCanAccessGeo's precedence EXACTLY: platform/national
+// admins, cross-tenant browsing, and users with no geographic restriction all
+// get { all: true } (tenant-wide read, unchanged behaviour).
+type GeoScope = {
+  all: boolean;
+  provinceIds: Set<number>;
+  districtIds: Set<number>;
+  facilityIds: Set<number>;
+};
+
+async function getGeoScope(dbUser: any, tenantId: string): Promise<GeoScope> {
+  const allScope: GeoScope = {
+    all: true,
+    provinceIds: new Set<number>(),
+    districtIds: new Set<number>(),
+    facilityIds: new Set<number>(),
+  };
+  if (dbUser?.isPlatformAdmin === true) return allScope;
+  const isNationalAdmin =
+    dbUser?.role === "national_admin" ||
+    (Array.isArray(dbUser?.roles) && (dbUser.roles as string[]).includes("national_admin"));
+  if (isNationalAdmin) return allScope;
+
+  // Cross-tenant browsing: home-tenant IDs are meaningless in a visited tenant,
+  // so fall back to tenant-wide read (writes are blocked elsewhere) — identical
+  // to userCanAccessGeo.
+  const isVisitingOtherTenant =
+    !!dbUser?.tenantId && !!tenantId && tenantId !== dbUser.tenantId;
+  if (isVisitingOtherTenant) return allScope;
+
+  const scope = (dbUser?.dataAccessScope as {
+    provinces?: number[];
+    districts?: number[];
+    facilities?: number[];
+  }) || {};
+  const sFac = Array.isArray(scope.facilities) ? scope.facilities : [];
+  const sDist = Array.isArray(scope.districts) ? scope.districts : [];
+  const sProv = Array.isArray(scope.provinces) ? scope.provinces : [];
+  const hasExplicitScope = sFac.length > 0 || sDist.length > 0 || sProv.length > 0;
+  const hasLegacyScope = !!(dbUser?.facilityId || dbUser?.districtId || dbUser?.provinceId);
+
+  // No geographic restriction → tenant-wide read access.
+  if (!hasExplicitScope && !hasLegacyScope) return allScope;
+
+  const provinceIds = new Set<number>();
+  const districtIds = new Set<number>();
+  const facilityIds = new Set<number>();
+
+  if (hasExplicitScope) {
+    sProv.forEach((p) => provinceIds.add(Number(p)));
+    sDist.forEach((d) => districtIds.add(Number(d)));
+    sFac.forEach((f) => facilityIds.add(Number(f)));
+  } else if (dbUser.facilityId) {
+    // Legacy precedence: most-specific column wins (facility > district >
+    // province), matching userCanAccessGeo. A facility-scoped user sees only
+    // their own facility, never their whole district — even though facility
+    // users also carry district_id/province_id columns.
+    facilityIds.add(Number(dbUser.facilityId));
+  } else if (dbUser.districtId) {
+    districtIds.add(Number(dbUser.districtId));
+  } else if (dbUser.provinceId) {
+    provinceIds.add(Number(dbUser.provinceId));
+  }
+
+  // Expand province → districts → facilities so list rows that only carry a
+  // facilityId still match for district/province-level users.
+  for (const pid of Array.from(provinceIds)) {
+    const dists = await storage.getDistricts(tenantId, Number(pid));
+    dists.forEach((d) => districtIds.add(d.id));
+  }
+  for (const did of Array.from(districtIds)) {
+    const facs = await storage.getFacilities(tenantId, Number(did));
+    facs.forEach((f) => facilityIds.add(f.id));
+  }
+
+  return { all: false, provinceIds, districtIds, facilityIds };
+}
+
+// Synchronous row test against a precomputed GeoScope. A row is visible when it
+// intersects any granted facility / district / province (OR semantics — same as
+// userCanAccessGeo's explicit-scope branch).
+function recordInGeoScope(
+  scope: GeoScope,
+  geo: { facilityId?: number | null; districtId?: number | null; provinceId?: number | null },
+): boolean {
+  if (scope.all) return true;
+  const { facilityId, districtId, provinceId } = geo;
+  if (facilityId != null && scope.facilityIds.has(Number(facilityId))) return true;
+  if (districtId != null && scope.districtIds.has(Number(districtId))) return true;
+  if (provinceId != null && scope.provinceIds.has(Number(provinceId))) return true;
+  return false;
+}
+
 // Granular RBAC and Row-Level permission validation middleware
 function requirePermission(
   permission: Permission,
@@ -4632,7 +4728,20 @@ export async function registerRoutes(
     try {
       const tenantId = req.tenantId;
       if (!tenantId) return res.json([]);
-      const list = await db.select().from(sessionVillages).where(eq(sessionVillages.tenantId, String(tenantId)));
+      let list = await db.select().from(sessionVillages).where(eq(sessionVillages.tenantId, String(tenantId)));
+      const scope = await getGeoScope(req.dbUser, req.tenantId);
+      if (!scope.all) {
+        // Scope session-village linkage by the OWNING session's facility — the
+        // same boundary /api/sessions enforces — so a foreign-facility session
+        // can never expose its village links even via malformed data.
+        const plans = await storage.getSessionPlans(req.tenantId);
+        const allowedSessionIds = new Set(
+          plans
+            .filter((p: any) => recordInGeoScope(scope, { facilityId: p.facilityId }))
+            .map((p: any) => p.id),
+        );
+        list = list.filter((r: any) => allowedSessionIds.has(r.sessionId));
+      }
       res.json(list);
     } catch (error: any) {
       // Original catch block:
@@ -5147,11 +5256,15 @@ export async function registerRoutes(
         console.error("GET /api/sessions/map overlay failed (using raw):", overlayErr);
         overlaid = all as any[];
       }
-      const active = overlaid.filter((s: any) => {
+      const activeAll = overlaid.filter((s: any) => {
         if (s.status === "cancelled" || s.status === "archived") return false;
         if (s.status !== "completed") return true;
         return s.completedAt && new Date(s.completedAt) >= cutoff;
       });
+      const scope = await getGeoScope(req.dbUser, req.tenantId);
+      const active = scope.all
+        ? activeAll
+        : activeAll.filter((s: any) => recordInGeoScope(scope, { facilityId: s.facilityId }));
 
       const facList = await storage.getFacilities(req.tenantId);
       const facMap = new Map<number, any>(facList.map((f: any) => [f.id, f]));
@@ -5220,7 +5333,11 @@ export async function registerRoutes(
       const facilityId = req.query.facilityId ? parseInt(req.query.facilityId as string) : undefined;
       const all = await storage.getSessionPlans(req.tenantId, facilityId);
       const overlaid = await overlayCampaignFromParent(req.tenantId, all as any[]);
-      const archived = overlaid.filter((s: any) => s.status === "completed" || s.status === "cancelled" || s.status === "archived");
+      const scope = await getGeoScope(req.dbUser, req.tenantId);
+      const visible = scope.all
+        ? overlaid
+        : overlaid.filter((s: any) => recordInGeoScope(scope, { facilityId: s.facilityId }));
+      const archived = visible.filter((s: any) => s.status === "completed" || s.status === "cancelled" || s.status === "archived");
       archived.sort((a: any, b: any) => {
         const at = a.completedAt ? new Date(a.completedAt).getTime() : 0;
         const bt = b.completedAt ? new Date(b.completedAt).getTime() : 0;
@@ -5618,7 +5735,12 @@ export async function registerRoutes(
       const facilityId = req.query.facilityId ? parseInt(req.query.facilityId as string) : undefined;
       const quarter = req.query.quarter ? parseInt(req.query.quarter as string) : undefined;
       const year = req.query.year ? parseInt(req.query.year as string) : undefined;
-      res.json(await storage.getBudgetItems(req.tenantId, facilityId, quarter, year));
+      let items = await storage.getBudgetItems(req.tenantId, facilityId, quarter, year);
+      const scope = await getGeoScope(req.dbUser, req.tenantId);
+      if (!scope.all) {
+        items = items.filter((i: any) => recordInGeoScope(scope, { facilityId: i.facilityId }));
+      }
+      res.json(items);
     } catch (error) {
       console.error("Error fetching budget items:", error);
       res.status(500).json({ message: "Failed to fetch budget items" });
@@ -5973,7 +6095,12 @@ export async function registerRoutes(
       const facilityId = req.query.facilityId ? parseInt(req.query.facilityId as string) : undefined;
       const microplanId = req.query.microplanId ? parseInt(req.query.microplanId as string) : undefined;
       const status = req.query.status as string | undefined;
-      res.json(await storage.getSupervisionVisits(req.tenantId, { facilityId, microplanId, status }));
+      let visits = await storage.getSupervisionVisits(req.tenantId, { facilityId, microplanId, status });
+      const scope = await getGeoScope(req.dbUser, req.tenantId);
+      if (!scope.all) {
+        visits = visits.filter((v: any) => recordInGeoScope(scope, { facilityId: v.facilityId }));
+      }
+      res.json(visits);
     } catch (error) {
       console.error("Error fetching supervision visits:", error);
       res.status(500).json({ message: "Failed to fetch supervision visits" });
@@ -8206,7 +8333,11 @@ export async function registerRoutes(
       if (facilityIdRaw && (facilityId === undefined || isNaN(facilityId))) {
         return res.status(400).json({ message: "Invalid facility ID parameter" });
       }
-      const list = await storage.getStockTransactions(req.tenantId, facilityId);
+      let list = await storage.getStockTransactions(req.tenantId, facilityId);
+      const scope = await getGeoScope(req.dbUser, req.tenantId);
+      if (!scope.all) {
+        list = list.filter((t: any) => recordInGeoScope(scope, { facilityId: t.facilityId }));
+      }
       res.json(list);
     } catch (err: any) {
       console.error("GET /api/stock/ledger failed:", err);
@@ -8845,13 +8976,19 @@ export async function registerRoutes(
         districtId: z.coerce.number().int().positive().optional(),
       });
       const q = schema.parse(req.query);
-      const results = await _coverageSvc.scoreMissedCommunities({
+      let results = await _coverageSvc.scoreMissedCommunities({
         tenantId: req.tenantId,
         antigen: q.antigen,
         period: q.period,
         provinceId: q.provinceId,
         districtId: q.districtId,
       });
+      const scope = await getGeoScope(req.dbUser, req.tenantId);
+      if (!scope.all) {
+        results = results.filter((r: any) =>
+          recordInGeoScope(scope, { facilityId: r.facilityId, districtId: r.districtId }),
+        );
+      }
       res.json({ count: results.length, results });
     } catch (err: any) {
       if (err?.name === "ZodError") return res.status(400).json({ message: "Invalid query", errors: err.errors });
@@ -10436,8 +10573,18 @@ export async function registerRoutes(
         const reviewByFacility = new Map<number, (typeof reviewRows)[number]>();
         for (const r of reviewRows) reviewByFacility.set(r.facilityId, r);
 
+        const geoScope = await getGeoScope(req.dbUser, tenantId);
         const scoped = facilityRows
           .filter((f) => f.isActive !== false)
+          .filter((f) =>
+            geoScope.all
+              ? true
+              : recordInGeoScope(geoScope, {
+                  facilityId: f.facilityId,
+                  districtId: f.districtId,
+                  provinceId: f.provinceId,
+                }),
+          )
           .filter((f) =>
             Number.isFinite(provinceId as number)
               ? f.provinceId === provinceId
