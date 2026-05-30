@@ -11,6 +11,8 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
+import { getSession } from "./replitAuth";
+import { setupRealtime, realtimeBroadcastMiddleware } from "./services/realtime";
 import { startPopulationRefreshScheduler } from "./jobs/populationRefresh";
 import { startSessionArchiveScheduler } from "./jobs/sessionArchive";
 import { startStockAlertDigestScheduler } from "./jobs/stockAlertDigest";
@@ -120,8 +122,15 @@ app.use((req, res, next) => {
   next();
 });
 
+// Broadcast a tenant-scoped "changed" poke after any successful mutating /api
+// request so other connected clients can pull immediately (see services/realtime).
+app.use(realtimeBroadcastMiddleware);
+
 (async () => {
   await registerRoutes(httpServer, app);
+
+  // Real-time websocket channel (/ws), authenticated by the same session cookie.
+  setupRealtime(httpServer, getSession());
   startPopulationRefreshScheduler();
   startSessionArchiveScheduler();
   startStockAlertDigestScheduler();

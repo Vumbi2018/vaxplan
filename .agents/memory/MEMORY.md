@@ -4,4 +4,5 @@
 - [Release token must be ASCII](release-token-ascii.md) — RELEASE_DOWNLOAD_TOKEN sent via x-release-token header; non-ASCII chars garble over HTTP (latin1) and cause phantom 401s. Use hex.
 - [Custom layers admin gating](custom-layers-admin-policy.md) — custom-layer management is national_admin only (server requireAdmin excludes gis_specialist); gate client on role, not isAdmin().
 - [Native shell API base + CORS](native-shell-api-base.md) — packaged Capacitor/Electron shells need remote VITE_API_BASE_URL, custom secure origin (app://local), forced credentials + SameSite=None, strict CORS allowlist (never wildcard).
+- [Realtime websocket change channel](realtime-ws-channel.md) — live-sync poke pattern: res.on('finish') broadcasts tenant pokes (covers REST + sync/batch), /ws upgrade must ignore non-/ws paths or it breaks Vite HMR.
 - [Planning lead-time UTC arithmetic](planning-leadtime-utc.md) — session-date >=7-day rule must use Date.UTC/getUTC*; local-time math on UTC-midnight dates wrongly rejects today+7 in negative-offset zones. Client math lives in shared/schedulingDates.ts (server still inlines its own copy).
