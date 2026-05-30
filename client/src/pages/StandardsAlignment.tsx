@@ -170,7 +170,7 @@ const SECTIONS: Section[] = [
       { area: "RED 1 · Catchment population denominators with source [RED-Q Identify]", status: "partial", evidence: "villages table + Population page. Guided workflow Step 2 checks every village has a population source.", recommendation: "Require populationSource on every village row at write time." },
       { area: "RED 1 · Missed-community + zero-dose tagging [RED-Q Identify + Reach]", status: "gap", recommendation: "Add a `missedCommunity` boolean + `zeroDoseBurden` int on villages and surface them in Hard-to-Reach (guided workflow Step 3)." },
       // RED 2 — Supportive supervision
-      { area: "RED 2 · Supportive supervision visits + checklist", status: "aligned", evidence: "`supervision_visits` table + Supportive Supervision page (`/supervision`) capture scheduled / conducted visits, a 12-item WHO RED checklist (Yes / No / N/A), a derived score, findings and follow-up actions. Guided workflow Step 10 flips green when every facility with sessions has ≥1 visit scheduled for the current quarter." },
+      { area: "RED 2 · Supportive supervision visits + checklist", status: "aligned", evidence: "`supervision_visits` table + Supportive Supervision page (`/supervision`) capture scheduled / conducted visits, a derived score, findings and follow-up actions. National admins build reusable checklists (`/supervision/templates`) mixing Yes/No, choice, rating, number, date, photo and GPS questions; each question can branch into follow-up questions shown only for a chosen answer, and GPS questions capture an exact point on an interactive map (drop / drag a pin or use device location). Guided workflow Step 10 flips green when every facility with sessions has ≥1 visit scheduled for the current quarter." },
       // RED 3 — Community links
       { area: "RED 3 · Community links via mobilization activities [RED-Q Reach]", status: "partial", evidence: "mobilizationActivities table + Social Mobilization page. Guided workflow Step 7 checks ≥1 activity per scheduled session.", recommendation: "Add named community focal point + dialogue / feedback capture." },
       // RED 4 — Monitoring for action
@@ -396,6 +396,7 @@ const SECTIONS: Section[] = [
       { area: "Conflict log", status: "aligned", evidence: "ConflictLog table." },
       { area: "GIS binary cache (GeoJSON + GeoTIFF)", status: "aligned", evidence: "gisCache table." },
       { area: "PWA install on Android", status: "partial", recommendation: "Manifest exists; add onboarding UX to prompt 'Add to Home screen'." },
+      { area: "In-app update notice for packaged builds", status: "aligned", evidence: "GET /api/version exposes the deployed version; the client compares it to the version baked into the running build and shows an update banner (reload on web; installer link / auto-install note in the Windows & Android shells) so users aren't stuck on a stale UI while their data keeps syncing." },
       {
         area: "Service Worker Background Sync",
         status: "gap",
@@ -488,7 +489,7 @@ const FEATURES: FeatureGroup[] = [
     title: "Supervision & community demand",
     icon: ClipboardCheck,
     features: [
-      { name: "Supportive supervision", detail: "Schedule and record supervisory visits using a 12-item WHO RED checklist with an automatic score, findings and follow-up actions." },
+      { name: "Supportive supervision", detail: "Schedule and record supervisory visits using checklists your national team builds. Each question can trigger a follow-up question based on the answer, and location questions let you drop or drag a pin on a map. Visits get an automatic score, findings and follow-up actions." },
       { name: "Social mobilization", detail: "Plan community mobilization and demand-generation activities linked to sessions." },
     ],
   },
@@ -533,6 +534,7 @@ const FEATURES: FeatureGroup[] = [
       { name: "Offline map cache", detail: "Map boundaries and population layers are cached for use without a connection." },
       { name: "Live sync", detail: "When online, changes made by other users appear in near real time." },
       { name: "Browser, desktop & mobile", detail: "Runs in the browser and can be packaged as Windows and Android builds for field devices." },
+      { name: "Update notices", detail: "When a newer version is published, the app shows a banner — reload on the web, or download / auto-install in the Windows and Android apps — so field devices don't stay on an old version." },
     ],
   },
   {

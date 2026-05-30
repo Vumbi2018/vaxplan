@@ -24,6 +24,7 @@ import Dashboard from "@/pages/Dashboard";
 import NotFound from "@/pages/not-found";
 import { TenantSwitcher } from "@/components/TenantSwitcher";
 import { InstallPrompt } from "@/components/InstallPrompt";
+import { UpdateBanner } from "@/components/UpdateBanner";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { useUnmappedAntigenWarnings } from "@/hooks/useUnmappedAntigenWarnings";
 import { useProximityConflictWarnings } from "@/hooks/useProximityConflictWarnings";
@@ -266,6 +267,7 @@ function AuthenticatedLayout() {
             </header>
           </div>
           <main className="flex-1 overflow-auto">
+            <UpdateBanner />
             <OfflineBanner />
             <AuthenticatedRouter />
           </main>

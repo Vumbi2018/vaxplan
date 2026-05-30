@@ -86,6 +86,11 @@ const defaultFaqs = [
       "When you're online, VaxPlan keeps a lightweight live connection open. If a colleague (or you on another device) changes something for your facility, your screen refreshes within a few seconds — no manual reload needed. If that connection drops, the app quietly falls back to periodic checks.",
   },
   {
+    question: "I'm using the Windows or Android app — how do I get new features?",
+    answer:
+      "Your data always syncs with the server, but the screens and features in the installed Windows/Android apps come from the version you installed. When a newer version is published, a banner appears at the top of the app. On the web, tap 'Reload'. In the Windows app the update installs automatically the next time you restart it; in the Android app, tap 'Download update' to install the newest build. Until you update, you'll keep seeing the older screens even though your data is current.",
+  },
+  {
     question: "Who can see my facility's data?",
     answer:
       "Data is scoped to your place in the hierarchy. Facility staff see only their own facility's facilities, villages, population, microplans, sessions, and reports. District managers see their district, provincial coordinators their province, and national admins the whole country. You can't open a record belonging to a facility outside your area, even with a direct link.",
@@ -98,12 +103,12 @@ const defaultFaqs = [
   {
     question: "How do I schedule and run a supervision visit?",
     answer:
-      "Open Supervision and click 'Schedule Visit'. Pick the facility, date, and supervisor, and choose which checklist to use — the built-in WHO checklist or any custom one your national admin has set up. When the supervisor arrives, they open the visit. At the top a progress bar shows how many questions are answered and the live score updates as you go. A 'Visit location' card lets you confirm where the visit happened with a smart Province → District → Health Facility picker, and a 'Capture GPS' button records the exact on-site point. Then answer the checklist questions (Yes/No, True/False, text, number, choices, rating, date, GPS location, or a photo) and record findings and follow-up actions. Some questions are follow-ups that only appear after a certain answer, and some are repeatable — tap 'Add another' to record one entry per vaccinator, session, or child. The score is the average of the scored questions (Yes/No and True/False, plus any ratings the author chose to count); every repeated entry is included.",
+      "Open Supervision and click 'Schedule Visit'. Pick the facility, date, and supervisor, and choose which checklist to use — the built-in WHO checklist or any custom one your national admin has set up. When the supervisor arrives, they open the visit. At the top a progress bar shows how many questions are answered and the live score updates as you go. A 'Visit location' card lets you confirm where the visit happened with a smart Province → District → Health Facility picker plus an interactive map — tap the map to drop a pin, drag it to fine-tune, or tap 'Use my location' to place it from the device's GPS. Then answer the checklist questions (Yes/No, True/False, text, number, choices, rating, date, GPS location picked the same way on a map, or a photo) and record findings and follow-up actions. Some questions are follow-ups that only appear after a certain answer, and some are repeatable — tap 'Add another' to record one entry per vaccinator, session, or child. The score is the average of the scored questions (Yes/No and True/False, plus any ratings the author chose to count); every repeated entry is included.",
   },
   {
     question: "Can I build my own supervision checklist?",
     answer:
-      "Yes — national admins can. Open Supervision and click 'Manage Checklists', then 'New checklist'. Give it a name and add questions, choosing a type for each (Yes/No, True/False, short text, number, single choice, multiple choice, rating, date, GPS location, or photo). Each question is highly configurable: make it a follow-up that only appears when an earlier question gets a certain answer, allow multiple entries (a repeat, with an optional name and limit per entry), and decide whether it counts toward the visit score. Mark the checklist Active and everyone in the country can pick it when scheduling a visit. Only national admins can create, edit, or delete the checklists.",
+      "Yes — national admins can. Open Supervision and click 'Manage Checklists', then 'New checklist'. Give it a name and add questions, choosing a type for each (Yes/No, True/False, short text, number, single choice, multiple choice, rating, date, GPS location, or photo). Each question is highly configurable: click 'Add a follow-up question' under any question to branch off a follow-up that only appears when this question gets a certain answer (any question can have follow-ups, including the first one, and you can 'Detach' one later), allow multiple entries (a repeat, with an optional name and limit per entry), and decide whether it counts toward the visit score. Mark the checklist Active and everyone in the country can pick it when scheduling a visit. Only national admins can create, edit, or delete the checklists.",
   },
   {
     question: "What is the number next to my name at the top?",

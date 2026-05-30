@@ -145,6 +145,27 @@ export default function SupervisionTemplates() {
       return next;
     });
 
+  // Add a follow-up question owned by the question at parentIdx. The new
+  // question is inserted right after the parent's existing follow-ups so the
+  // array always keeps a parent ahead of its children.
+  const addFollowUp = (parentIdx: number) =>
+    setItems((prev) => {
+      const parent = prev[parentIdx];
+      if (!parent) return prev;
+      const child: ChecklistTemplateItem = {
+        ...newItem(),
+        parentId: parent.id,
+        showWhen: showWhenOptions(parent)[0]?.value ?? SHOW_WHEN_ANY,
+      };
+      let insertAt = parentIdx + 1;
+      for (let i = parentIdx + 1; i < prev.length; i++) {
+        if (prev[i].parentId === parent.id) insertAt = i + 1;
+      }
+      const next = [...prev];
+      next.splice(insertAt, 0, child);
+      return next;
+    });
+
   const canSave =
     name.trim().length > 0 &&
     items.length > 0 &&
@@ -299,10 +320,52 @@ export default function SupervisionTemplates() {
             <div className="space-y-3">
               {items.map((it, idx) => {
                 const needsOptions = it.type === "single_select" || it.type === "multi_select";
+                const parent = it.parentId ? items.find((p) => p.id === it.parentId) : undefined;
+                const isFollowUp = !!it.parentId;
+                const hasFollowUps = items.some((c) => c.parentId === it.id);
+                const number = items.slice(0, idx + 1).filter((x) => !x.parentId).length;
                 return (
-                  <div key={it.id} className="border rounded-xl p-3 space-y-3 bg-card" data-testid={`question-row-${idx}`}>
+                  <div
+                    key={it.id}
+                    className={`border rounded-xl p-3 space-y-3 bg-card ${isFollowUp ? "ml-6 border-l-4 border-l-indigo-400/70" : ""}`}
+                    data-testid={`question-row-${idx}`}
+                  >
+                    {isFollowUp && (
+                      <div className="flex flex-col gap-2 rounded-lg bg-indigo-500/5 border border-indigo-400/30 p-2.5">
+                        <div className="flex items-center gap-2 text-xs font-medium text-indigo-600 dark:text-indigo-300">
+                          <GitBranch className="h-3.5 w-3.5" />
+                          Follow-up question
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-6 px-2 ml-auto text-[11px] text-muted-foreground"
+                            onClick={() => setItem(idx, { parentId: undefined, showWhen: undefined })}
+                            data-testid={`btn-detach-${idx}`}
+                          >
+                            Detach
+                          </Button>
+                        </div>
+                        {parent ? (
+                          <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                            <span className="text-muted-foreground">Show this only when</span>
+                            <span className="font-medium truncate max-w-[200px]">“{parent.label.trim() || "the question above"}”</span>
+                            <span className="text-muted-foreground">is</span>
+                            <Select value={it.showWhen || SHOW_WHEN_ANY} onValueChange={(v) => setItem(idx, { showWhen: v })}>
+                              <SelectTrigger className="h-7 w-auto gap-1 text-xs" data-testid={`select-showwhen-${idx}`}><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                {showWhenOptions(parent).map((o) => (
+                                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        ) : (
+                          <p className="text-[11px] text-rose-500">The parent question was removed — detach or delete this follow-up.</p>
+                        )}
+                      </div>
+                    )}
                     <div className="flex items-center gap-2">
-                      <span className="text-xs font-semibold text-muted-foreground w-6">{idx + 1}.</span>
+                      <span className="text-xs font-semibold text-muted-foreground w-6">{isFollowUp ? "↳" : `${number}.`}</span>
                       <Input
                         value={it.label}
                         onChange={(e) => setItem(idx, { label: e.target.value })}
@@ -408,10 +471,16 @@ export default function SupervisionTemplates() {
                         <Switch
                           checked={!!it.repeatable}
                           onCheckedChange={(v) => setItem(idx, { repeatable: v })}
+                          disabled={hasFollowUps}
                           data-testid={`switch-repeatable-${idx}`}
                         />
-                        <span className="text-sm">Allow multiple entries (repeat this question)</span>
+                        <span className={`text-sm ${hasFollowUps ? "text-muted-foreground" : ""}`}>Allow multiple entries (repeat this question)</span>
                       </div>
+                      {hasFollowUps && (
+                        <p className="text-[11px] text-muted-foreground">
+                          Remove the follow-up questions below first — a question can have follow-ups or allow multiple entries, but not both.
+                        </p>
+                      )}
                       {it.repeatable && (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                           <div>
@@ -442,63 +511,31 @@ export default function SupervisionTemplates() {
                       )}
                     </div>
 
-                    {/* Follow-up (conditional display) configuration */}
-                    <div className="pl-8 space-y-3 border-t pt-3">
-                      <div className="flex items-center gap-2">
-                        <GitBranch className="h-4 w-4 text-muted-foreground" />
-                        <span className="text-sm font-medium">Show only as a follow-up (optional)</span>
-                      </div>
-                      {(() => {
-                        const parentCandidates = items.filter(
-                          (p, pi) => pi < idx && !p.parentId && !p.repeatable && p.label.trim().length > 0,
-                        );
-                        const parent = items.find((p) => p.id === it.parentId);
-                        return (
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            <div>
-                              <Label className="text-xs">Depends on question</Label>
-                              <Select
-                                value={it.parentId || "__none__"}
-                                onValueChange={(v) => {
-                                  if (v === "__none__") {
-                                    setItem(idx, { parentId: undefined, showWhen: undefined });
-                                  } else {
-                                    const p = items.find((x) => x.id === v);
-                                    const first = p ? showWhenOptions(p)[0]?.value : SHOW_WHEN_ANY;
-                                    setItem(idx, { parentId: v, showWhen: first });
-                                  }
-                                }}
-                              >
-                                <SelectTrigger data-testid={`select-parent-${idx}`}>
-                                  <SelectValue placeholder="Always show" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="__none__">Always show</SelectItem>
-                                  {parentCandidates.map((p) => (
-                                    <SelectItem key={p.id} value={p.id}>{p.label.slice(0, 60)}</SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                              {it.parentId && !parent && (
-                                <p className="text-[11px] text-rose-500 mt-1">The chosen question was removed — pick another.</p>
-                              )}
-                            </div>
-                            {it.parentId && parent && (
-                              <div>
-                                <Label className="text-xs">Show when the answer…</Label>
-                                <Select value={it.showWhen || SHOW_WHEN_ANY} onValueChange={(v) => setItem(idx, { showWhen: v })}>
-                                  <SelectTrigger data-testid={`select-showwhen-${idx}`}><SelectValue /></SelectTrigger>
-                                  <SelectContent>
-                                    {showWhenOptions(parent).map((o) => (
-                                      <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })()}
+                    {/* Follow-up authoring (parent-centric): branch a new
+                        question off this one, shown only for a chosen answer.
+                        Repeatable questions can't have follow-ups because repeat
+                        entries are cloned without their children at run time. */}
+                    <div className="pl-8 border-t pt-3">
+                      {it.repeatable ? (
+                        <p className="text-[11px] text-muted-foreground">
+                          Follow-up questions aren’t available on a question that allows multiple entries. Turn off “Allow multiple entries” to add one.
+                        </p>
+                      ) : (
+                        <>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="gap-1.5"
+                            onClick={() => addFollowUp(idx)}
+                            data-testid={`btn-add-followup-${idx}`}
+                          >
+                            <GitBranch className="h-4 w-4" /> Add a follow-up question
+                          </Button>
+                          <p className="text-[11px] text-muted-foreground mt-1.5">
+                            A follow-up appears only when this question gets a particular answer — e.g. ask “If No, why?” only when the answer is No.
+                          </p>
+                        </>
+                      )}
                     </div>
                   </div>
                 );

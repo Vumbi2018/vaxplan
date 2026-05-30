@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation, useSearch } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { FacilityCascadePicker } from "@/components/FacilityCascadePicker";
+import LocationPickerMap from "@/components/LocationPickerMap";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -935,6 +936,7 @@ function ChecklistQuestion({
   setResp,
   setNote,
   setValue,
+  defaultCenter,
 }: {
   item: ChecklistItem;
   displayNumber?: number;
@@ -943,35 +945,11 @@ function ChecklistQuestion({
   setResp: (key: string, r: ChecklistItem["response"]) => void;
   setNote: (key: string, n: string) => void;
   setValue: (key: string, v: unknown) => void;
+  defaultCenter?: [number, number] | null;
 }) {
   const { toast } = useToast();
-  const [capturing, setCapturing] = useState(false);
   const type: ChecklistQuestionType = item.type || "yes_no";
   const key = item.key;
-
-  const captureGps = () => {
-    if (!navigator.geolocation) {
-      toast({ title: "GPS not available", description: "This device can't report its location.", variant: "destructive" });
-      return;
-    }
-    setCapturing(true);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setValue(key, {
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
-          accuracy: pos.coords.accuracy,
-          capturedAt: new Date().toISOString(),
-        });
-        setCapturing(false);
-      },
-      (err) => {
-        setCapturing(false);
-        toast({ title: "Couldn't get location", description: err.message, variant: "destructive" });
-      },
-      { enableHighAccuracy: true, timeout: 15000 },
-    );
-  };
 
   const onImage = (file: File | undefined) => {
     if (!file) return;
@@ -1092,18 +1070,13 @@ function ChecklistQuestion({
       )}
 
       {type === "gps" && (
-        <div className="flex items-center gap-2 flex-wrap">
-          <Button type="button" variant="outline" size="sm" className="gap-1" onClick={captureGps} disabled={capturing} data-testid={`${item.key}-gps`}>
-            {capturing ? <Loader2 className="h-4 w-4 animate-spin" /> : <MapPin className="h-4 w-4" />}
-            {capturing ? "Capturing…" : gps?.lat != null ? "Re-capture location" : "Capture location"}
-          </Button>
-          {gps?.lat != null && (
-            <span className="text-xs text-muted-foreground">
-              {Number(gps.lat).toFixed(5)}, {Number(gps.lng).toFixed(5)}
-              {gps.accuracy != null ? ` (±${Math.round(gps.accuracy)}m)` : ""}
-            </span>
-          )}
-        </div>
+        <LocationPickerMap
+          value={gps?.lat != null ? { lat: Number(gps.lat), lng: Number(gps.lng), accuracy: gps.accuracy } : null}
+          defaultCenter={defaultCenter}
+          onChange={(loc) =>
+            setValue(key, { lat: loc.lat, lng: loc.lng, accuracy: loc.accuracy, capturedAt: new Date().toISOString() })
+          }
+        />
       )}
 
       {type === "image" && (
@@ -1152,28 +1125,6 @@ function ConductDialog({ visit, facility, onClose, onSave, isSaving }: { visit: 
       ? { lat: Number(visit.gpsLatitude), lng: Number(visit.gpsLongitude) }
       : null,
   );
-  const [capturingGps, setCapturingGps] = useState(false);
-
-  const captureVisitGps = () => {
-    if (!navigator.geolocation) {
-      toast({ title: "GPS not available", description: "This device can't report its location.", variant: "destructive" });
-      return;
-    }
-    setCapturingGps(true);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setGps({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy });
-        setCapturingGps(false);
-        toast({ title: "Location captured", description: "The visit's GPS location was recorded." });
-      },
-      (err) => {
-        setCapturingGps(false);
-        toast({ title: "Couldn't get location", description: err.message, variant: "destructive" });
-      },
-      { enableHighAccuracy: true, timeout: 15000 },
-    );
-  };
-
   const score = computeScore(checklist);
 
   // Progress = how many of the visible questions have an answer.
@@ -1265,27 +1216,15 @@ function ConductDialog({ visit, facility, onClose, onSave, isSaving }: { visit: 
                 onChange={(id) => setFacilityId(id)}
                 showLabels
               />
-              <div className="flex items-center gap-2 flex-wrap pt-1">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="gap-1.5"
-                  onClick={captureVisitGps}
-                  disabled={capturingGps}
-                  data-testid="btn-capture-visit-gps"
-                >
-                  {capturingGps ? <Loader2 className="h-4 w-4 animate-spin" /> : <Crosshair className="h-4 w-4" />}
-                  {capturingGps ? "Capturing…" : gps ? "Re-capture GPS" : "Capture GPS"}
-                </Button>
-                {gps && (
-                  <span className="flex items-center gap-1 text-xs text-muted-foreground" data-testid="visit-gps-readout">
-                    <MapPin className="h-3 w-3" />
-                    {gps.lat.toFixed(5)}, {gps.lng.toFixed(5)}
-                    {gps.accuracy != null ? ` (±${Math.round(gps.accuracy)}m)` : ""}
-                  </span>
-                )}
-              </div>
+              <LocationPickerMap
+                value={gps}
+                defaultCenter={
+                  facility?.latitude != null && facility?.longitude != null
+                    ? [Number(facility.latitude), Number(facility.longitude)]
+                    : null
+                }
+                onChange={(loc) => setGps({ lat: loc.lat, lng: loc.lng, accuracy: loc.accuracy })}
+              />
             </div>
             {checklist.map((c) => {
               if (!isAnswerVisible(c, checklist)) return null;
@@ -1310,6 +1249,11 @@ function ConductDialog({ visit, facility, onClose, onSave, isSaving }: { visit: 
                     setResp={setResp}
                     setNote={setNote}
                     setValue={setValue}
+                    defaultCenter={
+                      facility?.latitude != null && facility?.longitude != null
+                        ? [Number(facility.latitude), Number(facility.longitude)]
+                        : null
+                    }
                   />
                   {isLastInstance && canAddMore && (
                     <Button

@@ -559,12 +559,13 @@ Supervision is a first-class workflow:
    visit on their phone. A **progress bar** at the top shows how many
    questions are answered and the **live score** updates as they go. A
    **Visit location** card confirms where the visit happened using a
-   smart **Province → District → Health Facility** picker, with a
-   **Capture GPS** button that records the exact on-site point. They
-   then answer the checklist questions. Questions
+   smart **Province → District → Health Facility** picker plus an
+   **interactive map** — tap the map to drop a pin, drag it to
+   fine-tune, or tap **Use my location** to place it from the device's
+   GPS. They then answer the checklist questions. Questions
    can be Yes/No, True/False, short text, a number, single- or
-   multiple-choice, a 1–5 rating, a date, a captured **GPS location**,
-   or a **photo** taken on the device.
+   multiple-choice, a 1–5 rating, a date, a **GPS location** (picked
+   the same way, on a map), or a **photo** taken on the device.
    Some questions are **follow-ups** that only appear after a
    particular answer (for example, an "If No, why?" box that shows up
    only when the previous question is answered "No"). Other questions
@@ -592,10 +593,12 @@ the country uses the same questions:
    single choice, multiple choice, rating, date, GPS location, or
    photo), and add options for choice questions.
 3. Make any question highly configurable:
-   - **Follow-up:** under "Show only as a follow-up", point the
-     question at an earlier question and choose which answer reveals it
-     (e.g. show it only when the parent is answered "No", or whenever
-     it has any answer).
+   - **Follow-up:** under any question, click **Add a follow-up
+     question**. The new question appears indented beneath it, and you
+     choose which answer reveals it (e.g. show it only when the question
+     is answered "No", or whenever it has any answer). Any question can
+     have follow-ups — including the first one — and you can **Detach** a
+     follow-up to make it a normal question again.
    - **Repeat:** turn on "Allow multiple entries" so supervisors can
      add as many entries as needed during a visit. You can name each
      entry (e.g. "Vaccinator") and cap how many are allowed.

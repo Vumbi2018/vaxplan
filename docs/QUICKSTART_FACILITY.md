@@ -50,7 +50,11 @@
 
 > **Good to know.** When you're online, the app updates on its own
 > within seconds if anything changes for your facility — no need to
-> refresh. You only ever see your own facility's data.
+> refresh. You only ever see your own facility's data. If a newer
+> version of the app is published, a banner appears at the top: tap
+> **Reload** in the browser, or **Download update** in the Windows /
+> Android app, to get the latest features (your data keeps syncing
+> either way).
 
 ## Who to call
 
