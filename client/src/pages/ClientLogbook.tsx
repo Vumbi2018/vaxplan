@@ -2449,7 +2449,7 @@ export default function ClientLogbook() {
                               </Button>
                             </FormControl>
                           </PopoverTrigger>
-                          <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+                          <PopoverContent className="w-[var(--radix-popover-trigger-width)] min-w-[16rem] p-0" align="start">
                             <Command>
                               <CommandInput placeholder="Search village..." />
                               <CommandEmpty className="py-6 text-center text-sm">
@@ -2994,7 +2994,7 @@ export default function ClientLogbook() {
                               </Button>
                             </FormControl>
                           </PopoverTrigger>
-                          <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+                          <PopoverContent className="w-[var(--radix-popover-trigger-width)] min-w-[16rem] p-0" align="start">
                             <Command>
                               <CommandInput placeholder="Search village..." />
                               <CommandEmpty className="py-6 text-center text-sm">

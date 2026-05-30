@@ -1944,7 +1944,7 @@ export default function SessionPlanning({
                             </Button>
                           </PopoverTrigger>
                           <PopoverContent
-                            className="p-0 w-[--radix-popover-trigger-width]"
+                            className="p-0 w-[--radix-popover-trigger-width] min-w-[16rem]"
                             align="start"
                           >
                             <Command>
