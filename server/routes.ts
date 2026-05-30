@@ -1586,6 +1586,8 @@ export async function registerRoutes(
         country: geo.country,
         region: geo.region,
         city: geo.city,
+        latitude: geo.latitude != null ? String(geo.latitude) : null,
+        longitude: geo.longitude != null ? String(geo.longitude) : null,
         userAgent,
       });
       res.status(204).end();
@@ -1605,7 +1607,26 @@ export async function registerRoutes(
     requirePlatformOrNationalAdmin,
     async (req: any, res) => {
       try {
-        res.json(await storage.getTrafficAnalytics(req.tenantId));
+        const analytics = await storage.getTrafficAnalytics(req.tenantId);
+        const viewerIsPlatformAdmin = req.dbUser?.isPlatformAdmin === true;
+        // Sensitive per-user detail (IP, device, email, exact coords) is only
+        // exposed to platform super admins. Everyone else (national admins) gets
+        // the privacy-preserving view: name, role, city-level location, page.
+        const roundCoarse = (n: number | null) =>
+          n == null ? null : Math.round(n * 10) / 10; // ~11 km — city-area only
+        const online = viewerIsPlatformAdmin
+          ? analytics.online
+          : analytics.online.map((u) => ({
+              ...u,
+              email: null,
+              ipAddress: null,
+              userAgent: null,
+              // National admins see only a coarse, city-area position on the
+              // map; exact coordinates are reserved for platform super admins.
+              latitude: roundCoarse(u.latitude),
+              longitude: roundCoarse(u.longitude),
+            }));
+        res.json({ ...analytics, online, viewerIsPlatformAdmin });
       } catch (err) {
         console.error("getTrafficAnalytics failed:", err);
         res.status(500).json({ message: "Failed to load site analytics" });

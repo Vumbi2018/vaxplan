@@ -720,6 +720,8 @@ export const pageViews = pgTable("page_views", {
   country: varchar("country", { length: 120 }),
   region: varchar("region", { length: 120 }),
   city: varchar("city", { length: 120 }),
+  latitude: decimal("latitude", { precision: 10, scale: 6 }),
+  longitude: decimal("longitude", { precision: 10, scale: 6 }),
   userAgent: varchar("user_agent", { length: 400 }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
 }, (table) => [
@@ -1561,6 +1563,8 @@ export const supervisionVisits = pgTable(
     templateId: integer("template_id"), // optional configurable checklist template used for this visit
     checklist: jsonb("checklist").default([]).notNull(),
     score: integer("score"), // 0-100 derived from checklist
+    gpsLatitude: decimal("gps_latitude", { precision: 10, scale: 6 }), // captured visit GPS
+    gpsLongitude: decimal("gps_longitude", { precision: 10, scale: 6 }),
     findings: text("findings"),
     followUpActions: text("follow_up_actions"),
     nextVisitDate: timestamp("next_visit_date"),

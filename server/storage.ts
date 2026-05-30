@@ -111,10 +111,14 @@ import { eq, and, desc, isNull, inArray, getTableColumns, sql, gte } from "drizz
 export interface OnlineUser {
   userId: string | null;
   name: string;
+  email: string | null;
   role: string | null;
   path: string;
   location: string | null;
   ipAddress: string | null;
+  userAgent: string | null;
+  latitude: number | null;
+  longitude: number | null;
   lastSeen: Date | null;
 }
 
@@ -1556,6 +1560,9 @@ export class DatabaseStorage implements IStorage {
         country: pageViews.country,
         region: pageViews.region,
         city: pageViews.city,
+        latitude: pageViews.latitude,
+        longitude: pageViews.longitude,
+        userAgent: pageViews.userAgent,
         createdAt: pageViews.createdAt,
         firstName: users.firstName,
         lastName: users.lastName,
@@ -1582,10 +1589,14 @@ export class DatabaseStorage implements IStorage {
       online.push({
         userId: r.userId,
         name,
+        email: r.email ?? null,
         role: r.role ?? null,
         path: r.path,
         location,
         ipAddress: r.ipAddress,
+        userAgent: r.userAgent ?? null,
+        latitude: r.latitude != null ? Number(r.latitude) : null,
+        longitude: r.longitude != null ? Number(r.longitude) : null,
         lastSeen: r.createdAt,
       });
     }

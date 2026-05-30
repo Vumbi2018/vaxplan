@@ -108,11 +108,13 @@ function CollapsibleSection({
   label,
   storageKey,
   badge,
+  colorClass,
   children,
 }: {
   label: string;
   storageKey: string;
   badge?: number;
+  colorClass?: string;
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState<boolean>(() => {
@@ -149,7 +151,7 @@ function CollapsibleSection({
           className="flex w-full items-center justify-between gap-2 group-data-[collapsible=icon]:hidden"
           data-testid={`sidebar-section-toggle-${storageKey}`}
         >
-          <span className="flex items-center gap-2">
+          <span className={`flex items-center gap-2 font-semibold tracking-wide uppercase text-[11px] ${colorClass ?? ""}`}>
             {open ? (
               <ChevronDown className="h-3 w-3 shrink-0" />
             ) : (
@@ -215,7 +217,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
       </SidebarHeader>
 
       <SidebarContent>
-        <CollapsibleSection label="Main" storageKey="main">
+        <CollapsibleSection label="Main" storageKey="main" colorClass="text-sky-600 dark:text-sky-400">
           <SidebarMenu>
             {mainNavItems.map((item) => (
               <SidebarMenuItem key={item.path}>
@@ -234,7 +236,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
           </SidebarMenu>
         </CollapsibleSection>
 
-        <CollapsibleSection label="Planning" storageKey="planning">
+        <CollapsibleSection label="Planning" storageKey="planning" colorClass="text-emerald-600 dark:text-emerald-400">
           <SidebarMenu>
             {planningNavItems
               .filter((item) => !(item as any).adminOnly || canAccessHis)
@@ -277,6 +279,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
             label="Workflow"
             storageKey="workflow"
             badge={pendingApprovalsCount}
+            colorClass="text-amber-600 dark:text-amber-400"
           >
             <SidebarMenu>
               {workflowNavItems.map((item) => (
@@ -303,7 +306,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
         )}
 
         {canAccessAdmin && (
-          <CollapsibleSection label="Administration" storageKey="admin">
+          <CollapsibleSection label="Administration" storageKey="admin" colorClass="text-violet-600 dark:text-violet-400">
             <SidebarMenu>
               {adminNavItems
                 .filter((item) => {
@@ -333,7 +336,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
           </CollapsibleSection>
         )}
 
-        <CollapsibleSection label="System" storageKey="system">
+        <CollapsibleSection label="System" storageKey="system" colorClass="text-rose-600 dark:text-rose-400">
           <SidebarMenu>
             {systemNavItems
               .filter((item) => !(item as any).reconcileOnly || canReconcile)

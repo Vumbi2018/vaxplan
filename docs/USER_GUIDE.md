@@ -421,9 +421,12 @@ National admins are the power users for your country. Your modules:
 - **Audit log.** Every change to sensitive data is logged with who,
   when, and what.
 - **Site activity.** A panel on your country dashboard shows who is
-  online right now and where they are signed in from, visits today and
-  over the last two weeks, your busiest pages, and a breakdown of login
-  locations. It is visible only to national and platform administrators.
+  online right now and where they are signed in from, a live map
+  pinning those users, visits today and over the last two weeks, your
+  busiest pages, and a breakdown of login locations. Platform super
+  admins can tap any online person for full detail — email, IP address,
+  device, and exact coordinates. It is visible only to national and
+  platform administrators.
 
 National admins can also configure **scheduled jobs** — population
 refresh from WorldPop, stock-alert digests, and supervision digests
@@ -553,7 +556,12 @@ Supervision is a first-class workflow:
    **checklist** to use — the built-in WHO checklist, or any custom
    checklist your national admin has built (see below).
 2. **Visit checklist.** When the supervisor arrives, they open the
-   visit on their phone and answer the checklist questions. Questions
+   visit on their phone. A **progress bar** at the top shows how many
+   questions are answered and the **live score** updates as they go. A
+   **Visit location** card confirms where the visit happened using a
+   smart **Province → District → Health Facility** picker, with a
+   **Capture GPS** button that records the exact on-site point. They
+   then answer the checklist questions. Questions
    can be Yes/No, True/False, short text, a number, single- or
    multiple-choice, a 1–5 rating, a date, a captured **GPS location**,
    or a **photo** taken on the device.

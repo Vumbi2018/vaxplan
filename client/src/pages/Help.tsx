@@ -98,7 +98,7 @@ const defaultFaqs = [
   {
     question: "How do I schedule and run a supervision visit?",
     answer:
-      "Open Supervision and click 'Schedule Visit'. Pick the facility, date, and supervisor, and choose which checklist to use — the built-in WHO checklist or any custom one your national admin has set up. When the supervisor arrives, they open the visit and answer the checklist questions (Yes/No, True/False, text, number, choices, rating, date, GPS location, or a photo), then record findings and follow-up actions. Some questions are follow-ups that only appear after a certain answer, and some are repeatable — tap 'Add another' to record one entry per vaccinator, session, or child. The score is the average of the scored questions (Yes/No and True/False, plus any ratings the author chose to count); every repeated entry is included.",
+      "Open Supervision and click 'Schedule Visit'. Pick the facility, date, and supervisor, and choose which checklist to use — the built-in WHO checklist or any custom one your national admin has set up. When the supervisor arrives, they open the visit. At the top a progress bar shows how many questions are answered and the live score updates as you go. A 'Visit location' card lets you confirm where the visit happened with a smart Province → District → Health Facility picker, and a 'Capture GPS' button records the exact on-site point. Then answer the checklist questions (Yes/No, True/False, text, number, choices, rating, date, GPS location, or a photo) and record findings and follow-up actions. Some questions are follow-ups that only appear after a certain answer, and some are repeatable — tap 'Add another' to record one entry per vaccinator, session, or child. The score is the average of the scored questions (Yes/No and True/False, plus any ratings the author chose to count); every repeated entry is included.",
   },
   {
     question: "Can I build my own supervision checklist?",
@@ -118,7 +118,7 @@ const defaultFaqs = [
   {
     question: "How do I see who's online and how the site is being used?",
     answer:
-      "National and platform administrators have a 'Site activity' panel on the dashboard. It shows who is online right now (with their role, current page, and the city/country they're signed in from), how many visits there were today, a 14-day visits trend, your most-visited pages, and a breakdown of login locations. Locations are a best-effort estimate from the network address, and the panel refreshes on its own every 30 seconds.",
+      "National and platform administrators have a 'Site activity' panel on the dashboard. It shows who is online right now (with their role, current page, and the city/country they're signed in from), a live map pinning where those users are, how many visits there were today, a 14-day visits trend, your most-visited pages, and a breakdown of login locations. Platform super admins get full detail: tap any person to see their email, IP address, device, and exact coordinates. Locations are a best-effort estimate from the network address, and the panel refreshes on its own every 30 seconds.",
   },
 ];
 

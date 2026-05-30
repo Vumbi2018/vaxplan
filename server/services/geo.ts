@@ -11,10 +11,12 @@ export interface GeoInfo {
   country: string | null;
   region: string | null;
   city: string | null;
+  latitude: number | null;
+  longitude: number | null;
 }
 
-const EMPTY: GeoInfo = { country: null, region: null, city: null };
-const LOCAL: GeoInfo = { country: "Local network", region: null, city: null };
+const EMPTY: GeoInfo = { country: null, region: null, city: null, latitude: null, longitude: null };
+const LOCAL: GeoInfo = { country: "Local network", region: null, city: null, latitude: null, longitude: null };
 
 // Cache lookups for a day; IP→location is stable enough for analytics.
 const TTL_MS = 24 * 60 * 60 * 1000;
@@ -82,10 +84,14 @@ async function fetchGeo(ip: string): Promise<GeoInfo> {
     if (res.ok) {
       const data: any = await res.json();
       if (data && !data.error) {
+        const lat = typeof data.latitude === "number" ? data.latitude : Number(data.latitude);
+        const lng = typeof data.longitude === "number" ? data.longitude : Number(data.longitude);
         value = {
           country: data.country_name || null,
           region: data.region || null,
           city: data.city || null,
+          latitude: Number.isFinite(lat) ? lat : null,
+          longitude: Number.isFinite(lng) ? lng : null,
         };
       }
     }

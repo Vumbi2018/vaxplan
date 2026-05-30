@@ -15,11 +15,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import {
   ClipboardCheck, Calendar, Plus, CheckCircle2, AlertCircle, XCircle, MinusCircle,
   Building2, User, FileText, ListChecks, Trash2, Pencil, Activity, Mail, NotebookPen,
-  Settings2, MapPin, Camera, Star, Loader2,
+  Settings2, MapPin, Camera, Star, Loader2, Crosshair, MapPinned,
 } from "lucide-react";
 import { GeoCascadeFilter } from "@/components/GeoCascadeFilter";
 import { useAuth } from "@/hooks/useAuth";
@@ -111,6 +112,8 @@ type SupervisionVisit = {
   status: string;
   checklist: ChecklistItem[];
   score: number | null;
+  gpsLatitude: string | null;
+  gpsLongitude: string | null;
   findings: string | null;
   followUpActions: string | null;
   nextVisitDate: string | null;
@@ -1136,14 +1139,55 @@ function ChecklistQuestion({
 }
 
 function ConductDialog({ visit, facility, onClose, onSave, isSaving }: { visit: SupervisionVisit; facility: any; onClose: () => void; onSave: (d: any) => void; isSaving: boolean }) {
+  const { toast } = useToast();
   const initialChecklist = (visit.checklist && visit.checklist.length ? visit.checklist : DEFAULT_CHECKLIST).map((c) => ({ ...c }));
   const [checklist, setChecklist] = useState<ChecklistItem[]>(initialChecklist);
   const [findings, setFindings] = useState<string>(visit.findings || "");
   const [followUp, setFollowUp] = useState<string>(visit.followUpActions || "");
   const [nextVisitDate, setNextVisitDate] = useState<string>(visit.nextVisitDate ? visit.nextVisitDate.slice(0, 10) : "");
   const [status, setStatus] = useState<string>(visit.status === "scheduled" ? "conducted" : visit.status);
+  const [facilityId, setFacilityId] = useState<number | null>(visit.facilityId ?? null);
+  const [gps, setGps] = useState<{ lat: number; lng: number; accuracy?: number } | null>(
+    visit.gpsLatitude != null && visit.gpsLongitude != null
+      ? { lat: Number(visit.gpsLatitude), lng: Number(visit.gpsLongitude) }
+      : null,
+  );
+  const [capturingGps, setCapturingGps] = useState(false);
+
+  const captureVisitGps = () => {
+    if (!navigator.geolocation) {
+      toast({ title: "GPS not available", description: "This device can't report its location.", variant: "destructive" });
+      return;
+    }
+    setCapturingGps(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setGps({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy });
+        setCapturingGps(false);
+        toast({ title: "Location captured", description: "The visit's GPS location was recorded." });
+      },
+      (err) => {
+        setCapturingGps(false);
+        toast({ title: "Couldn't get location", description: err.message, variant: "destructive" });
+      },
+      { enableHighAccuracy: true, timeout: 15000 },
+    );
+  };
 
   const score = computeScore(checklist);
+
+  // Progress = how many of the visible questions have an answer.
+  const visibleItems = checklist.filter((c) => isAnswerVisible(c, checklist));
+  const isAnswered = (c: ChecklistItem): boolean => {
+    const t = c.type || "yes_no";
+    if (t === "yes_no" || t === "true_false") return !!c.response;
+    if (t === "multi_select") return Array.isArray(c.value) && c.value.length > 0;
+    if (t === "gps" || t === "image") return c.value != null;
+    return c.value !== undefined && c.value !== null && c.value !== "";
+  };
+  const answeredCount = visibleItems.filter(isAnswered).length;
+  const totalCount = visibleItems.length;
+  const pct = totalCount > 0 ? Math.round((answeredCount / totalCount) * 100) : 0;
   const setResp = (key: string, r: ChecklistItem["response"]) => {
     setChecklist((prev) => prev.map((c) => c.key === key ? { ...c, response: r } : c));
   };
@@ -1190,12 +1234,58 @@ function ConductDialog({ visit, facility, onClose, onSave, isSaving }: { visit: 
             <TabsTrigger value="findings">Findings & follow-up</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="checklist" className="space-y-2 mt-3">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-sm text-muted-foreground">Answer each question. Score = average of the scored questions (Yes/No, True/False, and any ratings the author counts). Follow-up questions appear based on earlier answers.</p>
-              <Badge variant="outline" className={score >= 80 ? STATUS_STYLES.conducted : score >= 60 ? "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30" : STATUS_STYLES.missed}>
-                Current score: {score}%
-              </Badge>
+          <TabsContent value="checklist" className="space-y-3 mt-3">
+            {/* Progress + live score header */}
+            <div className="rounded-xl border bg-gradient-to-br from-primary/5 to-transparent p-4 space-y-3 sticky top-0 z-10 backdrop-blur supports-[backdrop-filter]:bg-background/70">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div className="flex items-center gap-2 text-sm font-medium">
+                  <ListChecks className="h-4 w-4 text-primary" />
+                  {answeredCount} of {totalCount} answered
+                </div>
+                <Badge variant="outline" className={`text-sm ${score >= 80 ? STATUS_STYLES.conducted : score >= 60 ? "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30" : STATUS_STYLES.missed}`}>
+                  Current score: {score}%
+                </Badge>
+              </div>
+              <Progress value={pct} className="h-2" data-testid="checklist-progress" />
+              <p className="text-xs text-muted-foreground">
+                Score = average of the scored questions (Yes/No, True/False, and any ratings the author counts). Follow-up questions appear based on earlier answers.
+              </p>
+            </div>
+
+            {/* Visit location — smart Province → District → Facility cascade + GPS */}
+            <div className="rounded-xl border bg-card p-4 space-y-3" data-testid="conduct-location-card">
+              <div className="flex items-center gap-2 text-sm font-semibold">
+                <MapPinned className="h-4 w-4 text-indigo-500" /> Visit location
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Confirm where this visit took place. Pick the Province, District and Health Facility, then capture the on-site GPS point.
+              </p>
+              <FacilityCascadePicker
+                value={facilityId}
+                onChange={(id) => setFacilityId(id)}
+                showLabels
+              />
+              <div className="flex items-center gap-2 flex-wrap pt-1">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={captureVisitGps}
+                  disabled={capturingGps}
+                  data-testid="btn-capture-visit-gps"
+                >
+                  {capturingGps ? <Loader2 className="h-4 w-4 animate-spin" /> : <Crosshair className="h-4 w-4" />}
+                  {capturingGps ? "Capturing…" : gps ? "Re-capture GPS" : "Capture GPS"}
+                </Button>
+                {gps && (
+                  <span className="flex items-center gap-1 text-xs text-muted-foreground" data-testid="visit-gps-readout">
+                    <MapPin className="h-3 w-3" />
+                    {gps.lat.toFixed(5)}, {gps.lng.toFixed(5)}
+                    {gps.accuracy != null ? ` (±${Math.round(gps.accuracy)}m)` : ""}
+                  </span>
+                )}
+              </div>
             </div>
             {checklist.map((c) => {
               if (!isAnswerVisible(c, checklist)) return null;
@@ -1276,6 +1366,9 @@ function ConductDialog({ visit, facility, onClose, onSave, isSaving }: { visit: 
               followUpActions: followUp || null,
               status,
               score,
+              facilityId: facilityId ?? visit.facilityId,
+              gpsLatitude: gps ? String(gps.lat) : null,
+              gpsLongitude: gps ? String(gps.lng) : null,
               conductedDate: status === "conducted" ? new Date().toISOString() : visit.conductedDate,
               nextVisitDate: nextVisitDate || null,
             })}
