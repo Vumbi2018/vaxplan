@@ -4649,10 +4649,17 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/sessions/:id", ...auth, async (req: any, res) => {
+  app.get("/api/sessions/:id", ...auth, async (req: any, res, next) => {
     try {
+      // Session ids are integers. This param route is registered before the
+      // more specific string routes (/map, /history, /unmapped-antigens), so a
+      // non-numeric param (e.g. "map") must fall through to those handlers
+      // instead of being treated as an id (which threw and surfaced as a 500
+      // "Failed to fetch session" on GET /api/sessions/map).
+      const id = parseInt(req.params.id, 10);
+      if (!Number.isInteger(id) || String(id) !== req.params.id) return next();
       const dbUser = req.dbUser!;
-      const session = await storage.getSessionPlan(req.tenantId, parseInt(req.params.id));
+      const session = await storage.getSessionPlan(req.tenantId, id);
       if (!session) return res.status(404).json({ message: "Session not found" });
       const geoContext = await getFacilityHierarchy(session.facilityId, req.tenantId);
       if (!hasPermission(dbUser, "view_session_plans", geoContext)) {

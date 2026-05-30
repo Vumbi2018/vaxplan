@@ -1,0 +1,39 @@
+
+﻿
+injected.js:214 
+ GET https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit.dev/api/sessions/map 500 (Internal Server Error)
+
+injected.js:214 
+ GET https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit.dev/api/sessions/map 500 (Internal Server Error)
+UserManagement.tsx:668 Uncaught ReferenceError: getActiveTenantId is not defined
+    at UserManagement (UserManagement.tsx:668:26)
+UserManagement.tsx:668 Uncaught ReferenceError: getActiveTenantId is not defined
+    at UserManagement (UserManagement.tsx:668:26)
+injected.js:37 The above error occurred in the <UserManagement> component:
+
+    at UserManagement (https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit.dev/src/pages/UserManagement.tsx:662:21)
+    at Route (https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=93ec713f:323:16)
+    at Switch (https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=93ec713f:379:17)
+    at Suspense
+    at AuthenticatedRouter (https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit.dev/src/App.tsx?v=AAwcJ_sLj7-7Na5_VkcZF:162:28)
+    at main
+    at div
+    at div
+    at div
+    at Provider (https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit…unner/workspace/node_modules/.vite/deps/chunk-3RXG37ZK.js?v=93ec713f:38:15)
+    at TooltipProvider (https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit…rkspace/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=93ec713f:62:5)
+    at SidebarProvider (https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit.dev/src/components/ui/sidebar.tsx:59:3)
+    at AuthenticatedLayout (https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit.dev/src/App.tsx?v=AAwcJ_sLj7-7Na5_VkcZF:493:31)
+    at Route (https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=93ec713f:323:16)
+    at Switch (https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=93ec713f:379:17)
+    at Suspense
+    at Provider (https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit…unner/workspace/node_modules/.vite/deps/chunk-3RXG37ZK.js?v=93ec713f:38:15)
+    at TooltipProvider (https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit…rkspace/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=93ec713f:62:5)
+    at ThemeProvider (https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit.dev/src/components/ThemeProvider.tsx:20:33)
+    at QueryClientProvider (https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit…rkspace/node_modules/.vite/deps/@tanstack_react-query.js?v=93ec713f:2805:3)
+    at App
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+chunk-276SZO74.js?v=93ec713f:19413 Uncaught ReferenceError: getActiveTenantId is not defined
+    at UserManagement (UserManagement.tsx:668:26)
