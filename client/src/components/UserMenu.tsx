@@ -8,14 +8,17 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
-import { LogOut, User, Settings } from "lucide-react";
+import { LogOut, User, Settings, KeyRound } from "lucide-react";
 import type { User as UserType } from "@shared/schema";
+import { useState } from "react";
+import { ChangePasswordDialog } from "@/components/ChangePasswordDialog";
 
 interface UserMenuProps {
   user: UserType;
 }
 
 export function UserMenu({ user }: UserMenuProps) {
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const initials = [user.firstName, user.lastName]
     .filter(Boolean)
     .map((n) => n?.[0])
@@ -34,6 +37,7 @@ export function UserMenu({ user }: UserMenuProps) {
   }[user.role || "facility_clerk"];
 
   return (
+    <>
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" className="gap-2 px-2" data-testid="button-user-menu">
@@ -60,6 +64,16 @@ export function UserMenu({ user }: UserMenuProps) {
           <Settings className="mr-2 h-4 w-4" />
           Settings
         </DropdownMenuItem>
+        <DropdownMenuItem
+          onSelect={(e) => {
+            e.preventDefault();
+            setChangePasswordOpen(true);
+          }}
+          data-testid="menu-item-change-password"
+        >
+          <KeyRound className="mr-2 h-4 w-4" />
+          Change password
+        </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild data-testid="menu-item-logout">
           <a href="/api/logout" className="flex items-center cursor-pointer">
@@ -69,5 +83,7 @@ export function UserMenu({ user }: UserMenuProps) {
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
+    <ChangePasswordDialog open={changePasswordOpen} onOpenChange={setChangePasswordOpen} />
+    </>
   );
 }

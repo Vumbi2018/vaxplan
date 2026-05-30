@@ -23,8 +23,11 @@ import {
   Activity,
   Clock,
   Loader2,
+  KeyRound,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
+import { Label } from "@/components/ui/label";
 import { 
   Dialog, 
   DialogContent, 
@@ -524,6 +527,15 @@ const ALL_PERMISSIONS: { value: Permission; label: string; desc: string }[] = [
 export default function UserManagement() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { user: currentUser } = useAuth();
+  // Admin password create/reset is only allowed server-side for national
+  // admins (and platform admins). Gate the UI to those roles so we never show
+  // a control that would 403. Provincial coordinators can manage users but not
+  // set passwords.
+  const canManagePasswords =
+    currentUser?.role === "national_admin" ||
+    (currentUser?.role as string) === "national_program_manager" ||
+    !!(currentUser as any)?.isPlatformAdmin;
   const [searchTerm, setSearchTerm] = useState("");
   const [geoFilterProvinceId, setGeoFilterProvinceId] = useState<number | null>(null);
   const [geoFilterDistrictId, setGeoFilterDistrictId] = useState<number | null>(null);
@@ -559,6 +571,11 @@ export default function UserManagement() {
   const [addProvinceId, setAddProvinceId] = useState<number | null>(null);
   const [addDistrictId, setAddDistrictId] = useState<number | null>(null);
   const [addFacilityId, setAddFacilityId] = useState<number | null>(null);
+  const [addPassword, setAddPassword] = useState("");
+
+  // Admin password reset (inside the edit dialog).
+  const [resetPasswordValue, setResetPasswordValue] = useState("");
+  const [showAdminPassword, setShowAdminPassword] = useState(false);
 
   // ---- CSV bulk import state ---------------------------------------------
   // Open the import dialog with `isImporting`. The dialog has two phases:
@@ -780,20 +797,49 @@ export default function UserManagement() {
 
   const createUserMutation = useMutation({
     mutationFn: async (data: any) => {
+      const { password, ...userData } = data;
       const res = await fetch("/api/users", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        body: JSON.stringify(userData),
       });
       if (!res.ok) {
         throw new Error(await res.text() || "Failed to create user account");
       }
-      return res.json();
+      const created = await res.json();
+      // If the admin supplied an initial password, set it now so the new user
+      // can sign in with email + password right away. Use a direct fetch (never
+      // apiRequest) so the plaintext password is never queued to the offline
+      // outbox and we only report success on a confirmed server response.
+      if (password && created?.email) {
+        if (!navigator.onLine) {
+          throw new Error("You must be online to set a password.");
+        }
+        const pres = await fetch("/api/auth/set-password", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ email: created.email, password }),
+        });
+        if (!pres.ok) {
+          let msg = "User created, but setting the password failed.";
+          try {
+            const body = await pres.json();
+            if (body?.message) msg = body.message;
+          } catch {
+            /* non-JSON error */
+          }
+          throw new Error(msg);
+        }
+      }
+      return created;
     },
     onSuccess: (data) => {
       toast({
         title: "User created successfully",
-        description: `Registered new user account for ${data.firstName || data.email}`,
+        description: addPassword
+          ? `Account and password set for ${data.firstName || data.email}`
+          : `Registered new user account for ${data.firstName || data.email}`,
       });
       queryClient.invalidateQueries({ queryKey: ["/api/users"] });
       setIsAdding(false);
@@ -805,6 +851,7 @@ export default function UserManagement() {
       setAddProvinceId(null);
       setAddDistrictId(null);
       setAddFacilityId(null);
+      setAddPassword("");
       // Clear any active search / geo filters so the newly created user is
       // never hidden behind a filter the admin had set earlier.
       setSearchTerm("");
@@ -819,6 +866,51 @@ export default function UserManagement() {
         description: err.message,
       });
     }
+  });
+
+  // Admin reset of another user's password. Uses the same set-password
+  // endpoint as creation; the server authorizes only national/platform admins.
+  const resetPasswordMutation = useMutation({
+    mutationFn: async ({ email, password }: { email: string; password: string }) => {
+      // Direct fetch (never apiRequest) so the plaintext password is never
+      // queued to the offline outbox and success is only reported on a
+      // confirmed server response.
+      if (!navigator.onLine) {
+        throw new Error("You must be online to reset a password.");
+      }
+      const res = await fetch("/api/auth/set-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ email, password }),
+      });
+      if (!res.ok) {
+        let msg = "Reset failed.";
+        try {
+          const body = await res.json();
+          if (body?.message) msg = body.message;
+        } catch {
+          /* non-JSON error */
+        }
+        throw new Error(msg);
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Password reset",
+        description: "The new password is active. Share it securely with the user.",
+      });
+      setResetPasswordValue("");
+      setShowAdminPassword(false);
+    },
+    onError: (err: any) => {
+      toast({
+        variant: "destructive",
+        title: "Reset failed",
+        description: String(err?.message || "").replace(/^\d+:\s*/, "") || "Please try again.",
+      });
+    },
   });
 
   const updateAccessMutation = useMutation({
@@ -1516,6 +1608,56 @@ export default function UserManagement() {
                     </div>
                   </div>
 
+                  {/* Reset password (national/platform admins only) */}
+                  {canManagePasswords && (
+                    <div className="pt-4 border-t border-border mt-4 space-y-2">
+                      <span className="text-sm font-bold text-foreground flex items-center gap-1.5">
+                        <KeyRound className="h-4 w-4 text-indigo-500" />
+                        Reset Password
+                      </span>
+                      <span className="text-xs text-muted-foreground block">
+                        Set a new sign-in password for {userFirstName || selectedUser.email}. They can change it later from their account menu. Min 8 characters — share it securely.
+                      </span>
+                      <div className="flex items-center gap-2 pt-1">
+                        <div className="relative flex-1">
+                          <Input
+                            type={showAdminPassword ? "text" : "password"}
+                            value={resetPasswordValue}
+                            onChange={(e) => setResetPasswordValue(e.target.value)}
+                            placeholder="New password"
+                            autoComplete="new-password"
+                            className="bg-background border-border text-foreground rounded-xl pr-12"
+                            data-testid="input-reset-password"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowAdminPassword((s) => !s)}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground text-xs"
+                            aria-label={showAdminPassword ? "Hide password" : "Show password"}
+                          >
+                            {showAdminPassword ? "Hide" : "Show"}
+                          </button>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => {
+                            if (resetPasswordValue.length < 8) {
+                              toast({ title: "Password too short", description: "The new password must be at least 8 characters.", variant: "destructive" });
+                              return;
+                            }
+                            resetPasswordMutation.mutate({ email: selectedUser.email || "", password: resetPasswordValue });
+                          }}
+                          disabled={resetPasswordMutation.isPending || !resetPasswordValue}
+                          className="rounded-xl font-semibold text-xs px-4 py-2 whitespace-nowrap"
+                          data-testid="button-reset-password"
+                        >
+                          {resetPasswordMutation.isPending ? "Setting..." : "Set Password"}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Red zone: Delete User Account */}
                   <div className="pt-4 border-t border-destructive/20 mt-4 flex items-center justify-between">
                     <div>
@@ -1980,6 +2122,35 @@ export default function UserManagement() {
               </select>
             </div>
 
+            {/* Optional initial password (national/platform admins only) */}
+            {canManagePasswords && (
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-muted-foreground">Initial Password (optional)</label>
+                <div className="relative">
+                  <Input
+                    type={showAdminPassword ? "text" : "password"}
+                    value={addPassword}
+                    onChange={(e) => setAddPassword(e.target.value)}
+                    placeholder="Leave blank to set later"
+                    autoComplete="new-password"
+                    className="bg-background border-border text-foreground rounded-xl pr-9"
+                    data-testid="input-add-password"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowAdminPassword((s) => !s)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground text-xs"
+                    aria-label={showAdminPassword ? "Hide password" : "Show password"}
+                  >
+                    {showAdminPassword ? "Hide" : "Show"}
+                  </button>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  If set, the user can sign in with their email and this password right away (min 8 characters). Share it securely.
+                </p>
+              </div>
+            )}
+
             {/* User Primary Scoped Cascade (Province -> District -> Facility) */}
             <div className="space-y-3 rounded-xl border p-4 bg-secondary/30">
               <span className="text-xs font-bold text-indigo-500 uppercase tracking-wider block">Scope Location Scopes</span>
@@ -2064,6 +2235,10 @@ export default function UserManagement() {
                   toast({ title: "Email required", description: "Please supply a valid email address.", variant: "destructive" });
                   return;
                 }
+                if (addPassword && addPassword.length < 8) {
+                  toast({ title: "Password too short", description: "The initial password must be at least 8 characters.", variant: "destructive" });
+                  return;
+                }
                 createUserMutation.mutate({
                   email: addEmail,
                   firstName: addFirstName,
@@ -2073,6 +2248,7 @@ export default function UserManagement() {
                   provinceId: addProvinceId,
                   districtId: addDistrictId,
                   facilityId: addFacilityId,
+                  password: canManagePasswords && addPassword ? addPassword : undefined,
                 });
               }}
               disabled={createUserMutation.isPending}

@@ -111,6 +111,11 @@ const defaultFaqs = [
       "Yes — national admins can. Open Supervision and click 'Manage Checklists', then 'New checklist'. Give it a name and add questions, choosing a type for each (Yes/No, True/False, short text, number, single choice, multiple choice, rating, date, GPS location, or photo). Each question is highly configurable: click 'Add a follow-up question' under any question to branch off a follow-up that only appears when this question gets a certain answer (any question can have follow-ups, including the first one, and you can 'Detach' one later), allow multiple entries (a repeat, with an optional name and limit per entry), and decide whether it counts toward the visit score. Mark the checklist Active and everyone in the country can pick it when scheduling a visit. Only national admins can create, edit, or delete the checklists.",
   },
   {
+    question: "How do I change or reset my password?",
+    answer:
+      "To change your own password, click your name in the top-right corner and choose 'Change password'. Enter your current password (leave it blank if you've never set one — for example if you normally sign in through your organisation's single sign-on), then type your new password twice. Passwords must be at least 8 characters. If you've forgotten your password, click 'Forgot password?' on the sign-in screen and enter your email — your administrator is notified so they can set a new one for you and share it securely. National and platform administrators can also set an initial password when creating a user, and reset any user's password from that user's edit screen under 'Reset Password'.",
+  },
+  {
     question: "What is the number next to my name at the top?",
     answer:
       "That's a live count of how many people are online in your country right now — anyone with the app open in the last few minutes. The app sends a quiet heartbeat while your tab is open, so you stay counted even if you pause on one page without clicking around. It sits beside your profile in the header with a small green dot and refreshes on its own. It's just a count; the detailed 'who's online' list stays with administrators on the Site activity panel.",

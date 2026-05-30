@@ -247,4 +247,47 @@ export function registerPasswordAuthRoutes(app: Express) {
       return res.status(500).json({ message: "Set password failed." });
     }
   });
+
+  // Self-service change-password. The signed-in user updates their own
+  // password. If they already have a password they must supply the correct
+  // current one (verified with bcrypt); if they have none yet (e.g. an SSO
+  // user setting a password for the first time), currentPassword is not
+  // required. Admin-driven resets use /api/auth/set-password instead.
+  app.post("/api/auth/change-password", isAuthenticated, async (req: any, res: Response) => {
+    try {
+      const caller = await storage.getUser(req.user?.claims?.sub ?? req.user?.id);
+      if (!caller) return res.status(401).json({ message: "Unauthorized" });
+
+      const currentPassword = String((req.body && req.body.currentPassword) || "");
+      const newPassword = String((req.body && req.body.newPassword) || "");
+
+      if (!newPassword) {
+        return res.status(400).json({ message: "A new password is required." });
+      }
+      if (newPassword.length < MIN_PASSWORD_LEN) {
+        return res.status(400).json({ message: `Password must be at least ${MIN_PASSWORD_LEN} characters.` });
+      }
+
+      // Re-read from the DB to get the authoritative passwordHash.
+      const dbUser = await storage.getUserByEmail(String(caller.email || "").toLowerCase());
+      const existingHash = dbUser?.passwordHash || null;
+
+      if (existingHash) {
+        if (!currentPassword) {
+          return res.status(400).json({ message: "Your current password is required." });
+        }
+        const ok = await bcrypt.compare(currentPassword, existingHash);
+        if (!ok) {
+          return res.status(400).json({ message: "Your current password is incorrect." });
+        }
+      }
+
+      const hash = await hashPassword(newPassword);
+      await db.update(users).set({ passwordHash: hash, updatedAt: new Date() }).where(eq(users.id, caller.id));
+      return res.json({ ok: true });
+    } catch (err) {
+      console.error("[password-auth] change-password failed:", err);
+      return res.status(500).json({ message: "Change password failed." });
+    }
+  });
 }

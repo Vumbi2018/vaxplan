@@ -130,6 +130,19 @@ If you signed up but no role has been granted yet, you'll see a
 needs to confirm your role before you can use the system. They will
 receive an inbox notification automatically.
 
+**Passwords (email sign-in):**
+
+- **Change your own password.** Click your name in the top-right
+  corner and choose **Change password**. Enter your current password
+  (leave it blank if you've never set one), then your new password
+  twice. Passwords must be at least 8 characters.
+- **Forgot your password?** On the sign-in screen click **Forgot
+  password?** and enter your email. Your administrator is notified so
+  they can set a new one for you, which they'll share with you
+  securely.
+- **Administrators** can set or reset passwords for users — see
+  section 8.
+
 ---
 
 ## 4. The home screen and switching country
@@ -402,7 +415,12 @@ cannot edit users or facilities, but you can see them).
 National admins are the power users for your country. Your modules:
 
 - **Users.** Invite users, assign roles, suspend or reactivate
-  accounts. You can also bulk-import users from a CSV.
+  accounts. You can also bulk-import users from a CSV. When creating a
+  user you can set an **initial password** so they can sign in right
+  away, and you can **reset any user's password** later from the
+  user's edit screen (open a user → **Reset Password**). Passwords must
+  be at least 8 characters — share them with the user securely. (Only
+  national/platform admins see these password controls.)
 - **Facilities.** The registry of all facilities. Import from CSV (a
   template is downloadable), edit GPS coordinates, merge duplicates,
   or retire facilities.

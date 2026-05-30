@@ -8,6 +8,9 @@
 - Click **Sign in** and complete your organisation's login.
 - The first time, you'll land on your facility's dashboard
   automatically.
+- **Change your password** anytime: click your name (top-right) →
+  **Change password**. Forgot it? Use **Forgot password?** on the
+  sign-in screen and your admin will help.
 
 ## 2. Build a quarterly microplan
 1. Sidebar → **Microplans → Routine**
