@@ -242,21 +242,27 @@ export function registerPasswordAuthRoutes(app: Express) {
         callerRoles.includes("national_admin") ||
         callerRoles.includes("national_program_manager");
 
-      // Authorize ONLY within the caller's HOME tenant — never the active
-      // "view" tenant. req.tenantId follows session.viewTenantId in the
-      // cross-tenant browsing model, so comparing against it would let an admin
-      // switch into another tenant and reset a foreign user's password. The raw
-      // `caller.tenantId` column is frequently null for legitimate home-tenant
-      // admins (the home tenant is carried in the session, resolved via SSO
-      // domain / approved invite), so fall back to `session.tenantId`, which
-      // login and tenantContext only ever set to the HOME tenant (switch-tenant
-      // only mutates viewTenantId). Newly created users live in this tenant for
-      // the common same-tenant flow.
-      const homeTenantId = caller.tenantId ?? req.session?.tenantId ?? null;
-      const isSameTenantNationalAdmin =
-        !!homeTenantId && target.tenantId === homeTenantId && isNationalAdminRole;
+      // Tenant scope MUST match the other user-management routes
+      // (POST/PATCH/DELETE /api/users), which authorize a national admin to
+      // manage users within the tenant they are operating in: their home
+      // tenant, or a tenant they've switched to view via the country switcher.
+      // `req.tenantId` (resolved by tenantContext) is exactly that operating
+      // tenant, and the target user lives in it — the create-user flow created
+      // them there milliseconds earlier. Making password-setting stricter than
+      // user creation/deletion (e.g. home-tenant-only) only breaks the
+      // legitimate "create user with initial password" and admin-reset flows
+      // while leaving the create/delete path open, so it must not be stricter.
+      // The raw caller.tenantId / session.tenantId are kept as fallbacks for
+      // the rare case req.tenantId is unset. A future unified
+      // crossTenantWriteGuard, if added, must cover ALL of these routes together.
+      const operatingTenantId =
+        req.tenantId ?? caller.tenantId ?? req.session?.tenantId ?? null;
+      const isAuthorizedNationalAdmin =
+        isNationalAdminRole &&
+        !!operatingTenantId &&
+        target.tenantId === operatingTenantId;
 
-      if (!isSelf && !isPlatformAdmin && !isSameTenantNationalAdmin) {
+      if (!isSelf && !isPlatformAdmin && !isAuthorizedNationalAdmin) {
         return res.status(403).json({ message: "Forbidden" });
       }
 

@@ -6,7 +6,7 @@
 - [Release token must be ASCII](release-token-ascii.md) — RELEASE_DOWNLOAD_TOKEN sent via x-release-token header; non-ASCII chars garble over HTTP (latin1) and cause phantom 401s. Use hex.
 - [Custom layers admin gating](custom-layers-admin-policy.md) — custom-layer management is national_admin only (server requireAdmin excludes gis_specialist); gate client on role, not isAdmin().
 - [National-admin-only client gates](national-admin-client-gating.md) — isAdmin() includes gis_specialist; for any national_admin-only server gate (requireAdmin) gate the client on user.role === "national_admin", never isAdmin().
-- [Home vs view tenant in authz](home-vs-view-tenant-authz.md) — "is target my tenant" write gates must use home tenant (caller.tenantId ?? session.tenantId), NOT req.tenantId (= view tenant, switchable); recognize roles via role AND roles[].
+- [Home vs view tenant in authz](home-vs-view-tenant-authz.md) — don't make one route's tenant gate stricter than its siblings; set-password scopes to operating tenant (req.tenantId) like POST/PATCH/DELETE /api/users; recognize roles via role AND roles[].
 - [Native shell API base + CORS](native-shell-api-base.md) — packaged Capacitor/Electron shells need remote VITE_API_BASE_URL, custom secure origin (app://local), forced credentials + SameSite=None, strict CORS allowlist (never wildcard).
 - [Realtime websocket change channel](realtime-ws-channel.md) — live-sync poke pattern: res.on('finish') broadcasts tenant pokes (covers REST + sync/batch), /ws upgrade must ignore non-/ws paths or it breaks Vite HMR.
 - [UNICEF blue brand palette](unicef-blue-theme.md) — theme keyed to UNICEF cyan #1CABE2; light-mode --primary must be hsl(197 80% 36%) for AA white text, reserve bright cyan for accents.
