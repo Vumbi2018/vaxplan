@@ -36,3 +36,9 @@ id = "zic2Fig88_cDJRI5IURSL"
 uri = "file://attached_assets/screenshots/05-facilities.png"
 type = "image"
 title = "Facilities"
+
+[[outputs]]
+id = "xgMR6NSU6Dgwqn47iqWHs"
+uri = "file://docs/VAXPLAN_STAKEHOLDER_BRIEF.md"
+type = "text"
+title = "VaxPlan — Stakeholder Briefing (PowerPoint-ready)"
