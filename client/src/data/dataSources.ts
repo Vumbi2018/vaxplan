@@ -195,6 +195,20 @@ export const dataSourceCategories: DataSourceCategory[] = [
   },
 ];
 
+/**
+ * Tile/basemap attribution strings rendered directly on every Leaflet map via
+ * Leaflet's built-in attribution control. The open licences behind these tiles
+ * (OpenStreetMap's ODbL, Esri's terms) require the credit to be visible on the
+ * map itself — not only on the Data Sources page — so every map component reuses
+ * these constants as the single source of truth. Keep them in sync with the
+ * "Maps & Basemaps" licences listed above.
+ */
+export const OSM_TILE_ATTRIBUTION =
+  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+
+export const ESRI_IMAGERY_ATTRIBUTION =
+  'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics and the GIS community';
+
 export const acknowledgements = [
   "VaxPlan is built on open data and open-source software. We are grateful to the OpenStreetMap community, geoBoundaries, WorldPop, UN OCHA / HDX, the World Health Organization, UNICEF, Gavi, DHIS2, and the maintainers of the many open-source libraries listed here.",
   "Boundary, population, and facility datasets remain the property of their respective owners and are used under their published licenses. Always cite the original source when reusing this data outside VaxPlan.",

@@ -28,6 +28,7 @@ import {
 } from "recharts";
 import { MapContainer, TileLayer, CircleMarker, Popup } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
+import { OSM_TILE_ATTRIBUTION } from "@/data/dataSources";
 
 interface OnlineUser {
   userId: string | null;
@@ -324,7 +325,7 @@ export function SiteActivityPanel() {
                     style={{ height: "100%", width: "100%" }}
                   >
                     <TileLayer
-                      attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                      attribution={OSM_TILE_ATTRIBUTION}
                       url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                     />
                     {mapped.map((u, i) => (

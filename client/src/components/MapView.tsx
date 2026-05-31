@@ -30,6 +30,7 @@ import {
 import { FacilityCascadePicker } from "@/components/FacilityCascadePicker";
 import { useAuth } from "@/hooks/useAuth";
 import { usePersistedBasemap } from "@/hooks/usePersistedBasemap";
+import { OSM_TILE_ATTRIBUTION, ESRI_IMAGERY_ATTRIBUTION } from "@/data/dataSources";
 import { canCreateSessionPlan } from "@/lib/permissions";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -1310,12 +1311,12 @@ export function MapView({
       >
         {basemap === "osm" ? (
           <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            attribution={OSM_TILE_ATTRIBUTION}
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
         ) : (
           <TileLayer
-            attribution='Imagery &copy; <a href="https://www.mapbox.com/">Mapbox</a>'
+            attribution={ESRI_IMAGERY_ATTRIBUTION}
             url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
           />
         )}
@@ -4104,12 +4105,12 @@ export function MapView({
       >
         {basemap === "osm" ? (
           <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            attribution={OSM_TILE_ATTRIBUTION}
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
         ) : (
           <TileLayer
-            attribution='Imagery &copy; <a href="https://www.mapbox.com/">Mapbox</a>'
+            attribution={ESRI_IMAGERY_ATTRIBUTION}
             url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
             maxNativeZoom={17}
             maxZoom={20}

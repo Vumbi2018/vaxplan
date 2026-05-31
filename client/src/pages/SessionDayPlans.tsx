@@ -4,6 +4,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { MapContainer, TileLayer, Marker, Polygon as LeafletPolygon, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { OSM_TILE_ATTRIBUTION } from "@/data/dataSources";
 import { Label } from "@/components/ui/label";
 import {
   applyDefaultLeafletPinIcon,
@@ -1595,7 +1596,7 @@ export default function SessionDayPlans() {
                       >
                         <TileLayer
                           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                          attribution="&copy; OpenStreetMap contributors"
+                          attribution={OSM_TILE_ATTRIBUTION}
                         />
                         <PopulationWmsLayer overlay={populationOverlay} />
                         <QuickAddMapEvents />

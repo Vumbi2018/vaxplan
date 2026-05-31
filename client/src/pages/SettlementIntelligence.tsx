@@ -10,6 +10,7 @@ import {
 } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { OSM_TILE_ATTRIBUTION } from "@/data/dataSources";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -455,7 +456,7 @@ export default function SettlementIntelligence() {
           >
             {/* Beautiful light Voyager map tiles matching light aesthetic */}
             <TileLayer
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+              attribution={`${OSM_TILE_ATTRIBUTION} &copy; <a href="https://carto.com/attributions">CARTO</a>`}
               url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
             />
             

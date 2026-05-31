@@ -128,6 +128,7 @@ import { Switch } from "@/components/ui/switch";
 import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { OSM_TILE_ATTRIBUTION } from "@/data/dataSources";
 import {
   applyDefaultLeafletPinIcon,
   createFilledPinIcon,
@@ -3367,7 +3368,7 @@ export default function ClientLogbook() {
                     >
                       <TileLayer
                         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                        attribution={OSM_TILE_ATTRIBUTION}
                       />
                       <ChangeMapView center={mapCenter} />
                       <MapEvents onClick={handleMapClick} />

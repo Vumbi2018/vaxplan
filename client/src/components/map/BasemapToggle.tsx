@@ -2,6 +2,10 @@ import { TileLayer } from "react-leaflet";
 import { Map as MapIcon, Satellite } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { usePersistedBasemap, type Basemap } from "@/hooks/usePersistedBasemap";
+import {
+  OSM_TILE_ATTRIBUTION,
+  ESRI_IMAGERY_ATTRIBUTION,
+} from "@/data/dataSources";
 
 export { usePersistedBasemap };
 export type { Basemap };
@@ -10,14 +14,14 @@ export function BasemapTileLayer({ basemap }: { basemap: Basemap }) {
   if (basemap === "satellite") {
     return (
       <TileLayer
-        attribution='Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics'
+        attribution={ESRI_IMAGERY_ATTRIBUTION}
         url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
       />
     );
   }
   return (
     <TileLayer
-      attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+      attribution={OSM_TILE_ATTRIBUTION}
       url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
     />
   );

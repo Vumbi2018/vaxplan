@@ -7,6 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MapContainer, TileLayer, Marker, Polygon as LeafletPolygon, Popup, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { OSM_TILE_ATTRIBUTION } from "@/data/dataSources";
 import { createOutlinePinIcon } from "@/lib/mapIcons";
 import {
   usePopulationOverlay,
@@ -1942,7 +1943,7 @@ export default function Facilities() {
                               className="w-full h-full"
                             >
                               <TileLayer
-                                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                                attribution={OSM_TILE_ATTRIBUTION}
                                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                               />
                               <PopulationWmsLayer overlay={populationOverlay} />
@@ -2181,7 +2182,7 @@ export default function Facilities() {
                             className="w-full h-full"
                           >
                             <TileLayer
-                              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                              attribution={OSM_TILE_ATTRIBUTION}
                               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                             />
                             <MapResizer />
@@ -2445,7 +2446,7 @@ export default function Facilities() {
                         className="w-full h-full"
                       >
                         <TileLayer
-                          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                          attribution={OSM_TILE_ATTRIBUTION}
                           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                         />
                         <PopulationWmsLayer overlay={populationOverlay} />
@@ -2786,7 +2787,7 @@ export default function Facilities() {
                   className="h-full w-full"
                 >
                   <TileLayer
-                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                    attribution={OSM_TILE_ATTRIBUTION}
                     url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                   />
                   <MapResizer />

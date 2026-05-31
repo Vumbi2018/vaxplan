@@ -30,6 +30,7 @@ import type { Facility, Llg } from "@shared/schema";
 import { MapContainer, TileLayer, Marker, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { OSM_TILE_ATTRIBUTION } from "@/data/dataSources";
 
 // Fix standard Leaflet default marker icon displacement/missing asset issues
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -334,7 +335,7 @@ export function AddCommunityDialog({
                 >
                   <TileLayer
                     url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                    attribution={OSM_TILE_ATTRIBUTION}
                   />
                   <MapEvents />
                   {latVal !== null && lngVal !== null && !isNaN(latVal) && !isNaN(lngVal) && (
