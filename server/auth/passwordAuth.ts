@@ -5,6 +5,7 @@ import { db } from "../db";
 import { users } from "@shared/schema";
 import { storage } from "../storage";
 import { isAuthenticated } from "../replitAuth";
+import { tenantContext } from "./tenantResolver";
 
 const BCRYPT_ROUNDS = 12;
 const MIN_PASSWORD_LEN = 8;
@@ -211,7 +212,7 @@ export function registerPasswordAuthRoutes(app: Express) {
     });
   });
 
-  app.post("/api/auth/set-password", isAuthenticated, async (req: any, res: Response) => {
+  app.post("/api/auth/set-password", isAuthenticated, tenantContext, async (req: any, res: Response) => {
     try {
       const caller = await storage.getUser(req.user?.claims?.sub ?? req.user?.id);
       if (!caller) return res.status(401).json({ message: "Unauthorized" });
@@ -230,10 +231,30 @@ export function registerPasswordAuthRoutes(app: Express) {
 
       const isSelf = target.id === caller.id;
       const isPlatformAdmin = !!caller.isPlatformAdmin;
+
+      // Recognize national-admin status from EITHER the legacy `role` string or
+      // the `roles[]` array — mirrors hasPermission's `hasNationalAdminRole`, so
+      // an admin whose status lives only in the array isn't wrongly rejected.
+      const callerRoles: string[] = Array.isArray(caller.roles) ? (caller.roles as string[]) : [];
+      const isNationalAdminRole =
+        caller.role === "national_admin" ||
+        caller.role === "national_program_manager" ||
+        callerRoles.includes("national_admin") ||
+        callerRoles.includes("national_program_manager");
+
+      // Authorize ONLY within the caller's HOME tenant — never the active
+      // "view" tenant. req.tenantId follows session.viewTenantId in the
+      // cross-tenant browsing model, so comparing against it would let an admin
+      // switch into another tenant and reset a foreign user's password. The raw
+      // `caller.tenantId` column is frequently null for legitimate home-tenant
+      // admins (the home tenant is carried in the session, resolved via SSO
+      // domain / approved invite), so fall back to `session.tenantId`, which
+      // login and tenantContext only ever set to the HOME tenant (switch-tenant
+      // only mutates viewTenantId). Newly created users live in this tenant for
+      // the common same-tenant flow.
+      const homeTenantId = caller.tenantId ?? req.session?.tenantId ?? null;
       const isSameTenantNationalAdmin =
-        caller.tenantId &&
-        target.tenantId === caller.tenantId &&
-        (caller.role === "national_admin" || caller.role === "national_program_manager");
+        !!homeTenantId && target.tenantId === homeTenantId && isNationalAdminRole;
 
       if (!isSelf && !isPlatformAdmin && !isSameTenantNationalAdmin) {
         return res.status(403).json({ message: "Forbidden" });

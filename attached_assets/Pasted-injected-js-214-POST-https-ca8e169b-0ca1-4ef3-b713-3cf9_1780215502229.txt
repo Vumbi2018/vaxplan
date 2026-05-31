@@ -1,0 +1,30 @@
+injected.js:214  POST https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit.dev/api/auth/set-password 403 (Forbidden)
+apply @ injected.js:214
+(anonymous) @ main.tsx:99
+(anonymous) @ UserManagement.tsx:829
+await in (anonymous)
+fn @ @tanstack_react-query.js?v=93ec713f:1189
+run @ @tanstack_react-query.js?v=93ec713f:494
+start @ @tanstack_react-query.js?v=93ec713f:536
+execute @ @tanstack_react-query.js?v=93ec713f:1225
+await in execute
+mutate @ @tanstack_react-query.js?v=93ec713f:2630
+(anonymous) @ @tanstack_react-query.js?v=93ec713f:3295
+(anonymous) @ UserManagement.tsx:2253
+callCallback2 @ chunk-276SZO74.js?v=93ec713f:3674
+invokeGuardedCallbackDev @ chunk-276SZO74.js?v=93ec713f:3699
+invokeGuardedCallback @ chunk-276SZO74.js?v=93ec713f:3733
+invokeGuardedCallbackAndCatchFirstError @ chunk-276SZO74.js?v=93ec713f:3736
+executeDispatch @ chunk-276SZO74.js?v=93ec713f:7014
+processDispatchQueueItemsInOrder @ chunk-276SZO74.js?v=93ec713f:7034
+processDispatchQueue @ chunk-276SZO74.js?v=93ec713f:7043
+dispatchEventsForPlugins @ chunk-276SZO74.js?v=93ec713f:7051
+(anonymous) @ chunk-276SZO74.js?v=93ec713f:7174
+batchedUpdates$1 @ chunk-276SZO74.js?v=93ec713f:18913
+batchedUpdates @ chunk-276SZO74.js?v=93ec713f:3579
+dispatchEventForPluginEventSystem @ chunk-276SZO74.js?v=93ec713f:7173
+dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-276SZO74.js?v=93ec713f:5478
+dispatchEvent @ chunk-276SZO74.js?v=93ec713f:5472
+dispatchDiscreteEvent @ chunk-276SZO74.js?v=93ec713f:5449Understand this error
+faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=http://ca8e169b-0ca1-4ef3-b713…:1  GET https://t1.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=http://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit.dev&size=32 404 (Not Found)Understand this error
+injected.js:214  POST https://ca8e169b-0ca1-4ef3-b713-3cf9f5df8381-00-3ezbyhzujzwhu.picard.replit.dev/api/users 400 (Bad Request)

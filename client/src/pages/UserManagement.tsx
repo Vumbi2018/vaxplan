@@ -543,9 +543,18 @@ export default function UserManagement() {
   // tenant. Showing it for the right roles and letting the server 403 handle
   // the rare cross-tenant case is correct and robust.
   const isPlatformAdmin = !!(currentUser as any)?.isPlatformAdmin;
+  // Recognize the password-management roles from EITHER the legacy `role`
+  // string or the `roles[]` array, mirroring the server's set-password gate so
+  // the UI control isn't hidden from an admin whose status lives only in the
+  // array.
+  const currentUserRoles: string[] = Array.isArray((currentUser as any)?.roles)
+    ? ((currentUser as any).roles as string[])
+    : [];
   const hasPasswordRole =
     currentUser?.role === "national_admin" ||
-    (currentUser?.role as string) === "national_program_manager";
+    (currentUser?.role as string) === "national_program_manager" ||
+    currentUserRoles.includes("national_admin") ||
+    currentUserRoles.includes("national_program_manager");
   const canManagePasswords = isPlatformAdmin || hasPasswordRole;
   const [searchTerm, setSearchTerm] = useState("");
   const [geoFilterProvinceId, setGeoFilterProvinceId] = useState<number | null>(null);
