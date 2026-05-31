@@ -42,3 +42,15 @@ id = "xgMR6NSU6Dgwqn47iqWHs"
 uri = "file://docs/VAXPLAN_STAKEHOLDER_BRIEF.md"
 type = "text"
 title = "VaxPlan — Stakeholder Briefing (PowerPoint-ready)"
+
+[[outputs]]
+id = "QlJBKJpBe0Cm_pQQX5WhH"
+uri = "file://docs/VAXPLAN_ONE_PAGER.pdf"
+type = "pdf"
+title = "VaxPlan — One-Page Summary (PDF, ready to attach)"
+
+[[outputs]]
+id = "aBKXW3BJye8M2FEsq9kKS"
+uri = "file://docs/LINKEDIN_POSTS.md"
+type = "text"
+title = "VaxPlan — LinkedIn Posts (short + long + tips)"
