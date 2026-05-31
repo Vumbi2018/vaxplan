@@ -85,7 +85,7 @@ import {
 import { z } from "zod";
 import { db, pool } from "./db";
 import { readFileSync, existsSync, readdirSync, createReadStream, createWriteStream, writeFileSync, mkdirSync, unlinkSync } from "fs";
-import { join } from "path";
+import { join, basename } from "path";
 import { eq, and, desc, ne, inArray, gte, lte, like, isNull, gt, sql as dsql } from "drizzle-orm";
 import {
   fetchGeoBoundariesGeoJSON,
@@ -4335,10 +4335,18 @@ export async function registerRoutes(
       let geotiffFile = "";
 
       if (reqFile) {
-        // Universal Selection: stream the specific requested file if it exists safely
-        const safePath = join(resourcesDir, reqFile);
-        if (existsSync(safePath) && !reqFile.includes("..")) {
-          geotiffFile = reqFile;
+        // Universal Selection: stream the specific requested raster, but only by
+        // bare filename. Strip any path components (basename), require a GeoTIFF
+        // extension, and confirm the name is actually present in Resources/. This
+        // prevents path traversal / arbitrary-file reads via a crafted ?file=.
+        const safeName = basename(reqFile);
+        const isTiff = /\.(tif|tiff)$/i.test(safeName);
+        if (
+          safeName === reqFile &&
+          isTiff &&
+          readdirSync(resourcesDir).includes(safeName)
+        ) {
+          geotiffFile = safeName;
         } else {
           return res.status(404).json({ message: `Requested GeoTIFF population file '${reqFile}' not found.` });
         }
@@ -4355,19 +4363,24 @@ export async function registerRoutes(
         const countryCode = (tenant.countryCode || "").toLowerCase();
         const files = readdirSync(resourcesDir);
 
-        // 1. Prioritize high-resolution 100m gridded population rasters
+        // 1. Prefer the optimized ~1km gridded population raster. These are a
+        //    few MB each (vs. ~63 MB for the Zambia 100m file) so they stream
+        //    reliably through the hosting edge proxy and cache cheaply offline.
+        //    The 100m source files would exceed the proxy's response budget and
+        //    surface to the client as a hard "HTTP Error 500".
         geotiffFile = files.find((f: string) => {
           const lowerF = f.toLowerCase();
           const matchesTenant = lowerF.includes(tenantCode) || (countryCode && lowerF.includes(countryCode));
-          return matchesTenant && lowerF.includes("pop") && lowerF.includes("100m") && (lowerF.endsWith(".tif") || lowerF.endsWith(".tiff"));
+          return matchesTenant && lowerF.includes("pop") && lowerF.includes("1km") && (lowerF.endsWith(".tif") || lowerF.endsWith(".tiff"));
         }) || "";
 
-        // 2. Fallback to 1km gridded population raster
+        // 2. Fallback to the high-resolution 100m raster (used for countries
+        //    that don't yet have an optimized 1km version generated).
         if (!geotiffFile) {
           geotiffFile = files.find((f: string) => {
             const lowerF = f.toLowerCase();
             const matchesTenant = lowerF.includes(tenantCode) || (countryCode && lowerF.includes(countryCode));
-            return matchesTenant && lowerF.includes("pop") && lowerF.includes("1km") && (lowerF.endsWith(".tif") || lowerF.endsWith(".tiff"));
+            return matchesTenant && lowerF.includes("pop") && lowerF.includes("100m") && (lowerF.endsWith(".tif") || lowerF.endsWith(".tiff"));
           }) || "";
         }
         
@@ -4452,8 +4465,32 @@ export async function registerRoutes(
       }
 
       const files = readdirSync(resourcesDir);
-      const rasters = files
-        .filter((f) => f.endsWith(".tif") || f.endsWith(".tiff"))
+      const tiffs = files.filter((f) => f.endsWith(".tif") || f.endsWith(".tiff"));
+
+      // Extract the ISO3 country token from a population raster filename
+      // (e.g. "zmb_pop_2026_CN_100m_R2025A_v1.tif" -> "zmb"). Returns null for
+      // non-population rasters (travel contours, etc.).
+      const popCountry = (f: string): string | null => {
+        const m = f.toLowerCase().match(/^([a-z]{3})_pop_/);
+        return m ? m[1] : null;
+      };
+
+      // Which countries have an optimized 1km population raster? When one exists
+      // we hide that country's heavy 100m population file from the picker: the
+      // 100m Zambia file (~63 MB) exceeds the hosting edge proxy's response
+      // budget and fails to stream ("HTTP Error 500"), so it must not be offered
+      // as a selectable layer.
+      const optimizedCountries = new Set(
+        tiffs
+          .filter((f) => f.toLowerCase().includes("1km") && popCountry(f))
+          .map((f) => popCountry(f)!),
+      );
+
+      const rasters = tiffs
+        .filter((f) => {
+          const isHeavy100mPop = f.toLowerCase().includes("100m") && popCountry(f);
+          return !(isHeavy100mPop && optimizedCountries.has(popCountry(f)!));
+        })
         .map((f) => {
           let country = "Universal";
           let resolution = "1km";

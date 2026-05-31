@@ -20,3 +20,4 @@
 - [Free IP-geolocation providers](ip-geolocation-providers.md) — ip-api HTTPS & ipwho.is both 403 server-side on free tier; use ipapi.co. Cache successes only, coalesce in-flight lookups; verify in Node runtime not curl.
 - [Radix popover unclickable in Dialog](radix-popover-in-dialog-zindex.md) — popover/combobox renders behind modal Dialog because popper copies content z-index; fix is content z-index above dialog (ladder dialog 99999 < popover 100000 < toast 100001), NOT the `modal` prop.
 - [Day-plan required-field visibility](dayplan-required-field-visibility.md) — leadVaccinator is required by dayPlanFormSchema for ALL plan types; its input must render outside the campaign-only block or routine day-plans silently can't save.
+- [GeoTIFF raster edge-proxy size limit](raster-edge-proxy-size-limit.md) — big WorldPop 100m rasters (Zambia ~63MB) 500 at the edge proxy; serve gdalwarp-downsampled ~1km by default, lock ?file= to basename+tiff+readdir.
