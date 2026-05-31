@@ -93,3 +93,4 @@
 | Stock alert / wastage threshold | Your in-charge or district manager |
 | Cannot sign in | Your IT focal point |
 | App keeps crashing | Open Help → Send feedback (a national admin will see it) |
+| Where does the map / population / facility data come from? | Sidebar → **Data Sources** lists every source and its licence |

@@ -64,6 +64,7 @@ const DropoutRates = lazy(() => import("@/pages/DropoutRates"));
 const ZeroDoseVillages = lazy(() => import("@/pages/ZeroDoseVillages"));
 const ReconcileUnmappedVaccines = lazy(() => import("@/pages/ReconcileUnmappedVaccines"));
 const AnnualNationalPlan = lazy(() => import("@/pages/AnnualNationalPlan"));
+const DataSources = lazy(() => import("@/pages/DataSources"));
 
 // Task #50 — Small wrapper that reads :id from the route and passes it to
 // SessionPlanning as `lockedMicroplanId`, so the unserved-prefill auto-open
@@ -202,6 +203,7 @@ function AuthenticatedRouter() {
       <Route path="/missed-communities" component={MissedCommunities} />
       <Route path="/standards-alignment" component={StandardsAlignment} />
       <Route path="/national-plan" component={AnnualNationalPlan} />
+      <Route path="/data-sources" component={DataSources} />
       <Route path="/settings" component={Settings} />
       <Route path="/sync/conflicts" component={lazy(() => import("@/pages/SyncConflicts"))} />
       <Route path="/help" component={Help} />

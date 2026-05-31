@@ -146,6 +146,11 @@ const defaultFaqs = [
       "Open the Standards Alignment page from the sidebar and look at the 'Features' tab. It lists every feature currently in the platform — grouped by area (dashboards, microplanning, vaccines & stock, maps & GIS, supervision, users & access, offline & sync, security, and more) — in plain language. Use the filter box on that page to jump straight to anything.",
   },
   {
+    question: "Where does the map, boundary, population, and facility data come from?",
+    answer:
+      "Open the Data Sources page from the sidebar (it's near Settings and Help) — there's also a link to it under 'External Resources' on this Help page. It lists every external source VaxPlan uses, grouped by category: map tiles (OpenStreetMap, satellite imagery), administrative boundaries (geoBoundaries, GADM, UN OCHA/HDX), population and demographics (national census, WorldPop, HMIS, community surveys), health facilities and information systems (national master facility lists, DHIS2), immunization guidance (WHO, UNICEF, Gavi), and the open-source software, fonts, and icons behind the app. Each entry shows a short description, its licence, and a link to the original source. If your country has population sources set up, they're shown at the top so you can see exactly which datasets feed your calculations. The page also carries the acknowledgements crediting these providers.",
+  },
+  {
     question: "How do I see who's online and how the site is being used?",
     answer:
       "National and platform administrators have a 'Site activity' panel on the dashboard. It shows who is online right now (with their role, current page, and the city/country they're signed in from), a live map pinning where those users are, how many visits there were today, a 14-day visits trend, your most-visited pages, and a breakdown of login locations. Platform super admins get full detail: tap any person to see their email, IP address, device, and exact coordinates. If a user allows location access in their browser, the map uses their device's real GPS position; otherwise it falls back to a best-effort estimate from the network address (which often only resolves to the nearest large city). The panel refreshes on its own every 30 seconds.",
@@ -189,6 +194,7 @@ const defaultGuides = [
 ];
 
 const defaultResources = [
+  { name: "Data Sources & Acknowledgements", url: "/data-sources" },
   { name: "VaxPlan — Microplanning Workflow (WHO RED + Gavi RED-Q)", url: "/docs/microplanning-workflow.md" },
   { name: "WHO Immunization Guidelines", url: "https://www.who.int/teams/immunization-vaccines-and-biologicals" },
   { name: "National Health Plan Guideline", url: "https://www.health.gov" },

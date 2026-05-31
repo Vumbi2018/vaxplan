@@ -39,7 +39,8 @@ tenant administrator may have customised the labels (for example
 13. [Supervision visits](#13-supervision-visits)
 14. [Reports and exports](#14-reports-and-exports)
 15. [Troubleshooting](#15-troubleshooting)
-16. [Glossary](#16-glossary)
+16. [Data sources and acknowledgements](#16-data-sources-and-acknowledgements)
+17. [Glossary](#17-glossary)
 
 ---
 
@@ -541,6 +542,11 @@ This section is for the VaxPlan superadmin onboarding a new country.
    - Villages and catchments — import via CSV.
    - Population — either ingest a WorldPop raster (national admin
      can do this on demand) or rely on registered population.
+   - Where you only have an open facility list with province (but not
+     district) labels, VaxPlan can fill in districts automatically by
+     matching each facility's GPS coordinates against GeoBoundaries
+     ADM2 polygons. See `docs/COUNTRY_ONBOARDING.md` for the repeatable
+     prep-and-seed scripts (used to onboard South Africa).
 6. **Set the approval workflow.** Decide whether plans need 1, 2, or
    3 levels of approval (facility → district → province → national).
 7. **Go live.** The national admin sends out user invites and
@@ -754,7 +760,30 @@ your administrator; they will see the request in their inbox.
 
 ---
 
-## 16. Glossary
+## 16. Data sources and acknowledgements
+
+VaxPlan has a built-in **Data Sources** page that lists where the
+platform's maps, administrative boundaries, population figures, and
+facility data come from, along with the open-source projects it is built
+on.
+
+- Open it from the sidebar (**Data Sources**, near Settings and Help) or
+  from the **External Resources** card on the Help page.
+- Sources are grouped by category: Maps & Basemaps, Administrative
+  Boundaries, Population & Demographics, Health Facilities & Health
+  Information Systems, Immunization Guidance & Standards, and Software /
+  Fonts / Icons. Each entry shows a short description, its licence where
+  relevant, and a link to the original source.
+- If your country has population sources configured, they appear at the
+  top of the page so you can see exactly which datasets feed your
+  catchment and vaccine-needs calculations.
+- The **Acknowledgements** section credits the data providers and open
+  projects, and is a reminder that each dataset remains the property of
+  its original owner and should be cited accordingly.
+
+---
+
+## 17. Glossary
 
 - **Antigen** — A vaccine type (BCG, OPV, Penta, MCV1, etc.).
 - **Catchment** — The set of villages a facility serves.

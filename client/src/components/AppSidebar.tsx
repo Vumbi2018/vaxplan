@@ -28,6 +28,7 @@ import {
   Globe,
   ClipboardList,
   ClipboardCheck,
+  Database,
   Package,
   Share2,
   Sparkles,
@@ -94,6 +95,7 @@ const systemNavItems = [
   { title: "Supervision", path: "/supervision", icon: ClipboardCheck },
   { title: "Standards Alignment", path: "/standards-alignment", icon: ShieldCheck },
   { title: "Reconcile Vaccines", path: "/admin/reconcile-vaccines", icon: Wrench, reconcileOnly: true },
+  { title: "Data Sources", path: "/data-sources", icon: Database },
   { title: "Settings", path: "/settings", icon: Settings },
   { title: "Help", path: "/help", icon: HelpCircle },
 ];
