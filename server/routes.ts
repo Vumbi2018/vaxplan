@@ -188,18 +188,109 @@ async function getFacilityHierarchy(facilityId: number, tenantId: string) {
 // the list routes do. Records are located either by their own
 // district/province columns (population, villages) or by resolving the owning
 // facility's hierarchy (facilities, microplans, sessions, monthly reports).
+// Role determines the MAXIMUM granularity a user can see, regardless of how
+// their dataAccessScope was populated. Facility staff are pinned to their own
+// facility even when their scope row also lists the parent district/province
+// (those are stored as the facility's hierarchy path, not an access grant —
+// otherwise a facility_clerk would inherit their whole province).
+//   facility_clerk / facility_in_charge → facilities only
+//   district_manager                    → districts (+ any explicit facility grants)
+//   provincial_coordinator              → provinces (+ explicit district/facility grants)
+//   any other role                      → legacy precedence (explicit multi, else most-specific column)
+// Returns the raw granted IDs (no hierarchy expansion). isScopedRole marks the
+// four hierarchical roles, which must fail CLOSED when no area resolves; a
+// non-scoped role with hasAny=false keeps tenant-wide access.
+function resolveRoleScopeIds(dbUser: any): {
+  provinceIds: number[];
+  districtIds: number[];
+  facilityIds: number[];
+  hasAny: boolean;
+  isScopedRole: boolean;
+} {
+  const scope = (dbUser?.dataAccessScope as {
+    provinces?: number[];
+    districts?: number[];
+    facilities?: number[];
+  }) || {};
+  const sFac = Array.isArray(scope.facilities) ? scope.facilities.map(Number) : [];
+  const sDist = Array.isArray(scope.districts) ? scope.districts.map(Number) : [];
+  const sProv = Array.isArray(scope.provinces) ? scope.provinces.map(Number) : [];
+  // Consider the primary role plus any secondary roles, and grant the BROADEST
+  // granularity among them (a user who is both a clerk and a district manager
+  // sees their whole district).
+  const roleList: string[] = [
+    dbUser?.role,
+    ...(Array.isArray(dbUser?.roles) ? (dbUser.roles as string[]) : []),
+  ].filter(Boolean);
+  const has = (r: string) => roleList.includes(r);
+
+  let provinceIds: number[] = [];
+  let districtIds: number[] = [];
+  let facilityIds: number[] = [];
+  let isScopedRole = false;
+
+  if (has("provincial_coordinator")) {
+    isScopedRole = true;
+    provinceIds = sProv.length
+      ? sProv
+      : dbUser?.provinceId
+        ? [Number(dbUser.provinceId)]
+        : [];
+    districtIds = sDist;
+    facilityIds = sFac;
+  } else if (has("district_manager")) {
+    isScopedRole = true;
+    districtIds = sDist.length
+      ? sDist
+      : dbUser?.districtId
+        ? [Number(dbUser.districtId)]
+        : [];
+    facilityIds = sFac; // honour any extra cross-district facility grants
+  } else if (has("facility_clerk") || has("facility_in_charge")) {
+    isScopedRole = true;
+    facilityIds = sFac.length
+      ? sFac
+      : dbUser?.facilityId
+        ? [Number(dbUser.facilityId)]
+        : [];
+  } else {
+    // Unknown / custom role (e.g. a national-level reviewer): fall back to the
+    // legacy precedence — explicit multi-scope union, else the most-specific
+    // legacy column. Not a scoped role, so an empty result means tenant-wide.
+    if (sFac.length || sDist.length || sProv.length) {
+      provinceIds = sProv;
+      districtIds = sDist;
+      facilityIds = sFac;
+    } else if (dbUser?.facilityId) {
+      facilityIds = [Number(dbUser.facilityId)];
+    } else if (dbUser?.districtId) {
+      districtIds = [Number(dbUser.districtId)];
+    } else if (dbUser?.provinceId) {
+      provinceIds = [Number(dbUser.provinceId)];
+    }
+  }
+
+  const hasAny =
+    provinceIds.length > 0 || districtIds.length > 0 || facilityIds.length > 0;
+  return { provinceIds, districtIds, facilityIds, hasAny, isScopedRole };
+}
+
 async function userCanAccessGeo(
   dbUser: any,
   tenantId: string,
   geo: { facilityId?: number | null; districtId?: number | null; provinceId?: number | null },
 ): Promise<boolean> {
-  // Platform super-admin and national admins keep full read access in their
-  // tenant — mirrors hasPermission's role bypass exactly.
+  // Platform super-admin, national admins and GIS specialists keep full read
+  // access in their tenant — mirrors hasPermission / isAdmin's role bypass.
   if (dbUser?.isPlatformAdmin === true) return true;
-  const isNationalAdmin =
+  const seesWholeTenant =
     dbUser?.role === "national_admin" ||
-    (Array.isArray(dbUser?.roles) && (dbUser.roles as string[]).includes("national_admin"));
-  if (isNationalAdmin) return true;
+    dbUser?.role === "gis_specialist" ||
+    (Array.isArray(dbUser?.roles) &&
+      (dbUser.roles as string[]).some(
+        (r) => r === "national_admin" || r === "gis_specialist",
+      ));
+  if (seesWholeTenant) return true;
 
   // Cross-tenant browsing: dbUser.facilityId / districtId / provinceId and
   // dataAccessScope all hold IDs from the user's HOME tenant, which are
@@ -211,24 +302,22 @@ async function userCanAccessGeo(
     !!dbUser?.tenantId && !!tenantId && tenantId !== dbUser.tenantId;
   if (isVisitingOtherTenant) return true;
 
-  // Resolve the caller's geographic scope. Prefer the explicit multi-scope
-  // (dataAccessScope), falling back to the legacy single-hierarchy columns —
-  // same precedence hasPermission uses.
-  const scope = (dbUser?.dataAccessScope as {
-    provinces?: number[];
-    districts?: number[];
-    facilities?: number[];
-  }) || {};
-  const scopeFacilities = Array.isArray(scope.facilities) ? scope.facilities : [];
-  const scopeDistricts = Array.isArray(scope.districts) ? scope.districts : [];
-  const scopeProvinces = Array.isArray(scope.provinces) ? scope.provinces : [];
-  const hasExplicitScope =
-    scopeFacilities.length > 0 || scopeDistricts.length > 0 || scopeProvinces.length > 0;
-  const hasLegacyScope = !!(dbUser?.facilityId || dbUser?.districtId || dbUser?.provinceId);
+  // Resolve the caller's effective scope, role-capped so facility staff are
+  // pinned to their own facility even when their dataAccessScope also lists the
+  // parent district/province (stored as the facility's hierarchy path, not a
+  // grant). Mirrors getGeoScope exactly.
+  const {
+    provinceIds: scopeProvinces,
+    districtIds: scopeDistricts,
+    facilityIds: scopeFacilities,
+    hasAny,
+    isScopedRole,
+  } = resolveRoleScopeIds(dbUser);
 
-  // No geographic restriction at all → tenant-wide read access, exactly as the
-  // list endpoints behave (they only narrow when a scope is set).
-  if (!hasExplicitScope && !hasLegacyScope) return true;
+  // No resolvable scope: a hierarchical role with no area fails CLOSED (sees
+  // nothing); a non-scoped role (e.g. a national reviewer) keeps tenant-wide
+  // read access, exactly as the list endpoints behave.
+  if (!hasAny) return !isScopedRole;
 
   const facilityId = geo.facilityId ?? null;
   let districtId = geo.districtId ?? null;
@@ -244,27 +333,12 @@ async function userCanAccessGeo(
     }
   }
 
-  // Explicit multi-scope users: the record must intersect one of their granted
-  // facilities / districts / provinces.
-  if (hasExplicitScope) {
-    if (facilityId != null && scopeFacilities.includes(Number(facilityId))) return true;
-    if (districtId != null && scopeDistricts.includes(Number(districtId))) return true;
-    if (provinceId != null && scopeProvinces.includes(Number(provinceId))) return true;
-    return false;
-  }
-
-  // Legacy single-column scope. Facility-scoped users only see their exact
-  // facility; a record with no facility association is therefore not visible.
-  if (dbUser.facilityId) {
-    return facilityId != null && Number(facilityId) === Number(dbUser.facilityId);
-  }
-  if (dbUser.districtId) {
-    return districtId != null && Number(districtId) === Number(dbUser.districtId);
-  }
-  if (dbUser.provinceId) {
-    return provinceId != null && Number(provinceId) === Number(dbUser.provinceId);
-  }
-  return true;
+  // The record must intersect one of the caller's granted facilities /
+  // districts / provinces (OR semantics).
+  if (facilityId != null && scopeFacilities.includes(Number(facilityId))) return true;
+  if (districtId != null && scopeDistricts.includes(Number(districtId))) return true;
+  if (provinceId != null && scopeProvinces.includes(Number(provinceId))) return true;
+  return false;
 }
 
 // Precomputed geographic scope for list endpoints. Resolves the caller's
@@ -288,10 +362,14 @@ async function getGeoScope(dbUser: any, tenantId: string): Promise<GeoScope> {
     facilityIds: new Set<number>(),
   };
   if (dbUser?.isPlatformAdmin === true) return allScope;
-  const isNationalAdmin =
+  const seesWholeTenant =
     dbUser?.role === "national_admin" ||
-    (Array.isArray(dbUser?.roles) && (dbUser.roles as string[]).includes("national_admin"));
-  if (isNationalAdmin) return allScope;
+    dbUser?.role === "gis_specialist" ||
+    (Array.isArray(dbUser?.roles) &&
+      (dbUser.roles as string[]).some(
+        (r) => r === "national_admin" || r === "gis_specialist",
+      ));
+  if (seesWholeTenant) return allScope;
 
   // Cross-tenant browsing: home-tenant IDs are meaningless in a visited tenant,
   // so fall back to tenant-wide read (writes are blocked elsewhere) — identical
@@ -300,39 +378,28 @@ async function getGeoScope(dbUser: any, tenantId: string): Promise<GeoScope> {
     !!dbUser?.tenantId && !!tenantId && tenantId !== dbUser.tenantId;
   if (isVisitingOtherTenant) return allScope;
 
-  const scope = (dbUser?.dataAccessScope as {
-    provinces?: number[];
-    districts?: number[];
-    facilities?: number[];
-  }) || {};
-  const sFac = Array.isArray(scope.facilities) ? scope.facilities : [];
-  const sDist = Array.isArray(scope.districts) ? scope.districts : [];
-  const sProv = Array.isArray(scope.provinces) ? scope.provinces : [];
-  const hasExplicitScope = sFac.length > 0 || sDist.length > 0 || sProv.length > 0;
-  const hasLegacyScope = !!(dbUser?.facilityId || dbUser?.districtId || dbUser?.provinceId);
+  // Role-capped granted IDs (facility staff pinned to their facility, etc.) —
+  // mirrors userCanAccessGeo exactly.
+  const { provinceIds: rProv, districtIds: rDist, facilityIds: rFac, hasAny, isScopedRole } =
+    resolveRoleScopeIds(dbUser);
 
-  // No geographic restriction → tenant-wide read access.
-  if (!hasExplicitScope && !hasLegacyScope) return allScope;
-
-  const provinceIds = new Set<number>();
-  const districtIds = new Set<number>();
-  const facilityIds = new Set<number>();
-
-  if (hasExplicitScope) {
-    sProv.forEach((p) => provinceIds.add(Number(p)));
-    sDist.forEach((d) => districtIds.add(Number(d)));
-    sFac.forEach((f) => facilityIds.add(Number(f)));
-  } else if (dbUser.facilityId) {
-    // Legacy precedence: most-specific column wins (facility > district >
-    // province), matching userCanAccessGeo. A facility-scoped user sees only
-    // their own facility, never their whole district — even though facility
-    // users also carry district_id/province_id columns.
-    facilityIds.add(Number(dbUser.facilityId));
-  } else if (dbUser.districtId) {
-    districtIds.add(Number(dbUser.districtId));
-  } else if (dbUser.provinceId) {
-    provinceIds.add(Number(dbUser.provinceId));
+  // No resolvable scope: a hierarchical role with no area fails CLOSED (empty
+  // scope → sees nothing); a non-scoped role keeps tenant-wide read access.
+  if (!hasAny) {
+    if (isScopedRole) {
+      return {
+        all: false,
+        provinceIds: new Set<number>(),
+        districtIds: new Set<number>(),
+        facilityIds: new Set<number>(),
+      };
+    }
+    return allScope;
   }
+
+  const provinceIds = new Set<number>(rProv);
+  const districtIds = new Set<number>(rDist);
+  const facilityIds = new Set<number>(rFac);
 
   // Expand province → districts → facilities so list rows that only carry a
   // facilityId still match for district/province-level users.
@@ -4699,21 +4766,10 @@ export async function registerRoutes(
 
       let list = await storage.getSessionPlans(req.tenantId, facilityId);
 
-      const isNationalAdmin = dbUser.role === "national_admin" || (Array.isArray(dbUser.roles) && (dbUser.roles as string[]).includes("national_admin"));
-      if (!isNationalAdmin) {
-        const hierarchyCache = new Map<number, any>();
-        const filteredList: typeof list = [];
-        for (const session of list) {
-          let geo = hierarchyCache.get(session.facilityId);
-          if (!geo) {
-            geo = await getFacilityHierarchy(session.facilityId, req.tenantId);
-            hierarchyCache.set(session.facilityId, geo);
-          }
-          if (hasPermission(dbUser, "view_session_plans", geo)) {
-            filteredList.push(session);
-          }
-        }
-        list = filteredList;
+      // Role-aware geographic scoping (facility staff → own facility, etc.).
+      const scope = await getGeoScope(dbUser, req.tenantId);
+      if (!scope.all) {
+        list = list.filter((s: any) => recordInGeoScope(scope, { facilityId: s.facilityId }));
       }
 
       const overlaid = await overlayCampaignFromParent(req.tenantId, list);
@@ -8475,26 +8531,11 @@ export async function registerRoutes(
       if (facilityIdRaw && (facilityId === undefined || isNaN(facilityId))) {
         return res.status(400).json({ message: "Invalid facility ID parameter" });
       }
-      const isNationalAdmin =
-        dbUser.role === "national_admin" ||
-        (Array.isArray(dbUser.roles) && (dbUser.roles as string[]).includes("national_admin"));
-      // Facility-scoped users can only ever see their own facility's reports —
-      // force the filter so passing ?facilityId=<other> can't leak another
-      // facility's reports.
-      if (!isNationalAdmin && dbUser.facilityId) {
-        facilityId = dbUser.facilityId;
-      }
       let list = await storage.getMonthlyReports(req.tenantId, facilityId);
-      // District / province users: narrow to reports whose facility falls inside
-      // their area.
-      if (!isNationalAdmin && (dbUser.districtId || dbUser.provinceId)) {
-        const scoped: typeof list = [];
-        for (const r of list) {
-          if (await userCanAccessGeo(dbUser, req.tenantId, { facilityId: (r as any).facilityId })) {
-            scoped.push(r);
-          }
-        }
-        list = scoped;
+      // Role-aware geographic scoping (facility staff → own facility, etc.).
+      const scope = await getGeoScope(dbUser, req.tenantId);
+      if (!scope.all) {
+        list = list.filter((r: any) => recordInGeoScope(scope, { facilityId: (r as any).facilityId }));
       }
       res.json(list);
     } catch (err: any) {
@@ -9715,25 +9756,18 @@ export async function registerRoutes(
       ids = ids.filter((id) => allowed.has(id));
     }
 
-    const isNational =
-      dbUser.role === "national_admin" ||
-      (Array.isArray(dbUser.roles) &&
-        (dbUser.roles as string[]).includes("national_admin"));
-    if (isNational) return ids;
-
-    // Filter against permission scope
-    const allowed: number[] = [];
-    for (const fid of ids) {
+    // Role-aware geographic scoping — mirrors the list endpoints (facility
+    // staff → own facility, district/provincial → their area, admins → all).
+    const scope = await getGeoScope(dbUser, tenantId);
+    if (scope.all) return ids;
+    return ids.filter((fid) => {
       const row = rows.find((r) => r.id === fid);
-      const geo = {
+      return recordInGeoScope(scope, {
         facilityId: fid,
         districtId: row?.districtId ?? null,
-        provinceId: row ? (distProvince.get(row.districtId) as number | undefined) ?? null : null,
-        activeTenantId: req.tenantId as string,
-      };
-      if (hasPermission(dbUser, "view_clients", geo)) allowed.push(fid);
-    }
-    return allowed;
+        provinceId: row ? ((distProvince.get(row.districtId) as number | undefined) ?? null) : null,
+      });
+    });
   }
 
   // GET /api/indicators/zero-dose
