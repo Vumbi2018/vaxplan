@@ -726,6 +726,79 @@ export async function registerRoutes(
     });
   });
 
+  // ── SEO: robots.txt + sitemap.xml ────────────────────────────────────
+  // These are generated dynamically so the absolute URLs in the sitemap
+  // always match the host serving the request (the deployed domain or a
+  // custom domain), without needing to bake a hostname into a static file.
+  // Only the genuinely public, crawlable pages are listed; everything else
+  // (the authenticated app, admin, API, websocket, release downloads) is
+  // disallowed so search engines don't index login-gated routes.
+  const PUBLIC_SITEMAP_PATHS = ["/", "/data-sources", "/signup"];
+
+  function resolveSiteOrigin(req: Request): string {
+    const proto = (req.get("x-forwarded-proto") || req.protocol || "https")
+      .split(",")[0]
+      .trim();
+    const rawHost = (req.get("x-forwarded-host") || req.get("host") || "")
+      .split(",")[0]
+      .trim();
+    // Only accept a sane hostname[:port] so a spoofed/garbled Host header can't
+    // inject markup or whitespace into the generated robots/sitemap output.
+    const host = /^[a-z0-9.-]+(:\d+)?$/i.test(rawHost) ? rawHost : "";
+    return host ? `${proto}://${host}` : "";
+  }
+
+  app.get("/robots.txt", (req, res) => {
+    const origin = resolveSiteOrigin(req);
+    // Default-deny: only the genuinely public marketing/onboarding routes are
+    // crawlable. Everything else — the entire authenticated SPA, admin, API,
+    // websocket and release endpoints — is blocked by the trailing
+    // `Disallow: /`. Static assets are explicitly re-allowed so search engines
+    // can fetch the CSS/JS/icons needed to render the public pages. Crawlers
+    // resolve conflicts by longest-matching rule, so the specific `Allow:`
+    // lines win over `Disallow: /` for those paths.
+    const body = [
+      "User-agent: *",
+      "Allow: /$",
+      "Allow: /data-sources",
+      "Allow: /signup",
+      "Allow: /assets/",
+      "Allow: /icons/",
+      "Allow: /manifest.json",
+      "Allow: /favicon.png",
+      "Disallow: /",
+      "",
+      ...(origin ? [`Sitemap: ${origin}/sitemap.xml`] : []),
+      "",
+    ].join("\n");
+    res.type("text/plain").send(body);
+  });
+
+  app.get("/sitemap.xml", (req, res) => {
+    const origin = resolveSiteOrigin(req);
+    const lastmod = new Date().toISOString().slice(0, 10);
+    const urls = PUBLIC_SITEMAP_PATHS.map((p) => {
+      const loc = `${origin}${p === "/" ? "/" : p}`;
+      const priority = p === "/" ? "1.0" : "0.8";
+      return [
+        "  <url>",
+        `    <loc>${loc}</loc>`,
+        `    <lastmod>${lastmod}</lastmod>`,
+        `    <changefreq>weekly</changefreq>`,
+        `    <priority>${priority}</priority>`,
+        "  </url>",
+      ].join("\n");
+    }).join("\n");
+    const xml = [
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+      urls,
+      "</urlset>",
+      "",
+    ].join("\n");
+    res.type("application/xml").send(xml);
+  });
+
   // ── Source tarball download (for laptop-side installer builds) ────────
   // GET /release/vaxplan-source-<anything>.tar.gz → streams a git archive
   // of HEAD. The "<anything>" is purely cosmetic so users can pin a name
