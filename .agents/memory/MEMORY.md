@@ -17,3 +17,4 @@
 - [Drizzle select() loose typing](drizzle-select-typing.md) — query results often type as {}/unknown here; cast awaited rows to an explicit Array<{...}> rather than relying on inference. Baseline tsc has many such pre-existing errors.
 - [Free IP-geolocation providers](ip-geolocation-providers.md) — ip-api HTTPS & ipwho.is both 403 server-side on free tier; use ipapi.co. Cache successes only, coalesce in-flight lookups; verify in Node runtime not curl.
 - [Radix popover unclickable in Dialog](radix-popover-in-dialog-zindex.md) — popover/combobox renders behind modal Dialog because popper copies content z-index; fix is content z-index above dialog (ladder dialog 99999 < popover 100000 < toast 100001), NOT the `modal` prop.
+- [Day-plan required-field visibility](dayplan-required-field-visibility.md) — leadVaccinator is required by dayPlanFormSchema for ALL plan types; its input must render outside the campaign-only block or routine day-plans silently can't save.

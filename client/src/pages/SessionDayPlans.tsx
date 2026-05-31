@@ -1716,6 +1716,34 @@ export default function SessionDayPlans() {
                 </div>
               </div>
 
+              {/* Session-day staffing (always shown; campaigns capture this in
+                  their own SIA staff section below) */}
+              {sessionPlan?.planType !== "campaign" && (
+                <div className="border-t pt-4">
+                  <h4 className="text-sm font-semibold mb-3 flex items-center gap-1.5">
+                    <Users className="h-4 w-4 text-primary" />
+                    <span>Session-Day Staffing</span>
+                  </h4>
+                  <FormField
+                    control={form.control}
+                    name="leadVaccinator"
+                    render={({ field }) => (
+                      <FormItem className="max-w-md">
+                        <FormLabel className="text-xs">Lead Vaccinator (name) *</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            placeholder="e.g. Nurse Mary Aluko"
+                            data-testid="input-lead-vaccinator"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              )}
+
               {/* Cold chain logistics */}
               <div className="border-t pt-4">
                 <h4 className="text-sm font-semibold mb-3 flex items-center gap-1.5">
