@@ -85,7 +85,7 @@ const workflowNavItems = [
 const adminNavItems = [
   { title: "User Management", path: "/admin/users", icon: Users },
   { title: "Access Requests", path: "/admin/signups", icon: UserPlus },
-  { title: "Country Onboarding", path: "/admin/countries", icon: Globe },
+  { title: "Country Onboarding", path: "/admin/countries", icon: Globe, superAdminOnly: true },
   { title: "Boundary Manager", path: "/admin/boundaries", icon: Map },
   { title: "Custom Layers", path: "/admin/custom-layers", icon: Layers },
   { title: "National Plan", path: "/national-plan", icon: FileText },
@@ -187,8 +187,9 @@ export function AppSidebar({ user }: AppSidebarProps) {
 
   const canAccessApprovals = ["district_manager", "provincial_coordinator", "national_admin"].includes(user.role || "");
   const isNationalAdmin = user.role === "national_admin";
+  const isPlatformAdmin = (user as any).isPlatformAdmin === true;
   const canAccessHis = user.role === "national_admin" || user.role === "gis_specialist";
-  const canAccessAdmin = isNationalAdmin || user.role === "provincial_coordinator";
+  const canAccessAdmin = isNationalAdmin || user.role === "provincial_coordinator" || isPlatformAdmin;
   const canReconcile = user.role === "national_admin" || user.role === "district_manager";
   const { data: tenant } = useQuery<TenantSummary>({ queryKey: ["/api/me/tenant"], retry: false });
 
@@ -315,6 +316,11 @@ export function AppSidebar({ user }: AppSidebarProps) {
             <SidebarMenu>
               {adminNavItems
                 .filter((item) => {
+                  // Country Onboarding is reserved for platform Super Admins —
+                  // country-specific admins can never create new countries.
+                  if ((item as any).superAdminOnly) {
+                    return isPlatformAdmin;
+                  }
                   // User Management + Access Requests are visible to any admin
                   // (national_admin or provincial_coordinator). The deeper
                   // tenant/boundary configuration tools stay national-only.

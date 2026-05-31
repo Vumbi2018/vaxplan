@@ -111,6 +111,11 @@ const defaultFaqs = [
       "No — every account belongs to exactly one country and can only ever access that country, national admins included. There's no way to view or edit another country's data. The only exception is a Super Admin, who can access and switch between all countries using the switcher at the top of the screen (everyone else never sees that switcher). A Super Admin can also make another user a Super Admin from that user's edit screen, under 'Super Admin access'.",
   },
   {
+    question: "Who can add a new country to VaxPlan?",
+    answer:
+      "Only a Super Admin can onboard a new country. Country administrators (national admins) manage their own country only and cannot create new ones — the Country Onboarding screen is hidden from everyone except Super Admins. That screen includes a built-in step-by-step guide covering how to register the country, load its boundaries and reference data, and set up the first national admin. If you need a new country added, contact your platform Super Admin.",
+  },
+  {
     question: "Who can create microplans and session plans?",
     answer:
       "Day-to-day microplan and session-plan authoring belongs to facility staff (Facility Clerk and Facility In-charge), keeping accountability with the people who run the sessions. National admins can also author when setting up or correcting a country's data. District and provincial roles are reviewers and approvers only — they review and approve plans but do not author them.",

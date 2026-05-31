@@ -520,7 +520,13 @@ all run on schedules you can tune in **Settings → Schedules**.
 
 ## 9. Tenant onboarding (new Ministry of Health)
 
-This section is for the VaxPlan superadmin onboarding a new country.
+This section is for the VaxPlan **Super Admin** onboarding a new country.
+Onboarding a new country is **restricted to Super Admins** — country
+administrators (national admins) manage only their own country and cannot
+add new countries. The **Country Onboarding** screen (sidebar →
+Administration → Country Onboarding) is hidden from everyone except Super
+Admins, and it carries a built-in step-by-step guide that mirrors the
+steps below.
 
 1. **Create the tenant.** Use **Settings → Tenants → New** and pick:
    - Country name and ISO-3 code.

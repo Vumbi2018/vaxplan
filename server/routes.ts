@@ -2372,6 +2372,14 @@ export async function registerRoutes(
 
   app.post("/api/admin/tenants", isAuthenticated, loadRole, requireAdmin, async (req: any, res) => {
     try {
+      // Onboarding a new country is reserved for platform Super Admins only.
+      // Country-specific admins (national_admin) are scoped to their own
+      // tenant and must never be able to create additional countries.
+      if (req.dbUser?.isPlatformAdmin !== true) {
+        return res.status(403).json({
+          message: "Only a Super Admin can onboard new countries.",
+        });
+      }
       const schema = z.object({
         name: z.string().min(1),
         code: z.string().min(2).max(10).toUpperCase(),

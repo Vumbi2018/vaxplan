@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { useAuth } from "@/hooks/useAuth";
 import {
   Globe,
   Plus,
@@ -25,6 +26,12 @@ import {
   RefreshCw,
   Layers,
   Activity,
+  ShieldAlert,
+  BookOpen,
+  Map as MapIcon,
+  Database,
+  UserCog,
+  ListChecks,
 } from "lucide-react";
 
 interface PublicTenant {
@@ -211,8 +218,34 @@ function CountryCard({ tenant }: { tenant: PublicTenant }) {
 export default function CountryOnboarding() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { user, isLoading: authLoading } = useAuth();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState<NewCountryForm>(DEFAULTS);
+
+  const isPlatformAdmin = (user as any)?.isPlatformAdmin === true;
+
+  // Country onboarding is reserved for platform Super Admins. Country-specific
+  // admins are scoped to their own country and must never create new ones.
+  if (!authLoading && !isPlatformAdmin) {
+    return (
+      <div className="p-6 max-w-2xl mx-auto">
+        <Card className="border-destructive/30 bg-destructive/5">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <ShieldAlert className="h-5 w-5 text-destructive" />
+              Super Admin only
+            </CardTitle>
+            <CardDescription>
+              Onboarding new countries is restricted to platform Super Admins.
+              Country administrators manage their own country only. If you need a
+              new country added to VaxPlan, please contact your platform Super
+              Admin.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      </div>
+    );
+  }
 
   /*
   // Original queries (commented out to preserve working code while adding offline capabilities):
@@ -349,6 +382,99 @@ export default function CountryOnboarding() {
           Add New Country
         </Button>
       </div>
+
+      {/* ─── Super Admin onboarding guide ───────────── */}
+      <Card className="border-primary/30">
+        <CardHeader className="pb-3 border-b">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <BookOpen className="h-5 w-5 text-primary" />
+            How to onboard a new country
+          </CardTitle>
+          <CardDescription>
+            A quick guide for Super Admins. Only you can add a new country —
+            country administrators are limited to their own country.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="pt-4 space-y-4 text-sm">
+          <ol className="space-y-4">
+            <li className="flex gap-3">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">1</span>
+              <div>
+                <p className="font-medium flex items-center gap-1.5">
+                  <Globe className="h-4 w-4 text-primary" /> Register the country
+                </p>
+                <p className="text-muted-foreground mt-0.5">
+                  Click <strong>Add New Country</strong> and fill in the country
+                  name, a short tenant code (e.g. <code>KEN</code>), and the
+                  ISO-3166 alpha-3 code. Set the currency, WHO demographic
+                  ratios, administrative level labels (Region / Province /
+                  District / Ward), and the default map centre and zoom. These
+                  drive vaccine forecasting, budgets, and the map.
+                </p>
+              </div>
+            </li>
+            <li className="flex gap-3">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">2</span>
+              <div>
+                <p className="font-medium flex items-center gap-1.5">
+                  <MapIcon className="h-4 w-4 text-primary" /> Load administrative boundaries
+                </p>
+                <p className="text-muted-foreground mt-0.5">
+                  Open <strong>Boundary Manager</strong> and fetch the country's
+                  province and district polygons from geoBoundaries, or upload
+                  your own GeoJSON. Boundaries place facilities into districts
+                  and draw the hierarchy on the map.
+                </p>
+              </div>
+            </li>
+            <li className="flex gap-3">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">3</span>
+              <div>
+                <p className="font-medium flex items-center gap-1.5">
+                  <Database className="h-4 w-4 text-primary" /> Load reference data
+                </p>
+                <p className="text-muted-foreground mt-0.5">
+                  Import the master facility list and communities (villages) via
+                  CSV, then set up the vaccine schedule and population sources.
+                  For an open facility list that has province but not district,
+                  VaxPlan can fill in districts automatically by matching each
+                  facility's GPS against geoBoundaries — see the repeatable
+                  prep-and-seed recipe in{" "}
+                  <code>docs/COUNTRY_ONBOARDING.md</code>.
+                </p>
+              </div>
+            </li>
+            <li className="flex gap-3">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">4</span>
+              <div>
+                <p className="font-medium flex items-center gap-1.5">
+                  <UserCog className="h-4 w-4 text-primary" /> Provision the first national admin
+                </p>
+                <p className="text-muted-foreground mt-0.5">
+                  In <strong>User Management</strong>, create the country's first
+                  national administrator and (if used) configure SSO and email
+                  domain mapping. From there the national admin invites everyone
+                  else and manages their country day to day.
+                </p>
+              </div>
+            </li>
+            <li className="flex gap-3">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">5</span>
+              <div>
+                <p className="font-medium flex items-center gap-1.5">
+                  <ListChecks className="h-4 w-4 text-primary" /> Verify and go live
+                </p>
+                <p className="text-muted-foreground mt-0.5">
+                  Switch into the new country from the header country switcher and
+                  confirm the facilities, boundaries, and population look right on
+                  the map and dashboard. Then hand over to the national admin to
+                  send invites and training links.
+                </p>
+              </div>
+            </li>
+          </ol>
+        </CardContent>
+      </Card>
 
       {/* ─── WHO Info Banner ───────────────────────── */}
       <Card className="border-primary/20 bg-primary/5">
