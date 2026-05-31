@@ -17,6 +17,7 @@ import {
   SelectGroup, SelectLabel,
 } from "@/components/ui/select";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { PageHead } from "@/components/PageHead";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { CheckCircle2, Globe, Sparkles, HeartPulse } from "lucide-react";
@@ -135,6 +136,10 @@ export default function Signup() {
 
   return (
     <div className="min-h-screen bg-background">
+      <PageHead
+        title="Request Access · VaxPlan"
+        description="Request access to VaxPlan, the multi-tenant GIS microplanning platform for national immunization and primary-care programs."
+      />
       <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-3" data-testid="link-home">

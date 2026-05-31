@@ -24,6 +24,7 @@ import {
   acknowledgements,
   type DataSource,
 } from "@/data/dataSources";
+import { PageHead } from "@/components/PageHead";
 
 const categoryIcons: Record<string, React.ComponentType<{ className?: string }>> = {
   maps: MapIcon,
@@ -79,6 +80,10 @@ export default function DataSources() {
 
   return (
     <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-6" data-testid="page-data-sources">
+      <PageHead
+        title="Data Sources & Acknowledgements · VaxPlan"
+        description="The open maps, administrative boundaries, population figures, facility registries, and immunization guidance behind VaxPlan's health microplanning — and the open-source projects that make it possible."
+      />
       {/* Header */}
       <div className="space-y-2">
         <div className="flex items-center gap-3">

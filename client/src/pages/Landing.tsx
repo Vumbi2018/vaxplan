@@ -25,6 +25,7 @@ import {
   EyeOff,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { PageHead } from "@/components/PageHead";
 import { versionLabel } from "@/lib/version";
 
 interface PublicTenant {
@@ -389,6 +390,10 @@ export default function Landing() {
 
   return (
     <div className="min-h-screen bg-background">
+      <PageHead
+        title="VaxPlan · Health Microplanning for Ministries"
+        description="Multi-tenant GIS microplanning platform for national immunization and primary-care programs. Map facilities, plan sessions, forecast vaccines, approve budgets."
+      />
       <PasswordLoginDialog open={loginOpen} onOpenChange={setLoginOpen} />
       <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between gap-4">
