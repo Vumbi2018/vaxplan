@@ -21,7 +21,19 @@
 6. Declare **outreach sessions per village per month**.
 7. **Save as draft** or **Submit for approval**.
 
-## 3. Run a session in the field
+## 3. Plan the session days (itinerary)
+1. Open a session → **Add Vaccination Session Itinerary Day**.
+2. Enter the **lead vaccinator's** name, a **date at least 7 days ahead**,
+   the **target population**, and tick at least one **community**.
+3. The **Calculated Vaccine Supplies** panel estimates realistic doses per
+   antigen (target × doses-per-child × wastage) — ~50 children gives tens of
+   doses, not thousands.
+4. If a day won't save, the message names the field to fix.
+
+> Tip: From **All sessions → calendar**, "Plan a session on this day" opens
+> the New Session form (not the microplan wizard) with the date filled in.
+
+## 4. Run a session in the field
 1. Sidebar → **Sessions** → find today's session.
 2. **Start session** (works offline).
 3. **Add client** for each child or pregnant woman vaccinated.
@@ -29,12 +41,12 @@
 4. When done, **Mark session done** → confirm counts → **Submit**.
 5. Sync when you're back in range (cloud icon, top-right).
 
-## 4. Follow up defaulters
+## 5. Follow up defaulters
 1. Sidebar → **Coverage** → **Under-immunised list**.
 2. Click a child to see their history.
 3. Click **Create defaulter follow-up session** to schedule outreach.
 
-## 5. Track stock
+## 6. Track stock
 1. Sidebar → **Stock**.
 2. Enter **Receipts** when supply arrives.
 3. **Issues** are auto-recorded when you close a session.

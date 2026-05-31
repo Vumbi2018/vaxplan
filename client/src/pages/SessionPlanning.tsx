@@ -546,6 +546,12 @@ export default function SessionPlanning({
     }
     if (mp.quarter) form.setValue("quarter", mp.quarter);
     if (mp.year) form.setValue("year", mp.year);
+    // Prefill the target population from the parent microplan when the session
+    // doesn't have one yet, so facility staff don't retype a value the
+    // microplan already established. Leave a user-entered value untouched.
+    if (mp.targetPopulation != null && !form.getValues("targetPopulation")) {
+      form.setValue("targetPopulation", mp.targetPopulation as any);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [watchedMicroplanId, microplansOfRouteType, facilities, districts]);
 
@@ -1425,17 +1431,28 @@ export default function SessionPlanning({
     if (lockedMicroplanId != null) {
       (data as any).microplanId = lockedMicroplanId;
     }
-    // Avoid duplicates scoped to (parent microplan, sessionType): same session
-    // type cannot appear twice inside one microplan.
-    const exists = (sessions ?? []).some(
-      (s) =>
-        Number((s as any).microplanId) === Number((data as any).microplanId) &&
-        s.sessionType === data.sessionType
-    );
-    if (exists) {
+    // A true duplicate is the same session type in the same microplan on the
+    // same scheduled date. Different dates — or an as-yet-unscheduled session —
+    // are legitimate additions (a microplan can hold many sessions), so only
+    // block exact same-day repeats and point the user to the existing one.
+    const normDate = (v: any): string => {
+      if (!v) return "";
+      const d = new Date(v);
+      return isNaN(d.getTime()) ? "" : d.toISOString().split("T")[0];
+    };
+    const newDate = normDate((data as any).scheduledDate);
+    const duplicate = newDate
+      ? (sessions ?? []).find(
+          (s) =>
+            Number((s as any).microplanId) === Number((data as any).microplanId) &&
+            s.sessionType === data.sessionType &&
+            normDate((s as any).scheduledDate) === newDate,
+        )
+      : undefined;
+    if (duplicate) {
       toast({
-        title: "Duplicate session blocked",
-        description: "A session of this type already exists inside the selected microplan.",
+        title: "Session already exists",
+        description: `A ${data.sessionType} session is already planned in this microplan for ${newDate}. Open "${(duplicate as any).name}" instead of creating a duplicate.`,
         variant: "destructive",
       });
       return;

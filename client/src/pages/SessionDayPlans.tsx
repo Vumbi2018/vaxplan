@@ -110,6 +110,19 @@ const transportIcons: Record<string, typeof Car> = {
   air: Plane,
 };
 
+// Vaccine wastage is stored on vaccine_configurations.wastageFactor. The seed
+// + schema convention stores it as a wastage PERCENTAGE (e.g. 40.00 => 40%),
+// but the Vaccine Calculator's editor occasionally writes a 1.x multiplier
+// (e.g. 1.10). Disambiguate so the day-plan supply calc is realistic either
+// way: values > 3 are treated as a percentage, smaller values as a direct
+// multiplier. This matches the Vaccine Calculator's core formula
+// (doses × (1 + wastage%/100)).
+function wastageMultiplier(raw: string | number | null | undefined): number {
+  const f = typeof raw === "number" ? raw : parseFloat(String(raw ?? ""));
+  if (!isFinite(f) || f <= 0) return 1;
+  return f > 3 ? 1 + f / 100 : f;
+}
+
 const dayPlanFormSchema = z.object({
   dayNumber: z.number().min(1, "Day number is required"),
   sessionDate: z.string().min(1, "Session date is required").refine(
@@ -610,7 +623,9 @@ export default function SessionDayPlans() {
     if (!vaccineConfigs || !targetPopInput) return doses;
     vaccineConfigs.forEach((config) => {
       if (config.isActive) {
-        doses[config.name] = Math.ceil(targetPopInput * parseFloat(config.wastageFactor));
+        doses[config.name] = Math.ceil(
+          targetPopInput * (config.doses ?? 1) * wastageMultiplier(config.wastageFactor),
+        );
       }
     });
     return doses;
@@ -733,7 +748,7 @@ export default function SessionDayPlans() {
       vaccineConfigs.forEach((config) => {
         if (config.isActive) {
           vaccinesRequired[config.id.toString()] = Math.ceil(
-            values.targetPopulation * parseFloat(config.wastageFactor)
+            values.targetPopulation * (config.doses ?? 1) * wastageMultiplier(config.wastageFactor)
           );
         }
       });
@@ -1328,14 +1343,35 @@ export default function SessionDayPlans() {
           <Form {...form}>
             <form
               onSubmit={form.handleSubmit(onSubmit, (errors) => {
-                const errorMsg =
-                  errors.communitiesVisited?.message ||
-                  errors.targetPopulation?.message ||
-                  errors.dayNumber?.message ||
-                  "Please select at least one community/village visited.";
+                // Report the field(s) that actually failed instead of always
+                // blaming community selection. Priority order surfaces the most
+                // common blockers (lead vaccinator, date lead-time) first.
+                const order = [
+                  "leadVaccinator",
+                  "sessionDate",
+                  "communitiesVisited",
+                  "targetPopulation",
+                  "dayNumber",
+                ];
+                const seen = new Set<string>();
+                const parts: string[] = [];
+                for (const key of order) {
+                  const msg = (errors as any)[key]?.message;
+                  if (msg) {
+                    parts.push(msg);
+                    seen.add(key);
+                  }
+                }
+                for (const [key, val] of Object.entries(errors)) {
+                  if (seen.has(key)) continue;
+                  const msg = (val as any)?.message;
+                  if (msg) parts.push(msg);
+                }
                 toast({
                   title: "Itinerary Validation Failed",
-                  description: errorMsg,
+                  description: parts.length
+                    ? parts.join(" • ")
+                    : "Please complete the required fields before saving.",
                   variant: "destructive",
                 });
               })}
@@ -1663,7 +1699,7 @@ export default function SessionDayPlans() {
               <div className="p-4 rounded-lg bg-primary/5 border border-primary/10 space-y-2">
                 <div className="flex items-center gap-1.5 text-sm font-semibold text-primary">
                   <Layers className="h-4 w-4" />
-                  <span>Calculated Vaccine Supplies (Target * Wastage Factor)</span>
+                  <span>Calculated Vaccine Supplies (Target × Doses-per-child × Wastage)</span>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
                   {vaccineConfigs?.filter(c => c.isActive).map((config) => {

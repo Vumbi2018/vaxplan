@@ -101,6 +101,11 @@ const defaultFaqs = [
       "Day-to-day microplan and session-plan authoring belongs to facility staff (Facility Clerk and Facility In-charge), keeping accountability with the people who run the sessions. National admins can also author when setting up or correcting a country's data. District and provincial roles are reviewers and approvers only — they review and approve plans but do not author them.",
   },
   {
+    question: "How do I add itinerary days to a session?",
+    answer:
+      "Open the session and use 'Add Vaccination Session Itinerary Day'. Each day needs a lead vaccinator's name, a session date at least 7 days ahead, a target population, and at least one community ticked (or quick-added from the map). The 'Calculated Vaccine Supplies' panel estimates realistic doses per antigen from your target population (target × doses-per-child × wastage), so ~50 children yields tens of doses — not thousands. If a day won't save, the error names the field that needs fixing (for example, the missing lead vaccinator or a date that's too soon).",
+  },
+  {
     question: "How do I schedule and run a supervision visit?",
     answer:
       "Open Supervision and click 'Schedule Visit'. Pick the facility, date, and supervisor, and choose which checklist to use — the built-in WHO checklist or any custom one your national admin has set up. When the supervisor arrives, they open the visit. At the top a progress bar shows how many questions are answered and the live score updates as you go. A 'Visit location' card lets you confirm where the visit happened with a smart Province → District → Health Facility picker plus an interactive map — tap the map to drop a pin, drag it to fine-tune, or tap 'Use my location' to place it from the device's GPS. Then answer the checklist questions (Yes/No, True/False, text, number, choices, rating, date, GPS location picked the same way on a map, or a photo) and record findings and follow-up actions. Some questions are follow-ups that only appear after a certain answer, and some are repeatable — tap 'Add another' to record one entry per vaccinator, session, or child. The score is the average of the scored questions (Yes/No and True/False, plus any ratings the author chose to count); every repeated entry is included.",

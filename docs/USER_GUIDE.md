@@ -254,6 +254,21 @@ If GPS coordinates are missing for the village, the system warns you
 when you save and offers a "Capture GPS now" link to record them from
 your phone in the field.
 
+**Tip — plan from the calendar.** On **All sessions**, pick a day and
+click **Plan a session on this day**. This opens the New Session form
+(not the microplan wizard) with the date already filled in; pick the
+parent microplan and the form inherits its facility, quarter, year, and
+target population.
+
+**Add itinerary days.** Inside a session, use **Add Vaccination Session
+Itinerary Day** to plan each outreach day. Each day needs a **lead
+vaccinator**, a **date at least 7 days ahead**, a **target population**,
+and at least one **community** (tick from the list or quick-add from the
+map). The **Calculated Vaccine Supplies** panel estimates realistic doses
+per antigen — target × doses-per-child × wastage — so ~50 children yields
+tens of doses, not thousands. If a day won't save, the error names the
+field that needs fixing.
+
 ### 5.3 Run a session in the field
 
 The session execution screen is designed for use **offline**, on a

@@ -181,9 +181,11 @@ export default function SessionsHub() {
   };
 
   // Calendar → new session. Encode the picked day so SessionPlanning can
-  // prefill the form's scheduledDate. We route into the routine microplan
-  // workspace; the user picks a microplan if a specific facility isn't
-  // already filtered, and the query string is preserved through that hop.
+  // prefill the form's scheduledDate. Route into the New Session flow
+  // (`/sessions`) — NOT the Microplan Wizard (`/microplans/routine`). The
+  // session list lets the user pick a parent microplan; selecting one carries
+  // the query string into detail mode, where the New Session dialog auto-opens
+  // with the date already filled in.
   const planSessionOnSelectedDate = () => {
     if (!selectedDate) return;
     const y = selectedDate.getFullYear();
@@ -194,7 +196,7 @@ export default function SessionsHub() {
       autoOpen: "1",
     });
     if (facilityId) qs.set("facilityId", String(facilityId));
-    setLocation(`/microplans/routine?${qs.toString()}`);
+    setLocation(`/sessions?${qs.toString()}`);
   };
 
   return (

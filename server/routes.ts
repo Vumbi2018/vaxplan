@@ -6172,6 +6172,13 @@ export async function registerRoutes(
     try {
       const v = await storage.getSupervisionVisit(req.tenantId, parseInt(req.params.id));
       if (!v) return res.status(404).json({ message: "Supervision visit not found" });
+      // Row-level geo gate: a facility/district/province user must not be able to
+      // read a visit outside their scope by guessing its id (the list endpoint
+      // already narrows by scope). 404-on-deny mirrors "you can't see it exists".
+      const canAccess = await userCanAccessGeo(req.dbUser, req.tenantId, {
+        facilityId: (v as any).facilityId ?? null,
+      });
+      if (!canAccess) return res.status(404).json({ message: "Supervision visit not found" });
       res.json(v);
     } catch (error) {
       console.error("Error fetching supervision visit:", error);
@@ -8387,7 +8394,7 @@ export async function registerRoutes(
   // ─────────────────────────────────────────────────────────────────────────
 
   // GET /api/stock/ledger — Fetch stock ledger card history for a facility
-  app.get("/api/stock/ledger", isAuthenticated, requireTenant, async (req: any, res) => {
+  app.get("/api/stock/ledger", ...auth, async (req: any, res) => {
     try {
       const facilityIdRaw = req.query.facilityId as string | undefined;
       const facilityId = facilityIdRaw ? parseInt(facilityIdRaw) : undefined;
@@ -9013,7 +9020,7 @@ export async function registerRoutes(
   );
 
   // GET /api/missed-communities — deterministic missedness scorer
-  app.get("/api/missed-communities", isAuthenticated, requireTenant, async (req: any, res) => {
+  app.get("/api/missed-communities", ...auth, async (req: any, res) => {
     try {
       const schema = z.object({
         antigen: z.string().min(1).transform((a) => a.toUpperCase()),
@@ -10546,8 +10553,7 @@ export async function registerRoutes(
   // "which facilities have documented a plan this quarter, and which have not?"
   app.get(
     "/api/indicators/quarterly-review-coverage",
-    isAuthenticated,
-    requireTenant,
+    ...auth,
     async (req: any, res) => {
       try {
         const tenantId = req.tenantId as string;
