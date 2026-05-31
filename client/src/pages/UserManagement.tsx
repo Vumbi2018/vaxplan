@@ -933,6 +933,49 @@ export default function UserManagement() {
     },
   });
 
+  // Grant / revoke Super Admin (cross-country access + switching). Visible and
+  // usable only by an existing Super Admin; the server enforces the same gate.
+  const platformAdminMutation = useMutation({
+    mutationFn: async ({ userId, isPlatformAdmin }: { userId: string; isPlatformAdmin: boolean }) => {
+      const res = await fetch(`/api/users/${userId}/platform-admin`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ isPlatformAdmin }),
+      });
+      if (!res.ok) {
+        let msg = "Failed to update Super Admin access.";
+        try {
+          const body = await res.json();
+          if (body?.message) msg = body.message;
+        } catch {
+          /* non-JSON error */
+        }
+        throw new Error(msg);
+      }
+      return res.json();
+    },
+    onSuccess: (updated: any) => {
+      toast({
+        title: updated?.isPlatformAdmin ? "Super Admin granted" : "Super Admin revoked",
+        description: updated?.isPlatformAdmin
+          ? "This user can now access and switch between all countries."
+          : "This user is now limited to their home country.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+      setSelectedUser((prev) =>
+        prev ? ({ ...prev, isPlatformAdmin: !!updated?.isPlatformAdmin } as User) : prev,
+      );
+    },
+    onError: (err: any) => {
+      toast({
+        variant: "destructive",
+        title: "Update failed",
+        description: String(err?.message || "").replace(/^\d+:\s*/, "") || "Please try again.",
+      });
+    },
+  });
+
   const updateAccessMutation = useMutation({
     mutationFn: async ({ userId, firstName, lastName, email, isActive, roles, permissions, dataAccessScope, facilityId, districtId, provinceId }: {
       userId: string;
@@ -1675,6 +1718,47 @@ export default function UserManagement() {
                           {resetPasswordMutation.isPending ? "Setting..." : "Set Password"}
                         </Button>
                       </div>
+                    </div>
+                  )}
+
+                  {/* Super Admin access (existing Super Admins only) */}
+                  {isPlatformAdmin && (
+                    <div className="pt-4 border-t border-border mt-4 flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <span className="text-sm font-bold text-foreground flex items-center gap-1.5">
+                          <Shield className="h-4 w-4 text-indigo-500" />
+                          Super Admin access
+                        </span>
+                        <span className="text-xs text-muted-foreground block">
+                          {(selectedUser as any)?.isPlatformAdmin
+                            ? "This user can access and switch between all countries."
+                            : "This user is limited to their home country. Grant Super Admin to allow cross-country access."}
+                        </span>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => {
+                          const next = !(selectedUser as any)?.isPlatformAdmin;
+                          const verb = next ? "grant" : "revoke";
+                          if (
+                            confirm(
+                              `Are you sure you want to ${verb} Super Admin (all-country access) ${next ? "to" : "from"} ${userFirstName || selectedUser.email}?`,
+                            )
+                          ) {
+                            platformAdminMutation.mutate({ userId: selectedUser.id, isPlatformAdmin: next });
+                          }
+                        }}
+                        disabled={platformAdminMutation.isPending}
+                        className="rounded-xl font-semibold text-xs px-4 py-2 whitespace-nowrap"
+                        data-testid="button-toggle-super-admin"
+                      >
+                        {platformAdminMutation.isPending
+                          ? "Saving..."
+                          : (selectedUser as any)?.isPlatformAdmin
+                          ? "Revoke Super Admin"
+                          : "Make Super Admin"}
+                      </Button>
                     </div>
                   )}
 

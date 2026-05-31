@@ -820,6 +820,7 @@ export async function registerRoutes(
       }
       
       const updatedUser = await storage.updateUserRolesAndPermissions(
+        req.tenantId,
         req.params.id,
         roles,
         permissions,
@@ -877,7 +878,7 @@ export async function registerRoutes(
     try {
       const { firstName, lastName, email, roles, permissions, dataAccessScope, isActive, facilityId, districtId, provinceId } = req.body;
       const oldUser = await storage.getUser(req.params.id);
-      if (!oldUser) {
+      if (!oldUser || oldUser.tenantId !== req.tenantId) {
         return res.status(404).json({ message: "User not found" });
       }
       const updated = await storage.updateUser(req.tenantId, req.params.id, {
@@ -903,7 +904,7 @@ export async function registerRoutes(
   app.delete("/api/users/:id", isAuthenticated, requireTenant, requirePermission("manage_users"), async (req: any, res) => {
     try {
       const oldUser = await storage.getUser(req.params.id);
-      if (!oldUser) {
+      if (!oldUser || oldUser.tenantId !== req.tenantId) {
         return res.status(404).json({ message: "User not found" });
       }
       await storage.deleteUser(req.tenantId, req.params.id);
@@ -912,6 +913,52 @@ export async function registerRoutes(
     } catch (err: any) {
       console.error("DELETE /api/users/:id failed:", err);
       res.status(500).json({ message: "Failed to delete user" });
+    }
+  });
+
+  // Grant or revoke platform Super-Admin (cross-country access + switching).
+  // This is the ONLY path that can set is_platform_admin, and it is gated
+  // strictly on the caller already being a Super Admin — the tenant-scoped
+  // `manage_users` permission (which national admins hold) is deliberately NOT
+  // enough, so a country admin can never escalate themselves or anyone else to
+  // cross-country access. A Super Admin may promote a user in any country.
+  app.post("/api/users/:id/platform-admin", isAuthenticated, async (req: any, res) => {
+    try {
+      if (req.dbUser?.isPlatformAdmin !== true) {
+        return res.status(403).json({ message: "Only a Super Admin can manage Super Admins." });
+      }
+      const { isPlatformAdmin } = z
+        .object({ isPlatformAdmin: z.boolean() })
+        .parse(req.body);
+
+      const target = await storage.getUser(req.params.id);
+      if (!target) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      // Guard against a Super Admin removing their own last cross-country access
+      // by accident — they cannot revoke their own Super-Admin flag here.
+      if (!isPlatformAdmin && target.id === req.dbUser.id) {
+        return res
+          .status(400)
+          .json({ message: "You cannot remove your own Super Admin access." });
+      }
+
+      const updated = await storage.setPlatformAdmin(target.id, isPlatformAdmin);
+      await logAudit(
+        req,
+        isPlatformAdmin ? "grant_platform_admin" : "revoke_platform_admin",
+        "users",
+        target.id,
+        { isPlatformAdmin: target.isPlatformAdmin },
+        { isPlatformAdmin },
+      );
+      res.json(updated ?? { id: target.id, isPlatformAdmin });
+    } catch (err: any) {
+      if (err?.name === "ZodError") {
+        return res.status(400).json({ message: "Invalid request", errors: err.errors });
+      }
+      console.error("POST /api/users/:id/platform-admin failed:", err);
+      res.status(500).json({ message: "Failed to update Super Admin access" });
     }
   });
 
@@ -1623,10 +1670,21 @@ export async function registerRoutes(
     }
   });
 
-  // Any authenticated user may "visit" another active tenant. Reads and
-  // writes both operate against the currently-viewed tenant.
+  // Only a platform Super Admin may switch to another active country.
+  // Every other account is pinned to its home country (see tenantContext),
+  // so this endpoint 403s non-super callers below.
   app.post("/api/me/switch-tenant", isAuthenticated, async (req: any, res) => {
     try {
+      // Country switching is reserved for platform super-admins. Every other
+      // account is pinned to its home country (see tenantContext) and must
+      // never be able to view or act in another country, even via a crafted
+      // request, so we reject here too rather than relying on the UI alone.
+      if (req.dbUser?.isPlatformAdmin !== true) {
+        return res
+          .status(403)
+          .json({ message: "Only a Super Admin can switch countries." });
+      }
+
       const { tenantId } = z.object({ tenantId: z.string().min(1) }).parse(req.body);
       const tenant = await storage.getTenant(tenantId);
       if (!tenant || tenant.status !== "active") {

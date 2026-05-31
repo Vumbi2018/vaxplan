@@ -17,6 +17,7 @@ import {
 interface User {
   id: string;
   tenantId?: string | null;
+  isPlatformAdmin?: boolean | null;
 }
 
 interface MyTenant {
@@ -81,6 +82,11 @@ export function TenantSwitcher() {
   });
 
   if (!user) return null;
+
+  // Country switching is reserved for platform Super Admins. Every other account
+  // is pinned to its home country (enforced server-side in tenantContext and the
+  // switch-tenant endpoint), so the switcher is hidden entirely for them.
+  if (user.isPlatformAdmin !== true) return null;
 
   // Resolve the active tenant from the live query, falling back to the cached
   // copy written by App.tsx (so the active country is known even offline).

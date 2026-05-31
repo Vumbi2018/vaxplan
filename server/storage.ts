@@ -144,9 +144,10 @@ export interface IStorage {
   assignUserTenant(userId: string, tenantId: string): Promise<void>;
   assignUserTenantAndRole(userId: string, tenantId: string, role: UserRole): Promise<void>;
   listUsers(tenantId: string): Promise<User[]>;
-  updateUserRolesAndPermissions(id: string, roles: string[], permissions: string[], scope: any): Promise<User | undefined>;
+  updateUserRolesAndPermissions(tenantId: string, id: string, roles: string[], permissions: string[], scope: any): Promise<User | undefined>;
   createUser(tenantId: string, data: any): Promise<User>;
   updateUser(tenantId: string, id: string, data: any): Promise<User | undefined>;
+  setPlatformAdmin(id: string, isPlatformAdmin: boolean): Promise<User | undefined>;
   deleteUser(tenantId: string, id: string): Promise<boolean>;
 
   // Tenants & IdP configs (control plane)
@@ -437,7 +438,7 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(users).where(eq(users.tenantId, tenantId));
   }
 
-  async updateUserRolesAndPermissions(id: string, roles: string[], permissions: string[], scope: any): Promise<User | undefined> {
+  async updateUserRolesAndPermissions(tenantId: string, id: string, roles: string[], permissions: string[], scope: any): Promise<User | undefined> {
     const [u] = await db
       .update(users)
       .set({ 
@@ -447,7 +448,7 @@ export class DatabaseStorage implements IStorage {
         role: roles.length > 0 ? roles[0] as any : "facility_clerk",
         updatedAt: new Date() 
       })
-      .where(eq(users.id, id))
+      .where(and(eq(users.id, id), eq(users.tenantId, tenantId)))
       .returning();
     return u;
   }
@@ -479,6 +480,15 @@ export class DatabaseStorage implements IStorage {
         updatedAt: new Date(),
       })
       .where(and(eq(users.id, id), eq(users.tenantId, tenantId)))
+      .returning();
+    return row;
+  }
+
+  async setPlatformAdmin(id: string, isPlatformAdmin: boolean): Promise<User | undefined> {
+    const [row] = await db
+      .update(users)
+      .set({ isPlatformAdmin, updatedAt: new Date() })
+      .where(eq(users.id, id))
       .returning();
     return row;
   }

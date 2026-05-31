@@ -46,43 +46,71 @@ const UUID_RE =
 export const tenantContext: RequestHandler = async (req, _res, next) => {
   if (!req.isAuthenticated?.()) return next();
 
-  // Extract custom active tenant override header or query parameters. Only
-  // accept a well-formed UUID — a tenant *code* or any other garbage is ignored
-  // so it can never be persisted to the session or reach a uuid column.
-  const headerTenantId = req.headers["x-tenant-id"] || req.query["x-tenant-id"];
-  if (
-    headerTenantId &&
-    typeof headerTenantId === "string" &&
-    UUID_RE.test(headerTenantId)
-  ) {
+  const userId = (req.user as any)?.claims?.sub;
+
+  // ─── Country isolation choke point ──────────────────────────────────────
+  // Cross-country "visiting" is reserved for platform super-admins. Every other
+  // account is permanently pinned to its home country: any view override (the
+  // x-tenant-id header or a leftover session.viewTenantId) is ignored AND
+  // cleared, so reads and writes can only ever scope to the user's home tenant.
+  // We only pay the extra user lookup when an override is actually in play
+  // (the common request has neither header nor viewTenantId, so this is free).
+  const headerTenantRaw = req.headers["x-tenant-id"] || req.query["x-tenant-id"];
+  const headerTenantId =
+    typeof headerTenantRaw === "string" && UUID_RE.test(headerTenantRaw)
+      ? headerTenantRaw
+      : null;
+  const hasOverrideIntent = !!headerTenantId || !!req.session.viewTenantId;
+
+  let isSuperAdmin = false;
+  if (hasOverrideIntent && userId) {
     try {
-      const t = await storage.getTenant(headerTenantId);
-      if (t?.status === "active") {
-        req.session.viewTenantId = t.id;
-      }
+      const u = await storage.getUser(userId);
+      isSuperAdmin = u?.isPlatformAdmin === true;
     } catch (err) {
-      console.error("tenantContext header tenant lookup failed:", err);
+      console.error("tenantContext super-admin check failed:", err);
     }
   }
 
-  // viewTenantId override: any authenticated user may "visit" another active
-  // tenant. Reads and writes both scope to that tenant.
-  if (req.session.viewTenantId && UUID_RE.test(req.session.viewTenantId)) {
-    try {
-      const t = await storage.getTenant(req.session.viewTenantId);
-      if (t?.status === "active") {
-        req.tenantId = t.id;
-        return next();
+  if (!isSuperAdmin) {
+    // Non-super user (or no override): never honor a cross-country override.
+    // Purge any stale viewTenantId so the user falls through to their home
+    // tenant below, and ignore the header entirely.
+    if (req.session.viewTenantId) delete req.session.viewTenantId;
+  } else {
+    // Platform super-admin: accept a well-formed UUID header as the active
+    // tenant override (a tenant *code* or garbage is ignored so it can never
+    // be persisted to the session or reach a uuid column).
+    if (headerTenantId) {
+      try {
+        const t = await storage.getTenant(headerTenantId);
+        if (t?.status === "active") {
+          req.session.viewTenantId = t.id;
+        }
+      } catch (err) {
+        console.error("tenantContext header tenant lookup failed:", err);
       }
-      // Stale / inactive override — drop it so we fall back to the home tenant.
-      delete req.session.viewTenantId;
-    } catch (err) {
-      console.error("tenantContext viewTenantId lookup failed:", err);
+    }
+
+    // viewTenantId override: a super-admin may "visit" another active tenant.
+    // Reads and writes both scope to that tenant.
+    if (req.session.viewTenantId && UUID_RE.test(req.session.viewTenantId)) {
+      try {
+        const t = await storage.getTenant(req.session.viewTenantId);
+        if (t?.status === "active") {
+          req.tenantId = t.id;
+          return next();
+        }
+        // Stale / inactive override — drop it so we fall back to home tenant.
+        delete req.session.viewTenantId;
+      } catch (err) {
+        console.error("tenantContext viewTenantId lookup failed:", err);
+        delete req.session.viewTenantId;
+      }
+    } else if (req.session.viewTenantId) {
+      // Non-UUID value left over from an older client — purge it.
       delete req.session.viewTenantId;
     }
-  } else if (req.session.viewTenantId) {
-    // Non-UUID value left over from an older client — purge it.
-    delete req.session.viewTenantId;
   }
 
   if (req.session.tenantId) {

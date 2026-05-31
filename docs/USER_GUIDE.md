@@ -66,8 +66,10 @@ immunisation activities (SIAs).
   on Leaflet maps with admin boundary overlays (GeoBoundaries +
   custom GeoJSON uploads).
 - **Multitenant SaaS:** each Ministry of Health is a separate tenant
-  with its own data, users, and SSO. Users with cross-tenant access
-  can switch between countries from the header.
+  with its own data, users, and SSO. Every account belongs to exactly
+  one country and can only ever access that country. The single
+  exception is a **Super Admin**, who can access and switch between all
+  countries from the header.
 
 **See the full feature list.** For a complete, plain-language catalogue
 of everything VaxPlan can do today, open **Standards Alignment** from the
@@ -92,8 +94,8 @@ facility staff.
 | **Facility in-charge** | Same as clerk, plus signs off (submits) the microplan and session results. | Their own facility only. |
 | **District manager** | Reviews and approves microplans from facilities in the district, runs supervision visits, reads coverage. | Their district. |
 | **Provincial coordinator** | Approves district-level plans, sees rolled-up coverage, escalates issues. | Their province. |
-| **National admin** | Manages users, facilities, vaccine schedule, labels, boundaries, and the country dashboard. | Whole country (tenant). |
-| **Tenant superadmin** | Onboards new tenants, configures SSO, and provisions the first national admin. | Cross-tenant. |
+| **National admin** | Manages users, facilities, vaccine schedule, labels, boundaries, and the country dashboard. | Their own country only. |
+| **Super Admin** | Onboards new countries, configures SSO, provisions national admins, and is the only role that can access and switch between all countries (and promote other Super Admins). | All countries. |
 
 Microplan authoring (creating new microplans and session plans) is
 **reserved for facility staff** (clerk and in-charge), so accountability
@@ -150,21 +152,24 @@ receive an inbox notification automatically.
 
 The header has three constant elements:
 
-- **Tenant switcher (top-left)** — shows your current country. If you
-  have access to more than one tenant (rare, mostly used by cross-MoH
-  regional coordinators), you'll see a dropdown to switch. Switching
-  does not move your home — it only changes what data you're viewing.
+- **Country switcher (top-left)** — this appears **only for a Super
+  Admin**. It shows the current country and a dropdown to switch
+  between all countries. Switching changes which country's data you're
+  working in. Every other account is permanently locked to its own
+  country and never sees this switcher.
 - **Navigation sidebar (collapsible)** — your modules. Items that
   your role can't access are hidden, so the menu adapts to who you
   are.
 - **Profile menu (top-right)** — language, theme (light/dark), and
   sign-out.
 
-**Cross-tenant rule:** when you switch to another country, you become
-a read-only viewer of that tenant's data. The system rejects any write
-you try to perform outside your home tenant with a clear error
-message. This is intentional — it lets a regional advisor see
-neighbouring countries' plans without risking accidental edits.
+**Country isolation rule:** every account — including a national admin
+— can only ever access its own country. There is no way to view or
+edit another country's data. Only a Super Admin can move between
+countries; when a Super Admin switches, they act fully within whichever
+country they have selected. A Super Admin can also grant Super Admin to
+another user from that user's edit screen (Users → open a user → Super
+Admin access).
 
 **What you can see within your country.** VaxPlan also scopes data by
 your place in the hierarchy. A facility clerk or in-charge sees only
@@ -472,9 +477,9 @@ National admins are the power users for your country. Your modules:
   away, and you can **reset any user's password** later from the
   user's edit screen (open a user → **Reset Password**). Passwords must
   be at least 8 characters — share them with the user securely. (Only
-  national/platform admins see these password controls, and national
-  admins can only set passwords for users in **their own country** —
-  the controls are hidden while you're viewing another country.)
+  national admins and Super Admins see these password controls. A
+  national admin can only manage users in **their own country**; a
+  Super Admin can manage users in whichever country they're working in.)
 - **Facilities.** The registry of all facilities. Import from CSV (a
   template is downloadable), edit GPS coordinates, merge duplicates,
   or retire facilities.
