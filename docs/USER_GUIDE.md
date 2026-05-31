@@ -563,8 +563,16 @@ steps below.
 ## 10. Map and boundary management
 
 Every map in VaxPlan (Sessions, Coverage, Settlement intelligence,
-Microplans) draws boundaries on top of OpenStreetMap tiles. Boundaries
-come from two sources:
+Microplans) draws boundaries on top of OpenStreetMap tiles.
+
+> **Boundary disclaimer.** The credit at the bottom-right of every map
+> carries a short notice that boundaries are approximate, for planning
+> and reference only, and do not imply endorsement — and that disputed
+> areas are not authoritatively depicted. The full statement, including
+> how disputed regions are handled, is in the **Acknowledgements** on the
+> Data Sources page (§16).
+
+Boundaries come from two sources:
 
 - **GeoBoundaries API** — public, covers 200+ countries, available
   for admin levels 0 to 2 or 3 depending on the country.
@@ -793,6 +801,11 @@ on.
 - The **Acknowledgements** section credits the data providers and open
   projects, and is a reminder that each dataset remains the property of
   its original owner and should be cited accordingly.
+- The Acknowledgements also carry the **map boundary disclaimer** and a
+  note on **disputed regions**: boundaries shown are for reference only
+  and do not imply endorsement, and disputed or contested areas are not
+  authoritatively depicted. The same short notice appears in the credit
+  on every map.
 
 ---
 
