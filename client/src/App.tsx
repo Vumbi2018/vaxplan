@@ -1,4 +1,5 @@
 import { Switch, Route, useParams, Redirect } from "wouter";
+import { navigate } from "wouter/use-browser-location";
 import { useEffect, lazy, Suspense } from "react";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -348,6 +349,37 @@ function AuthenticatedLayout() {
 }
 
 function App() {
+  // Task #276 — the basemap attribution credit on every Leaflet map ends with a
+  // "Data sources" link (see OSM_TILE_ATTRIBUTION / ESRI_IMAGERY_ATTRIBUTION).
+  // Leaflet renders attribution as raw HTML outside React, so a delegated click
+  // handler intercepts that link and routes within the SPA instead of doing a
+  // full page reload (better for the offline build). The anchor's plain href
+  // remains a working fallback if this listener ever fails to attach.
+  useEffect(() => {
+    const handleClick = (event: MouseEvent) => {
+      if (event.defaultPrevented) return;
+      // Respect new-tab / modifier-key clicks and non-primary buttons.
+      if (
+        event.button !== 0 ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.shiftKey ||
+        event.altKey
+      ) {
+        return;
+      }
+      const target = event.target as HTMLElement | null;
+      const link = target?.closest<HTMLAnchorElement>(
+        "a[data-data-sources-link]",
+      );
+      if (!link) return;
+      event.preventDefault();
+      navigate("/data-sources");
+    };
+    document.addEventListener("click", handleClick);
+    return () => document.removeEventListener("click", handleClick);
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>

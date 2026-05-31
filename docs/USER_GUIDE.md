@@ -773,8 +773,10 @@ platform's maps, administrative boundaries, population figures, and
 facility data come from, along with the open-source projects it is built
 on.
 
-- Open it from the sidebar (**Data Sources**, near Settings and Help) or
-  from the **External Resources** card on the Help page.
+- Open it from the sidebar (**Data Sources**, near Settings and Help),
+  from the **External Resources** card on the Help page, or by tapping the
+  small **Data sources** link in the credit at the bottom-right corner of
+  any map.
 - The page is also **public**: anyone can view it at `/data-sources`
   without signing in, and there is a link to it in the footer of the
   public landing page. The per-country population sources block is only

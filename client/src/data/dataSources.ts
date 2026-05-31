@@ -243,11 +243,16 @@ export const dataSourceCategories: DataSourceCategory[] = [
  * these constants as the single source of truth. Keep them in sync with the
  * "Maps & Basemaps" licences listed above.
  */
+const DATA_SOURCES_ATTRIBUTION_LINK =
+  ' | <a href="/data-sources" data-data-sources-link="true" title="View all data sources & acknowledgements">Data sources</a>';
+
 export const OSM_TILE_ATTRIBUTION =
-  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' +
+  DATA_SOURCES_ATTRIBUTION_LINK;
 
 export const ESRI_IMAGERY_ATTRIBUTION =
-  'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics and the GIS community';
+  'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics and the GIS community' +
+  DATA_SOURCES_ATTRIBUTION_LINK;
 
 export const acknowledgements = [
   "VaxPlan is built on open data and open-source software. We are grateful to the OpenStreetMap community (including Nominatim), geoBoundaries, GADM, WorldPop, GRID3, UN OCHA / HDX, the World Health Organization, PAHO, the U.S. CDC, UNICEF, Gavi, DHIS2, and the maintainers of the many open-source libraries listed here.",
