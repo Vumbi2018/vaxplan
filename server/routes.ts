@@ -5765,11 +5765,16 @@ export async function registerRoutes(
         .where(eq(clientVaccinations.tenantId, String(req.tenantId)));
       const servedVillageIds = new Set<number>(cvRows.map((r: any) => r.villageId).filter(Boolean));
 
+      const scope = await getGeoScope(req.dbUser, req.tenantId);
       const unserved = (vilList as any[]).filter((v) =>
         v.latitude != null &&
         v.longitude != null &&
         !plannedVillageIds.has(v.id) &&
-        !servedVillageIds.has(v.id)
+        !servedVillageIds.has(v.id) &&
+        recordInGeoScope(scope, {
+          facilityId: v.assignedFacilityId,
+          districtId: v.districtId,
+        })
       ).map((v) => ({
         id: v.id,
         name: v.name,
