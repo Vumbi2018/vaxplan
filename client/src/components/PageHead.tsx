@@ -15,6 +15,20 @@ interface PageHeadProps {
 
 const DEFAULT_TITLE = "VaxPlan · Health Microplanning for Ministries";
 
+/** Default branded social card shipped in client/public. */
+const DEFAULT_IMAGE = "/og-card.png";
+
+/**
+ * Resolve a root-relative or absolute image path to a fully-qualified URL.
+ * Social crawlers (Slack, X, WhatsApp, LinkedIn) require absolute og:image
+ * URLs, so a bare "/og-card.png" must be prefixed with the current origin.
+ */
+function toAbsoluteUrl(src: string): string {
+  if (/^https?:\/\//i.test(src)) return src;
+  if (typeof window === "undefined") return src;
+  return new URL(src, window.location.origin).href;
+}
+
 function upsertMeta(
   selector: string,
   attr: "name" | "property",
@@ -117,19 +131,23 @@ export function PageHead({
       );
     }
 
-    if (image) {
-      cleanups.push(
-        upsertMeta('meta[property="og:image"]', "property", "og:image", image),
-      );
-      cleanups.push(
-        upsertMeta(
-          'meta[name="twitter:image"]',
-          "name",
-          "twitter:image",
-          image,
-        ),
-      );
-    }
+    const resolvedImage = toAbsoluteUrl(image ?? DEFAULT_IMAGE);
+    cleanups.push(
+      upsertMeta(
+        'meta[property="og:image"]',
+        "property",
+        "og:image",
+        resolvedImage,
+      ),
+    );
+    cleanups.push(
+      upsertMeta(
+        'meta[name="twitter:image"]',
+        "name",
+        "twitter:image",
+        resolvedImage,
+      ),
+    );
 
     return () => {
       document.title = previousTitle || DEFAULT_TITLE;

@@ -393,6 +393,7 @@ export default function Landing() {
       <PageHead
         title="VaxPlan · Health Microplanning for Ministries"
         description="Multi-tenant GIS microplanning platform for national immunization and primary-care programs. Map facilities, plan sessions, forecast vaccines, approve budgets."
+        image="/og-card.png"
       />
       <PasswordLoginDialog open={loginOpen} onOpenChange={setLoginOpen} />
       <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur">

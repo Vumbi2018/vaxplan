@@ -83,6 +83,7 @@ export default function DataSources() {
       <PageHead
         title="Data Sources & Acknowledgements · VaxPlan"
         description="The open maps, administrative boundaries, population figures, facility registries, and immunization guidance behind VaxPlan's health microplanning — and the open-source projects that make it possible."
+        image="/og-card.png"
       />
       {/* Header */}
       <div className="space-y-2">

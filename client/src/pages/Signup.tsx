@@ -139,6 +139,7 @@ export default function Signup() {
       <PageHead
         title="Request Access · VaxPlan"
         description="Request access to VaxPlan, the multi-tenant GIS microplanning platform for national immunization and primary-care programs."
+        image="/og-card.png"
       />
       <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
