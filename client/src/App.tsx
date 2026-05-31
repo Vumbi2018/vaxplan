@@ -28,6 +28,7 @@ import { UpdateBanner } from "@/components/UpdateBanner";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { useUnmappedAntigenWarnings } from "@/hooks/useUnmappedAntigenWarnings";
 import { useProximityConflictWarnings } from "@/hooks/useProximityConflictWarnings";
+import { HeartPulse } from "lucide-react";
 
 const MapPage = lazy(() => import("@/pages/MapPage"));
 const Facilities = lazy(() => import("@/pages/Facilities"));
@@ -93,6 +94,72 @@ function RouteFallback() {
         <Skeleton className="h-4 w-32 mx-auto" />
       </div>
     </div>
+  );
+}
+
+// Public, unauthenticated chrome for pages that are meant to be viewable
+// without signing in (e.g. the Data Sources & Acknowledgements page). Provides
+// a slim header that links back to the landing page and a small footer.
+function PublicPageShell({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="min-h-screen bg-background flex flex-col">
+      <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur">
+        <div className="container mx-auto px-4 h-16 flex items-center justify-between gap-4">
+          <a href="/" className="flex items-center gap-3" data-testid="link-public-home">
+            <div className="flex h-10 w-10 items-center justify-center rounded-md bg-primary text-primary-foreground">
+              <HeartPulse className="h-5 w-5" />
+            </div>
+            <div className="flex flex-col">
+              <span className="font-semibold text-sm">VaxPlan</span>
+              <span className="text-xs text-muted-foreground">
+                Health microplanning for Ministries
+              </span>
+            </div>
+          </a>
+          <div className="flex items-center gap-3">
+            <ThemeToggle />
+            <a
+              href="/"
+              className="text-sm text-primary hover:underline"
+              data-testid="link-public-back-home"
+            >
+              ← Back to home
+            </a>
+          </div>
+        </div>
+      </header>
+      <main className="flex-1">{children}</main>
+    </div>
+  );
+}
+
+// Gate for the public Data Sources route. Authenticated users get the full
+// in-app shell (so the sidebar link keeps working), while signed-out visitors
+// get a public, read-only version inside the slim public chrome.
+function DataSourcesGate() {
+  const { user, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center">
+        <div className="space-y-4 text-center">
+          <Skeleton className="h-12 w-12 rounded-full mx-auto" />
+          <Skeleton className="h-4 w-32 mx-auto" />
+        </div>
+      </div>
+    );
+  }
+
+  if (user) {
+    return <AuthenticatedLayout />;
+  }
+
+  return (
+    <PublicPageShell>
+      <Suspense fallback={<RouteFallback />}>
+        <DataSources />
+      </Suspense>
+    </PublicPageShell>
   );
 }
 
@@ -288,6 +355,7 @@ function App() {
           <Suspense fallback={<RouteFallback />}>
             <Switch>
               <Route path="/signup" component={Signup} />
+              <Route path="/data-sources" component={DataSourcesGate} />
               <Route><AuthenticatedLayout /></Route>
             </Switch>
           </Suspense>

@@ -769,6 +769,11 @@ on.
 
 - Open it from the sidebar (**Data Sources**, near Settings and Help) or
   from the **External Resources** card on the Help page.
+- The page is also **public**: anyone can view it at `/data-sources`
+  without signing in, and there is a link to it in the footer of the
+  public landing page. The per-country population sources block is only
+  shown to signed-in users; signed-out visitors see the general source
+  list and acknowledgements.
 - Sources are grouped by category: Maps & Basemaps, Administrative
   Boundaries, Population & Demographics, Health Facilities & Health
   Information Systems, Immunization Guidance & Standards, and Software /

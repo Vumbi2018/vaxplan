@@ -741,8 +741,17 @@ export default function Landing() {
               </div>
               <span>VaxPlan · Health Microplanning Platform</span>
             </div>
-            <div className="text-xs">
-              Built for national immunization programs · Multi-tenant SaaS
+            <div className="flex items-center gap-4 text-xs">
+              <a
+                href="/data-sources"
+                className="text-primary hover:underline"
+                data-testid="link-footer-data-sources"
+              >
+                Data Sources &amp; Acknowledgements
+              </a>
+              <span className="hidden sm:inline">
+                Built for national immunization programs · Multi-tenant SaaS
+              </span>
             </div>
           </div>
           <div className="mt-3 text-center text-[11px] text-muted-foreground/80" data-testid="landing-version">
