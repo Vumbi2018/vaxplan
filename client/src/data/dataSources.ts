@@ -246,16 +246,29 @@ export const dataSourceCategories: DataSourceCategory[] = [
 const DATA_SOURCES_ATTRIBUTION_LINK =
   ' | <a href="/data-sources" data-data-sources-link="true" title="View all data sources & acknowledgements">Data sources</a>';
 
+/**
+ * Short boundary disclaimer shown directly on every map's attribution control.
+ * Boundaries are reference-only and disputed areas are not authoritative — see
+ * the fuller statement in `acknowledgements` and on the Data Sources page.
+ * Appended to both basemap attributions so it appears on all maps automatically.
+ */
+const MAP_BOUNDARY_DISCLAIMER =
+  ' | Boundaries are approximate, for reference only, and do not imply endorsement; disputed areas are not authoritatively depicted.';
+
 export const OSM_TILE_ATTRIBUTION =
   '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' +
-  DATA_SOURCES_ATTRIBUTION_LINK;
+  DATA_SOURCES_ATTRIBUTION_LINK +
+  MAP_BOUNDARY_DISCLAIMER;
 
 export const ESRI_IMAGERY_ATTRIBUTION =
   'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics and the GIS community' +
-  DATA_SOURCES_ATTRIBUTION_LINK;
+  DATA_SOURCES_ATTRIBUTION_LINK +
+  MAP_BOUNDARY_DISCLAIMER;
 
 export const acknowledgements = [
   "VaxPlan is built on open data and open-source software. We are grateful to the OpenStreetMap community (including Nominatim), geoBoundaries, GADM, WorldPop, GRID3, UN OCHA / HDX, the World Health Organization, PAHO, the U.S. CDC, UNICEF, Gavi, DHIS2, and the maintainers of the many open-source libraries listed here.",
   "Boundary, population, and facility datasets remain the property of their respective owners and are used under their published licenses. Always cite the original source when reusing this data outside VaxPlan.",
   "Country data loaded into VaxPlan is owned by the respective Ministry / Department of Health. External reference datasets are used only to bootstrap and enrich that official data.",
+  "Map boundary disclaimer: The boundaries, names, and designations shown on maps in VaxPlan are for planning and operational reference only. They do not imply any opinion, official endorsement, or acceptance by VaxPlan or any Ministry of Health concerning the legal status of any country, territory, city, or area, or the delimitation of its frontiers or boundaries.",
+  "Disputed regions: Approximate, dotted, or dashed lines on maps represent boundaries for which there may not yet be full agreement. Disputed or contested areas are not authoritatively depicted, and their appearance does not constitute endorsement of any party's position. Final boundaries rest with the relevant national and international authorities.",
 ];
