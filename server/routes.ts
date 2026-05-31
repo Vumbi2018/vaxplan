@@ -17,7 +17,9 @@ import { readFileSync as _readFileSync } from "fs";
 import { tenantContext, requireTenant } from "./auth/tenantResolver";
 import { loadDbUser, requireDbUser } from "./auth/loadDbUser";
 import { seedReplitIdpConfig } from "./auth/seedReplitIdpConfig";
+import { sendEmail } from "./services/mailer";
 import {
+  FACILITY_AUTHOR_ROLES,
   insertFacilitySchema,
   insertVillageSchema,
   insertPopulationDataSchema,
@@ -91,7 +93,7 @@ import {
   SUPPORTED_COUNTRIES,
 } from "./services/geoBoundariesService";
 // Turf area calculation for catchment polygons
-import { area as turfArea } from "@turf/turf";
+import { area as turfArea, intersect as turfIntersect, featureCollection as turfFeatureCollection } from "@turf/turf";
 // HIS Interoperability service
 import {
   parseHisIntegrations,
@@ -2566,6 +2568,16 @@ export async function registerRoutes(
 
   app.post("/api/facilities", ...auth, async (req: any, res) => {
     try {
+      // Only provincial/national-level roles may author a facility. Facility staff
+      // and district managers can add *communities* but not *facilities* (task #261).
+      const allowed = FACILITY_AUTHOR_ROLES as readonly string[];
+      const userRolesList = [
+        req.dbUser?.role,
+        ...(Array.isArray(req.dbUser?.roles) ? (req.dbUser!.roles as string[]) : []),
+      ].filter(Boolean) as string[];
+      if (req.dbUser?.isPlatformAdmin !== true && !userRolesList.some((r) => allowed.includes(r))) {
+        return res.status(403).json({ message: "Your role can add communities but not facilities." });
+      }
       const data = insertFacilitySchema.parse(req.body);
       const facility = await storage.createFacility(req.tenantId, data);
       await logAudit(req, "create", "facility", facility.id, null, facility);
@@ -3060,12 +3072,93 @@ export async function registerRoutes(
     return [totalLng / pointCount, totalLat / pointCount];
   }
 
+  // ─── Community boundary overlap detection (task #261) ─────────────────────
+  // Normalise a stored boundary (GeoJSON geometry or Feature) into a Turf
+  // Polygon/MultiPolygon Feature; returns null when there is no usable polygon.
+  function toBoundaryFeature(geometry: any): any | null {
+    if (!geometry || typeof geometry !== "object") return null;
+    const geom = geometry.type === "Feature" ? geometry.geometry : geometry;
+    if (!geom || !geom.coordinates) return null;
+    if (geom.type !== "Polygon" && geom.type !== "MultiPolygon") return null;
+    return { type: "Feature", geometry: geom, properties: {} };
+  }
+
+  // Returns the communities whose saved boundary intersects `boundary`, with the
+  // owning facility and the overlap magnitude (as % of the new boundary's area).
+  async function detectCommunityBoundaryOverlaps(
+    tenantId: string,
+    boundary: any,
+    excludeVillageId?: number,
+  ): Promise<Array<{
+    villageId: number;
+    villageName: string;
+    facilityId: number | null;
+    facilityName: string | null;
+    overlapPct: number;
+    overlapAreaSqKm: number;
+  }>> {
+    const feat = toBoundaryFeature(boundary);
+    if (!feat) return [];
+    let newArea = 0;
+    try { newArea = turfArea(feat); } catch { return []; }
+    if (!newArea || newArea <= 0) return [];
+
+    const all = await storage.getVillages(tenantId);
+    const facilityNameCache = new Map<number, string | null>();
+    const overlaps: Array<{
+      villageId: number;
+      villageName: string;
+      facilityId: number | null;
+      facilityName: string | null;
+      overlapPct: number;
+      overlapAreaSqKm: number;
+    }> = [];
+
+    for (const other of all) {
+      if (excludeVillageId && Number(other.id) === Number(excludeVillageId)) continue;
+      const otherFeat = toBoundaryFeature((other as any).boundary);
+      if (!otherFeat) continue;
+      let inter: any = null;
+      try { inter = turfIntersect(turfFeatureCollection([feat, otherFeat])); } catch { continue; }
+      if (!inter) continue;
+      let interArea = 0;
+      try { interArea = turfArea(inter); } catch { continue; }
+      if (interArea <= 0) continue;
+
+      const facId = ((other as any).assignedFacilityId ?? null) as number | null;
+      let facName: string | null = null;
+      if (facId !== null) {
+        if (facilityNameCache.has(facId)) {
+          facName = facilityNameCache.get(facId)!;
+        } else {
+          const f = await storage.getFacility(tenantId, facId);
+          facName = f?.name ?? null;
+          facilityNameCache.set(facId, facName);
+        }
+      }
+
+      overlaps.push({
+        villageId: Number(other.id),
+        villageName: (other as any).name,
+        facilityId: facId,
+        facilityName: facName,
+        overlapPct: Math.round((interArea / newArea) * 10000) / 100,
+        overlapAreaSqKm: Math.round((interArea / 1_000_000) * 1000) / 1000,
+      });
+    }
+    return overlaps;
+  }
+
   app.post("/api/villages", ...auth, async (req: any, res) => {
     try {
       const body = { ...req.body };
-      
-      // Auto-resolve districtId from assigned facility if missing
-      if (!body.districtId && body.assignedFacilityId) {
+
+      // Always derive districtId from the assigned facility (the facility's own
+      // district is authoritative). This is also a security control: it stops a
+      // client from pairing an in-scope district with an out-of-scope facility to
+      // slip past the geo-auth check below, since that check runs on the derived
+      // value (task #261).
+      if (body.assignedFacilityId) {
         const facility = await storage.getFacility(req.tenantId, parseInt(body.assignedFacilityId));
         if (facility) {
           body.districtId = facility.districtId;
@@ -3100,10 +3193,32 @@ export async function registerRoutes(
         }
       }
 
+      // Authorize the write against the caller's geographic scope (task #261).
+      // Facility staff are pinned to their own facility, district staff to their
+      // district; national/GIS admins pass. This is the server-side mirror of the
+      // role-locked community picker so a crafted request can't create a community
+      // in a facility/district outside the caller's area.
+      const targetFacilityId = body.assignedFacilityId ? parseInt(body.assignedFacilityId) : null;
+      const targetDistrictId = body.districtId ? parseInt(body.districtId) : null;
+      const canWriteGeo = await userCanAccessGeo(req.dbUser, req.tenantId, {
+        facilityId: targetFacilityId,
+        districtId: targetDistrictId,
+      });
+      if (!canWriteGeo) {
+        return res.status(403).json({
+          message: "Forbidden: you can only add communities within your assigned facility or district.",
+        });
+      }
+
       const data = insertVillageSchema.parse(body);
       const village = await storage.createVillage(req.tenantId, data);
       await logAudit(req, "create", "village", village.id, null, village);
-      res.status(201).json(village);
+      // If a boundary polygon was saved, surface any overlaps with already-claimed
+      // communities so the client can offer harmonization (task #261).
+      const overlaps = (village as any).boundary
+        ? await detectCommunityBoundaryOverlaps(req.tenantId, (village as any).boundary, Number(village.id))
+        : [];
+      res.status(201).json({ ...village, overlaps });
     } catch (error) {
       console.error("Error creating village:", error);
       res.status(400).json({ message: "Invalid village data" });
@@ -3669,7 +3784,57 @@ export async function registerRoutes(
       const oldVillage = await storage.getVillage(req.tenantId, entityId);
       if (!oldVillage) return res.status(404).json({ message: "Village not found" });
 
+      // Authorize the edit against the caller's geographic scope (task #261):
+      // they must already own the community, and if they reassign it they must
+      // also be allowed in the destination facility/district. 404-on-deny so we
+      // don't reveal communities outside the caller's area.
+      const canEditExisting = await userCanAccessGeo(req.dbUser, req.tenantId, {
+        facilityId: (oldVillage as any).assignedFacilityId ?? null,
+        districtId: (oldVillage as any).districtId ?? null,
+      });
+      if (!canEditExisting) return res.status(404).json({ message: "Village not found" });
+
+      // Derived district authoritative for the destination (and persisted below):
+      // when a facility is assigned, the facility's own district wins so a client
+      // can't pair an in-scope district with an out-of-scope facility to bypass
+      // the geo-auth check (task #261).
+      let derivedDistrictId: number | null = null;
+      if (req.body?.assignedFacilityId !== undefined || req.body?.districtId !== undefined) {
+        // When the field is explicitly present we honor its value (including an
+        // explicit null = "unassign"); only fall back to the old facility when
+        // the field is absent. Falling back on an explicit null would let a
+        // facility user unassign a community out of their scope while auth was
+        // still evaluated against the old facility (task #261).
+        const destFacilityId =
+          req.body?.assignedFacilityId !== undefined
+            ? (req.body.assignedFacilityId !== null && req.body.assignedFacilityId !== ""
+                ? parseInt(req.body.assignedFacilityId)
+                : null)
+            : ((oldVillage as any).assignedFacilityId ?? null);
+        let destDistrictId =
+          req.body?.districtId !== undefined && req.body.districtId !== null
+            ? parseInt(req.body.districtId)
+            : ((oldVillage as any).districtId ?? null);
+        if (destFacilityId) {
+          const destFacility = await storage.getFacility(req.tenantId, destFacilityId);
+          if (destFacility) destDistrictId = destFacility.districtId;
+        }
+        derivedDistrictId = destDistrictId;
+        const canWriteDest = await userCanAccessGeo(req.dbUser, req.tenantId, {
+          facilityId: destFacilityId,
+          districtId: destDistrictId,
+        });
+        if (!canWriteDest) {
+          return res.status(403).json({
+            message: "Forbidden: you can only move communities within your assigned facility or district.",
+          });
+        }
+      }
+
       const body = { ...req.body };
+      // Persist the authoritative district derived above so the stored row stays
+      // consistent with its assigned facility.
+      if (derivedDistrictId != null) body.districtId = derivedDistrictId;
 
       // Recalculate distance and travel time if coordinates or HTR status changes
       const latVal = body.latitude !== undefined ? parseFloat(body.latitude) : (oldVillage.latitude !== null ? parseFloat(oldVillage.latitude.toString()) : NaN);
@@ -3698,10 +3863,119 @@ export async function registerRoutes(
 
       const village = await storage.updateVillage(req.tenantId, entityId, body);
       await logAudit(req, "update", "village", entityId, oldVillage, village);
-      res.json(village);
+      // Re-check boundary overlaps after an edit so the client can offer
+      // harmonization when the new shape collides with another community (task #261).
+      const overlaps = village && (village as any).boundary
+        ? await detectCommunityBoundaryOverlaps(req.tenantId, (village as any).boundary, entityId)
+        : [];
+      res.json({ ...village, overlaps });
     } catch (error) {
       console.error("Error updating village:", error);
       res.status(400).json({ message: "Failed to update village" });
+    }
+  });
+
+  // Record a catchment overlap conflict and notify the other community's facility
+  // in-charge so the two sides can agree on the boundary (task #261). This is a
+  // lightweight record + email — not a full discussion thread.
+  app.post("/api/villages/:id/harmonize", ...auth, async (req: any, res) => {
+    try {
+      const villageId = parseInt(req.params.id);
+      const conflictingVillageId = parseInt(req.body?.conflictingVillageId);
+      if (!villageId || !conflictingVillageId) {
+        return res.status(400).json({ message: "villageId and conflictingVillageId are required." });
+      }
+
+      const village = await storage.getVillage(req.tenantId, villageId);
+      const other = await storage.getVillage(req.tenantId, conflictingVillageId);
+      if (!village || !other) {
+        return res.status(404).json({ message: "Community not found." });
+      }
+
+      // The caller may only raise a harmonization request from a community they
+      // own (their facility/district); admins pass. 404-on-deny so foreign
+      // communities aren't revealed (task #261).
+      const canRaise = await userCanAccessGeo(req.dbUser, req.tenantId, {
+        facilityId: (village as any).assignedFacilityId ?? null,
+        districtId: (village as any).districtId ?? null,
+      });
+      if (!canRaise) return res.status(404).json({ message: "Community not found." });
+
+      // Validate server-side that the two boundaries actually overlap before
+      // recording a conflict, so a crafted request can't fabricate clashes
+      // between unrelated communities. Only enforce when both have boundaries.
+      const ownFeat = toBoundaryFeature((village as any).boundary);
+      const otherFeat = toBoundaryFeature((other as any).boundary);
+      if (ownFeat && otherFeat) {
+        let intersects = false;
+        try {
+          const inter = turfIntersect(turfFeatureCollection([ownFeat, otherFeat]));
+          intersects = !!inter && turfArea(inter) > 0;
+        } catch {
+          intersects = false;
+        }
+        if (!intersects) {
+          return res.status(400).json({
+            message: "These community boundaries do not overlap, so there is nothing to harmonize.",
+          });
+        }
+      }
+
+      const conflictingFacilityId = (other as any).assignedFacilityId ?? null;
+      const overlapPctRaw = req.body?.overlapPct;
+      const overlapPct =
+        overlapPctRaw !== undefined && overlapPctRaw !== null && !isNaN(parseFloat(String(overlapPctRaw)))
+          ? String(parseFloat(String(overlapPctRaw)))
+          : null;
+
+      const conflict = await storage.createCatchmentConflict(req.tenantId, {
+        villageId,
+        conflictingVillageId,
+        conflictingFacilityId,
+        overlapPct,
+        status: "open",
+        requestedByUserId: req.dbUser?.id ?? null,
+        note: typeof req.body?.note === "string" ? req.body.note.trim() || null : null,
+      } as any);
+      await logAudit(req, "create", "catchment_conflict", conflict.id, null, conflict);
+
+      // Notify the conflicting facility's in-charge (best-effort; never block on email).
+      let notified = false;
+      try {
+        if (conflictingFacilityId) {
+          const facility = await storage.getFacility(req.tenantId, conflictingFacilityId);
+          const candidates = await storage.getUsersByTenantAndRoles(req.tenantId, [
+            "facility_in_charge",
+            "facility_clerk",
+          ]);
+          const recipients = candidates
+            .filter((u: any) => Number(u.facilityId) === Number(conflictingFacilityId) && u.email)
+            .sort((a: any, b: any) => (a.role === "facility_in_charge" ? -1 : 1));
+          const to = recipients[0]?.email;
+          if (to) {
+            const requester = req.dbUser?.email || "A colleague";
+            await sendEmail({
+              to,
+              subject: `Catchment harmonization requested for ${other.name}`,
+              text:
+                `${requester} drew a community boundary for "${village.name}" that overlaps "${other.name}"` +
+                `${facility?.name ? ` (assigned to ${facility.name})` : ""}` +
+                `${overlapPct ? `, with about ${overlapPct}% overlap` : ""}.\n\n` +
+                `Please review the catchment boundaries together in VaxPlan and agree on who covers the overlapping area.` +
+                `${conflict?.note ? `\n\nNote from the requester: ${conflict.note}` : ""}`,
+              tenantId: req.tenantId,
+            });
+            notified = true;
+          }
+        }
+      } catch (mailErr) {
+        console.error("Harmonization email failed:", mailErr);
+      }
+
+      res.status(201).json({ ...conflict, notified });
+    } catch (error) {
+      console.error("Error recording harmonization request:", error);
+      res.status(400).json({ message: "Failed to record harmonization request." });
     }
   });
 

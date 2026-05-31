@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { FacilityCascadePicker } from "@/components/FacilityCascadePicker";
 import { MapPin, Plus, Sliders, Navigation, Footprints, AlertTriangle } from "lucide-react";
@@ -52,7 +53,18 @@ export function AddCommunityDialog({
   onSuccess,
 }: AddCommunityDialogProps) {
   const { toast } = useToast();
-  
+  const { user } = useAuth();
+
+  // Role-based scoping for WHERE a community can be added (task #261):
+  // - Facility staff are pinned & locked to their own facility.
+  // - District managers are scoped to their district (province + district locked).
+  // - Everyone else (admins / coordinators) gets the full searchable cascade.
+  const role = (user as any)?.role;
+  const isFacilityStaff = role === "facility_clerk" || role === "facility_in_charge";
+  const isDistrictStaff = role === "district_manager";
+  const lockedFacilityId = isFacilityStaff ? (user as any)?.facilityId ?? null : null;
+  const lockedDistrictId = isDistrictStaff ? (user as any)?.districtId ?? null : null;
+
   // Form states
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
@@ -79,14 +91,18 @@ export function AddCommunityDialog({
     enabled: isOpen,
   });
 
-  // Set default facility if supplied
+  // Set default facility if supplied. Facility staff are always pinned to their
+  // own facility regardless of any default passed in.
   useEffect(() => {
-    if (defaultFacilityId && isOpen) {
+    if (!isOpen) return;
+    if (lockedFacilityId) {
+      setAssignedFacilityId(String(lockedFacilityId));
+    } else if (defaultFacilityId) {
       setAssignedFacilityId(defaultFacilityId.toString());
-    } else if (facilities && facilities.length > 0 && !assignedFacilityId && isOpen) {
+    } else if (facilities && facilities.length > 0 && !assignedFacilityId) {
       setAssignedFacilityId(facilities[0].id.toString());
     }
-  }, [defaultFacilityId, facilities, isOpen]);
+  }, [defaultFacilityId, facilities, isOpen, lockedFacilityId]);
 
   // Resolve active facility and its district to fetch Wards (LLGs)
   const activeFacility = useMemo(() => {
@@ -261,7 +277,19 @@ export function AddCommunityDialog({
                   required
                   showLabels={false}
                   testIdPrefix="add-community-facility"
+                  disabled={isFacilityStaff}
+                  lockDistrictId={lockedDistrictId}
                 />
+                {isFacilityStaff && (
+                  <p className="text-[10px] text-muted-foreground italic">
+                    New communities are added under your facility's catchment.
+                  </p>
+                )}
+                {isDistrictStaff && (
+                  <p className="text-[10px] text-muted-foreground italic">
+                    You can add communities to any facility in your district.
+                  </p>
+                )}
               </div>
 
               <div className="space-y-1">

@@ -55,6 +55,9 @@ import {
   type InsertFacility,
   type Village,
   type InsertVillage,
+  catchmentConflicts,
+  type CatchmentConflict,
+  type InsertCatchmentConflict,
   type PopulationData,
   type InsertPopulationData,
   type SessionPlan,
@@ -202,6 +205,8 @@ export interface IStorage {
   createVillage(tenantId: string, data: InsertVillage): Promise<Village>;
   updateVillage(tenantId: string, id: number, data: Partial<InsertVillage>): Promise<Village | undefined>;
   deleteVillage(tenantId: string, id: number): Promise<boolean>;
+  createCatchmentConflict(tenantId: string, data: InsertCatchmentConflict): Promise<CatchmentConflict>;
+  getCatchmentConflicts(tenantId: string, status?: string): Promise<CatchmentConflict[]>;
 
   getPopulationData(tenantId: string, filters?: {
     source?: string;
@@ -830,6 +835,24 @@ export class DatabaseStorage implements IStorage {
       .delete(villages)
       .where(and(eq(villages.id, id), eq(villages.tenantId, tenantId)));
     return (result.rowCount ?? 0) > 0;
+  }
+  async createCatchmentConflict(tenantId: string, data: InsertCatchmentConflict): Promise<CatchmentConflict> {
+    const { tenantId: _drop, ...rest } = data as any;
+    const [c] = await db
+      .insert(catchmentConflicts)
+      .values({ ...rest, tenantId } as typeof catchmentConflicts.$inferInsert)
+      .returning();
+    return c;
+  }
+  async getCatchmentConflicts(tenantId: string, status?: string): Promise<CatchmentConflict[]> {
+    return await db
+      .select()
+      .from(catchmentConflicts)
+      .where(
+        status
+          ? and(eq(catchmentConflicts.tenantId, tenantId), eq(catchmentConflicts.status, status))
+          : eq(catchmentConflicts.tenantId, tenantId),
+      );
   }
 
   // --- Population data ---

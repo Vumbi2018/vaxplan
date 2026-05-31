@@ -79,9 +79,41 @@ import { Plus, Building2, Users, Thermometer, X, Pencil, Trash2, Download, Uploa
 import { GeoCascadeFilter } from "@/components/GeoCascadeFilter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/useAuth";
-import { canEditFacility, canDeleteData, canCreateData } from "@/lib/permissions";
+import { canEditFacility, canDeleteData, canCreateFacility, canCreateCommunity } from "@/lib/permissions";
+import { FacilityCascadePicker } from "@/components/FacilityCascadePicker";
 import { insertFacilitySchema, type Facility, type InsertFacility, type Region, type Province, type District, type Village, type FacilityCatchment } from "@shared/schema";
 import { z } from "zod";
+
+// Convert drawn Leaflet polygon vertices into a GeoJSON Polygon (lng,lat order,
+// ring auto-closed) so community boundaries persist and can be reused app-wide.
+function polygonPointsToBoundary(points: { lat: number; lng: number }[]): any | null {
+  if (!points || points.length < 3) return null;
+  const ring = points.map((p) => [p.lng, p.lat]);
+  const first = ring[0];
+  const last = ring[ring.length - 1];
+  if (first[0] !== last[0] || first[1] !== last[1]) {
+    ring.push([first[0], first[1]]);
+  }
+  return { type: "Polygon", coordinates: [ring] };
+}
+
+// Read a stored GeoJSON Polygon back into Leaflet [lat,lng] vertices for editing
+// (drops the closing point so the draw UI doesn't show a duplicate vertex).
+function boundaryToLatLngs(boundary: any): { lat: number; lng: number }[] {
+  try {
+    const coords = boundary?.coordinates?.[0];
+    if (!Array.isArray(coords)) return [];
+    const pts = coords.map((c: number[]) => ({ lat: c[1], lng: c[0] }));
+    if (pts.length > 1) {
+      const a = pts[0];
+      const b = pts[pts.length - 1];
+      if (a.lat === b.lat && a.lng === b.lng) pts.pop();
+    }
+    return pts;
+  } catch {
+    return [];
+  }
+}
 
 const facilityFormSchema = insertFacilitySchema.extend({
   name: z.string().min(2, "Name must be at least 2 characters"),
@@ -134,6 +166,12 @@ export default function Facilities() {
   const [editingCommunity, setEditingCommunity] = useState<Village | null>(null);
   const [deletingCommunity, setDeletingCommunity] = useState<Village | null>(null);
   const [newCommTransportMode, setNewCommTransportMode] = useState<string>("walking");
+  // Catchment-overlap harmonization (task #261): when a saved community boundary
+  // overlaps another community's, surface the conflicts so the user can request
+  // the other facility's in-charge to harmonize boundaries.
+  const [overlapConflicts, setOverlapConflicts] = useState<any[]>([]);
+  const [overlapSourceVillage, setOverlapSourceVillage] = useState<{ id: number; name: string } | null>(null);
+  const [harmonizedIds, setHarmonizedIds] = useState<number[]>([]);
 
   // Facility GIS Catchment Editor states
   const [catchmentPoints, setCatchmentPoints] = useState<L.LatLng[]>([]);
@@ -316,7 +354,7 @@ export default function Facilities() {
     mutationFn: async (data: any) => {
       return apiRequest("POST", "/api/villages", data);
     },
-    onSuccess: () => {
+    onSuccess: (res: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/villages"] });
       setCommunityDialogOpen(false);
       setNewCommName("");
@@ -330,6 +368,7 @@ export default function Facilities() {
         title: "Community Registered",
         description: "The new community has been added successfully.",
       });
+      maybeShowOverlaps(res);
     },
     onError: (error: any) => {
       toast({
@@ -344,7 +383,7 @@ export default function Facilities() {
     mutationFn: async ({ id, data }: { id: number; data: any }) => {
       return apiRequest("PATCH", `/api/villages/${id}`, data);
     },
-    onSuccess: () => {
+    onSuccess: (res: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/villages"] });
       setCommunityDialogOpen(false);
       setEditingCommunity(null);
@@ -359,6 +398,7 @@ export default function Facilities() {
         title: "Community updated",
         description: "The community has been updated successfully.",
       });
+      maybeShowOverlaps(res);
     },
     onError: (error: any) => {
       toast({
@@ -384,6 +424,42 @@ export default function Facilities() {
     onError: (error: any) => {
       toast({
         title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  // After a community with a boundary is saved, open the harmonization panel if
+  // the server detected overlaps with other communities' catchments.
+  const maybeShowOverlaps = (res: any) => {
+    const overlaps = Array.isArray(res?.overlaps) ? res.overlaps : [];
+    if (overlaps.length > 0 && res?.id) {
+      setOverlapSourceVillage({ id: Number(res.id), name: res.name });
+      setOverlapConflicts(overlaps);
+      setHarmonizedIds([]);
+    }
+  };
+
+  const harmonizeMutation = useMutation({
+    mutationFn: async (vars: { villageId: number; conflictingVillageId: number; overlapPct?: number }) => {
+      return apiRequest("POST", `/api/villages/${vars.villageId}/harmonize`, {
+        conflictingVillageId: vars.conflictingVillageId,
+        overlapPct: vars.overlapPct,
+      });
+    },
+    onSuccess: (res: any, vars) => {
+      setHarmonizedIds((prev) => [...prev, vars.conflictingVillageId]);
+      toast({
+        title: "Harmonization requested",
+        description: res?.notified
+          ? "The other facility's in-charge has been notified by email."
+          : "Conflict recorded. No facility in-charge email was found to notify.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Could not request harmonization",
         description: error.message,
         variant: "destructive",
       });
@@ -1233,20 +1309,41 @@ export default function Facilities() {
     setNewCommLat(village.latitude?.toString() || "");
     setNewCommLng(village.longitude?.toString() || "");
     setNewCommTransportMode(village.transportMode || "walking");
-    setCommPolygonPoints([]);
+    // Load any stored catchment boundary back into the polygon draw tool so it
+    // can be reviewed / edited.
+    const existing = boundaryToLatLngs((village as any).boundary);
+    if (existing.length >= 3) {
+      setCommPolygonPoints(existing.map((p) => L.latLng(p.lat, p.lng)));
+      setCommDrawMode("polygon");
+    } else {
+      setCommPolygonPoints([]);
+    }
     setCommunityDialogOpen(true);
   };
 
   const handleAddCommunity = () => {
     setEditingCommunity(null);
     setNewCommName("");
-    setNewCommDistrictId(allDistricts?.[0]?.id?.toString() || "");
     setNewCommHTR(false);
-    setNewCommFacilityId("");
     setNewCommLat("");
     setNewCommLng("");
     setNewCommTransportMode("walking");
     setCommPolygonPoints([]);
+    // Pre-fill the location based on the caller's role: facility staff are pinned
+    // to their own facility (and its district); district staff start in their
+    // district; everyone else starts blank.
+    const role = user?.role;
+    if ((role === "facility_clerk" || role === "facility_in_charge") && user?.facilityId) {
+      const fac = facilities?.find((f) => Number(f.id) === Number(user.facilityId));
+      setNewCommFacilityId(String(user.facilityId));
+      setNewCommDistrictId(fac?.districtId ? String(fac.districtId) : "");
+    } else if (role === "district_manager" && user?.districtId) {
+      setNewCommFacilityId("");
+      setNewCommDistrictId(String(user.districtId));
+    } else {
+      setNewCommFacilityId("");
+      setNewCommDistrictId(allDistricts?.[0]?.id?.toString() || "");
+    }
     setCommunityDialogOpen(true);
   };
 
@@ -1268,7 +1365,9 @@ export default function Facilities() {
       return;
     }
 
-    const payload = {
+    const boundary = polygonPointsToBoundary(commPolygonPoints);
+
+    const payload: any = {
       name: newCommName.trim(),
       districtId: parseInt(newCommDistrictId),
       isHardToReach: newCommHTR,
@@ -1276,6 +1375,8 @@ export default function Facilities() {
       latitude: newCommLat ? parseFloat(newCommLat) : null,
       longitude: newCommLng ? parseFloat(newCommLng) : null,
       transportMode: newCommTransportMode,
+      // Persist the drawn catchment boundary (or clear it when none is drawn).
+      boundary: boundary,
     };
 
     if (editingCommunity) {
@@ -1463,7 +1564,19 @@ export default function Facilities() {
   ];
 
   const hasFilters = selectedRegionId || selectedProvinceId || selectedDistrictId;
-  const canCreate = canCreateData(user);
+  // Communities can be added by any staff member with edit rights — facility and
+  // district staff included. The server scopes WHERE they can add.
+  const canCreate = canCreateCommunity(user);
+  // Adding a *facility* is reserved for coordinator/admin roles; district and
+  // facility staff can add communities but not facilities (server enforces 403).
+  const canAddFacility = canCreateFacility(user);
+  // Role-lock the community location picker: facility staff are pinned to their
+  // own facility; district staff are locked to their district; coordinators and
+  // admins get the full searchable Province → District → Facility cascade.
+  const isFacilityStaff =
+    user?.role === "facility_clerk" || user?.role === "facility_in_charge";
+  const isDistrictStaff = user?.role === "district_manager";
+  const lockedCommDistrictId = isDistrictStaff ? (user?.districtId ?? null) : null;
 
   if (isLoading) {
     return (
@@ -1511,7 +1624,7 @@ export default function Facilities() {
         <TabsContent value="facilities" className="space-y-6">
           <div className="flex justify-between items-center gap-4 flex-wrap">
             <h2 className="text-lg font-semibold">Facilities Registry</h2>
-            {canCreate && (
+            {canAddFacility && (
               <Dialog open={dialogOpen} onOpenChange={(open) => {
                 setDialogOpen(open);
                 if (!open) setEditingFacility(null);
@@ -2530,62 +2643,47 @@ export default function Facilities() {
           </DialogHeader>
 
           <div className="space-y-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Community Name *</label>
-                <Input
-                  placeholder="e.g. Village A"
-                  value={newCommName}
-                  onChange={(e) => setNewCommName(e.target.value)}
-                  data-testid="input-community-name"
-                />
-              </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Community Name *</label>
+              <Input
+                placeholder="e.g. Village A"
+                value={newCommName}
+                onChange={(e) => setNewCommName(e.target.value)}
+                data-testid="input-community-name"
+              />
+            </div>
 
-              <div className="space-y-2">
-                <label className="text-sm font-medium">District *</label>
-                <Select
-                  value={newCommDistrictId}
-                  onValueChange={setNewCommDistrictId}
-                >
-                  <SelectTrigger data-testid="select-community-district">
-                    <SelectValue placeholder="Select District" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {[...(allDistricts || [])]
-                      .sort((a, b) => a.name.localeCompare(b.name))
-                      .map((district) => (
-                        <SelectItem key={district.id} value={district.id.toString()}>
-                          {district.name}
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
-              </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Location (Province → District → Facility) *</label>
+              <FacilityCascadePicker
+                value={newCommFacilityId ? parseInt(newCommFacilityId) : null}
+                onChange={(facId, fac) => {
+                  setNewCommFacilityId(facId ? String(facId) : "");
+                  if (fac && (fac as any).districtId) {
+                    setNewCommDistrictId(String((fac as any).districtId));
+                  }
+                }}
+                onDistrictChange={(distId) => {
+                  setNewCommDistrictId(distId ? String(distId) : "");
+                }}
+                disabled={isFacilityStaff}
+                lockDistrictId={lockedCommDistrictId}
+                required
+                testIdPrefix="community-picker"
+              />
+              {isFacilityStaff && (
+                <p className="text-xs text-muted-foreground">
+                  Pinned to your facility — communities you add belong to it.
+                </p>
+              )}
+              {isDistrictStaff && (
+                <p className="text-xs text-muted-foreground">
+                  Locked to your district — pick any facility within it.
+                </p>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Assigned Facility</label>
-                <Select
-                  value={newCommFacilityId || "none"}
-                  onValueChange={(val) => setNewCommFacilityId(val === "none" ? "" : val)}
-                >
-                  <SelectTrigger data-testid="select-community-facility">
-                    <SelectValue placeholder="No Facility (Unassigned)" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">No Facility (Unassigned)</SelectItem>
-                    {[...(facilities || [])]
-                      .sort((a, b) => a.name.localeCompare(b.name))
-                      .map((fac) => (
-                        <SelectItem key={fac.id} value={fac.id.toString()}>
-                          {fac.name}
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
               <div className="space-y-2">
                 <label className="text-sm font-medium">Transport Mode</label>
                 <Select
@@ -2782,6 +2880,85 @@ export default function Facilities() {
                   : "Save Community"}
               </Button>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Catchment Overlap / Harmonization Dialog (task #261) */}
+      <Dialog
+        open={overlapConflicts.length > 0}
+        onOpenChange={(open) => {
+          if (!open) {
+            setOverlapConflicts([]);
+            setOverlapSourceVillage(null);
+            setHarmonizedIds([]);
+          }
+        }}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Catchment overlap detected</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              The boundary you saved for{" "}
+              <span className="font-semibold text-foreground">{overlapSourceVillage?.name}</span>{" "}
+              overlaps the catchment of the communities below. You can ask the
+              other facility's in-charge to harmonize the boundary.
+            </p>
+            <div className="space-y-2 max-h-[320px] overflow-y-auto">
+              {overlapConflicts.map((c: any) => {
+                const done = harmonizedIds.includes(Number(c.villageId));
+                return (
+                  <div
+                    key={c.villageId}
+                    className="flex items-center justify-between gap-3 rounded-lg border p-3"
+                    data-testid={`overlap-conflict-${c.villageId}`}
+                  >
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium text-foreground truncate">
+                        {c.villageName}
+                      </div>
+                      <div className="text-xs text-muted-foreground truncate">
+                        {c.facilityName ? `Facility: ${c.facilityName}` : "Unassigned facility"}
+                        {typeof c.overlapPct === "number" ? ` · ${c.overlapPct}% overlap` : ""}
+                      </div>
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={done ? "outline" : "default"}
+                      disabled={done || harmonizeMutation.isPending}
+                      onClick={() =>
+                        overlapSourceVillage &&
+                        harmonizeMutation.mutate({
+                          villageId: overlapSourceVillage.id,
+                          conflictingVillageId: Number(c.villageId),
+                          overlapPct: typeof c.overlapPct === "number" ? c.overlapPct : undefined,
+                        })
+                      }
+                      data-testid={`button-harmonize-${c.villageId}`}
+                    >
+                      {done ? "Requested" : "Request harmonization"}
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          <div className="flex justify-end pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setOverlapConflicts([]);
+                setOverlapSourceVillage(null);
+                setHarmonizedIds([]);
+              }}
+              data-testid="button-close-overlap"
+            >
+              Done
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

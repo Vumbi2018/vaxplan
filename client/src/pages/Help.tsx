@@ -48,7 +48,17 @@ const defaultFaqs = [
   {
     question: "How do I add a new health facility?",
     answer:
-      "Navigate to the Facilities page from the sidebar. Click the 'Add Facility' button and fill in the required information including name, HMIS code, district, and GPS coordinates. After saving, the facility will appear in the registry and on the map.",
+      "Adding a facility is reserved for provincial coordinators and national admins (GIS specialists too). If you have that role, open the Facilities page, click 'Add Facility', and fill in the name, HMIS code, district, and GPS coordinates. Facility and district staff won't see the 'Add Facility' button — they can add communities instead (see the community question below).",
+  },
+  {
+    question: "How do I add a new community (village)?",
+    answer:
+      "Open the Facilities page and go to the Communities tab, then click 'Add Community'. Facility staff are automatically pinned to their own facility; district staff can choose any facility in their district; coordinators and admins get a searchable Province → District → Facility picker. You can drop a single pin for the location, or switch to 'Draw Polygon Mode' and click points on the map to draw the community's catchment boundary. The boundary is saved and shown on the map across the app.",
+  },
+  {
+    question: "What happens if two communities' boundaries overlap?",
+    answer:
+      "When you save a community boundary that overlaps another community's catchment, VaxPlan shows a 'Catchment overlap detected' panel listing the conflicting communities and how much they overlap. Click 'Request harmonization' next to one to record the conflict and email that community's facility in-charge, so the two facilities can agree on who covers the shared area.",
   },
   {
     question: "How does the population fusion work?",

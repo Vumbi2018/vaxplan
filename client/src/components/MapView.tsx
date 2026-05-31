@@ -5139,6 +5139,35 @@ export function MapView({
               </Marker>
             ))}
 
+        {/* Community catchment boundary polygons (task #261). Drawn for any
+            visible village that has a saved boundary so harmonized catchments
+            are visible app-wide. */}
+        {layers.villages &&
+          visibleVillagesFiltered
+            .filter((v) => {
+              const coords = (v as any).boundary?.coordinates?.[0];
+              return Array.isArray(coords) && coords.length >= 4;
+            })
+            .map((village) => {
+              const ring = (village as any).boundary.coordinates[0] as number[][];
+              const positions = ring.map((c) => [c[1], c[0]] as [number, number]);
+              const color = village.isHardToReach ? "#dc2626" : "#6366f1";
+              return (
+                <Polygon
+                  key={`village-boundary-${village.id}`}
+                  positions={positions}
+                  pathOptions={{ color, fillColor: color, fillOpacity: 0.1, weight: 2 }}
+                >
+                  <Popup className="premium-map-popup">
+                    <div className="w-48 text-xs font-sans">
+                      <div className="font-bold text-sm mb-1">{village.name}</div>
+                      <div className="text-muted-foreground">Community catchment boundary</div>
+                    </div>
+                  </Popup>
+                </Polygon>
+              );
+            })}
+
         {/* Task #47: Session-plan pins — color-coded by status, popup with date,
             microplan link, target/vaccinated, and a "Mark done" hint. */}
         {sessionMapPins

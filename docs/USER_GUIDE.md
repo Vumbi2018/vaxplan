@@ -28,6 +28,7 @@ tenant administrator may have customised the labels (for example
    - 5.5 [Coverage and the under-immunised list](#55-coverage-and-the-under-immunised-list)
    - 5.6 [Stock, wastage, and supply](#56-stock-wastage-and-supply)
    - 5.7 [Offline mode and sync](#57-offline-mode-and-sync)
+   - 5.8 [Manage your communities](#58-manage-your-communities)
 6. [District managers — review and oversight](#6-district-managers--review-and-oversight)
 7. [Provincial coordinators — approvals and visibility](#7-provincial-coordinators--approvals-and-visibility)
 8. [National administrators](#8-national-administrators)
@@ -203,8 +204,9 @@ A **microplan** is your facility's quarterly plan. It declares:
    pre-filled from your profile and cannot be changed.
 4. **Step 2 — Catchment.** Tick the villages the facility will serve
    this quarter. The list is your facility's assigned villages from
-   the registry; if a village is missing, ask your national admin to
-   add it before continuing.
+   the registry. If a community is missing you can add it yourself —
+   see **5.8 Manage your communities** below — then return to the
+   wizard.
 5. **Step 3 — Population.** Confirm the target denominators. Three
    data sources feed this:
    - **Registered population** (your registry, the default),
@@ -378,6 +380,41 @@ to know:
 > **Best practice.** Sync at the end of each session day, when you're
 > back in cellular range. Don't let the outbox grow longer than a
 > week's worth of entries.
+
+### 5.8 Manage your communities
+
+You can add and edit the communities (villages) your facility serves —
+you don't need to wait for your national admin.
+
+**To add a community:**
+
+1. Open **Facilities** from the sidebar and switch to the
+   **Communities** tab.
+2. Click **Add Community**.
+3. **Facility.** If you're facility staff, the facility is pinned to
+   your own facility and can't be changed. District staff can pick any
+   facility in their district; coordinators and admins get a searchable
+   **Province → District → Facility** picker.
+4. Fill in the community **name** and any other details.
+5. **Set the location.** Either drop a **single pin** for the centre of
+   the community, or switch to **Draw Polygon Mode** and click points on
+   the map to trace the community's **catchment boundary**. Boundaries
+   are saved and shown on the map everywhere in the app, and can be
+   reused later.
+6. Click **Save**.
+
+> **Note.** Facility and district staff can add and edit **communities**,
+> but only provincial coordinators and national admins can add a new
+> **health facility**. The **Add Facility** button is hidden for staff
+> who aren't allowed to use it.
+
+**Catchment overlap and harmonization.** If the boundary you draw
+overlaps another community's catchment, VaxPlan shows a **Catchment
+overlap detected** panel after you save. It lists each overlapping
+community, the other facility, and how much they overlap. To resolve a
+clash, click **Request harmonization** next to a community: VaxPlan
+records the conflict and emails that community's facility in-charge so
+the two facilities can agree on who covers the shared area.
 
 ---
 

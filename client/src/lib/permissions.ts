@@ -1,4 +1,5 @@
 import type { User, District, Province } from "@shared/schema";
+import { FACILITY_AUTHOR_ROLES } from "@shared/schema";
 
 export type UserRole = User["role"];
 
@@ -142,6 +143,28 @@ export function canApproveSessionPlan(user: User | null | undefined): boolean {
     user.role === "provincial_coordinator" ||
     user.role === "national_admin"
   );
+}
+
+// Adding a health *facility* changes the official catchment structure, so it is
+// reserved for the same roles the server enforces on POST /api/facilities
+// (FACILITY_AUTHOR_ROLES: provincial_coordinator, national_admin, gis_specialist).
+// District and facility staff may add communities but NOT facilities.
+export function canCreateFacility(user: User | null | undefined): boolean {
+  if (!user) return false;
+  if ((FACILITY_AUTHOR_ROLES as readonly string[]).includes(user.role)) return true;
+  const roles = (user as any).roles;
+  return (
+    Array.isArray(roles) &&
+    roles.some((r: string) => (FACILITY_AUTHOR_ROLES as readonly string[]).includes(r))
+  );
+}
+
+// Communities (villages) can be added by any staff member with edit rights —
+// facility and district staff included. The server still scopes WHERE they can
+// add (own facility / district) and rejects cross-tenant writes.
+export function canCreateCommunity(user: User | null | undefined): boolean {
+  if (!user) return false;
+  return roleHierarchy[user.role] >= roleHierarchy.facility_clerk;
 }
 
 export function canDeleteData(user: User | null | undefined): boolean {

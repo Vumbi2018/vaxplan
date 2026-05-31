@@ -395,9 +395,31 @@ export const villages = pgTable("villages", {
   transportMode: transportModeEnum("transport_mode"),
   insecurityLevel: integer("insecurity_level"),
   comments: text("comments"),
+  // Optional GeoJSON Polygon geometry describing the community's drawn
+  // boundary. Reusable across the app's map surfaces; null when the community
+  // is located only by a point/pin (latitude/longitude).
+  boundary: jsonb("boundary"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [index("idx_villages_tenant").on(table.tenantId)]);
+
+// Catchment overlap conflicts: recorded when a newly drawn/edited community
+// boundary overlaps another community's claimed boundary. Lightweight record
+// that drives the "request harmonization" notification to the other facility's
+// in-charge so the two sides can agree on the boundary (see task #261).
+export const catchmentConflicts = pgTable("catchment_conflicts", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  tenantId: varchar("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  villageId: integer("village_id").notNull().references(() => villages.id, { onDelete: "cascade" }),
+  conflictingVillageId: integer("conflicting_village_id").notNull().references(() => villages.id, { onDelete: "cascade" }),
+  conflictingFacilityId: integer("conflicting_facility_id").references(() => facilities.id, { onDelete: "set null" }),
+  overlapPct: decimal("overlap_pct", { precision: 6, scale: 2 }),
+  status: varchar("status", { length: 20 }).notNull().default("open"),
+  requestedByUserId: varchar("requested_by_user_id"),
+  note: text("note"),
+  createdAt: timestamp("created_at").defaultNow(),
+  resolvedAt: timestamp("resolved_at"),
+}, (table) => [index("idx_catchment_conflicts_tenant").on(table.tenantId)]);
 
 // Per-facility list of villages that staff have explicitly removed from the
 // microplan catchment in Step 2 of the wizard. Persisted server-side (rather
@@ -2103,3 +2125,22 @@ export const tenantEmailSettingsSchema = z.object({
   fromName: z.string().trim().max(120).optional(),
   replyTo: emailOrEmpty.optional(),
 });
+
+// ─── Catchment conflict (overlap harmonization) ──────────────────────────────
+export const insertCatchmentConflictSchema = createInsertSchema(catchmentConflicts).omit({
+  createdAt: true,
+  resolvedAt: true,
+});
+export type CatchmentConflict = typeof catchmentConflicts.$inferSelect;
+export type InsertCatchmentConflict = z.infer<typeof insertCatchmentConflictSchema>;
+
+// Roles allowed to create a *facility* (and its catchment). Facility staff and
+// district managers may create *communities* but NOT facilities — these roles
+// are the only ones permitted to author a facility, enforced both in the UI and
+// on the server (POST /api/facilities returns 403 for everyone else). Shared so
+// the client and server agree (never import server/* into the client — task #261).
+export const FACILITY_AUTHOR_ROLES = [
+  "provincial_coordinator",
+  "national_admin",
+  "gis_specialist",
+] as const;

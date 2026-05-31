@@ -31,6 +31,12 @@ export interface FacilityCascadePickerProps {
   facilityLabel?: string;
   testIdPrefix?: string;
   className?: string;
+  // When set, the cascade is pinned to this district: the Province and District
+  // selectors are locked (district staff can only add within their own district).
+  lockDistrictId?: number | null;
+  // Fires whenever the resolved district changes, so a parent can capture the
+  // district a new community will belong to even when no facility is chosen.
+  onDistrictChange?: (districtId: number | null) => void;
 }
 
 async function fetchJson<T>(url: string): Promise<T> {
@@ -60,6 +66,8 @@ export function FacilityCascadePicker({
   facilityLabel = "Facility",
   testIdPrefix = "facility-picker",
   className,
+  lockDistrictId = null,
+  onDistrictChange,
 }: FacilityCascadePickerProps) {
   const { data: tenantInfo } = useQuery<any>({
     queryKey: ["/api/me/tenant"],
@@ -101,6 +109,26 @@ export function FacilityCascadePicker({
       setProvinceId(Number((dist as any).provinceId));
     }
   }, [value, facilities, districts]);
+
+  // When a district lock is supplied (district staff), pin the cascade to that
+  // district and derive its province so the Province/District selectors show
+  // the correct context while staying disabled.
+  useEffect(() => {
+    if (!lockDistrictId || !districts) return;
+    const dist = districts.find((d) => Number(d.id) === Number(lockDistrictId));
+    if (dist) {
+      setDistrictId(Number(dist.id));
+      setProvinceId(Number((dist as any).provinceId));
+    }
+  }, [lockDistrictId, districts]);
+
+  // Surface the resolved district to the parent (so a community can capture its
+  // district even before a facility is chosen).
+  useEffect(() => {
+    onDistrictChange?.(districtId);
+  }, [districtId, onDistrictChange]);
+
+  const lockParents = lockDistrictId != null;
 
   const sortedProvinces = useMemo(
     () =>
@@ -159,7 +187,7 @@ export function FacilityCascadePicker({
               type="button"
               variant="outline"
               role="combobox"
-              disabled={disabled || sortedProvinces.length === 0}
+              disabled={disabled || lockParents || sortedProvinces.length === 0}
               className="w-full justify-between font-normal"
               data-testid={`${testIdPrefix}-province`}
             >
@@ -226,7 +254,7 @@ export function FacilityCascadePicker({
               type="button"
               variant="outline"
               role="combobox"
-              disabled={disabled || !provinceId || filteredDistricts.length === 0}
+              disabled={disabled || lockParents || !provinceId || filteredDistricts.length === 0}
               className="w-full justify-between font-normal"
               data-testid={`${testIdPrefix}-district`}
             >
