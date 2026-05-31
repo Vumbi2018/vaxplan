@@ -6367,29 +6367,14 @@ export async function registerRoutes(
       // `requireDbUser` (in `auth`) guarantees req.dbUser is non-null here —
       // no need for a manual lookup that could produce a misleading 401.
       const user = req.dbUser!;
-      const { computeOverdueFacilities } = await import("./jobs/supervisionDigest");
-      const isNational =
-        user.role === "national_admin" ||
-        (Array.isArray(user.roles) && (user.roles as string[]).includes("national_admin"));
-      const scopeBlob = (user.dataAccessScope ?? {}) as {
-        provinces?: number[];
-        districts?: number[];
-        facilities?: number[];
-      };
-      const scope = isNational
-        ? {}
-        : {
-            facilityIds: Array.from(
-              new Set([...(scopeBlob.facilities ?? []), ...(user.facilityId ? [user.facilityId] : [])]),
-            ),
-            districtIds: Array.from(
-              new Set([...(scopeBlob.districts ?? []), ...(user.districtId ? [user.districtId] : [])]),
-            ),
-            provinceIds: Array.from(
-              new Set([...(scopeBlob.provinces ?? []), ...(user.provinceId ? [user.provinceId] : [])]),
-            ),
-          };
-      const overdue = await computeOverdueFacilities(req.tenantId!, scope);
+      const { computeOverdueFacilities, resolveUserScope } = await import("./jobs/supervisionDigest");
+      // Role-cap the preview exactly like the email digest so a facility clerk
+      // never previews facilities outside their own facility.
+      const scope = resolveUserScope(user);
+      const overdue =
+        scope.isScopedRole && !scope.hasAny
+          ? []
+          : await computeOverdueFacilities(req.tenantId!, scope.isNational ? {} : scope);
       res.json({ overdue, count: overdue.length });
     } catch (err: any) {
       console.error("GET /api/supervision/digest/preview failed:", err);

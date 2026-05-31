@@ -295,44 +295,102 @@ export type DigestSendResult = {
 };
 
 /**
- * Resolve a manager's scope from their user row. Falls back to their primary
- * province/district/facility when dataAccessScope is unset (which is the common
- * case for district managers seeded by the demo data).
+ * Resolve a recipient's digest scope from their user row, ROLE-CAPPED exactly
+ * like `resolveRoleScopeIds` in server/routes.ts so the email can never show a
+ * facility the user couldn't see in-app:
+ *   - facility_clerk / facility_in_charge → their own facility only. Their
+ *     legacy districtId/provinceId columns hold the facility's hierarchy *path*
+ *     (not an access grant), so we deliberately ignore them — otherwise a clerk
+ *     would receive overdue alerts for their whole district/province.
+ *   - district_manager → their district(s) (+ any explicit facility grants).
+ *   - provincial_coordinator → their province(s) (+ explicit district/facility).
+ *   - national_admin / gis_specialist → tenant-wide.
+ *   - any other role → legacy precedence (explicit multi-scope, else the most
+ *     specific legacy column).
+ *
+ * `isScopedRole` marks the four hierarchical roles, which must fail CLOSED when
+ * no area resolves (empty scope would otherwise be read as tenant-wide by
+ * computeOverdueFacilities). `hasAny` reports whether any concrete grant exists.
  */
-function resolveUserScope(user: User): {
+export function resolveUserScope(user: User): {
   facilityIds: number[];
   districtIds: number[];
   provinceIds: number[];
   isNational: boolean;
+  isScopedRole: boolean;
+  hasAny: boolean;
 } {
-  const isNational =
-    user.role === "national_admin" ||
-    (Array.isArray(user.roles) && (user.roles as string[]).includes("national_admin"));
-  if (isNational) {
-    return { facilityIds: [], districtIds: [], provinceIds: [], isNational: true };
-  }
   const scope = (user.dataAccessScope ?? {}) as {
     provinces?: number[];
     districts?: number[];
     facilities?: number[];
   };
-  const facilityIds = [
-    ...(scope.facilities ?? []),
-    ...(user.facilityId ? [user.facilityId] : []),
-  ];
-  const districtIds = [
-    ...(scope.districts ?? []),
-    ...(user.districtId ? [user.districtId] : []),
-  ];
-  const provinceIds = [
-    ...(scope.provinces ?? []),
-    ...(user.provinceId ? [user.provinceId] : []),
-  ];
+  const sFac = Array.isArray(scope.facilities) ? scope.facilities.map(Number) : [];
+  const sDist = Array.isArray(scope.districts) ? scope.districts.map(Number) : [];
+  const sProv = Array.isArray(scope.provinces) ? scope.provinces.map(Number) : [];
+
+  const roleList: string[] = [
+    user.role,
+    ...(Array.isArray(user.roles) ? (user.roles as string[]) : []),
+  ].filter(Boolean) as string[];
+  const has = (r: string) => roleList.includes(r);
+
+  const isNational = has("national_admin") || has("gis_specialist");
+  if (isNational) {
+    return {
+      facilityIds: [],
+      districtIds: [],
+      provinceIds: [],
+      isNational: true,
+      isScopedRole: false,
+      hasAny: false,
+    };
+  }
+
+  let provinceIds: number[] = [];
+  let districtIds: number[] = [];
+  let facilityIds: number[] = [];
+  let isScopedRole = false;
+
+  if (has("provincial_coordinator")) {
+    isScopedRole = true;
+    provinceIds = sProv.length ? sProv : user.provinceId ? [Number(user.provinceId)] : [];
+    districtIds = sDist;
+    facilityIds = sFac;
+  } else if (has("district_manager")) {
+    isScopedRole = true;
+    districtIds = sDist.length ? sDist : user.districtId ? [Number(user.districtId)] : [];
+    facilityIds = sFac; // honour any extra cross-district facility grants
+  } else if (has("facility_clerk") || has("facility_in_charge")) {
+    isScopedRole = true;
+    facilityIds = sFac.length ? sFac : user.facilityId ? [Number(user.facilityId)] : [];
+  } else {
+    // Unknown / custom role: legacy precedence — explicit multi-scope union,
+    // else the most-specific legacy column. Not a scoped role, so an empty
+    // result means tenant-wide.
+    if (sFac.length || sDist.length || sProv.length) {
+      provinceIds = sProv;
+      districtIds = sDist;
+      facilityIds = sFac;
+    } else if (user.facilityId) {
+      facilityIds = [Number(user.facilityId)];
+    } else if (user.districtId) {
+      districtIds = [Number(user.districtId)];
+    } else if (user.provinceId) {
+      provinceIds = [Number(user.provinceId)];
+    }
+  }
+
+  const dedupe = (xs: number[]): number[] => Array.from(new Set<number>(xs));
+  const hasAny =
+    provinceIds.length > 0 || districtIds.length > 0 || facilityIds.length > 0;
   return {
-    facilityIds: Array.from(new Set(facilityIds)),
-    districtIds: Array.from(new Set(districtIds)),
-    provinceIds: Array.from(new Set(provinceIds)),
+    facilityIds: dedupe(facilityIds),
+    districtIds: dedupe(districtIds),
+    provinceIds: dedupe(provinceIds),
     isNational: false,
+    isScopedRole,
+    hasAny,
   };
 }
 
@@ -391,11 +449,17 @@ export async function runSupervisionDigestForTenant(
     }
     try {
       const scope = resolveUserScope(recipient);
-      const overdue = await computeOverdueFacilities(
-        tenantId,
-        scope.isNational ? {} : scope,
-        now,
-      );
+      // Fail CLOSED: a hierarchical role that resolves to no area must get an
+      // empty list, never the tenant-wide fallback that an empty scope object
+      // would trigger inside computeOverdueFacilities.
+      const overdue =
+        scope.isScopedRole && !scope.hasAny
+          ? []
+          : await computeOverdueFacilities(
+              tenantId,
+              scope.isNational ? {} : scope,
+              now,
+            );
       totalOverdue += overdue.length;
       // Skip "all clear" emails to district/provincial managers — they don't
       // need a no-op message every week. National admins still get the
