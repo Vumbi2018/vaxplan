@@ -51,6 +51,20 @@ export const dataSourceCategories: DataSourceCategory[] = [
         url: "https://leafletjs.com/",
         license: "BSD-2-Clause",
       },
+      {
+        name: "Nominatim (OpenStreetMap)",
+        description:
+          "OpenStreetMap's geocoding service. VaxPlan uses it for reverse geocoding — turning a tapped or device GPS coordinate into a place name when picking session and supervision locations.",
+        url: "https://nominatim.org/",
+        license: "© OpenStreetMap contributors (ODbL) — usage policy applies",
+      },
+      {
+        name: "Leaflet marker assets (cdnjs & leaflet-color-markers)",
+        description:
+          "The default map pin and shadow images are loaded from the cdnjs CDN, and the coloured status markers come from the open leaflet-color-markers project — used to show facilities, villages, and session points on the map.",
+        url: "https://github.com/pointhi/leaflet-color-markers",
+        license: "Leaflet marker images BSD-2-Clause; leaflet-color-markers BSD-2-Clause",
+      },
     ],
   },
   {
@@ -98,6 +112,13 @@ export const dataSourceCategories: DataSourceCategory[] = [
         description:
           "Open, high-resolution gridded population estimates (~100m). Useful for catchment estimates where recent census figures are unavailable.",
         url: "https://www.worldpop.org/",
+        license: "CC BY 4.0",
+      },
+      {
+        name: "GRID3 settlements",
+        description:
+          "Geo-referenced settlement and building footprint data. VaxPlan uses GRID3 evidence to help identify unserved and hard-to-reach communities when scoring coverage gaps.",
+        url: "https://grid3.org/",
         license: "CC BY 4.0",
       },
       {
@@ -163,6 +184,18 @@ export const dataSourceCategories: DataSourceCategory[] = [
           "Supply, cold chain, and demand-generation guidance for childhood immunization programmes.",
         url: "https://www.unicef.org/immunization",
       },
+      {
+        name: "WHO / PAHO immunization schedules",
+        description:
+          "VaxPlan's default vaccine schedules are based on the WHO recommended routine immunization tables and the PAHO regional schedules, which each country then tailors to its own national programme.",
+        url: "https://immunizationdata.who.int/",
+      },
+      {
+        name: "U.S. CDC — Global Immunization / EPI references",
+        description:
+          "The U.S. Centers for Disease Control and Prevention's Epidemiology & Prevention of Vaccine-Preventable Diseases (\"Pink Book\") and global immunization materials, used as a technical reference for schedules and microplanning.",
+        url: "https://www.cdc.gov/vaccines/pubs/pinkbook/index.html",
+      },
     ],
   },
   {
@@ -187,9 +220,16 @@ export const dataSourceCategories: DataSourceCategory[] = [
       },
       {
         name: "Lucide Icons",
-        description: "The icon set used throughout the interface.",
+        description: "The primary icon set used throughout the interface.",
         url: "https://lucide.dev/",
         license: "ISC",
+      },
+      {
+        name: "React Icons",
+        description:
+          "A bundled icon library that gives the app access to popular open icon packs (Font Awesome, Material, and more) alongside Lucide.",
+        url: "https://react-icons.github.io/react-icons/",
+        license: "MIT (individual packs under their own licenses)",
       },
     ],
   },
@@ -210,7 +250,7 @@ export const ESRI_IMAGERY_ATTRIBUTION =
   'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics and the GIS community';
 
 export const acknowledgements = [
-  "VaxPlan is built on open data and open-source software. We are grateful to the OpenStreetMap community, geoBoundaries, WorldPop, UN OCHA / HDX, the World Health Organization, UNICEF, Gavi, DHIS2, and the maintainers of the many open-source libraries listed here.",
+  "VaxPlan is built on open data and open-source software. We are grateful to the OpenStreetMap community (including Nominatim), geoBoundaries, GADM, WorldPop, GRID3, UN OCHA / HDX, the World Health Organization, PAHO, the U.S. CDC, UNICEF, Gavi, DHIS2, and the maintainers of the many open-source libraries listed here.",
   "Boundary, population, and facility datasets remain the property of their respective owners and are used under their published licenses. Always cite the original source when reusing this data outside VaxPlan.",
   "Country data loaded into VaxPlan is owned by the respective Ministry / Department of Health. External reference datasets are used only to bootstrap and enrich that official data.",
 ];
