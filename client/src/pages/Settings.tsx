@@ -10,6 +10,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useState, useEffect } from "react";
+import { useSearch } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { Input } from "@/components/ui/input";
@@ -69,6 +70,17 @@ export default function Settings() {
 
   const isNationalAdmin = user?.role === "national_admin";
   const canAccessUserManagement = isNationalAdmin || user?.role === "provincial_coordinator";
+
+  // Allow deep-linking to a specific tab (e.g. the user menu's "Profile" item
+  // navigates to /settings?tab=profile). Falls back to the role-based default.
+  const search = useSearch();
+  const urlTab = new URLSearchParams(search).get("tab");
+  const [activeTab, setActiveTab] = useState<string>(
+    urlTab || (user?.role === "national_admin" ? "microplanning" : "profile"),
+  );
+  useEffect(() => {
+    if (urlTab) setActiveTab(urlTab);
+  }, [urlTab]);
 
   const { data: tenant } = useQuery<Tenant>({
     queryKey: ["/api/me/tenant"],
@@ -916,7 +928,7 @@ export default function Settings() {
         </div>
       </div>
 
-      <Tabs defaultValue={isNationalAdmin ? "microplanning" : "profile"} className="w-full space-y-6">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full space-y-6">
         <TabsList className="flex flex-wrap h-auto p-1.5 bg-muted/60 dark:bg-muted/30 border border-border/40 backdrop-blur-md rounded-2xl w-full gap-1 shadow-lg overflow-x-auto custom-scrollbar">
           <TabsTrigger 
             value="profile" 

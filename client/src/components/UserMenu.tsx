@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { LogOut, User, Settings, KeyRound } from "lucide-react";
 import type { User as UserType } from "@shared/schema";
 import { useState } from "react";
+import { useLocation } from "wouter";
 import { ChangePasswordDialog } from "@/components/ChangePasswordDialog";
 
 interface UserMenuProps {
@@ -19,6 +20,7 @@ interface UserMenuProps {
 
 export function UserMenu({ user }: UserMenuProps) {
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
+  const [, setLocation] = useLocation();
   const initials = [user.firstName, user.lastName]
     .filter(Boolean)
     .map((n) => n?.[0])
@@ -56,11 +58,19 @@ export function UserMenu({ user }: UserMenuProps) {
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
-        <DropdownMenuItem data-testid="menu-item-profile">
+        <DropdownMenuItem
+          onSelect={() => setLocation("/settings?tab=profile")}
+          className="cursor-pointer"
+          data-testid="menu-item-profile"
+        >
           <User className="mr-2 h-4 w-4" />
           Profile
         </DropdownMenuItem>
-        <DropdownMenuItem data-testid="menu-item-settings">
+        <DropdownMenuItem
+          onSelect={() => setLocation("/settings")}
+          className="cursor-pointer"
+          data-testid="menu-item-settings"
+        >
           <Settings className="mr-2 h-4 w-4" />
           Settings
         </DropdownMenuItem>
