@@ -18,3 +18,7 @@ Within-tenant isolation in VaxPlan has two layers: tenant scoping (storage `with
 4. A user with NO geo scope keeps tenant-wide read (matches list endpoints, which only narrow when a scope is set).
 
 **Why:** the architect repeatedly flags both the IDOR holes and helper/`hasPermission` drift. **How to apply:** when adding any geo-scoped read route, gate it and grep `userCanAccessGeo`/`hasPermission` call sites to confirm the new route follows the same 404-on-deny pattern.
+
+**List endpoints that take an optional `facilityId` query param also leak** if they don't post-filter by `getGeoScope`/`recordInGeoScope` — a scoped user can omit or spoof `facilityId` and read tenant-wide rows (e.g. `/api/quarterly-reviews` fed the Defaulters/Supervision pages). Filter the returned rows, don't trust the param.
+
+**Fail-open trap:** geo scoping reads `req.dbUser`. `getGeoScope(null)` returns `{all:true}` (tenant-wide). Some scoped routes mount only `isAuthenticated, requireTenant`; the correct guard is the `...auth` spread = `[isAuthenticated, requireTenant, requireDbUser]` (routes.ts), which 401s when the db user can't be resolved instead of silently serving everything. Prefer `...auth` for any route that calls `getGeoScope`/`userCanAccessGeo`.

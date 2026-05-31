@@ -10736,8 +10736,7 @@ export async function registerRoutes(
   // current quarter's note (or list past notes for context).
   app.get(
     "/api/quarterly-reviews",
-    isAuthenticated,
-    requireTenant,
+    ...auth,
     async (req: any, res) => {
       try {
         const tenantId = req.tenantId as string;
@@ -10755,7 +10754,18 @@ export async function registerRoutes(
           year: Number.isFinite(year as number) ? year : undefined,
           quarter: Number.isFinite(quarter as number) ? quarter : undefined,
         });
-        res.json(rows);
+        // Row-level geo scoping: facility/district/provincial staff only see
+        // review notes for facilities inside their effective scope (admins and
+        // non-scoped roles keep tenant-wide read). Mirrors the other list
+        // endpoints so a facility clerk can't read other facilities' notes by
+        // omitting or spoofing the facilityId query param.
+        const geoScope = await getGeoScope(req.dbUser, tenantId);
+        const scoped = geoScope.all
+          ? rows
+          : rows.filter((r: any) =>
+              recordInGeoScope(geoScope, { facilityId: r.facilityId }),
+            );
+        res.json(scoped);
       } catch (err: any) {
         console.error("GET /api/quarterly-reviews failed:", err);
         res.status(500).json({ message: "Failed to load quarterly reviews" });
