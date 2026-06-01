@@ -11,14 +11,34 @@
 // falls back to the straight-line estimate rather than throwing. A map click
 // must never break because routing is unavailable.
 
-import { pool } from "../db";
+import { pool, db } from "../db";
+import { storage } from "../storage";
+import { sessionVillages } from "@shared/schema";
+import { eq } from "drizzle-orm";
+import { haversineKm, resolveSessionLocation } from "./proximityCheck";
 
 export interface TravelMode {
   durationMin: number;
   estimated: boolean; // true when derived from straight-line / non-routed
 }
 
+// A single routed destination (the nearest facility, or the nearest outreach
+// site). Both share the same shape so the client can render them identically.
+export interface TravelDestination {
+  name: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  straightLineKm: number; // great-circle distance to the destination
+  roadDistanceKm: number | null; // OSRM road distance (null when not routed)
+  driving: TravelMode;
+  walking: TravelMode;
+  routeClassification: "road" | "straight-line estimate";
+  provider: "osrm" | "estimate";
+}
+
 export interface TravelTimeResult {
+  // Flat nearest-facility fields kept for backward compatibility with existing
+  // clients. They mirror `facility` below.
   facilityName: string | null;
   facilityLatitude: number | null;
   facilityLongitude: number | null;
@@ -28,6 +48,10 @@ export interface TravelTimeResult {
   walking: TravelMode;
   routeClassification: "road" | "straight-line estimate";
   provider: "osrm" | "estimate";
+  // Nearest existing outreach site (an outreach session resolved to a point),
+  // null when the tenant has no active outreach sites to route to. Outreach
+  // posts are often closer to remote clusters than fixed facilities.
+  outreachSite: TravelDestination | null;
 }
 
 // Walking/driving speeds for estimates (km/h).
@@ -57,7 +81,7 @@ function isFiniteCoord(lat: number, lng: number): boolean {
   );
 }
 
-interface NearestFacility {
+interface NearestPlace {
   name: string;
   longitude: number;
   latitude: number;
@@ -71,7 +95,7 @@ async function getNearestFacilityWithCoords(
   tenantId: string,
   longitude: number,
   latitude: number,
-): Promise<NearestFacility | null> {
+): Promise<NearestPlace | null> {
   try {
     const query = `
       SELECT
@@ -102,6 +126,65 @@ async function getNearestFacilityWithCoords(
   }
 }
 
+// Nearest active outreach SITE with coordinates. An outreach site is an
+// outreach session (session_plans.session_type = 'outreach') resolved to a
+// point via its geojson, linked villages, or parent facility — the same
+// resolution used by the proximity check, so the two views stay consistent.
+// Done in app code (not pure SQL) because the coordinate lives in jsonb /
+// junction rows rather than columns on the session.
+async function getNearestOutreachSiteWithCoords(
+  tenantId: string,
+  longitude: number,
+  latitude: number,
+): Promise<NearestPlace | null> {
+  try {
+    const all = await storage.getSessionPlans(tenantId);
+    const outreach = (all as any[]).filter(
+      (s) =>
+        s.sessionType === "outreach" &&
+        s.status !== "cancelled" &&
+        s.status !== "completed",
+    );
+    if (outreach.length === 0) return null;
+
+    const facList = await storage.getFacilities(tenantId);
+    const facMap = new Map<number, any>(facList.map((f: any) => [f.id, f]));
+    const vilList = await storage.getVillages(tenantId);
+    const vilMap = new Map<number, any>(vilList.map((v: any) => [v.id, v]));
+    const svRows = await db
+      .select()
+      .from(sessionVillages)
+      .where(eq(sessionVillages.tenantId, String(tenantId)));
+    const svByPlan = new Map<number, number[]>();
+    for (const r of svRows) {
+      const arr = svByPlan.get(r.sessionId) ?? [];
+      arr.push(r.villageId);
+      svByPlan.set(r.sessionId, arr);
+    }
+
+    let best: NearestPlace | null = null;
+    let bestKm = Infinity;
+    for (const s of outreach) {
+      const loc = await resolveSessionLocation(tenantId, s, vilMap, facMap, svByPlan);
+      if (!loc || !isFiniteCoord(loc.lat, loc.lng)) continue;
+      const km = haversineKm(latitude, longitude, loc.lat, loc.lng);
+      if (km < bestKm) {
+        bestKm = km;
+        best = {
+          name: s.name,
+          longitude: loc.lng,
+          latitude: loc.lat,
+          straightLineKm: parseFloat(km.toFixed(2)),
+        };
+      }
+    }
+    return best;
+  } catch (err: any) {
+    console.error("[routing] nearest outreach site lookup failed:", err?.message);
+    return null;
+  }
+}
+
 interface OsrmRoute {
   roadDistanceKm: number;
   drivingMin: number;
@@ -113,9 +196,15 @@ async function fetchOsrmRoute(
   toLng: number,
   toLat: number,
 ): Promise<OsrmRoute | null> {
-  const now = Date.now();
-  if (now - lastOsrmAt < OSRM_MIN_INTERVAL_MS) return null; // throttle: caller falls back to estimate
-  lastOsrmAt = now;
+  // Gentle pacing for the OSRM public demo: wait out the minimum interval
+  // rather than bail, so multiple destinations resolved in a single lookup
+  // (nearest facility + nearest outreach site) each get a real road route
+  // instead of one of them silently falling back to a straight-line estimate.
+  const sinceLast = Date.now() - lastOsrmAt;
+  if (sinceLast < OSRM_MIN_INTERVAL_MS) {
+    await new Promise((r) => setTimeout(r, OSRM_MIN_INTERVAL_MS - sinceLast));
+  }
+  lastOsrmAt = Date.now();
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 3000);
@@ -145,10 +234,50 @@ async function fetchOsrmRoute(
   }
 }
 
+// Build a routed TravelDestination from a resolved nearest place: try a real
+// OSRM road route, otherwise fall back to the straight-line estimate (matches
+// the existing heuristic of 15 min/km driving).
+async function buildTravelDestination(
+  fromLng: number,
+  fromLat: number,
+  place: NearestPlace,
+): Promise<TravelDestination> {
+  const straightLineKm = place.straightLineKm;
+  const estimate: TravelDestination = {
+    name: place.name,
+    latitude: place.latitude,
+    longitude: place.longitude,
+    straightLineKm,
+    roadDistanceKm: null,
+    driving: { durationMin: Math.round((straightLineKm / HEURISTIC_DRIVE_KMH) * 60), estimated: true },
+    walking: { durationMin: Math.round((straightLineKm / WALK_KMH) * 60), estimated: true },
+    routeClassification: "straight-line estimate",
+    provider: "estimate",
+  };
+
+  const osrm = await fetchOsrmRoute(fromLng, fromLat, place.longitude, place.latitude);
+  if (!osrm) return estimate; // graceful fallback
+
+  return {
+    name: place.name,
+    latitude: place.latitude,
+    longitude: place.longitude,
+    straightLineKm,
+    roadDistanceKm: osrm.roadDistanceKm,
+    driving: { durationMin: osrm.drivingMin, estimated: false },
+    // OSRM public demo only serves the driving profile; derive walking from
+    // the real road distance at walking pace (more accurate than great-circle).
+    walking: { durationMin: Math.round((osrm.roadDistanceKm / WALK_KMH) * 60), estimated: true },
+    routeClassification: "road",
+    provider: "osrm",
+  };
+}
+
 /**
- * Compute travel time from an arbitrary point to the nearest active facility.
- * Always resolves (best-effort); falls back to the straight-line estimate when
- * routing is unavailable.
+ * Compute travel time from an arbitrary point to the nearest active facility
+ * AND the nearest existing outreach site. Always resolves (best-effort); each
+ * destination falls back to the straight-line estimate when routing is
+ * unavailable, and either destination may be null when none exists.
  */
 export async function getTravelTimeToNearestFacility(
   tenantId: string,
@@ -165,6 +294,7 @@ export async function getTravelTimeToNearestFacility(
     walking: { durationMin: 0, estimated: true },
     routeClassification: "straight-line estimate",
     provider: "estimate",
+    outreachSite: null,
   };
   if (!isFiniteCoord(latitude, longitude)) return empty;
 
@@ -175,40 +305,43 @@ export async function getTravelTimeToNearestFacility(
   if (pending) return pending;
 
   const promise = (async (): Promise<TravelTimeResult> => {
-    const facility = await getNearestFacilityWithCoords(tenantId, longitude, latitude);
-    if (!facility) return empty;
+    const [facility, outreach] = await Promise.all([
+      getNearestFacilityWithCoords(tenantId, longitude, latitude),
+      getNearestOutreachSiteWithCoords(tenantId, longitude, latitude),
+    ]);
+    if (!facility && !outreach) return empty;
 
-    const straightLineKm = facility.straightLineKm;
-    // Straight-line estimate (matches existing heuristic: 15 min/km driving).
-    const estimateResult: TravelTimeResult = {
-      facilityName: facility.name,
-      facilityLatitude: facility.latitude,
-      facilityLongitude: facility.longitude,
-      straightLineKm,
-      roadDistanceKm: null,
-      driving: { durationMin: Math.round((straightLineKm / HEURISTIC_DRIVE_KMH) * 60), estimated: true },
-      walking: { durationMin: Math.round((straightLineKm / WALK_KMH) * 60), estimated: true },
-      routeClassification: "straight-line estimate",
-      provider: "estimate",
-    };
-
-    const osrm = await fetchOsrmRoute(longitude, latitude, facility.longitude, facility.latitude);
-    if (!osrm) return estimateResult; // graceful fallback (not cached so it retries)
+    // Route sequentially so the OSRM pacing applies between the two calls and
+    // both destinations get a real road route rather than racing the throttle.
+    const facilityDest = facility
+      ? await buildTravelDestination(longitude, latitude, facility)
+      : null;
+    const outreachDest = outreach
+      ? await buildTravelDestination(longitude, latitude, outreach)
+      : null;
 
     const result: TravelTimeResult = {
-      facilityName: facility.name,
-      facilityLatitude: facility.latitude,
-      facilityLongitude: facility.longitude,
-      straightLineKm,
-      roadDistanceKm: osrm.roadDistanceKm,
-      driving: { durationMin: osrm.drivingMin, estimated: false },
-      // OSRM public demo only serves the driving profile; derive walking from
-      // the real road distance at walking pace (more accurate than great-circle).
-      walking: { durationMin: Math.round((osrm.roadDistanceKm / WALK_KMH) * 60), estimated: true },
-      routeClassification: "road",
-      provider: "osrm",
+      facilityName: facilityDest?.name ?? null,
+      facilityLatitude: facilityDest?.latitude ?? null,
+      facilityLongitude: facilityDest?.longitude ?? null,
+      straightLineKm: facilityDest?.straightLineKm ?? 0,
+      roadDistanceKm: facilityDest?.roadDistanceKm ?? null,
+      driving: facilityDest?.driving ?? { durationMin: 0, estimated: true },
+      walking: facilityDest?.walking ?? { durationMin: 0, estimated: true },
+      routeClassification: facilityDest?.routeClassification ?? "straight-line estimate",
+      provider: facilityDest?.provider ?? "estimate",
+      outreachSite: outreachDest,
     };
-    cache.set(key, { value: result, expires: Date.now() + TTL_MS });
+
+    // Cache only once every present destination has a real road route, so an
+    // estimate-only result retries on the next click (preserves prior
+    // facility-only retry behavior).
+    const facilityRouted = !facility || facilityDest?.provider === "osrm";
+    const outreachRouted = !outreach || outreachDest?.provider === "osrm";
+    const anyRouted = facilityDest?.provider === "osrm" || outreachDest?.provider === "osrm";
+    if (facilityRouted && outreachRouted && anyRouted) {
+      cache.set(key, { value: result, expires: Date.now() + TTL_MS });
+    }
     return result;
   })().finally(() => inFlight.delete(key));
 

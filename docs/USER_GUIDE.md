@@ -625,11 +625,14 @@ recorded vaccinations. Click a hotspot to:
 zero-dose cluster card or settlement record, click the **Insights**
 (compass) button to open the Geospatial Insights panel. It shows:
 
-- **Travel time to the nearest facility**, calculated on the real road
-  network (OpenStreetMap routing) — both a **driving** and a **walking**
-  estimate, the road distance, and a badge noting whether it's a true
-  road route or a straight-line estimate (used automatically if routing
-  is briefly unavailable, so the panel always answers).
+- **Travel time to the nearest facility and the nearest outreach
+  site**, calculated on the real road network (OpenStreetMap routing) —
+  each with both a **driving** and a **walking** estimate, the road
+  distance, and a badge noting whether it's a true road route or a
+  straight-line estimate (used automatically if routing is briefly
+  unavailable, so the panel always answers). Existing outreach sites are
+  often closer to a remote cluster than a fixed facility, so the panel
+  shows whichever is relevant — or both, clearly labelled.
 - **Community assets within 3 km** — schools, places of worship,
   markets, water points, and transport nodes pulled live from
   OpenStreetMap, each with its distance. These show what services

@@ -315,6 +315,67 @@ export default function SettlementIntelligence() {
     return m > 0 ? `${h} h ${m} min` : `${h} h`;
   };
 
+  // Render one routed destination (nearest facility or nearest outreach site).
+  const renderTravelDestination = (
+    dest: {
+      name: string | null;
+      driving?: { durationMin?: number; estimated?: boolean };
+      walking?: { durationMin?: number; estimated?: boolean };
+      roadDistanceKm?: number | null;
+      straightLineKm?: number | null;
+      routeClassification?: string;
+    },
+    label: string,
+    icon: React.ReactNode,
+  ) => (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <div className="text-[9px] text-slate-400 uppercase font-bold tracking-wider">{label}</div>
+      </div>
+      <div className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
+        {icon}
+        {dest.name}
+      </div>
+      <div className="grid grid-cols-2 gap-2 text-xs">
+        <div className="bg-white rounded-lg border border-slate-200 p-2 flex items-center gap-2">
+          <Car className="h-4 w-4 text-teal-600" />
+          <div>
+            <div className="font-extrabold text-slate-800">{fmtMinutes(dest.driving?.durationMin)}</div>
+            <div className="text-[9px] text-slate-400 uppercase font-bold">
+              Driving{dest.driving?.estimated ? " (est.)" : ""}
+            </div>
+          </div>
+        </div>
+        <div className="bg-white rounded-lg border border-slate-200 p-2 flex items-center gap-2">
+          <Footprints className="h-4 w-4 text-amber-600" />
+          <div>
+            <div className="font-extrabold text-slate-800">{fmtMinutes(dest.walking?.durationMin)}</div>
+            <div className="text-[9px] text-slate-400 uppercase font-bold">
+              Walking{dest.walking?.estimated ? " (est.)" : ""}
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="flex items-center justify-between text-[10px] text-slate-500 pt-0.5">
+        <span>
+          {dest.roadDistanceKm != null
+            ? `${dest.roadDistanceKm} km by road`
+            : `${dest.straightLineKm} km straight-line`}
+        </span>
+        <Badge
+          variant="secondary"
+          className={`text-[9px] px-1.5 py-0 border ${
+            dest.routeClassification === "road"
+              ? "bg-emerald-50 text-emerald-700 border-emerald-100"
+              : "bg-amber-50 text-amber-700 border-amber-100"
+          }`}
+        >
+          {dest.routeClassification === "road" ? "Road route" : "Straight-line estimate"}
+        </Badge>
+      </div>
+    </div>
+  );
+
   // Walking-time rings (km radius at ~5 km/h) for the travel-time-zone layer
   const TRAVEL_RINGS = [
     { hours: 1, radiusM: 5000, color: "#16a34a" },
@@ -1062,63 +1123,46 @@ export default function SettlementIntelligence() {
           </DialogHeader>
 
           <div className="space-y-4 my-1">
-            {/* Travel time block */}
+            {/* Travel time block — nearest facility and nearest outreach site */}
             <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3.5 shadow-inner">
               <div className="text-xs font-bold text-slate-700 flex items-center gap-1.5 mb-2">
                 <Route className="h-4 w-4 text-teal-600" />
-                Travel time to nearest facility
+                Travel time to nearest sites
               </div>
               {travelTimeLoading ? (
                 <div className="flex items-center gap-2 text-xs text-slate-500 py-2">
                   <Loader2 className="h-4 w-4 animate-spin" /> Calculating road route…
                 </div>
-              ) : !travelTime || !travelTime.facilityName ? (
+              ) : !travelTime || (!travelTime.facilityName && !travelTime.outreachSite) ? (
                 <div className="text-xs text-slate-500 py-1">
-                  No active facility found to route to.
+                  No active facility or outreach site found to route to.
                 </div>
               ) : (
-                <div className="space-y-2">
-                  <div className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
-                    <Building2 className="h-4 w-4 text-indigo-500" />
-                    {travelTime.facilityName}
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div className="bg-white rounded-lg border border-slate-200 p-2 flex items-center gap-2">
-                      <Car className="h-4 w-4 text-teal-600" />
-                      <div>
-                        <div className="font-extrabold text-slate-800">{fmtMinutes(travelTime.driving?.durationMin)}</div>
-                        <div className="text-[9px] text-slate-400 uppercase font-bold">
-                          Driving{travelTime.driving?.estimated ? " (est.)" : ""}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="bg-white rounded-lg border border-slate-200 p-2 flex items-center gap-2">
-                      <Footprints className="h-4 w-4 text-amber-600" />
-                      <div>
-                        <div className="font-extrabold text-slate-800">{fmtMinutes(travelTime.walking?.durationMin)}</div>
-                        <div className="text-[9px] text-slate-400 uppercase font-bold">
-                          Walking{travelTime.walking?.estimated ? " (est.)" : ""}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between text-[10px] text-slate-500 pt-0.5">
-                    <span>
-                      {travelTime.roadDistanceKm != null
-                        ? `${travelTime.roadDistanceKm} km by road`
-                        : `${travelTime.straightLineKm} km straight-line`}
-                    </span>
-                    <Badge
-                      variant="secondary"
-                      className={`text-[9px] px-1.5 py-0 border ${
-                        travelTime.routeClassification === "road"
-                          ? "bg-emerald-50 text-emerald-700 border-emerald-100"
-                          : "bg-amber-50 text-amber-700 border-amber-100"
-                      }`}
-                    >
-                      {travelTime.routeClassification === "road" ? "Road route" : "Straight-line estimate"}
-                    </Badge>
-                  </div>
+                <div className="space-y-3">
+                  {travelTime.facilityName && renderTravelDestination(
+                    {
+                      name: travelTime.facilityName,
+                      driving: travelTime.driving,
+                      walking: travelTime.walking,
+                      roadDistanceKm: travelTime.roadDistanceKm,
+                      straightLineKm: travelTime.straightLineKm,
+                      routeClassification: travelTime.routeClassification,
+                    },
+                    "Nearest facility",
+                    <Building2 className="h-4 w-4 text-indigo-500" />,
+                  )}
+                  {travelTime.outreachSite && renderTravelDestination(
+                    {
+                      name: travelTime.outreachSite.name,
+                      driving: travelTime.outreachSite.driving,
+                      walking: travelTime.outreachSite.walking,
+                      roadDistanceKm: travelTime.outreachSite.roadDistanceKm,
+                      straightLineKm: travelTime.outreachSite.straightLineKm,
+                      routeClassification: travelTime.outreachSite.routeClassification,
+                    },
+                    "Nearest outreach site",
+                    <MapPin className="h-4 w-4 text-amber-500" />,
+                  )}
                 </div>
               )}
             </div>
