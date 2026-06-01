@@ -10053,12 +10053,15 @@ export async function registerRoutes(
   // { available: false } when no routing key is configured or the provider is
   // unavailable, so the client falls back to plain circles.
   app.get("/api/geo/isochrones", isAuthenticated, requireTenant, async (req: any, res) => {
-    // Profile picks the routing mode: walking (default) or driving. Anything
-    // else falls back to walking so a stale/garbled query never errors.
+    // Profile picks the routing mode: walking (default), driving, or cycling.
+    // Anything else falls back to walking so a stale/garbled query never errors.
     const profile: IsochroneProfile =
       req.query.profile === "driving-car" || req.query.profile === "driving"
         ? "driving-car"
-        : "foot-walking";
+        : req.query.profile === "cycling-regular" ||
+            req.query.profile === "cycling"
+          ? "cycling-regular"
+          : "foot-walking";
     try {
       const result = await getTravelIsochrones(req.tenantId, profile);
       res.json(result);

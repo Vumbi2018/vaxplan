@@ -273,9 +273,11 @@ export default function SettlementIntelligence() {
   const [showOutreachRecs, setShowOutreachRecs] = useState(false);
   const [showCommunityAssets, setShowCommunityAssets] = useState(false);
   const [showTravelZones, setShowTravelZones] = useState(false);
-  // Travel-Time Zones profile: walking (default) or driving for vehicle-based
-  // outreach and supply runs.
-  const [travelProfile, setTravelProfile] = useState<"foot-walking" | "driving-car">("foot-walking");
+  // Travel-Time Zones profile: walking (default), driving for vehicle-based
+  // outreach and supply runs, or cycling for bicycle/motorbike outreach teams.
+  const [travelProfile, setTravelProfile] = useState<
+    "foot-walking" | "driving-car" | "cycling-regular"
+  >("foot-walking");
 
   // Geospatial insights dialog (real travel time + nearby community assets)
   const [insightsOpen, setInsightsOpen] = useState(false);
@@ -559,20 +561,32 @@ export default function SettlementIntelligence() {
   // Straight-line travel-time rings for the travel-time-zone layer, used as a
   // graceful fallback when road-network isochrones are unavailable. Walking
   // assumes ~5 km/h (1/2/3 h); driving assumes ~30 km/h on rural roads
-  // (30/60/90 min → 15/30/45 km).
+  // (30/60/90 min → 15/30/45 km); cycling assumes ~15 km/h on rural roads
+  // (30/60/90 min → 7.5/15/22.5 km).
   const isDrivingProfile = travelProfile === "driving-car";
+  const isCyclingProfile = travelProfile === "cycling-regular";
   const TRAVEL_RINGS = isDrivingProfile
     ? [
         { label: "30 min", radiusM: 15000, color: "#16a34a" },
         { label: "60 min", radiusM: 30000, color: "#d97706" },
         { label: "90 min", radiusM: 45000, color: "#dc2626" },
       ]
-    : [
-        { label: "1 h", radiusM: 5000, color: "#16a34a" },
-        { label: "2 h", radiusM: 10000, color: "#d97706" },
-        { label: "3 h", radiusM: 15000, color: "#dc2626" },
-      ];
-  const travelModeLabel = isDrivingProfile ? "drive" : "walk";
+    : isCyclingProfile
+      ? [
+          { label: "30 min", radiusM: 7500, color: "#16a34a" },
+          { label: "60 min", radiusM: 15000, color: "#d97706" },
+          { label: "90 min", radiusM: 22500, color: "#dc2626" },
+        ]
+      : [
+          { label: "1 h", radiusM: 5000, color: "#16a34a" },
+          { label: "2 h", radiusM: 10000, color: "#d97706" },
+          { label: "3 h", radiusM: 15000, color: "#dc2626" },
+        ];
+  const travelModeLabel = isDrivingProfile
+    ? "drive"
+    : isCyclingProfile
+      ? "cycle"
+      : "walk";
 
   // True road/path-network walking-time zones from the routing provider. When
   // available we render these isochrone polygons instead of the circles above.
@@ -1064,7 +1078,7 @@ export default function SettlementIntelligence() {
                       <div className="text-xs p-1">
                         <span className="font-bold" style={{ color }}>~{label} {travelModeLabel}</span>
                         <div className="text-[10px] text-slate-500">
-                          {facilityName ? `${facilityName} · ` : ""}road-network {travelModeLabel === "drive" ? "driving" : "walking"} zone
+                          {facilityName ? `${facilityName} · ` : ""}road-network {isDrivingProfile ? "driving" : isCyclingProfile ? "cycling" : "walking"} zone
                         </div>
                       </div>
                     </Popup>
@@ -1090,7 +1104,7 @@ export default function SettlementIntelligence() {
                   <Popup>
                     <div className="text-xs p-1">
                       <span className="font-bold" style={{ color: ring.color }}>~{ring.label} {travelModeLabel}</span>
-                      <div className="text-[10px] text-slate-500">{f.name} · {ring.radiusM / 1000} km by {isDrivingProfile ? "road" : "foot"} (approx.)</div>
+                      <div className="text-[10px] text-slate-500">{f.name} · {ring.radiusM / 1000} km by {isDrivingProfile ? "road" : isCyclingProfile ? "bike" : "foot"} (approx.)</div>
                     </div>
                   </Popup>
                 </Circle>
@@ -1233,6 +1247,18 @@ export default function SettlementIntelligence() {
                   data-testid="button-travel-driving"
                 >
                   Driving
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTravelProfile("cycling-regular")}
+                  className={`flex-1 text-[10px] font-medium rounded-md px-2 py-1 border transition-colors ${
+                    travelProfile === "cycling-regular"
+                      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                      : "bg-white text-slate-500 border-slate-200 hover:bg-slate-50"
+                  }`}
+                  data-testid="button-travel-cycling"
+                >
+                  Cycling
                 </button>
               </div>
             )}

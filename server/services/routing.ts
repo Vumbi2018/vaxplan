@@ -65,13 +65,15 @@ export interface TravelTimeResult {
 const WALK_KMH = 5;
 const HEURISTIC_DRIVE_KMH = 4; // matches existing 15 min/km heuristic (60/15)
 
-// Travel-time zones can be computed for two routing profiles:
-//   - foot-walking: 1/2/3 hours on foot (default, for community access)
-//   - driving-car:  30/60/90 minutes by vehicle (for vehicle-based outreach
+// Travel-time zones can be computed for three routing profiles:
+//   - foot-walking:    1/2/3 hours on foot (default, for community access)
+//   - driving-car:     30/60/90 minutes by vehicle (for vehicle-based outreach
 //     and supply runs)
+//   - cycling-regular: 30/60/90 minutes by bicycle/motorbike (for outreach
+//     teams that travel by two-wheeler)
 // Each band carries a human label so the client can render it without knowing
 // the profile's time unit.
-export type IsochroneProfile = "foot-walking" | "driving-car";
+export type IsochroneProfile = "foot-walking" | "driving-car" | "cycling-regular";
 
 export interface IsochroneBand {
   seconds: number;
@@ -93,8 +95,19 @@ export const DRIVE_ISOCHRONE_BANDS: readonly IsochroneBand[] = [
   { seconds: 5400, color: "#dc2626", label: "90 min" },
 ] as const;
 
+// Cycling-time bands rendered as travel-time zones (30/60/90 min by
+// bicycle/motorbike). Same time bands as driving; the polygons differ because
+// ORS uses the cycling network and speeds.
+export const CYCLE_ISOCHRONE_BANDS: readonly IsochroneBand[] = [
+  { seconds: 1800, color: "#16a34a", label: "30 min" },
+  { seconds: 3600, color: "#d97706", label: "60 min" },
+  { seconds: 5400, color: "#dc2626", label: "90 min" },
+] as const;
+
 function bandsForProfile(profile: IsochroneProfile): readonly IsochroneBand[] {
-  return profile === "driving-car" ? DRIVE_ISOCHRONE_BANDS : WALK_ISOCHRONE_BANDS;
+  if (profile === "driving-car") return DRIVE_ISOCHRONE_BANDS;
+  if (profile === "cycling-regular") return CYCLE_ISOCHRONE_BANDS;
+  return WALK_ISOCHRONE_BANDS;
 }
 
 const TTL_MS = 6 * 60 * 60 * 1000; // routes are stable; cache 6h
