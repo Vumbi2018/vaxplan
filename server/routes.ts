@@ -10171,7 +10171,14 @@ export async function registerRoutes(
         };
       });
 
-      ranked.sort((a, b) => b.suitabilityScore - a.suitabilityScore);
+      // Rank by suitability (which already folds in the zero-dose factor), then
+      // break ties by estimated zero-dose children so the higher-equity-need
+      // cluster wins when scores are equal.
+      ranked.sort(
+        (a, b) =>
+          b.suitabilityScore - a.suitabilityScore ||
+          b.estimatedZeroDoseChildren - a.estimatedZeroDoseChildren,
+      );
 
       res.json({
         count: ranked.length,

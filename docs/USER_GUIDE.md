@@ -654,10 +654,12 @@ zero-dose cluster card or settlement record, click the **Insights**
 **Outreach Site Suitability Score (0–100).** Every unserved cluster gets
 a single, easy-to-read score that answers one question: *how good a
 candidate is this place for a new outreach session?* A higher score means
-a stronger case. The score combines five things, each shown as its own
+a stronger case. The score combines six things, each shown as its own
 bar so you can see exactly why a cluster scored the way it did:
 
 - **Population size** — more unserved people means more impact.
+- **Likely zero-dose children** — the core equity target; clusters with
+  more estimated never-vaccinated children score higher.
 - **Distance from the nearest facility** — the farther, the bigger the
   access gap a new site would fill.
 - **Existing-outreach gap** — how far the cluster is from any outreach

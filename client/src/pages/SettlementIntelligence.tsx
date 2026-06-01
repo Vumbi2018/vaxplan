@@ -982,9 +982,10 @@ export default function SettlementIntelligence() {
             </div>
             <p className="text-[10px] text-slate-500 leading-snug">
               Ranked by an <span className="font-semibold">Outreach Site Suitability Score</span> (0–100)
-              that weighs population, distance to a facility, the gap from existing outreach, road
-              access and nearby landmarks. Open <span className="font-semibold">Insights</span> to
-              sharpen the score with live travel time and mapped landmarks.
+              that weighs population, likely zero-dose children, distance to a facility, the gap from
+              existing outreach, road access and nearby landmarks. Open{" "}
+              <span className="font-semibold">Insights</span> to sharpen the score with live travel
+              time and mapped landmarks.
             </p>
 
             {/* Sort control */}

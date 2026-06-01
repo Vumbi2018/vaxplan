@@ -67,16 +67,20 @@ export interface SuitabilityResult {
 }
 
 // Factor weights (sum = 100). Tuned to the data we can reliably resolve.
+// Zero-dose carries explicit weight so clusters with more likely
+// never-vaccinated children rank higher, all else equal.
 export const SUITABILITY_WEIGHTS = {
-  population: 25,
-  facilityDistance: 25,
+  population: 20,
+  zeroDose: 20,
+  facilityDistance: 20,
   outreachGap: 20,
-  roadAccess: 15,
-  landmark: 15,
+  roadAccess: 10,
+  landmark: 10,
 } as const;
 
 // Normalisation caps — the point at which a factor reaches full strength.
 const POPULATION_FULL = 500; // people
+const ZERO_DOSE_FULL = 75; // estimated zero-dose children
 const FACILITY_DISTANCE_FULL_KM = 20;
 const OUTREACH_GAP_FULL_KM = 15;
 const ROAD_ACCESS_MAX_MIN = 120; // beyond ~2h drive, road access scores 0
@@ -151,7 +155,25 @@ export function computeOutreachSuitability(input: SuitabilityInput): Suitability
     });
   }
 
-  // 2) Distance to nearest facility — the farther, the bigger the access gap a
+  // 2) Zero-dose children — the core equity target. A cluster with more likely
+  //    never-vaccinated children should rank higher, all else equal. Derived
+  //    from population + remoteness (estimateZeroDoseChildren), so it is always
+  //    an estimate.
+  const zeroDoseChildren = estimateZeroDoseChildren(pop, input.distanceToFacilityKm);
+  {
+    const score = clamp01(zeroDoseChildren / ZERO_DOSE_FULL);
+    factors.push({
+      key: "zeroDose",
+      label: "Likely zero-dose children",
+      weight: SUITABILITY_WEIGHTS.zeroDose,
+      score,
+      points: round1(score * SUITABILITY_WEIGHTS.zeroDose),
+      estimated: true,
+      detail: `About ${zeroDoseChildren} likely zero-dose (never-vaccinated) children`,
+    });
+  }
+
+  // 3) Distance to nearest facility — the farther, the bigger the access gap a
   //    new outreach site would fill.
   {
     const dist = input.distanceToFacilityKm;
@@ -170,7 +192,7 @@ export function computeOutreachSuitability(input: SuitabilityInput): Suitability
     });
   }
 
-  // 3) Existing-outreach gap — far from (or no) existing outreach = less
+  // 4) Existing-outreach gap — far from (or no) existing outreach = less
   //    duplication, a cleaner gap to fill.
   {
     const gap = input.outreachGapKm;
@@ -198,7 +220,7 @@ export function computeOutreachSuitability(input: SuitabilityInput): Suitability
     });
   }
 
-  // 4) Road access — a site a team can actually reach is more operable. Closer
+  // 5) Road access — a site a team can actually reach is more operable. Closer
   //    travel time scores higher; beyond ~2h it scores 0.
   {
     const tt = input.travelTimeMin;
@@ -219,7 +241,7 @@ export function computeOutreachSuitability(input: SuitabilityInput): Suitability
     });
   }
 
-  // 5) Nearby landmark — a school / place of worship / market is a natural
+  // 6) Nearby landmark — a school / place of worship / market is a natural
   //    venue for a session. Unknown until a live lookup runs (bulk list).
   {
     const count = input.landmarkCount;
