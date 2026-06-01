@@ -92,6 +92,7 @@ import {
   calcBBox,
   SUPPORTED_COUNTRIES,
 } from "./services/geoBoundariesService";
+import { loadBundledBoundary } from "./services/bundledBoundaries";
 // Turf area calculation for catchment polygons
 import { area as turfArea, intersect as turfIntersect, featureCollection as turfFeatureCollection } from "@turf/turf";
 // HIS Interoperability service
@@ -7156,10 +7157,26 @@ export async function registerRoutes(
       const parsed = schema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: "Invalid payload", errors: parsed.error.errors });
 
-      const { countryCode, adminLevel, levelName } = parsed.data;
+      const { countryCode, adminLevel } = parsed.data;
 
-      // Fetch from GeoBoundaries API (may take 10-60s for large countries)
-      const { geojson, featureCount } = await fetchGeoBoundariesGeoJSON(countryCode, adminLevel);
+      // Some levels are not served by GeoBoundaries/GADM (e.g. Zambia ADM3
+      // Constituency) and ship as a pre-simplified GeoJSON in the repo. Prefer
+      // the bundled copy so this in-app flow works for those levels in prod.
+      const bundled = loadBundledBoundary(countryCode, adminLevel);
+      let geojson: any;
+      let featureCount: number;
+      let source: "geoboundaries" | "custom";
+      let levelName = parsed.data.levelName;
+      if (bundled) {
+        geojson = bundled.geojson;
+        featureCount = bundled.featureCount;
+        source = "custom";
+        levelName = bundled.levelName; // canonical name for the bundled data
+      } else {
+        // Fetch from GeoBoundaries API (may take 10-60s for large countries)
+        ({ geojson, featureCount } = await fetchGeoBoundariesGeoJSON(countryCode, adminLevel));
+        source = "geoboundaries";
+      }
       const bbox = calcBBox(geojson);
 
       const boundary = await storage.upsertAdminBoundary({
@@ -7167,7 +7184,7 @@ export async function registerRoutes(
         countryCode,
         adminLevel,
         levelName,
-        source: "geoboundaries",
+        source,
         geojson,
         featureCount,
         bbox: bbox ?? undefined,
@@ -7175,7 +7192,7 @@ export async function registerRoutes(
       });
 
       await logAudit(req, "fetch_boundary", "admin_boundary", null, null, {
-        countryCode, adminLevel, levelName, featureCount,
+        countryCode, adminLevel, levelName, featureCount, source,
       });
 
       res.status(201).json({ ...boundary, geojson: undefined, featureCount });

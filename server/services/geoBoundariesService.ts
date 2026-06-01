@@ -165,7 +165,7 @@ export const SUPPORTED_COUNTRIES: Array<{
   { code: "CIV", name: "Côte d'Ivoire",    region: "West Africa",       maxLevel: 3, levelNames: { 0: "Country", 1: "District", 2: "Region", 3: "Sous-Préfecture" } },
   { code: "AGO", name: "Angola",           region: "Southern Africa",   maxLevel: 3, levelNames: { 0: "Country", 1: "Province", 2: "Municipality", 3: "Commune" } },
   { code: "MDG", name: "Madagascar",       region: "East Africa",       maxLevel: 4, levelNames: { 0: "Country", 1: "Province", 2: "Region", 3: "District", 4: "Commune" } },
-  { code: "ZMB", name: "Zambia",           region: "Southern Africa",   maxLevel: 3, levelNames: { 0: "Country", 1: "Province", 2: "District", 3: "Ward" } },
+  { code: "ZMB", name: "Zambia",           region: "Southern Africa",   maxLevel: 3, levelNames: { 0: "Country", 1: "Province", 2: "District", 3: "Constituency" } },
   { code: "MWI", name: "Malawi",           region: "Southern Africa",   maxLevel: 3, levelNames: { 0: "Country", 1: "Region", 2: "District", 3: "Traditional Authority" } },
   { code: "SEN", name: "Senegal",          region: "West Africa",       maxLevel: 3, levelNames: { 0: "Country", 1: "Region", 2: "Arrondissement", 3: "Commune" } },
   { code: "ZWE", name: "Zimbabwe",         region: "Southern Africa",   maxLevel: 3, levelNames: { 0: "Country", 1: "Province", 2: "District", 3: "Ward" } },

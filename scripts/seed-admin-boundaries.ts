@@ -33,25 +33,10 @@ import {
   calcBBox,
   SUPPORTED_COUNTRIES,
 } from "../server/services/geoBoundariesService";
-import { readFileSync } from "fs";
-import { join } from "path";
-
-/**
- * Levels that GeoBoundaries does NOT serve for a country but which we ship as a
- * pre-simplified GeoJSON in the repo (loaded as source="custom"). Zambia's
- * Constituency layer (COD-AB ADM3, ~156 features) is one such case: neither
- * GeoBoundaries nor GADM expose a Zambia ADM3, so we bundle a simplified copy
- * sourced from the OCHA Common Operational Dataset (data.humdata.org cod-ab-zmb).
- * Keyed by ISO-3 country code → admin levels to load from disk.
- */
-const BUNDLED_CUSTOM_LEVELS: Record<
-  string,
-  Array<{ level: number; levelName: string; file: string }>
-> = {
-  ZMB: [
-    { level: 3, levelName: "Constituency", file: "data/zambia/zmb_constituencies.geojson" },
-  ],
-};
+import {
+  BUNDLED_CUSTOM_LEVELS,
+  loadBundledBoundary,
+} from "../server/services/bundledBoundaries";
 
 async function seedForTenant(tenantCode: string) {
   console.log(`\n── ${tenantCode} ──`);
@@ -112,11 +97,10 @@ async function seedForTenant(tenantCode: string) {
   // ── Bundled custom levels (e.g. Zambia Constituency from OCHA COD) ────────
   for (const { level, levelName, file } of customLevels) {
     try {
-      const abs = join(process.cwd(), file);
       console.log(`  Loading ADM${level} (${levelName}) from ${file}…`);
-      const geojson = JSON.parse(readFileSync(abs, "utf8"));
-      const featureCount = Array.isArray(geojson?.features) ? geojson.features.length : 0;
-      if (featureCount === 0) throw new Error("file contains no features");
+      const loaded = loadBundledBoundary(countryCode, level);
+      if (!loaded) throw new Error("no bundled file configured");
+      const { geojson, featureCount } = loaded;
       const bbox = calcBBox(geojson);
       await storage.upsertAdminBoundary({
         tenantId: tenant.id,
