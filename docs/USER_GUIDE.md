@@ -651,6 +651,40 @@ zero-dose cluster card or settlement record, click the **Insights**
   already exist near a cluster, which helps you pick an outreach venue.
   If a remote cluster has nothing mapped nearby, the panel says so.
 
+**Outreach Site Suitability Score (0–100).** Every unserved cluster gets
+a single, easy-to-read score that answers one question: *how good a
+candidate is this place for a new outreach session?* A higher score means
+a stronger case. The score combines five things, each shown as its own
+bar so you can see exactly why a cluster scored the way it did:
+
+- **Population size** — more unserved people means more impact.
+- **Distance from the nearest facility** — the farther, the bigger the
+  access gap a new site would fill.
+- **Existing-outreach gap** — how far the cluster is from any outreach
+  site you already run (so you don't double up).
+- **Road access / travel time** — a site a team can actually reach scores
+  higher.
+- **Nearby landmark / venue** — a school, place of worship or market
+  makes a natural place to hold the session.
+
+The list view scores every cluster quickly using the data already on
+hand (so anything still being measured is clearly marked **est.**). When
+you open **Insights** on a cluster, the score is **refined live** using
+the real road-network travel time and the landmarks actually found
+nearby, and the panel also shows the estimated number of under-5 children
+and likely zero-dose children there.
+
+**Ranked "Unserved Population Clusters" list.** The left panel lists
+every pending unserved cluster, ranked by suitability score by default.
+Use the **Sort** dropdown to re-order by suitability, population,
+zero-dose children, distance to facility, outreach gap or travel time —
+whatever matters most for your plan. Each row shows the score, the factor
+breakdown and the key numbers, with three actions: **Locate** (centre the
+map on it), **Insights** (open the refined breakdown and routes) and —
+for facility staff who can author plans — **Plan session** (jump straight
+to Session Planning, pre-filled for that cluster). This is a planning view
+only: it never changes any data and only shows clusters for your country.
+
 **Two extra map layers** (toggle them in the **Map Layers Control**
 panel, top-right of the map):
 

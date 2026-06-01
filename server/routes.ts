@@ -111,6 +111,11 @@ import { lookupGeo, reverseGeo, normalizeIp } from "./services/geo";
 import { getTravelTimeToNearestFacility, getTravelIsochrones, type IsochroneProfile } from "./services/routing";
 import { discoverCommunityAssets } from "./services/communityAssets";
 import {
+  computeOutreachSuitability,
+  estimateUnder5,
+  estimateZeroDoseChildren,
+} from "@shared/outreachSuitability";
+import {
   checkProximityAndPopulation,
   resolveSessionLocation,
 } from "./services/proximityCheck";
@@ -10026,6 +10031,157 @@ export async function registerRoutes(
     } catch (err: any) {
       console.error("GET /api/outreach-recommendations failed:", err);
       res.status(500).json({ message: "Failed to generate outreach recommendations" });
+    }
+  });
+
+  // 7b. GET /api/unserved-clusters
+  // Ranked, planning-oriented view of pending unmapped (unserved) population
+  // clusters, each scored 0–100 for how good a candidate it is for a NEW
+  // outreach site (see shared/outreachSuitability.ts). This is a read/plan
+  // view: it never writes and is scoped to the viewed tenant.
+  //
+  // To stay fast and robust it computes the score WITHOUT any external network
+  // calls — it reuses the data already resolved onto each candidate (population,
+  // distance-to-facility) plus a cheap nearest-existing-outreach lookup, and a
+  // heuristic travel-time estimate. The per-cluster Insights panel then refines
+  // the score live using the real travel-time and community-asset services.
+  app.get("/api/unserved-clusters", isAuthenticated, requireTenant, async (req: any, res) => {
+    try {
+      const limit = Math.min(
+        Math.max(parseInt(String(req.query.limit ?? "25"), 10) || 25, 1),
+        100,
+      );
+
+      const candidates = await db
+        .select()
+        .from(candidateUnmappedSettlements)
+        .where(
+          and(
+            eq(candidateUnmappedSettlements.tenantId, req.tenantId),
+            eq(candidateUnmappedSettlements.validationStatus, "pending"),
+          ),
+        )
+        .orderBy(desc(candidateUnmappedSettlements.estimatedPopulation));
+
+      // Resolve every active outreach site to a point ONCE (no external calls),
+      // reusing the same resolver the proximity/travel-time features use. Used
+      // to measure each cluster's gap from existing outreach. `null` when the
+      // tenant has no active outreach sites at all (→ full service gap).
+      let outreachSites: { lat: number; lng: number }[] = [];
+      try {
+        const allPlans = await storage.getSessionPlans(req.tenantId);
+        const outreach = (allPlans as any[]).filter(
+          (s) =>
+            s.sessionType === "outreach" &&
+            s.status !== "cancelled" &&
+            s.status !== "completed",
+        );
+        if (outreach.length > 0) {
+          const facList = await storage.getFacilities(req.tenantId);
+          const facMap = new Map<number, any>(facList.map((f: any) => [f.id, f]));
+          const vilList = await storage.getVillages(req.tenantId);
+          const vilMap = new Map<number, any>(vilList.map((v: any) => [v.id, v]));
+          const svRows = await db
+            .select()
+            .from(sessionVillages)
+            .where(eq(sessionVillages.tenantId, String(req.tenantId)));
+          const svByPlan = new Map<number, number[]>();
+          for (const r of svRows as any[]) {
+            const arr = svByPlan.get(r.sessionId) ?? [];
+            arr.push(r.villageId);
+            svByPlan.set(r.sessionId, arr);
+          }
+          for (const s of outreach) {
+            const loc = await resolveSessionLocation(req.tenantId, s, vilMap, facMap, svByPlan);
+            if (loc && Number.isFinite(loc.lat) && Number.isFinite(loc.lng)) {
+              outreachSites.push(loc);
+            }
+          }
+        }
+      } catch (e: any) {
+        // Best-effort: a failure here just means the outreach-gap factor falls
+        // back to "no existing outreach site nearby" rather than 500-ing.
+        console.error("[unserved-clusters] outreach site resolution failed:", e?.message);
+        outreachSites = [];
+      }
+
+      const haversineKm = (lat1: number, lng1: number, lat2: number, lng2: number): number => {
+        const R = 6371;
+        const toRad = (d: number) => (d * Math.PI) / 180;
+        const dLat = toRad(lat2 - lat1);
+        const dLng = toRad(lng2 - lng1);
+        const a =
+          Math.sin(dLat / 2) ** 2 +
+          Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      };
+
+      const ranked = candidates.map((c) => {
+        const lat = parseFloat(c.latitude);
+        const lng = parseFloat(c.longitude);
+        const distanceToFacilityKm =
+          c.distanceToFacility != null && Number.isFinite(parseFloat(c.distanceToFacility))
+            ? parseFloat(c.distanceToFacility)
+            : null;
+
+        // Nearest existing outreach site (km). null when none exist at all.
+        let outreachGapKm: number | null = null;
+        if (outreachSites.length > 0) {
+          let best = Infinity;
+          for (const site of outreachSites) {
+            const km = haversineKm(lat, lng, site.lat, site.lng);
+            if (km < best) best = km;
+          }
+          outreachGapKm = Number.isFinite(best) ? parseFloat(best.toFixed(2)) : null;
+        }
+
+        // Heuristic drive time (15 min/km) — same fallback the engine uses;
+        // refined to a real route in the Insights panel.
+        const estimatedTravelTimeMin =
+          distanceToFacilityKm != null ? Math.round(distanceToFacilityKm * 15) : null;
+
+        const result = computeOutreachSuitability({
+          estimatedPopulation: c.estimatedPopulation,
+          distanceToFacilityKm,
+          outreachGapKm,
+          travelTimeMin: estimatedTravelTimeMin,
+          travelTimeEstimated: true,
+          landmarkCount: null,
+          landmarkKnown: false,
+        });
+
+        return {
+          id: c.id,
+          latitude: lat,
+          longitude: lng,
+          estimatedPopulation: c.estimatedPopulation,
+          buildingCount: c.buildingCount,
+          nearestNamedSettlement: c.nearestNamedSettlement,
+          nearestFacility: c.nearestFacility,
+          distanceToFacilityKm,
+          outreachGapKm,
+          estimatedTravelTimeMin,
+          estimatedUnder5: estimateUnder5(c.estimatedPopulation),
+          estimatedZeroDoseChildren: estimateZeroDoseChildren(
+            c.estimatedPopulation,
+            distanceToFacilityKm,
+          ),
+          suitabilityScore: result.score,
+          factors: result.factors,
+        };
+      });
+
+      ranked.sort((a, b) => b.suitabilityScore - a.suitabilityScore);
+
+      res.json({
+        count: ranked.length,
+        outreachSitesKnown: outreachSites.length > 0,
+        clusters: ranked.slice(0, limit),
+      });
+    } catch (err: any) {
+      console.error("GET /api/unserved-clusters failed:", err);
+      // Never break the planning view — return an empty, well-formed payload.
+      res.json({ count: 0, outreachSitesKnown: false, clusters: [] });
     }
   });
 

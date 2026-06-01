@@ -1,5 +1,13 @@
 import { useState, useMemo, useEffect, useRef } from "react";
+import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "@/hooks/useAuth";
+import { canCreateSessionPlan } from "@/lib/permissions";
+import {
+  computeOutreachSuitability,
+  suitabilityBand,
+  type SuitabilityFactor,
+} from "@shared/outreachSuitability";
 import {
   MapContainer,
   TileLayer,
@@ -53,8 +61,31 @@ import {
   Landmark,
   Waypoints,
   Tent,
-  Loader2
+  Loader2,
+  Target,
+  ArrowUpDown,
+  ListOrdered,
+  Plus,
+  Users
 } from "lucide-react";
+
+// Sort options for the ranked Unserved Population Clusters panel.
+type ClusterSortKey =
+  | "suitability"
+  | "population"
+  | "travelTime"
+  | "outreachGap"
+  | "zeroDose"
+  | "facilityDistance";
+
+const CLUSTER_SORT_OPTIONS: { key: ClusterSortKey; label: string }[] = [
+  { key: "suitability", label: "Suitability score" },
+  { key: "population", label: "Population" },
+  { key: "zeroDose", label: "Zero-dose children" },
+  { key: "facilityDistance", label: "Distance to facility" },
+  { key: "outreachGap", label: "Outreach gap" },
+  { key: "travelTime", label: "Travel time" },
+];
 
 // Community-asset presentation helpers (icon, colour, label per OSM category)
 const ASSET_META: Record<string, { label: string; color: string; icon: any }> = {
@@ -269,6 +300,9 @@ function InsightsRouteLayer({
 export default function SettlementIntelligence() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const [, setLocation] = useLocation();
+  const canPlan = canCreateSessionPlan(user);
 
   // Active configurations
   const [popThreshold, setPopThreshold] = useState<number>(50);
@@ -294,9 +328,21 @@ export default function SettlementIntelligence() {
     "facility" | "outreach" | "both"
   >("both");
 
-  // Geospatial insights dialog (real travel time + nearby community assets)
+  // Geospatial insights dialog (real travel time + nearby community assets).
+  // Carries optional population / distance hints so the dialog can refine the
+  // Outreach Site Suitability Score with live travel-time + landmark data.
   const [insightsOpen, setInsightsOpen] = useState(false);
-  const [insightsPoint, setInsightsPoint] = useState<{ lat: number; lng: number; label: string } | null>(null);
+  const [insightsPoint, setInsightsPoint] = useState<{
+    lat: number;
+    lng: number;
+    label: string;
+    population?: number | null;
+    distanceToFacilityKm?: number | null;
+    outreachGapKm?: number | null;
+  } | null>(null);
+
+  // Ranked "Unserved Population Clusters" panel sort key (client-side sort).
+  const [clusterSort, setClusterSort] = useState<ClusterSortKey>("suitability");
 
   // Search filter
   const [searchQuery, setSearchQuery] = useState("");
@@ -342,6 +388,16 @@ export default function SettlementIntelligence() {
     queryKey: ["/api/outreach-recommendations", tenantInfo?.id],
     enabled: !!tenantInfo?.id
   });
+
+  // Ranked, scored unserved population clusters (server-computed suitability).
+  const { data: unservedClusterData, isLoading: unservedClustersLoading } = useQuery<any>({
+    queryKey: ["/api/unserved-clusters", tenantInfo?.id],
+    queryFn: () => apiRequest("GET", "/api/unserved-clusters"),
+    enabled: !!tenantInfo?.id
+  });
+  const unservedClusters: any[] = Array.isArray(unservedClusterData?.clusters)
+    ? unservedClusterData.clusters
+    : [];
 
   const { data: facilities = [] } = useQuery<any[]>({
     queryKey: ["/api/facilities", tenantInfo?.id],
@@ -409,6 +465,7 @@ export default function SettlementIntelligence() {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/unmapped-settlements"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/unserved-clusters"] });
       toast({
         title: "Spatial Detection Completed",
         description: `Successfully scanned national grids. Detected ${data.candidatesDetected} potential unmapped settlements.`,
@@ -432,6 +489,7 @@ export default function SettlementIntelligence() {
       queryClient.invalidateQueries({ queryKey: ["/api/unmapped-settlements"] });
       queryClient.invalidateQueries({ queryKey: ["/api/settlements"] });
       queryClient.invalidateQueries({ queryKey: ["/api/outreach-recommendations"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/unserved-clusters"] });
       setValidationModalOpen(false);
       setGroundTruthedName("");
       toast({
@@ -499,10 +557,88 @@ export default function SettlementIntelligence() {
     setActiveZoom(13);
   };
 
-  const handleOpenInsights = (lat: number, lng: number, label: string) => {
-    setInsightsPoint({ lat, lng, label });
+  const handleOpenInsights = (
+    lat: number,
+    lng: number,
+    label: string,
+    hints?: { population?: number | null; distanceToFacilityKm?: number | null; outreachGapKm?: number | null },
+  ) => {
+    setInsightsPoint({ lat, lng, label, ...hints });
     setInsightsOpen(true);
   };
+
+  // Deep-link to the Session Planning page, pre-filled to start a microplan for
+  // this unserved cluster (reuses the same params the map "Plan session here"
+  // button emits). Only reachable when the user can author session plans.
+  const handlePlanSessionForCluster = (cluster: any) => {
+    const qs = new URLSearchParams({
+      unservedName: cluster.nearestNamedSettlement
+        ? `Near ${cluster.nearestNamedSettlement}`
+        : `Unmapped Cluster #${cluster.id}`,
+      unservedLat: String(cluster.latitude),
+      unservedLng: String(cluster.longitude),
+      unservedHtr: (cluster.distanceToFacilityKm ?? 0) >= 5 ? "1" : "0",
+      autoOpen: "1",
+    });
+    setLocation(`/sessions?${qs.toString()}`);
+  };
+
+  // Client-side sort of the server-ranked clusters (default: suitability desc).
+  const sortedClusters = useMemo(() => {
+    const list = [...unservedClusters];
+    const num = (v: any, fallback: number) =>
+      v == null || !Number.isFinite(Number(v)) ? fallback : Number(v);
+    switch (clusterSort) {
+      case "population":
+        list.sort((a, b) => num(b.estimatedPopulation, 0) - num(a.estimatedPopulation, 0));
+        break;
+      case "zeroDose":
+        list.sort((a, b) => num(b.estimatedZeroDoseChildren, 0) - num(a.estimatedZeroDoseChildren, 0));
+        break;
+      case "facilityDistance":
+        list.sort((a, b) => num(b.distanceToFacilityKm, -1) - num(a.distanceToFacilityKm, -1));
+        break;
+      case "outreachGap":
+        // Treat "no existing outreach at all" (null) as the biggest gap.
+        list.sort(
+          (a, b) =>
+            num(b.outreachGapKm, Number.POSITIVE_INFINITY) -
+            num(a.outreachGapKm, Number.POSITIVE_INFINITY),
+        );
+        break;
+      case "travelTime":
+        list.sort((a, b) => num(b.estimatedTravelTimeMin, 0) - num(a.estimatedTravelTimeMin, 0));
+        break;
+      case "suitability":
+      default:
+        list.sort((a, b) => num(b.suitabilityScore, 0) - num(a.suitabilityScore, 0));
+        break;
+    }
+    return list;
+  }, [unservedClusters, clusterSort]);
+
+  // Refined Outreach Site Suitability Score for the inspected point, computed
+  // from the LIVE travel-time + community-asset lookups in the Insights dialog.
+  const refinedSuitability = useMemo(() => {
+    if (!insightsPoint || insightsPoint.population == null) return null;
+    const drive = travelTime?.driving?.durationMin;
+    const travelEstimated =
+      travelTime?.routeClassification !== "road" || travelTime?.driving?.estimated === true;
+    const landmarkCount = insightAssets?.assets?.length;
+    const landmarkKnown = !insightAssetsLoading && insightAssets != null;
+    return computeOutreachSuitability({
+      estimatedPopulation: Number(insightsPoint.population),
+      distanceToFacilityKm: insightsPoint.distanceToFacilityKm ?? null,
+      outreachGapKm:
+        typeof travelTime?.outreachSite?.straightLineKm === "number"
+          ? travelTime.outreachSite.straightLineKm
+          : insightsPoint.outreachGapKm ?? null,
+      travelTimeMin: typeof drive === "number" ? drive : null,
+      travelTimeEstimated: travelEstimated,
+      landmarkCount: typeof landmarkCount === "number" ? landmarkCount : null,
+      landmarkKnown,
+    });
+  }, [insightsPoint, travelTime, insightAssets, insightAssetsLoading]);
 
   const fmtMinutes = (min: number | null | undefined) => {
     if (min === null || min === undefined || !Number.isFinite(min)) return "—";
@@ -511,6 +647,43 @@ export default function SettlementIntelligence() {
     const m = Math.round(min % 60);
     return m > 0 ? `${h} h ${m} min` : `${h} h`;
   };
+
+  // Colour classes for a suitability score badge by qualitative band.
+  const suitabilityBadgeClass = (score: number) => {
+    const { tone } = suitabilityBand(score);
+    if (tone === "high") return "bg-emerald-100 text-emerald-700 border-emerald-200";
+    if (tone === "medium") return "bg-amber-100 text-amber-700 border-amber-200";
+    return "bg-slate-100 text-slate-600 border-slate-200";
+  };
+
+  // Render the per-factor breakdown of an Outreach Site Suitability Score as a
+  // compact list of labelled progress bars.
+  const renderSuitabilityFactors = (factors: SuitabilityFactor[]) => (
+    <div className="space-y-1.5">
+      {factors.map((f) => (
+        <div key={f.key} className="space-y-0.5">
+          <div className="flex items-center justify-between text-[10px]">
+            <span className="text-slate-600 font-semibold flex items-center gap-1">
+              {f.label}
+              {f.estimated && (
+                <span className="text-[8px] text-amber-600 uppercase font-bold">est.</span>
+              )}
+            </span>
+            <span className="font-mono text-slate-500">
+              {f.points}/{f.weight}
+            </span>
+          </div>
+          <div className="h-1.5 w-full rounded-full bg-slate-200 overflow-hidden">
+            <div
+              className="h-full rounded-full bg-teal-500"
+              style={{ width: `${Math.round(f.score * 100)}%` }}
+            />
+          </div>
+          <div className="text-[9px] text-slate-400 leading-tight">{f.detail}</div>
+        </div>
+      ))}
+    </div>
+  );
 
   // Render one routed destination (nearest facility or nearest outreach site).
   const renderTravelDestination = (
@@ -795,6 +968,171 @@ export default function SettlementIntelligence() {
               </div>
             </div>
           )}
+
+          {/* RANKED UNSERVED POPULATION CLUSTERS — outreach-site planning view */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1 text-xs font-bold text-teal-700">
+                <ListOrdered className="h-4 w-4" />
+                UNSERVED POPULATION CLUSTERS
+                {unservedClusters.length > 0 && (
+                  <span className="text-slate-400 font-semibold">({unservedClusters.length})</span>
+                )}
+              </div>
+            </div>
+            <p className="text-[10px] text-slate-500 leading-snug">
+              Ranked by an <span className="font-semibold">Outreach Site Suitability Score</span> (0–100)
+              that weighs population, distance to a facility, the gap from existing outreach, road
+              access and nearby landmarks. Open <span className="font-semibold">Insights</span> to
+              sharpen the score with live travel time and mapped landmarks.
+            </p>
+
+            {/* Sort control */}
+            <div className="flex items-center gap-1.5">
+              <ArrowUpDown className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+              <select
+                value={clusterSort}
+                onChange={(e) => setClusterSort(e.target.value as ClusterSortKey)}
+                className="flex-1 text-[11px] rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-slate-700 font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-500"
+                data-testid="select-cluster-sort"
+              >
+                {CLUSTER_SORT_OPTIONS.map((opt) => (
+                  <option key={opt.key} value={opt.key}>
+                    Sort: {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {unservedClustersLoading ? (
+              <div className="flex items-center gap-2 text-xs text-slate-500 py-3">
+                <Loader2 className="h-4 w-4 animate-spin" /> Scoring unserved clusters…
+              </div>
+            ) : sortedClusters.length === 0 ? (
+              <div className="text-[11px] text-slate-500 bg-slate-50 border border-slate-200 rounded-lg p-3">
+                No pending unserved clusters to rank yet. Run spatial detection to surface candidate
+                settlements, then they'll appear here scored and ranked.
+              </div>
+            ) : (
+              <div className="space-y-2.5 max-h-[420px] overflow-y-auto pr-1">
+                {sortedClusters.map((cl) => {
+                  const band = suitabilityBand(cl.suitabilityScore);
+                  return (
+                    <Card
+                      key={cl.id}
+                      className="bg-white border-slate-200 hover:border-teal-300 transition-all p-3.5 rounded-xl border shadow-sm flex flex-col space-y-2.5"
+                      data-testid={`card-unserved-cluster-${cl.id}`}
+                    >
+                      <div className="flex justify-between items-start gap-2">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <Target className="h-3.5 w-3.5 text-teal-600 shrink-0" />
+                            <span className="text-xs font-bold text-slate-800 truncate">
+                              {cl.nearestNamedSettlement
+                                ? `Near ${cl.nearestNamedSettlement}`
+                                : `Unmapped Cluster #${cl.id}`}
+                            </span>
+                          </div>
+                          <div className="text-[10px] text-slate-500 mt-0.5">
+                            {cl.distanceToFacilityKm != null
+                              ? `${cl.distanceToFacilityKm.toFixed(1)} km to ${cl.nearestFacility ?? "nearest facility"}`
+                              : "Distance to facility unknown"}
+                          </div>
+                        </div>
+                        <div className="flex flex-col items-center shrink-0">
+                          <div
+                            className={`flex items-center justify-center h-10 w-10 rounded-xl border font-extrabold text-sm ${suitabilityBadgeClass(cl.suitabilityScore)}`}
+                            data-testid={`score-cluster-${cl.id}`}
+                          >
+                            {cl.suitabilityScore}
+                          </div>
+                          <span className="text-[8px] uppercase font-bold text-slate-400 mt-0.5">
+                            {band.label}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 text-[10px] text-slate-600 bg-slate-50 p-2 border border-slate-100 rounded-lg">
+                        <div className="flex items-center gap-1">
+                          <Users className="h-3.5 w-3.5 text-teal-500" />
+                          <span>{cl.estimatedPopulation?.toLocaleString?.() ?? cl.estimatedPopulation} people</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <AlertTriangle className="h-3.5 w-3.5 text-rose-500" />
+                          <span>~{cl.estimatedZeroDoseChildren} zero-dose</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Car className="h-3.5 w-3.5 text-slate-500" />
+                          <span>~{fmtMinutes(cl.estimatedTravelTimeMin)} drive (est.)</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <MapPin className="h-3.5 w-3.5 text-amber-500" />
+                          <span>
+                            {cl.outreachGapKm != null
+                              ? `${cl.outreachGapKm.toFixed(1)} km outreach gap`
+                              : "No outreach nearby"}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Factor breakdown */}
+                      {Array.isArray(cl.factors) && cl.factors.length > 0 && (
+                        <div className="bg-white border border-slate-100 rounded-lg p-2">
+                          {renderSuitabilityFactors(cl.factors)}
+                        </div>
+                      )}
+
+                      <div className="flex gap-2 justify-end pt-0.5">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-[10px] h-7 text-slate-600 hover:text-slate-900 px-2.5 hover:bg-slate-100"
+                          onClick={() => focusOnCoordinates(cl.latitude, cl.longitude)}
+                          data-testid={`button-locate-cluster-${cl.id}`}
+                        >
+                          Locate
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-[10px] h-7 text-teal-700 hover:text-teal-900 px-2.5 hover:bg-teal-50 flex items-center gap-1"
+                          onClick={() =>
+                            handleOpenInsights(
+                              cl.latitude,
+                              cl.longitude,
+                              cl.nearestNamedSettlement
+                                ? `Near ${cl.nearestNamedSettlement}`
+                                : `Unmapped Cluster #${cl.id}`,
+                              {
+                                population: cl.estimatedPopulation,
+                                distanceToFacilityKm: cl.distanceToFacilityKm,
+                                outreachGapKm: cl.outreachGapKm,
+                              },
+                            )
+                          }
+                          data-testid={`button-insights-cluster-${cl.id}`}
+                        >
+                          <Compass className="h-3 w-3" />
+                          Insights
+                        </Button>
+                        {canPlan && (
+                          <Button
+                            size="sm"
+                            className="text-[10px] h-7 bg-teal-600 hover:bg-teal-700 text-white px-2.5 font-bold rounded-lg flex items-center gap-1"
+                            onClick={() => handlePlanSessionForCluster(cl)}
+                            data-testid={`button-plan-cluster-${cl.id}`}
+                          >
+                            <Plus className="h-3 w-3" />
+                            Plan session
+                          </Button>
+                        )}
+                      </div>
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
+          </div>
 
           {/* Master Search Bar */}
           <div className="space-y-2">
@@ -1521,6 +1859,38 @@ export default function SettlementIntelligence() {
           </DialogHeader>
 
           <div className="space-y-4 my-1">
+            {/* Refined Outreach Site Suitability Score — only when this point
+                came from an unserved cluster (so we know its population). */}
+            {refinedSuitability && (
+              <div className="rounded-xl border border-teal-200 bg-teal-50/50 p-3.5 shadow-inner">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-xs font-bold text-teal-800 flex items-center gap-1.5">
+                    <Target className="h-4 w-4 text-teal-600" />
+                    Outreach Site Suitability
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[9px] uppercase font-bold text-slate-400">
+                      {suitabilityBand(refinedSuitability.score).label}
+                    </span>
+                    <div
+                      className={`flex items-center justify-center h-9 w-9 rounded-xl border font-extrabold text-sm ${suitabilityBadgeClass(refinedSuitability.score)}`}
+                      data-testid="score-insights-refined"
+                    >
+                      {refinedSuitability.score}
+                    </div>
+                  </div>
+                </div>
+                <div className="text-[10px] text-slate-500 mb-2 leading-snug">
+                  Refined with live travel time and mapped landmarks. Estimated{" "}
+                  <span className="font-semibold">{refinedSuitability.estimatedUnder5}</span> under-5
+                  children, about{" "}
+                  <span className="font-semibold">{refinedSuitability.estimatedZeroDoseChildren}</span>{" "}
+                  likely zero-dose.
+                </div>
+                {renderSuitabilityFactors(refinedSuitability.factors)}
+              </div>
+            )}
+
             {/* Travel time block — nearest facility and nearest outreach site */}
             <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3.5 shadow-inner">
               <div className="text-xs font-bold text-slate-700 flex items-center gap-1.5 mb-2">
