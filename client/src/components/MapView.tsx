@@ -3075,7 +3075,7 @@ export function MapView({
               if (localLlg) {
                 return allowedDistrictIds.has(Number(localLlg.districtId));
               }
-              const distProp = feature.properties?.district || feature.properties?.DISTRICT || feature.properties?.NAME_2 || "";
+              const distProp = feature.properties?.district || feature.properties?.DISTRICT || feature.properties?.NAME_2 || feature.properties?.adm2_name || "";
               const matchedDist = districts.find(d => normalizeName(d.name) === normalizeName(distProp));
               return matchedDist ? allowedDistrictIds.has(Number(matchedDist.id)) : false;
             }
@@ -3106,6 +3106,7 @@ export function MapView({
                 const distProp = feature.properties?.district ||
                   feature.properties?.DISTRICT ||
                   feature.properties?.NAME_2 ||
+                  feature.properties?.adm2_name ||
                   "";
                 const normDistProp = normalizeName(distProp);
                 if (normDistProp) {
