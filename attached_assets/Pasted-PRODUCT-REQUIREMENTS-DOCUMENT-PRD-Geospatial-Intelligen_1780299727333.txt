@@ -1,0 +1,177 @@
+PRODUCT REQUIREMENTS DOCUMENT (PRD)
+Geospatial Intelligence Layer (GIL) for VaxPlan
+1. Executive Summary
+
+The Geospatial Intelligence Layer (GIL) is a core enhancement to the VaxPlan GIS Microplanning platform designed to transform static geospatial mapping into a dynamic decision-support system. It enables identification of unserved populations, calculation of travel time accessibility, discovery of community assets, and generation of evidence-based outreach recommendations.
+
+The layer integrates population raster analytics, road network modelling, and open geospatial data to support immunisation microplanning aligned with global strategies for reaching zero-dose and under-immunised children (WHO, 2023; Gavi, 2024).
+
+2. Problem Statement
+
+Current microplanning systems rely heavily on:
+
+Static settlement lists
+Administrative boundaries
+Manual field knowledge
+Incomplete outreach coverage data
+
+This leads to:
+
+Missed settlements
+Undetected informal communities
+Inefficient outreach scheduling
+Poor estimation of zero-dose populations
+
+There is a need for a system that dynamically identifies underserved populations using geospatial intelligence.
+
+3. Objectives
+
+The Geospatial Intelligence Layer aims to:
+
+Identify unserved and underserved population clusters
+Compute travel time to health services and outreach sites
+Detect nearby community assets (schools, churches, markets, water points)
+Generate accessibility and risk scoring for each population cluster
+Provide automated outreach recommendations
+Enable evidence-based microplanning decision-making
+4. Scope
+In Scope
+Population raster cluster detection
+Travel time analysis (road network based)
+Community asset discovery via OpenStreetMap
+Unserved cluster identification
+Risk scoring engine
+Map-based visualization layers
+Real-time GPS tracking of field teams
+Outreach recommendation engine
+
+Out of Scope
+Vaccine stock management
+Patient-level health records
+5. Functional Requirements
+5.1 Population Cluster Engine
+Extract population density from raster datasets (e.g. WorldPop)
+Convert raster cells into spatial clusters
+Estimate population per cluster
+Assign centroid coordinates to each cluster
+
+Output:
+
+Cluster ID
+Population estimate
+Geographic centroid
+5.2 Travel Time Engine
+Calculate travel time from cluster to:
+Nearest health facility
+Nearest outreach site
+Use road network routing APIs (OpenRouteService / OSRM)
+Support walking, driving, and mixed travel modes
+
+Output:
+
+Travel time (minutes)
+Distance (km)
+Route classification (road / footpath / mixed)
+5.3 Community Assets Discovery Engine
+Query OpenStreetMap for:
+Schools
+Churches
+Markets
+Water points
+Transport nodes
+Perform radius-based spatial queries (1–5 km buffer)
+
+Output:
+
+Asset type
+Name
+Distance from cluster
+Coordinates
+5.4 Unserved Cluster Detection
+
+A cluster is considered unserved if:
+
+No village exists within 1.5 km OR
+Travel time to nearest facility exceeds threshold OR
+No outreach site is assigned
+
+Output:
+
+Coverage status (Served / Partially Served / Unserved)
+5.5 Risk Scoring Engine
+
+Each cluster is assigned a priority score:
+
+Score = weighted function of:
+
+Population size
+Travel time to facility
+Absence of outreach coverage
+Lack of registered settlement
+Availability of community assets
+
+Output:
+
+Risk score (0–100)
+Risk category (Low / Medium / High / Critical)
+5.6 Outreach Recommendation Engine
+
+Automatically suggests:
+
+Outreach type (fixed / mobile / temporary site)
+Frequency (monthly / quarterly / bi-monthly)
+Suitable venue (school / church / market)
+6. Non-Functional Requirements
+Response time < 3 seconds for map click events
+Scalable to national datasets (>10 million raster cells)
+API-first architecture
+Offline cache for low-connectivity environments
+Modular microservices design
+7. System Architecture
+7.1 Core Components
+Frontend GIS Viewer (Map Interface)
+Geospatial Processing API
+Population Raster Engine
+Routing Engine (ORS / OSRM)
+OpenStreetMap Data Connector
+Scoring Engine
+PostgreSQL/PostGIS Database
+7.2 Data Flow
+User clicks map location
+System retrieves raster population data
+Cluster engine aggregates population
+Routing engine calculates travel time
+OSM engine retrieves nearby assets
+Scoring engine computes risk
+Results rendered in modal + map layer
+8. Data Sources
+WorldPop population grids
+OpenStreetMap (community assets)
+OpenRouteService / OSRM (routing)
+National health facility registry
+Ministry of Health settlement data
+9. User Interface Requirements
+9.1 Map Layers
+Population density raster
+Health facilities
+Outreach sites
+Community assets
+Travel time zones
+Unserved clusters layer
+Risk heatmap layer
+9.2 Cluster Modal
+
+Must display:
+
+Population estimate
+Travel time to nearest facility
+Nearby schools/churches/markets
+Coverage status
+Risk score
+Recommended action
+10. Key Performance Indicators (KPIs)
+% of population mapped in clusters
+% of unserved clusters identified
+Reduction in travel time to outreach sites
+Increase in outreach efficiency
+Zero-dose identification rate
