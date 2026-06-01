@@ -81,6 +81,11 @@ const defaultFaqs = [
       "Villages are classified as HTR based on a composite score considering: distance from facility, terrain difficulty, seasonal accessibility, and historical coverage rates. Each factor is weighted equally (25%) to calculate the final score.",
   },
   {
+    question: "How do I see travel time and what's near a settlement cluster?",
+    answer:
+      "Open Settlement Intelligence. On any zero-dose cluster card or settlement record, click the compass 'Insights' button. The Geospatial Insights panel shows the travel time to the nearest facility on the real road network (a driving and a walking estimate, with the road distance), and the community assets within 3 km — schools, places of worship, markets, water points, and transport nodes — pulled live from OpenStreetMap. If routing is briefly unavailable it falls back to a straight-line estimate (clearly labelled), so the panel always answers. You can also turn on the 'Travel-Time Zones' layer (walking-time rings around facilities) and the 'Community Assets' layer (assets near the map centre) from the Map Layers Control panel. These come from open data and are a planning aid, not a survey — confirm on the ground.",
+  },
+  {
     question: "How does offline mode work?",
     answer:
       "The app caches your reference data on the device, so you can view and edit while offline. Anything you create or change goes into an outbox and syncs automatically when you're back online — including in the background, even if you've closed the tab (on devices that support it). Watch the sync badge in the header for your current status and pending count.",

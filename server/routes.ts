@@ -108,6 +108,8 @@ import {
 // Offline sync service
 import { pullChanges, batchMutate, getSyncStats, type OutboxMutation } from "./services/syncService";
 import { lookupGeo, reverseGeo, normalizeIp } from "./services/geo";
+import { getTravelTimeToNearestFacility } from "./services/routing";
+import { discoverCommunityAssets } from "./services/communityAssets";
 import {
   checkProximityAndPopulation,
   resolveSessionLocation,
@@ -10024,6 +10026,44 @@ export async function registerRoutes(
     } catch (err: any) {
       console.error("GET /api/outreach-recommendations failed:", err);
       res.status(500).json({ message: "Failed to generate outreach recommendations" });
+    }
+  });
+
+  // 8. GET /api/geo/travel-time?lng=&lat=
+  // Real road-network travel time from a point to the nearest active facility
+  // (OSRM), with graceful fallback to the straight-line estimate.
+  app.get("/api/geo/travel-time", isAuthenticated, requireTenant, async (req: any, res) => {
+    try {
+      const lng = parseFloat(String(req.query.lng));
+      const lat = parseFloat(String(req.query.lat));
+      if (!Number.isFinite(lng) || !Number.isFinite(lat)) {
+        return res.status(400).json({ message: "lng and lat query parameters are required" });
+      }
+      const result = await getTravelTimeToNearestFacility(req.tenantId, lng, lat);
+      res.json(result);
+    } catch (err: any) {
+      console.error("GET /api/geo/travel-time failed:", err);
+      res.status(500).json({ message: "Failed to compute travel time" });
+    }
+  });
+
+  // 9. GET /api/geo/community-assets?lng=&lat=&radiusKm=
+  // Nearby community assets (schools, places of worship, markets, water points,
+  // transport nodes) from OpenStreetMap Overpass. Best-effort; returns [] when
+  // the upstream service is unavailable.
+  app.get("/api/geo/community-assets", isAuthenticated, requireTenant, async (req: any, res) => {
+    try {
+      const lng = parseFloat(String(req.query.lng));
+      const lat = parseFloat(String(req.query.lat));
+      const radiusKm = req.query.radiusKm !== undefined ? parseFloat(String(req.query.radiusKm)) : 2;
+      if (!Number.isFinite(lng) || !Number.isFinite(lat)) {
+        return res.status(400).json({ message: "lng and lat query parameters are required" });
+      }
+      const assets = await discoverCommunityAssets(lat, lng, radiusKm);
+      res.json({ count: assets.length, assets });
+    } catch (err: any) {
+      console.error("GET /api/geo/community-assets failed:", err);
+      res.status(500).json({ message: "Failed to discover community assets" });
     }
   });
 

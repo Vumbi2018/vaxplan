@@ -611,8 +611,8 @@ South Sudan, PNG highlands, Sahel), VaxPlan offers a **settlement
 intelligence** layer. It overlays:
 
 - WorldPop-derived populated cells (250m or 1km).
-- Cellular signal coverage (where available).
-- Travel-time isochrones from each health facility.
+- Building footprints (GRID3) and detected zero-dose clusters.
+- 5 km service-coverage gaps and suggested outreach sites.
 
 The **Zero-dose map** uses this data to highlight settlements with no
 recorded vaccinations. Click a hotspot to:
@@ -621,9 +621,38 @@ recorded vaccinations. Click a hotspot to:
 - See the nearest facility and travel time.
 - Create an outreach session targeting the hotspot.
 
-This module is most useful for the **district manager** and
-**provincial coordinator** roles when planning quarterly
-microplanning calendars.
+**Geospatial Insights (real travel time and nearby assets).** On any
+zero-dose cluster card or settlement record, click the **Insights**
+(compass) button to open the Geospatial Insights panel. It shows:
+
+- **Travel time to the nearest facility**, calculated on the real road
+  network (OpenStreetMap routing) — both a **driving** and a **walking**
+  estimate, the road distance, and a badge noting whether it's a true
+  road route or a straight-line estimate (used automatically if routing
+  is briefly unavailable, so the panel always answers).
+- **Community assets within 3 km** — schools, places of worship,
+  markets, water points, and transport nodes pulled live from
+  OpenStreetMap, each with its distance. These show what services
+  already exist near a cluster, which helps you pick an outreach venue.
+  If a remote cluster has nothing mapped nearby, the panel says so.
+
+**Two extra map layers** (toggle them in the **Map Layers Control**
+panel, top-right of the map):
+
+- **Travel-time zones** — dashed walking-time rings (about 1, 2, and
+  3 hours on foot) drawn around every health facility, so you can see
+  at a glance which clusters fall outside a reasonable walking distance.
+- **Community assets** — plots the schools, water points, and other
+  assets found within 5 km of the current map centre. Pan or click
+  **Locate** on a cluster, then turn this layer on to scan what's
+  around it.
+
+> Travel times and community assets come from open data and are a
+> planning aid, not a survey. Always confirm on the ground.
+
+This module is most useful for the **district manager**,
+**provincial coordinator**, and **national admin** roles when planning
+quarterly microplanning calendars.
 
 ---
 

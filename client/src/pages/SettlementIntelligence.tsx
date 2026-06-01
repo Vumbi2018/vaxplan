@@ -1,12 +1,14 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   MapContainer,
   TileLayer,
   CircleMarker,
+  Circle,
   Popup,
   Polygon,
-  useMap
+  useMap,
+  useMapEvents
 } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -34,8 +36,27 @@ import {
   Layers,
   Sparkles,
   TrendingUp,
-  Map as MapIcon
+  Map as MapIcon,
+  Compass,
+  Car,
+  Footprints,
+  Route,
+  GraduationCap,
+  Church,
+  Store,
+  Droplets,
+  Bus,
+  Loader2
 } from "lucide-react";
+
+// Community-asset presentation helpers (icon, colour, label per OSM category)
+const ASSET_META: Record<string, { label: string; color: string; icon: any }> = {
+  school: { label: "School", color: "#2563eb", icon: GraduationCap },
+  church: { label: "Place of worship", color: "#7c3aed", icon: Church },
+  market: { label: "Market", color: "#ea580c", icon: Store },
+  water_point: { label: "Water point", color: "#0891b2", icon: Droplets },
+  transport: { label: "Transport node", color: "#475569", icon: Bus },
+};
 
 // Map center management helper
 function MapCenterController({ center, zoom }: { center: [number, number]; zoom: number }) {
@@ -43,6 +64,27 @@ function MapCenterController({ center, zoom }: { center: [number, number]; zoom:
   useEffect(() => {
     map.setView(center, zoom);
   }, [center, zoom, map]);
+  return null;
+}
+
+// Keeps the community-asset layer query in sync with where the user has panned/zoomed.
+// Debounced so we don't hammer Overpass while the map is still moving.
+function MapMoveWatcher({ onCenterChange }: { onCenterChange: (center: [number, number]) => void }) {
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const map = useMapEvents({
+    moveend: () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(() => {
+        const c = map.getCenter();
+        onCenterChange([c.lat, c.lng]);
+      }, 600);
+    }
+  });
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, []);
   return null;
 }
 
@@ -61,6 +103,12 @@ export default function SettlementIntelligence() {
   const [showCoverageGaps, setShowCoverageGaps] = useState(false);
   const [showFacilities, setShowFacilities] = useState(true);
   const [showOutreachRecs, setShowOutreachRecs] = useState(false);
+  const [showCommunityAssets, setShowCommunityAssets] = useState(false);
+  const [showTravelZones, setShowTravelZones] = useState(false);
+
+  // Geospatial insights dialog (real travel time + nearby community assets)
+  const [insightsOpen, setInsightsOpen] = useState(false);
+  const [insightsPoint, setInsightsPoint] = useState<{ lat: number; lng: number; label: string } | null>(null);
 
   // Search filter
   const [searchQuery, setSearchQuery] = useState("");
@@ -73,6 +121,8 @@ export default function SettlementIntelligence() {
 
   // Dynamic coordinates focusing
   const [activeCenter, setActiveCenter] = useState<[number, number]>([-13.13, 27.84]); // Default Zambia Center
+  // Tracks where the user has panned/zoomed; drives the community-asset layer query so it follows the map.
+  const [assetsCenter, setAssetsCenter] = useState<[number, number]>([-13.13, 27.84]);
   const [activeZoom, setActiveZoom] = useState<number>(6);
 
   // Queries
@@ -108,6 +158,33 @@ export default function SettlementIntelligence() {
   const { data: facilities = [] } = useQuery<any[]>({
     queryKey: ["/api/facilities", tenantInfo?.id],
     enabled: !!tenantInfo?.id
+  });
+
+  // Real road-network travel time to nearest facility for the inspected point
+  const { data: travelTime, isLoading: travelTimeLoading } = useQuery<any>({
+    queryKey: ["/api/geo/travel-time", insightsPoint?.lat, insightsPoint?.lng],
+    queryFn: () =>
+      apiRequest("GET", `/api/geo/travel-time?lng=${insightsPoint!.lng}&lat=${insightsPoint!.lat}`),
+    enabled: insightsOpen && !!insightsPoint,
+    staleTime: 6 * 60 * 60 * 1000
+  });
+
+  // Nearby community assets (OSM Overpass) for the inspected point
+  const { data: insightAssets, isLoading: insightAssetsLoading } = useQuery<any>({
+    queryKey: ["/api/geo/community-assets", "insight", insightsPoint?.lat, insightsPoint?.lng],
+    queryFn: () =>
+      apiRequest("GET", `/api/geo/community-assets?lng=${insightsPoint!.lng}&lat=${insightsPoint!.lat}&radiusKm=3`),
+    enabled: insightsOpen && !!insightsPoint,
+    staleTime: 24 * 60 * 60 * 1000
+  });
+
+  // Community-asset map layer: discover assets around the current map centre
+  const { data: layerAssets, isLoading: layerAssetsLoading } = useQuery<any>({
+    queryKey: ["/api/geo/community-assets", "layer", assetsCenter[0], assetsCenter[1]],
+    queryFn: () =>
+      apiRequest("GET", `/api/geo/community-assets?lng=${assetsCenter[1]}&lat=${assetsCenter[0]}&radiusKm=5`),
+    enabled: showCommunityAssets,
+    staleTime: 24 * 60 * 60 * 1000
   });
 
   // Center maps dynamically based on tenant center or facility average
@@ -224,6 +301,26 @@ export default function SettlementIntelligence() {
     setActiveCenter([lat, lng]);
     setActiveZoom(13);
   };
+
+  const handleOpenInsights = (lat: number, lng: number, label: string) => {
+    setInsightsPoint({ lat, lng, label });
+    setInsightsOpen(true);
+  };
+
+  const fmtMinutes = (min: number | null | undefined) => {
+    if (min === null || min === undefined || !Number.isFinite(min)) return "—";
+    if (min < 60) return `${Math.round(min)} min`;
+    const h = Math.floor(min / 60);
+    const m = Math.round(min % 60);
+    return m > 0 ? `${h} h ${m} min` : `${h} h`;
+  };
+
+  // Walking-time rings (km radius at ~5 km/h) for the travel-time-zone layer
+  const TRAVEL_RINGS = [
+    { hours: 1, radiusM: 5000, color: "#16a34a" },
+    { hours: 2, radiusM: 10000, color: "#d97706" },
+    { hours: 3, radiusM: 15000, color: "#dc2626" },
+  ];
 
   return (
     <div className="flex h-[calc(100vh-4.5rem)] w-full overflow-hidden bg-slate-50 text-slate-800 font-sans">
@@ -360,6 +457,15 @@ export default function SettlementIntelligence() {
                       </Button>
                       <Button
                         size="sm"
+                        variant="ghost"
+                        className="text-[10px] h-7 text-teal-700 hover:text-teal-900 px-2.5 hover:bg-teal-50 flex items-center gap-1"
+                        onClick={() => handleOpenInsights(parseFloat(c.latitude), parseFloat(c.longitude), `Unmapped Cluster #${c.id}`)}
+                      >
+                        <Compass className="h-3 w-3" />
+                        Insights
+                      </Button>
+                      <Button
+                        size="sm"
                         className="text-[10px] h-7 bg-rose-600 hover:bg-rose-700 text-white px-2.5 font-bold rounded-lg"
                         onClick={() => handleOpenValidation(c)}
                       >
@@ -418,13 +524,27 @@ export default function SettlementIntelligence() {
                         {s.provinceName} · {s.districtName} · {s.wardName}
                       </div>
                     </div>
-                    <div className="text-right">
-                      <Badge className="bg-teal-50 text-teal-700 border border-teal-100 text-[9px] px-1.5">
-                        {s.populationEstimate} pop
-                      </Badge>
-                      <div className="text-[9px] text-slate-400 font-bold uppercase mt-1">
-                        {s.placeType}
+                    <div className="text-right flex items-center gap-2">
+                      <div>
+                        <Badge className="bg-teal-50 text-teal-700 border border-teal-100 text-[9px] px-1.5">
+                          {s.populationEstimate} pop
+                        </Badge>
+                        <div className="text-[9px] text-slate-400 font-bold uppercase mt-1">
+                          {s.placeType}
+                        </div>
                       </div>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        title="Geospatial insights"
+                        className="h-7 w-7 text-teal-600 hover:text-teal-800 hover:bg-teal-50 shrink-0"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenInsights(parseFloat(s.latitude), parseFloat(s.longitude), s.name);
+                        }}
+                      >
+                        <Compass className="h-3.5 w-3.5" />
+                      </Button>
                     </div>
                   </div>
                 ))
@@ -461,6 +581,7 @@ export default function SettlementIntelligence() {
             />
             
             <MapCenterController center={activeCenter} zoom={activeZoom} />
+            <MapMoveWatcher onCenterChange={setAssetsCenter} />
 
             {/* Render 5km Service Coverage Gap Polygons */}
             {showCoverageGaps && coverageGaps?.features && (
@@ -638,6 +759,51 @@ export default function SettlementIntelligence() {
               )
             ))}
 
+            {/* Travel-time zones: walking-time rings (~5 km/h) around facilities */}
+            {showTravelZones && facilities.map((f) => (
+              f.latitude && f.longitude && TRAVEL_RINGS.map((ring) => (
+                <Circle
+                  key={`zone-${f.id}-${ring.hours}`}
+                  center={[parseFloat(f.latitude), parseFloat(f.longitude)]}
+                  radius={ring.radiusM}
+                  pathOptions={{
+                    color: ring.color,
+                    weight: 1,
+                    opacity: 0.5,
+                    fill: false,
+                    dashArray: "4, 6"
+                  }}
+                >
+                  <Popup>
+                    <div className="text-xs p-1">
+                      <span className="font-bold" style={{ color: ring.color }}>~{ring.hours} h walk</span>
+                      <div className="text-[10px] text-slate-500">{f.name} · {ring.radiusM / 1000} km on foot</div>
+                    </div>
+                  </Popup>
+                </Circle>
+              ))
+            ))}
+
+            {/* Community assets discovered around the current map centre */}
+            {showCommunityAssets && (layerAssets?.assets || []).map((a: any, i: number) => {
+              const meta = ASSET_META[a.type] || ASSET_META.transport;
+              return (
+                <CircleMarker
+                  key={`asset-${i}-${a.latitude}-${a.longitude}`}
+                  center={[a.latitude, a.longitude]}
+                  radius={4.5}
+                  pathOptions={{ color: meta.color, fillColor: meta.color, fillOpacity: 0.85, weight: 1 }}
+                >
+                  <Popup>
+                    <div className="text-xs p-1 space-y-0.5">
+                      <span className="font-bold" style={{ color: meta.color }}>{a.name}</span>
+                      <div className="text-[10px] text-slate-500">{meta.label} · {a.distanceKm} km from centre</div>
+                    </div>
+                  </Popup>
+                </CircleMarker>
+              );
+            })}
+
           </MapContainer>
         </div>
 
@@ -713,6 +879,42 @@ export default function SettlementIntelligence() {
                 onCheckedChange={setShowFacilities}
               />
             </div>
+
+            {/* Travel-time zones switch */}
+            <div className="flex items-center justify-between">
+              <Label htmlFor="layer-zones" className="text-[11px] text-slate-700 cursor-pointer flex items-center gap-1.5 font-medium">
+                <span className="h-2.5 w-2.5 rounded-full border border-dashed border-emerald-500"></span>
+                Travel-Time Zones
+              </Label>
+              <Switch
+                id="layer-zones"
+                checked={showTravelZones}
+                onCheckedChange={setShowTravelZones}
+              />
+            </div>
+
+            {/* Community assets switch */}
+            <div className="flex items-center justify-between">
+              <Label htmlFor="layer-assets" className="text-[11px] text-slate-700 cursor-pointer flex items-center gap-1.5 font-medium">
+                <span className="h-2 w-2 rounded-full bg-blue-500"></span>
+                Community Assets
+              </Label>
+              <Switch
+                id="layer-assets"
+                checked={showCommunityAssets}
+                onCheckedChange={setShowCommunityAssets}
+              />
+            </div>
+
+            {showCommunityAssets && (
+              <div className="text-[9px] text-slate-400 leading-tight flex items-center gap-1 pt-0.5">
+                {layerAssetsLoading ? (
+                  <><Loader2 className="h-3 w-3 animate-spin" /> Searching OpenStreetMap near map centre…</>
+                ) : (
+                  <span>{(layerAssets?.assets?.length ?? 0)} assets within 5 km of map centre</span>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -840,6 +1042,133 @@ export default function SettlementIntelligence() {
               className="bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold rounded-lg shadow-sm"
             >
               {validateMutation.isPending ? "PROMOTING NODE..." : "PROMOTE SETTLEMENT"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* GEOSPATIAL INSIGHTS DIALOG — real travel time + nearby community assets */}
+      <Dialog open={insightsOpen} onOpenChange={setInsightsOpen}>
+        <DialogContent className="bg-white border-slate-200 text-slate-900 max-w-lg shadow-2xl rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-extrabold flex items-center gap-2 text-teal-700">
+              <Compass className="h-5 w-5 text-teal-600" />
+              Geospatial Insights
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-500 leading-relaxed">
+              {insightsPoint?.label} — travel time to the nearest facility and community
+              assets nearby, from live open data (OSM road network &amp; points of interest).
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 my-1">
+            {/* Travel time block */}
+            <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3.5 shadow-inner">
+              <div className="text-xs font-bold text-slate-700 flex items-center gap-1.5 mb-2">
+                <Route className="h-4 w-4 text-teal-600" />
+                Travel time to nearest facility
+              </div>
+              {travelTimeLoading ? (
+                <div className="flex items-center gap-2 text-xs text-slate-500 py-2">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Calculating road route…
+                </div>
+              ) : !travelTime || !travelTime.facilityName ? (
+                <div className="text-xs text-slate-500 py-1">
+                  No active facility found to route to.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
+                    <Building2 className="h-4 w-4 text-indigo-500" />
+                    {travelTime.facilityName}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="bg-white rounded-lg border border-slate-200 p-2 flex items-center gap-2">
+                      <Car className="h-4 w-4 text-teal-600" />
+                      <div>
+                        <div className="font-extrabold text-slate-800">{fmtMinutes(travelTime.driving?.durationMin)}</div>
+                        <div className="text-[9px] text-slate-400 uppercase font-bold">
+                          Driving{travelTime.driving?.estimated ? " (est.)" : ""}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="bg-white rounded-lg border border-slate-200 p-2 flex items-center gap-2">
+                      <Footprints className="h-4 w-4 text-amber-600" />
+                      <div>
+                        <div className="font-extrabold text-slate-800">{fmtMinutes(travelTime.walking?.durationMin)}</div>
+                        <div className="text-[9px] text-slate-400 uppercase font-bold">
+                          Walking{travelTime.walking?.estimated ? " (est.)" : ""}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between text-[10px] text-slate-500 pt-0.5">
+                    <span>
+                      {travelTime.roadDistanceKm != null
+                        ? `${travelTime.roadDistanceKm} km by road`
+                        : `${travelTime.straightLineKm} km straight-line`}
+                    </span>
+                    <Badge
+                      variant="secondary"
+                      className={`text-[9px] px-1.5 py-0 border ${
+                        travelTime.routeClassification === "road"
+                          ? "bg-emerald-50 text-emerald-700 border-emerald-100"
+                          : "bg-amber-50 text-amber-700 border-amber-100"
+                      }`}
+                    >
+                      {travelTime.routeClassification === "road" ? "Road route" : "Straight-line estimate"}
+                    </Badge>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Community assets block */}
+            <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3.5 shadow-inner">
+              <div className="text-xs font-bold text-slate-700 flex items-center gap-1.5 mb-2">
+                <Layers className="h-4 w-4 text-teal-600" />
+                Community assets within 3 km
+              </div>
+              {insightAssetsLoading ? (
+                <div className="flex items-center gap-2 text-xs text-slate-500 py-2">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Searching OpenStreetMap…
+                </div>
+              ) : !insightAssets || (insightAssets.assets?.length ?? 0) === 0 ? (
+                <div className="text-xs text-slate-500 py-1">
+                  No mapped community assets found nearby (or the lookup is temporarily
+                  unavailable). This can be normal for very remote clusters.
+                </div>
+              ) : (
+                <div className="space-y-1.5 max-h-[220px] overflow-y-auto pr-1">
+                  {insightAssets.assets.map((a: any, i: number) => {
+                    const meta = ASSET_META[a.type] || ASSET_META.transport;
+                    const Icon = meta.icon;
+                    return (
+                      <div
+                        key={`ia-${i}`}
+                        className="flex items-center justify-between bg-white rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <Icon className="h-3.5 w-3.5 shrink-0" style={{ color: meta.color }} />
+                          <span className="font-medium text-slate-800 truncate">{a.name}</span>
+                          <span className="text-[9px] text-slate-400 uppercase font-bold shrink-0">{meta.label}</span>
+                        </div>
+                        <span className="text-[10px] text-slate-500 font-mono shrink-0">{a.distanceKm} km</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setInsightsOpen(false)}
+              className="bg-white border-slate-200 hover:bg-slate-50 text-slate-700 text-xs rounded-lg"
+            >
+              Close
             </Button>
           </DialogFooter>
         </DialogContent>
