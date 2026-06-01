@@ -28,7 +28,6 @@ import {
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { PageHead } from "@/components/PageHead";
 import { versionLabel } from "@/lib/version";
-import { DEMO_ACCOUNT_PASSWORD } from "@shared/demoAccounts";
 
 interface PublicTenant {
   id: string;
@@ -396,11 +395,11 @@ export default function Landing() {
     setDemoError(null);
     setDemoBusy(email);
     try {
-      const res = await fetch("/api/auth/login-password", {
+      const res = await fetch("/api/auth/demo-login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ email, password: DEMO_ACCOUNT_PASSWORD }),
+        body: JSON.stringify({ email }),
       });
       if (res.ok) {
         window.location.href = "/";
@@ -524,33 +523,26 @@ export default function Landing() {
               </p>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {[
-                {
-                  email: "national.admin@vaxplan.org",
-                  title: "National Admin",
-                  desc: "Unrestricted global control. Access all settings, borders, and national logs.",
-                  color: "border-indigo-500/30 hover:border-indigo-500 bg-indigo-500/[0.02]",
-                  textColor: "text-indigo-400"
-                },
                 {
                   email: "provincial.coord@vaxplan.org",
                   title: "Provincial Coordinator",
-                  desc: "Highlands Province only. Manage staff, view districts/clinics in Highlands.",
+                  desc: "Lusaka Province (Zambia) only. Manage staff, view all districts and clinics in Lusaka.",
                   color: "border-emerald-500/30 hover:border-emerald-500 bg-emerald-500/[0.02]",
                   textColor: "text-emerald-400"
                 },
                 {
                   email: "district.mgr@vaxplan.org",
                   title: "District Manager",
-                  desc: "District A only. Author and approve sessions, review microplan budgets.",
+                  desc: "Lusaka District (Zambia) only. Author and approve sessions, review microplan budgets.",
                   color: "border-sky-500/30 hover:border-sky-500 bg-sky-500/[0.02]",
                   textColor: "text-sky-400"
                 },
                 {
                   email: "facility.clerk@vaxplan.org",
                   title: "Facility Clerk (Dual-Role)",
-                  desc: "Facility A only. Log vaccinations (override) + manage catchment maps.",
+                  desc: "Airport Urban Health Centre (Lusaka, Zambia) only. Log vaccinations + manage catchment maps.",
                   color: "border-amber-500/30 hover:border-amber-500 bg-amber-500/[0.02]",
                   textColor: "text-amber-400"
                 }

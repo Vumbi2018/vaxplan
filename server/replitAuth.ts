@@ -6,22 +6,26 @@ import session from "express-session";
 import type { Express, RequestHandler } from "express";
 import memoize from "memoizee";
 import connectPg from "connect-pg-simple";
-import bcrypt from "bcryptjs";
 import { storage } from "./storage";
 import { db } from "./db";
 import { users } from "@shared/schema";
 import { eq } from "drizzle-orm";
-import { DEMO_ACCOUNTS, DEMO_ACCOUNT_PASSWORD } from "@shared/demoAccounts";
+import {
+  DEMO_ACCOUNTS,
+  DEMO_TENANT_CODE,
+  RETIRED_DEMO_ACCOUNT_IDS,
+} from "@shared/demoAccounts";
 
-// Seed the public "Select a Test Identity" demo accounts as real
-// email/password users in the given tenant, so the landing-page demo cards can
-// sign in directly (POST /api/auth/login-password) with no Replit OIDC
-// redirect. Runs in both dev and production. Re-applies the shared demo
-// password on every boot so the one-click cards always work.
+// Seed the public "Select a Test Identity" demo accounts as real users in the
+// demo tenant, so the landing-page demo cards can sign in directly (POST
+// /api/auth/demo-login) with no Replit OIDC redirect. The accounts carry NO
+// password — authentication for them happens only through the allowlisted
+// demo-login endpoint, so nothing secret is shipped in the client bundle.
+// Matching is done by the fixed demo `id` (never by email) so we only ever
+// touch our own seed rows and never collide with a real user's account.
 async function seedDemoAccounts(tenantId: string) {
-  const passwordHash = await bcrypt.hash(DEMO_ACCOUNT_PASSWORD, 12);
   for (const cfg of DEMO_ACCOUNTS) {
-    const existing = await storage.getUserByEmail(cfg.email);
+    const existing = await storage.getUser(cfg.id);
     if (!existing) {
       await db.insert(users).values({
         id: cfg.id,
@@ -37,12 +41,15 @@ async function seedDemoAccounts(tenantId: string) {
         provinceId: cfg.provinceId,
         isActive: true,
         tenantId,
-        passwordHash,
+        passwordHash: null,
       } as any);
     } else {
-      // Keep the demo identity in a known-good state for the demo cards.
+      // Keep the demo identity pinned to the demo tenant and known-good scope.
       await db.update(users)
         .set({
+          email: cfg.email,
+          firstName: cfg.firstName,
+          lastName: cfg.lastName,
           role: cfg.role as any,
           roles: cfg.roles,
           permissions: cfg.permissions,
@@ -51,30 +58,39 @@ async function seedDemoAccounts(tenantId: string) {
           districtId: cfg.districtId,
           provinceId: cfg.provinceId,
           isActive: true,
-          passwordHash,
+          tenantId,
+          passwordHash: null,
           updatedAt: new Date(),
         })
-        .where(eq(users.id, existing.id));
+        .where(eq(users.id, cfg.id));
     }
+  }
+
+  // Retire any demo identity that must never be publicly loginable (e.g. an
+  // earlier-seeded National Admin demo account): deactivate it and strip any
+  // password so it can't be used to sign in.
+  for (const retiredId of RETIRED_DEMO_ACCOUNT_IDS) {
+    await db.update(users)
+      .set({ isActive: false, passwordHash: null, updatedAt: new Date() })
+      .where(eq(users.id, retiredId));
   }
 }
 
-// Resolve the default demo tenant (PNG, else first active) and seed the demo
-// accounts into it. Best-effort: never block startup.
+// Seed the demo accounts strictly into the Zambia (ZMB) demo tenant. We never
+// fall back to another tenant: placing public one-click accounts in the wrong
+// live tenant is exactly the risk we're avoiding, so if ZMB is missing we skip
+// seeding and log loudly instead. Best-effort: never block startup.
 function seedDemoAccountsForDefaultTenant() {
-  storage.getTenantByCode("PNG").then((tenant) => {
+  storage.getTenantByCode(DEMO_TENANT_CODE).then((tenant) => {
     if (tenant) {
       seedDemoAccounts(tenant.id).catch((err) =>
         console.error("Failed to seed demo accounts:", err),
       );
     } else {
-      storage.listActiveTenants().then((activeTenants) => {
-        if (activeTenants.length > 0) {
-          seedDemoAccounts(activeTenants[0].id).catch((err) =>
-            console.error("Failed to seed demo accounts:", err),
-          );
-        }
-      });
+      console.error(
+        `[demo-seed] Demo tenant "${DEMO_TENANT_CODE}" not found — skipping demo account seeding. ` +
+          `Demo one-click login will be unavailable until the demo tenant exists.`,
+      );
     }
   }).catch((err) => console.error("Failed to resolve tenant for demo seed:", err));
 }

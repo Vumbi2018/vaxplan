@@ -12,7 +12,7 @@
  *   POST /api/sync/batch even when the page/PWA is closed.
  */
 
-const CACHE_VERSION = "vaxplan-v2";
+const CACHE_VERSION = "vaxplan-v3";
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const TILES_CACHE = `${CACHE_VERSION}-tiles`;
 const API_CACHE = `${CACHE_VERSION}-api`;

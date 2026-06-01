@@ -6,6 +6,7 @@ import { users } from "@shared/schema";
 import { storage } from "../storage";
 import { isAuthenticated } from "../replitAuth";
 import { tenantContext } from "./tenantResolver";
+import { DEMO_LOGIN_EMAILS, DEMO_ACCOUNT_IDS, DEMO_TENANT_CODE } from "@shared/demoAccounts";
 
 const BCRYPT_ROUNDS = 12;
 const MIN_PASSWORD_LEN = 8;
@@ -46,6 +47,21 @@ function recordFailure(key: string) {
   if (a.count >= MAX_ATTEMPTS) a.lockedUntil = now + LOCK_MS;
 }
 function clearAttempts(key: string) { attempts.delete(key); }
+
+// Lightweight login-CSRF guard for unauthenticated, state-changing auth
+// endpoints (the demo one-click login). If a browser sends an Origin/Referer,
+// its host must match the request Host; cross-site forced logins are rejected.
+// Same-origin navigations and non-browser callers (no Origin/Referer) pass.
+function isSameOrigin(req: Request): boolean {
+  const host = req.headers.host;
+  const source = (req.headers.origin || req.headers.referer) as string | undefined;
+  if (!source) return true;
+  try {
+    return new URL(source).host === host;
+  } catch {
+    return false;
+  }
+}
 
 export async function hashPassword(plain: string): Promise<string> {
   return bcrypt.hash(plain, BCRYPT_ROUNDS);
@@ -170,6 +186,97 @@ export function registerPasswordAuthRoutes(app: Express) {
       }
     } catch (err) {
       console.error("[password-auth] login failed:", err);
+      return res.status(500).json({ message: "Login failed." });
+    }
+  });
+
+  // One-click demo login for the public landing-page "Select a Test Identity"
+  // cards. Accepts ONLY the allowlisted, low-privilege, geographically-scoped
+  // demo emails (Provincial Coordinator, District Manager, Facility Clerk) that
+  // live in the demo tenant. No password is required or accepted — these
+  // accounts carry no password, so nothing secret is shipped in the client
+  // bundle. Any non-allowlisted email is rejected outright.
+  app.post("/api/auth/demo-login", async (req: Request, res: Response) => {
+    const emailRaw = String((req.body && req.body.email) || "").trim().toLowerCase();
+    const key = rateKey(req, `demo::${emailRaw}`);
+    try {
+      if (!isSameOrigin(req)) {
+        return res.status(403).json({ message: "Cross-origin demo login is not allowed." });
+      }
+
+      if (!emailRaw || !DEMO_LOGIN_EMAILS.includes(emailRaw)) {
+        recordFailure(key);
+        return res.status(403).json({ message: "Not a demo account." });
+      }
+
+      const lockedFor = checkLocked(key);
+      if (lockedFor !== null) {
+        return res
+          .status(429)
+          .json({ message: `Too many attempts. Try again in ${Math.ceil(lockedFor / 60)} min.` });
+      }
+
+      const dbUser = await storage.getUserByEmail(emailRaw);
+      // Defense in depth: the resolved account must be an active, recognised
+      // demo identity BY IMMUTABLE ID (not just email) and must live in the
+      // demo tenant. This makes it impossible to log into any non-demo account
+      // even if its email were ever pointed at a demo address.
+      const demoTenant = await storage.getTenantByCode(DEMO_TENANT_CODE).catch(() => null);
+      if (
+        !dbUser ||
+        !dbUser.isActive ||
+        !DEMO_ACCOUNT_IDS.includes(dbUser.id) ||
+        !demoTenant ||
+        dbUser.tenantId !== demoTenant.id
+      ) {
+        recordFailure(key);
+        return res.status(403).json({ message: "Demo account unavailable." });
+      }
+
+      clearAttempts(key);
+
+      const tenantId = dbUser.tenantId || "";
+      const sessionUser = await buildSessionUser(dbUser, tenantId);
+
+      // Regenerate session ID (defeat fixation) and clear any prior tenant view
+      // state so a stale viewTenantId from a previous user doesn't bleed in.
+      const reqAny = req as any;
+      const finishLogin = () => {
+        reqAny.login(sessionUser, (err: any) => {
+          if (err) {
+            console.error("[demo-login] req.login failed:", err);
+            return res.status(500).json({ message: "Login failed." });
+          }
+          if (reqAny.session) {
+            reqAny.session.tenantId = tenantId || undefined;
+            delete reqAny.session.viewTenantId;
+          }
+          return res.json({
+            ok: true,
+            user: {
+              id: dbUser.id,
+              email: dbUser.email,
+              firstName: dbUser.firstName,
+              lastName: dbUser.lastName,
+              role: dbUser.role,
+            },
+          });
+        });
+      };
+
+      if (reqAny.session && typeof reqAny.session.regenerate === "function") {
+        reqAny.session.regenerate((err: any) => {
+          if (err) {
+            console.error("[demo-login] session regenerate failed:", err);
+            return res.status(500).json({ message: "Login failed." });
+          }
+          finishLogin();
+        });
+      } else {
+        finishLogin();
+      }
+    } catch (err) {
+      console.error("[demo-login] failed:", err);
       return res.status(500).json({ message: "Login failed." });
     }
   });

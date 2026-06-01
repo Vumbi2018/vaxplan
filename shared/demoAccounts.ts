@@ -1,14 +1,17 @@
 // Pre-seeded demo ("Select a Test Identity") accounts.
 //
 // These are the one-click demo logins shown on the public landing page. They
-// are real email/password accounts (not Replit OIDC), seeded into the default
-// tenant at startup so the demo cards can sign in directly via
-// POST /api/auth/login-password — no Replit login redirect involved.
+// are real accounts seeded into the demo tenant (Zambia) at startup. The
+// landing-page cards sign in directly via POST /api/auth/demo-login — no Replit
+// login redirect, and no password is shipped in the client bundle. The
+// demo-login endpoint only accepts the allowlisted emails below.
 //
-// The password is intentionally shared between client and server so the demo
-// cards can log in with one click. These accounts only ever see demo data.
+// Only low-privilege, geographically-scoped roles are exposed publicly
+// (Provincial Coordinator, District Manager, Facility Clerk). The National
+// Admin role is intentionally NOT a public demo identity.
 
-export const DEMO_ACCOUNT_PASSWORD = "VaxPlanDemo!2026";
+// Country (tenant) the demo accounts live in. Resolved by tenant `code`.
+export const DEMO_TENANT_CODE = "ZMB";
 
 export interface DemoAccountSeed {
   id: string;
@@ -26,19 +29,6 @@ export interface DemoAccountSeed {
 
 export const DEMO_ACCOUNTS: DemoAccountSeed[] = [
   {
-    id: "seed-user-national-admin",
-    email: "national.admin@vaxplan.org",
-    firstName: "National",
-    lastName: "Admin",
-    role: "national_admin",
-    roles: ["national_admin"],
-    permissions: [],
-    dataAccessScope: { provinces: [], districts: [], facilities: [] },
-    facilityId: null,
-    districtId: null,
-    provinceId: null,
-  },
-  {
     id: "seed-user-provincial-coord",
     email: "provincial.coord@vaxplan.org",
     firstName: "Provincial",
@@ -46,11 +36,11 @@ export const DEMO_ACCOUNTS: DemoAccountSeed[] = [
     role: "provincial_coordinator",
     roles: ["provincial_coordinator"],
     permissions: ["view_clients", "approve_plans", "manage_users"],
-    // Locked to Province ID 1 (Highlands Province)
-    dataAccessScope: { provinces: [1], districts: [], facilities: [] },
+    // Locked to Lusaka Province (Zambia, province ID 7)
+    dataAccessScope: { provinces: [7], districts: [], facilities: [] },
     facilityId: null,
     districtId: null,
-    provinceId: 1,
+    provinceId: 7,
   },
   {
     id: "seed-user-district-mgr",
@@ -60,11 +50,11 @@ export const DEMO_ACCOUNTS: DemoAccountSeed[] = [
     role: "district_manager",
     roles: ["district_manager"],
     permissions: ["view_clients", "manage_session_plans", "approve_plans"],
-    // Locked to District ID 1 (District A)
-    dataAccessScope: { provinces: [], districts: [1], facilities: [] },
+    // Locked to Lusaka District (Zambia, district ID 64, in Lusaka Province)
+    dataAccessScope: { provinces: [], districts: [64], facilities: [] },
     facilityId: null,
-    districtId: 1,
-    provinceId: 1,
+    districtId: 64,
+    provinceId: 7,
   },
   {
     id: "seed-user-facility-clerk",
@@ -75,10 +65,23 @@ export const DEMO_ACCOUNTS: DemoAccountSeed[] = [
     // Dual-role
     roles: ["facility_clerk", "gis_specialist"],
     permissions: ["log_immunization"],
-    // Locked to Facility ID 1 (Facility A)
-    dataAccessScope: { provinces: [], districts: [], facilities: [1] },
-    facilityId: 1,
-    districtId: 1,
-    provinceId: 1,
+    // Locked to Airport Urban Health Centre (Zambia, facility ID 12, Lusaka District)
+    dataAccessScope: { provinces: [], districts: [], facilities: [12] },
+    facilityId: 12,
+    districtId: 64,
+    provinceId: 7,
   },
 ];
+
+// Allowlist of emails the public demo-login endpoint will accept.
+export const DEMO_LOGIN_EMAILS: string[] = DEMO_ACCOUNTS.map((a) => a.email.toLowerCase());
+
+// Immutable set of demo account IDs. The demo-login endpoint asserts the
+// resolved user's ID against this set (not just its email) so a renamed or
+// re-pointed email can never be used to log in as a non-demo account.
+export const DEMO_ACCOUNT_IDS: string[] = DEMO_ACCOUNTS.map((a) => a.id);
+
+// Demo identities that must NOT be publicly loginable. Seeding deactivates
+// these and clears any password, so an earlier-seeded National Admin demo
+// account can't be used to sign in.
+export const RETIRED_DEMO_ACCOUNT_IDS: string[] = ["seed-user-national-admin"];
