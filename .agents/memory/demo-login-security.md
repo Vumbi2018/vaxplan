@@ -3,6 +3,12 @@ name: Public demo one-click login security model
 description: How the landing-page "Select a Test Identity" demo login is kept safe (no password in bundle, pinned tenant, immutable-ID gate).
 ---
 
+> STATUS: the public demo one-click login was later REMOVED at the owner's
+> request (they prefer to demo manually). The cards, the /api/auth/demo-login
+> route, and the demo-account seeding were deleted, and the seed-user-* demo
+> rows deactivated. The security model below is kept only as guidance if a
+> public demo identity is ever reintroduced.
+
 # Public demo one-click login
 
 The public landing page signs into pre-seeded demo identities with one click,

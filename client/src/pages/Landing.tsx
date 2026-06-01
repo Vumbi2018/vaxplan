@@ -23,7 +23,6 @@ import {
   ArrowRight,
   Eye,
   EyeOff,
-  Loader2,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { PageHead } from "@/components/PageHead";
@@ -388,31 +387,6 @@ export default function Landing() {
   });
   const tenantCount = tenants?.length ?? 0;
   const [loginOpen, setLoginOpen] = useState(false);
-  const [demoBusy, setDemoBusy] = useState<string | null>(null);
-  const [demoError, setDemoError] = useState<string | null>(null);
-
-  const demoLogin = async (email: string) => {
-    setDemoError(null);
-    setDemoBusy(email);
-    try {
-      const res = await fetch("/api/auth/demo-login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ email }),
-      });
-      if (res.ok) {
-        window.location.href = "/";
-        return;
-      }
-      const data = await res.json().catch(() => ({}));
-      setDemoError(data?.message || "Could not sign in to that demo account.");
-    } catch {
-      setDemoError("Could not sign in. Please check your connection and try again.");
-    } finally {
-      setDemoBusy(null);
-    }
-  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -506,76 +480,6 @@ export default function Landing() {
                 ))}
               </div>
             </div>
-          </div>
-        </section>
-
-        {/* Demo Credentials Console */}
-        <section className="py-12 bg-indigo-500/5 border-y border-indigo-500/10">
-          <div className="container mx-auto px-4 max-w-5xl">
-            <div className="text-center mb-8">
-              <div className="inline-flex items-center gap-2 text-xs font-bold text-indigo-400 uppercase tracking-widest bg-indigo-500/10 px-3 py-1 rounded-full mb-2">
-                <Shield className="h-3.5 w-3.5" />
-                Demo Credentials Sandbox
-              </div>
-              <h2 className="text-2xl font-extrabold text-foreground tracking-tight">Select a Pre-Seeded Test Identity</h2>
-              <p className="text-muted-foreground mt-1 max-w-lg mx-auto text-sm font-sans">
-                Experience the granular user management and dynamic geographic row-level access controls by logging in with one click.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {[
-                {
-                  email: "provincial.coord@vaxplan.org",
-                  title: "Provincial Coordinator",
-                  desc: "Lusaka Province (Zambia) only. Manage staff, view all districts and clinics in Lusaka.",
-                  color: "border-emerald-500/30 hover:border-emerald-500 bg-emerald-500/[0.02]",
-                  textColor: "text-emerald-400"
-                },
-                {
-                  email: "district.mgr@vaxplan.org",
-                  title: "District Manager",
-                  desc: "Lusaka District (Zambia) only. Author and approve sessions, review microplan budgets.",
-                  color: "border-sky-500/30 hover:border-sky-500 bg-sky-500/[0.02]",
-                  textColor: "text-sky-400"
-                },
-                {
-                  email: "facility.clerk@vaxplan.org",
-                  title: "Facility Clerk (Dual-Role)",
-                  desc: "Airport Urban Health Centre (Lusaka, Zambia) only. Log vaccinations + manage catchment maps.",
-                  color: "border-amber-500/30 hover:border-amber-500 bg-amber-500/[0.02]",
-                  textColor: "text-amber-400"
-                }
-              ].map((c) => (
-                <button
-                  key={c.email}
-                  type="button"
-                  onClick={() => demoLogin(c.email)}
-                  disabled={demoBusy !== null}
-                  data-testid={`button-demo-login-${c.email}`}
-                  className={`flex flex-col justify-between p-5 rounded-2xl border transition-all duration-300 hover:shadow-lg text-left group cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${c.color}`}
-                >
-                  <div>
-                    <span className={`text-xs font-bold uppercase tracking-wider block mb-1 ${c.textColor}`}>{c.title}</span>
-                    <span className="text-[10px] text-muted-foreground font-mono block mb-3 truncate">{c.email}</span>
-                    <p className="text-xs text-muted-foreground/80 leading-relaxed font-sans">{c.desc}</p>
-                  </div>
-                  <span className={`inline-flex items-center gap-1 text-[11px] font-bold mt-4 ${c.textColor} group-hover:translate-x-1 transition-transform`}>
-                    {demoBusy === c.email ? "Signing in…" : "Login Instant"}
-                    {demoBusy === c.email ? (
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                    ) : (
-                      <ArrowRight className="h-3 w-3" />
-                    )}
-                  </span>
-                </button>
-              ))}
-            </div>
-            {demoError && (
-              <p className="text-center text-xs text-red-500 mt-4" data-testid="text-demo-login-error">
-                {demoError}
-              </p>
-            )}
           </div>
         </section>
 

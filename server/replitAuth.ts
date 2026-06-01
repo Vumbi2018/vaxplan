@@ -10,90 +10,6 @@ import { storage } from "./storage";
 import { db } from "./db";
 import { users } from "@shared/schema";
 import { eq } from "drizzle-orm";
-import {
-  DEMO_ACCOUNTS,
-  DEMO_TENANT_CODE,
-  RETIRED_DEMO_ACCOUNT_IDS,
-} from "@shared/demoAccounts";
-
-// Seed the public "Select a Test Identity" demo accounts as real users in the
-// demo tenant, so the landing-page demo cards can sign in directly (POST
-// /api/auth/demo-login) with no Replit OIDC redirect. The accounts carry NO
-// password — authentication for them happens only through the allowlisted
-// demo-login endpoint, so nothing secret is shipped in the client bundle.
-// Matching is done by the fixed demo `id` (never by email) so we only ever
-// touch our own seed rows and never collide with a real user's account.
-async function seedDemoAccounts(tenantId: string) {
-  for (const cfg of DEMO_ACCOUNTS) {
-    const existing = await storage.getUser(cfg.id);
-    if (!existing) {
-      await db.insert(users).values({
-        id: cfg.id,
-        email: cfg.email,
-        firstName: cfg.firstName,
-        lastName: cfg.lastName,
-        role: cfg.role as any,
-        roles: cfg.roles,
-        permissions: cfg.permissions,
-        dataAccessScope: cfg.dataAccessScope,
-        facilityId: cfg.facilityId,
-        districtId: cfg.districtId,
-        provinceId: cfg.provinceId,
-        isActive: true,
-        tenantId,
-        passwordHash: null,
-      } as any);
-    } else {
-      // Keep the demo identity pinned to the demo tenant and known-good scope.
-      await db.update(users)
-        .set({
-          email: cfg.email,
-          firstName: cfg.firstName,
-          lastName: cfg.lastName,
-          role: cfg.role as any,
-          roles: cfg.roles,
-          permissions: cfg.permissions,
-          dataAccessScope: cfg.dataAccessScope,
-          facilityId: cfg.facilityId,
-          districtId: cfg.districtId,
-          provinceId: cfg.provinceId,
-          isActive: true,
-          tenantId,
-          passwordHash: null,
-          updatedAt: new Date(),
-        })
-        .where(eq(users.id, cfg.id));
-    }
-  }
-
-  // Retire any demo identity that must never be publicly loginable (e.g. an
-  // earlier-seeded National Admin demo account): deactivate it and strip any
-  // password so it can't be used to sign in.
-  for (const retiredId of RETIRED_DEMO_ACCOUNT_IDS) {
-    await db.update(users)
-      .set({ isActive: false, passwordHash: null, updatedAt: new Date() })
-      .where(eq(users.id, retiredId));
-  }
-}
-
-// Seed the demo accounts strictly into the Zambia (ZMB) demo tenant. We never
-// fall back to another tenant: placing public one-click accounts in the wrong
-// live tenant is exactly the risk we're avoiding, so if ZMB is missing we skip
-// seeding and log loudly instead. Best-effort: never block startup.
-function seedDemoAccountsForDefaultTenant() {
-  storage.getTenantByCode(DEMO_TENANT_CODE).then((tenant) => {
-    if (tenant) {
-      seedDemoAccounts(tenant.id).catch((err) =>
-        console.error("Failed to seed demo accounts:", err),
-      );
-    } else {
-      console.error(
-        `[demo-seed] Demo tenant "${DEMO_TENANT_CODE}" not found — skipping demo account seeding. ` +
-          `Demo one-click login will be unavailable until the demo tenant exists.`,
-      );
-    }
-  }).catch((err) => console.error("Failed to resolve tenant for demo seed:", err));
-}
 
 const getOidcConfig = memoize(
   async () => {
@@ -201,10 +117,6 @@ export async function setupAuth(app: Express) {
   app.use(getSession());
   app.use(passport.initialize());
   app.use(passport.session());
-
-  // Seed the public demo accounts (with passwords) in every mode so the
-  // landing-page demo cards sign in directly, without any Replit OIDC redirect.
-  seedDemoAccountsForDefaultTenant();
 
   if (!process.env.REPL_ID) {
     console.log("No REPL_ID found. Booting VaxPlan in Local Developer Authentication mode.");
