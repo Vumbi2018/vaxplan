@@ -294,7 +294,7 @@ export interface IStorage {
 
   // Site-traffic analytics
   recordPageView(tenantId: string, data: InsertPageView): Promise<void>;
-  touchPresence(tenantId: string, userId: string, data: InsertPageView): Promise<void>;
+  touchPresence(tenantId: string, userId: string, data: InsertPageView, opts?: { hasGps?: boolean }): Promise<void>;
   getTrafficAnalytics(tenantId: string): Promise<TrafficAnalytics>;
   getOnlineCount(tenantId: string): Promise<number>;
 
@@ -1575,10 +1575,19 @@ export class DatabaseStorage implements IStorage {
   // unaffected, including across day boundaries. If the latest row is older
   // than the window (the user genuinely returned after being away), a fresh row
   // is inserted so it counts as a new visit at the correct time.
-  async touchPresence(tenantId: string, userId: string, data: InsertPageView): Promise<void> {
+  async touchPresence(
+    tenantId: string,
+    userId: string,
+    data: InsertPageView,
+    opts?: { hasGps?: boolean },
+  ): Promise<void> {
     const cutoff = new Date(Date.now() - 30 * 60 * 1000);
     const [latest] = await db
-      .select({ id: pageViews.id })
+      .select({
+        id: pageViews.id,
+        latitude: pageViews.latitude,
+        longitude: pageViews.longitude,
+      })
       .from(pageViews)
       .where(
         and(
@@ -1590,16 +1599,26 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(sql`coalesce(${pageViews.lastSeenAt}, ${pageViews.createdAt})`))
       .limit(1);
     if (latest) {
+      // A precise device GPS fix always wins and refreshes the stored location.
+      // A coarse IP-derived fix (no GPS this heartbeat) only fills in a location
+      // when the presence row doesn't already have one, so a previously-recorded
+      // GPS position is never clobbered by the IP fallback. In many countries the
+      // IP fallback resolves to the capital, so without this the live-map pin
+      // jumps hundreds of km whenever GPS momentarily fails between heartbeats.
+      const existingHasCoords =
+        (latest as { latitude: unknown; longitude: unknown }).latitude != null &&
+        (latest as { latitude: unknown; longitude: unknown }).longitude != null;
+      const setData: Partial<typeof pageViews.$inferInsert> = { lastSeenAt: new Date() };
+      if (opts?.hasGps || !existingHasCoords) {
+        setData.country = data.country;
+        setData.region = data.region;
+        setData.city = data.city;
+        setData.latitude = data.latitude;
+        setData.longitude = data.longitude;
+      }
       await db
         .update(pageViews)
-        .set({
-          lastSeenAt: new Date(),
-          country: data.country,
-          region: data.region,
-          city: data.city,
-          latitude: data.latitude,
-          longitude: data.longitude,
-        } as Partial<typeof pageViews.$inferInsert>)
+        .set(setData)
         .where(eq(pageViews.id, latest.id));
       return;
     }

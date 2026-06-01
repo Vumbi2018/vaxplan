@@ -26,7 +26,24 @@ export function useAnalyticsTracker(enabled: boolean) {
   const locationRef = useRef<string>(location);
   locationRef.current = location;
 
-  const send = (path: string, heartbeat: boolean) => {
+  // Until the one-time GPS lookup settles (success OR failure/timeout), hold
+  // back beacons. Otherwise the first heartbeat/page-view publishes the coarse
+  // IP location (often the capital) and the live-map pin visibly jumps to the
+  // user's real GPS position a moment later. We queue any beacons fired during
+  // this brief window (bounded by the 8s GPS timeout) and flush them in order
+  // once GPS settles, so no page-view (visit history) is dropped.
+  const gpsSettled = useRef(false);
+  const pending = useRef<Array<{ path: string; heartbeat: boolean }>>([]);
+  const geoSupported =
+    typeof navigator !== "undefined" && !!navigator.geolocation;
+
+  const flushPending = () => {
+    const queued = pending.current;
+    pending.current = [];
+    for (const p of queued) transmit(p.path, p.heartbeat);
+  };
+
+  const transmit = (path: string, heartbeat: boolean) => {
     if (typeof navigator !== "undefined" && !navigator.onLine) return;
     const body: Record<string, unknown> = { path, heartbeat };
     if (coords.current) {
@@ -44,28 +61,52 @@ export function useAnalyticsTracker(enabled: boolean) {
     });
   };
 
+  const send = (path: string, heartbeat: boolean) => {
+    if (typeof navigator !== "undefined" && !navigator.onLine) return;
+    // Defer beacons until the GPS attempt resolves so we never publish an IP
+    // location that immediately flips to GPS. Once settled (or on a device with
+    // no geolocation at all) every beacon is sent right away.
+    if (enabled && geoSupported && !gpsSettled.current) {
+      pending.current.push({ path, heartbeat });
+      return;
+    }
+    transmit(path, heartbeat);
+  };
+
   // Ask for the device location once (the browser remembers the choice). On
-  // success, re-send a heartbeat so the map updates from IP-city to the real
-  // GPS position right away.
+  // success store the precise position; either way mark the GPS attempt settled
+  // and flush any beacon that was held back during startup so the live map
+  // shows the real GPS location from the first ping (never the IP city first).
   useEffect(() => {
     if (!enabled) return;
-    if (typeof navigator === "undefined" || !navigator.geolocation) return;
+    if (!geoSupported) {
+      // No device geolocation to wait for — release any held beacons now.
+      gpsSettled.current = true;
+      flushPending();
+      return;
+    }
     let cancelled = false;
+    const settle = () => {
+      if (cancelled) return;
+      gpsSettled.current = true;
+      flushPending();
+    };
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         if (cancelled) return;
         coords.current = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-        send(locationRef.current, true);
+        settle();
       },
       () => {
-        // permission denied / unavailable — fall back to IP geolocation
+        // permission denied / unavailable / timeout — fall back to IP geo.
+        settle();
       },
       { enableHighAccuracy: false, timeout: 8000, maximumAge: 10 * 60 * 1000 },
     );
     return () => {
       cancelled = true;
     };
-  }, [enabled]);
+  }, [enabled, geoSupported]);
 
   // Record each navigation.
   useEffect(() => {

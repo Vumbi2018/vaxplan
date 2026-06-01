@@ -1928,7 +1928,7 @@ export async function registerRoutes(
       if (isHeartbeat && userId) {
         // A heartbeat just keeps an idle-but-present user "online" — refresh
         // their latest activity instead of logging a fresh visit.
-        await storage.touchPresence(req.tenantId, userId, record);
+        await storage.touchPresence(req.tenantId, userId, record, { hasGps });
       } else {
         await storage.recordPageView(req.tenantId, record);
       }
