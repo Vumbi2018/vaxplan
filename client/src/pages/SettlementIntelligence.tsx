@@ -7,6 +7,8 @@ import {
   Circle,
   Popup,
   Polygon,
+  Polyline,
+  Tooltip,
   useMap,
   useMapEvents
 } from "react-leaflet";
@@ -86,6 +88,172 @@ function MapMoveWatcher({ onCenterChange }: { onCenterChange: (center: [number, 
     };
   }, []);
   return null;
+}
+
+// Highlights the inspected point and the route(s) to its nearest facility and
+// nearest outreach site on the map while the Insights dialog is open. Each
+// route draws the real OSRM road geometry when available, otherwise a dashed
+// straight line. The map fits its bounds to the origin + destinations so the
+// highlight is actually in view behind/around the dialog.
+function InsightsRouteLayer({
+  origin,
+  travelTime,
+}: {
+  origin: { lat: number; lng: number };
+  travelTime: any;
+}) {
+  const map = useMap();
+
+  // Destinations resolved from the travel-time payload (facility + outreach).
+  const destinations = useMemo(() => {
+    const out: Array<{
+      key: string;
+      name: string | null;
+      lat: number;
+      lng: number;
+      // Leaflet positions are [lat, lng]; convert from GeoJSON [lng, lat].
+      path: [number, number][];
+      isRoad: boolean;
+      color: string;
+      label: string;
+    }> = [];
+    if (!travelTime) return out;
+
+    const toLatLngPath = (geometry: any): [number, number][] | null => {
+      if (!Array.isArray(geometry) || geometry.length < 2) return null;
+      return geometry
+        .filter((c: any) => Array.isArray(c) && c.length >= 2)
+        .map((c: any) => [Number(c[1]), Number(c[0])] as [number, number]);
+    };
+
+    if (
+      travelTime.facilityName &&
+      Number.isFinite(Number(travelTime.facilityLatitude)) &&
+      Number.isFinite(Number(travelTime.facilityLongitude))
+    ) {
+      const lat = Number(travelTime.facilityLatitude);
+      const lng = Number(travelTime.facilityLongitude);
+      const road = toLatLngPath(travelTime.geometry);
+      out.push({
+        key: "facility",
+        name: travelTime.facilityName,
+        lat,
+        lng,
+        path: road ?? [
+          [origin.lat, origin.lng],
+          [lat, lng],
+        ],
+        isRoad: !!road,
+        color: "#4f46e5", // indigo — matches facility markers
+        label: "Nearest facility",
+      });
+    }
+
+    const o = travelTime.outreachSite;
+    if (
+      o &&
+      Number.isFinite(Number(o.latitude)) &&
+      Number.isFinite(Number(o.longitude))
+    ) {
+      const lat = Number(o.latitude);
+      const lng = Number(o.longitude);
+      const road = toLatLngPath(o.geometry);
+      out.push({
+        key: "outreach",
+        name: o.name,
+        lat,
+        lng,
+        path: road ?? [
+          [origin.lat, origin.lng],
+          [lat, lng],
+        ],
+        isRoad: !!road,
+        color: "#d97706", // amber — matches outreach markers
+        label: "Nearest outreach site",
+      });
+    }
+    return out;
+  }, [travelTime, origin.lat, origin.lng]);
+
+  // Fit the map to the origin + every destination route so the highlight is
+  // visible. Runs when the inspected point or its resolved routes change.
+  useEffect(() => {
+    const pts: [number, number][] = [[origin.lat, origin.lng]];
+    for (const d of destinations) {
+      for (const p of d.path) pts.push(p);
+      pts.push([d.lat, d.lng]);
+    }
+    if (pts.length < 2) {
+      map.setView([origin.lat, origin.lng], 13);
+      return;
+    }
+    try {
+      map.fitBounds(L.latLngBounds(pts), { padding: [60, 60], maxZoom: 14 });
+    } catch {
+      map.setView([origin.lat, origin.lng], 13);
+    }
+  }, [map, origin.lat, origin.lng, destinations]);
+
+  return (
+    <>
+      {/* Inspected point */}
+      <CircleMarker
+        center={[origin.lat, origin.lng]}
+        radius={7}
+        pathOptions={{
+          color: "#0f766e",
+          fillColor: "#14b8a6",
+          fillOpacity: 0.9,
+          weight: 2,
+        }}
+      >
+        <Tooltip direction="top" offset={[0, -6]} permanent>
+          <span className="text-[10px] font-bold text-teal-700">Inspected point</span>
+        </Tooltip>
+      </CircleMarker>
+
+      {destinations.map((d) => (
+        <div key={`route-${d.key}`}>
+          {/* Soft halo under the route so it reads against busy basemaps */}
+          <Polyline
+            positions={d.path}
+            pathOptions={{ color: "#ffffff", weight: 7, opacity: 0.7 }}
+          />
+          <Polyline
+            positions={d.path}
+            pathOptions={{
+              color: d.color,
+              weight: 4,
+              opacity: 0.95,
+              // Dashed when we only have a straight-line estimate, solid for a
+              // real road route.
+              dashArray: d.isRoad ? undefined : "6, 8",
+            }}
+          />
+          <CircleMarker
+            center={[d.lat, d.lng]}
+            radius={8}
+            pathOptions={{
+              color: d.color,
+              fillColor: d.color,
+              fillOpacity: 0.85,
+              weight: 2,
+            }}
+          >
+            <Tooltip direction="top" offset={[0, -8]}>
+              <div className="text-[10px]">
+                <div className="font-bold" style={{ color: d.color }}>{d.label}</div>
+                <div className="text-slate-700">{d.name}</div>
+                <div className="text-slate-400">
+                  {d.isRoad ? "Road route" : "Straight-line estimate"}
+                </div>
+              </div>
+            </Tooltip>
+          </CircleMarker>
+        </div>
+      ))}
+    </>
+  );
 }
 
 export default function SettlementIntelligence() {
@@ -643,6 +811,14 @@ export default function SettlementIntelligence() {
             
             <MapCenterController center={activeCenter} zoom={activeZoom} />
             <MapMoveWatcher onCenterChange={setAssetsCenter} />
+
+            {/* Highlight the inspected point + route(s) while the Insights dialog is open */}
+            {insightsOpen && insightsPoint && (
+              <InsightsRouteLayer
+                origin={{ lat: insightsPoint.lat, lng: insightsPoint.lng }}
+                travelTime={travelTime}
+              />
+            )}
 
             {/* Render 5km Service Coverage Gap Polygons */}
             {showCoverageGaps && coverageGaps?.features && (

@@ -34,6 +34,10 @@ export interface TravelDestination {
   walking: TravelMode;
   routeClassification: "road" | "straight-line estimate";
   provider: "osrm" | "estimate";
+  // Road geometry of the chosen route as an array of [longitude, latitude]
+  // pairs (GeoJSON order). null when the route fell back to a straight-line
+  // estimate, so the client draws a straight dashed line instead.
+  geometry: [number, number][] | null;
 }
 
 export interface TravelTimeResult {
@@ -48,6 +52,9 @@ export interface TravelTimeResult {
   walking: TravelMode;
   routeClassification: "road" | "straight-line estimate";
   provider: "osrm" | "estimate";
+  // Road geometry to the nearest facility (mirrors facility.geometry below);
+  // array of [longitude, latitude] pairs, null on straight-line fallback.
+  geometry: [number, number][] | null;
   // Nearest existing outreach site (an outreach session resolved to a point),
   // null when the tenant has no active outreach sites to route to. Outreach
   // posts are often closer to remote clusters than fixed facilities.
@@ -188,6 +195,8 @@ async function getNearestOutreachSiteWithCoords(
 interface OsrmRoute {
   roadDistanceKm: number;
   drivingMin: number;
+  // Decoded LineString geometry: [longitude, latitude] pairs (GeoJSON order).
+  geometry: [number, number][] | null;
 }
 
 async function fetchOsrmRoute(
@@ -210,7 +219,7 @@ async function fetchOsrmRoute(
     const timer = setTimeout(() => controller.abort(), 3000);
     const url =
       `https://router.project-osrm.org/route/v1/driving/` +
-      `${fromLng},${fromLat};${toLng},${toLat}?overview=false&alternatives=false&steps=false`;
+      `${fromLng},${fromLat};${toLng},${toLat}?overview=full&geometries=geojson&alternatives=false&steps=false`;
     const res = await fetch(url, {
       signal: controller.signal,
       headers: { "User-Agent": "VaxPlan/1.0 (health microplanning travel-time)" },
@@ -225,9 +234,27 @@ async function fetchOsrmRoute(
     const meters = Number(route.distance);
     const seconds = Number(route.duration);
     if (!Number.isFinite(meters) || !Number.isFinite(seconds)) return null;
+    // overview=full + geometries=geojson returns a LineString of [lng,lat]
+    // pairs. Keep only finite coords; null it if anything looks malformed so
+    // the client falls back to a straight line rather than drawing garbage.
+    let geometry: [number, number][] | null = null;
+    const rawCoords = route?.geometry?.coordinates;
+    if (Array.isArray(rawCoords) && rawCoords.length >= 2) {
+      const cleaned = rawCoords
+        .filter(
+          (c: any) =>
+            Array.isArray(c) &&
+            c.length >= 2 &&
+            Number.isFinite(Number(c[0])) &&
+            Number.isFinite(Number(c[1])),
+        )
+        .map((c: any) => [Number(c[0]), Number(c[1])] as [number, number]);
+      if (cleaned.length >= 2) geometry = cleaned;
+    }
     return {
       roadDistanceKm: parseFloat((meters / 1000).toFixed(2)),
       drivingMin: Math.round(seconds / 60),
+      geometry,
     };
   } catch {
     return null; // timeout / abort / network — caller falls back
@@ -253,6 +280,7 @@ async function buildTravelDestination(
     walking: { durationMin: Math.round((straightLineKm / WALK_KMH) * 60), estimated: true },
     routeClassification: "straight-line estimate",
     provider: "estimate",
+    geometry: null,
   };
 
   const osrm = await fetchOsrmRoute(fromLng, fromLat, place.longitude, place.latitude);
@@ -270,6 +298,7 @@ async function buildTravelDestination(
     walking: { durationMin: Math.round((osrm.roadDistanceKm / WALK_KMH) * 60), estimated: true },
     routeClassification: "road",
     provider: "osrm",
+    geometry: osrm.geometry,
   };
 }
 
@@ -294,6 +323,7 @@ export async function getTravelTimeToNearestFacility(
     walking: { durationMin: 0, estimated: true },
     routeClassification: "straight-line estimate",
     provider: "estimate",
+    geometry: null,
     outreachSite: null,
   };
   if (!isFiniteCoord(latitude, longitude)) return empty;
@@ -330,6 +360,7 @@ export async function getTravelTimeToNearestFacility(
       walking: facilityDest?.walking ?? { durationMin: 0, estimated: true },
       routeClassification: facilityDest?.routeClassification ?? "straight-line estimate",
       provider: facilityDest?.provider ?? "estimate",
+      geometry: facilityDest?.geometry ?? null,
       outreachSite: outreachDest,
     };
 

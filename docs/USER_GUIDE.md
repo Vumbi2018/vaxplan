@@ -633,6 +633,13 @@ zero-dose cluster card or settlement record, click the **Insights**
   unavailable, so the panel always answers). Existing outreach sites are
   often closer to a remote cluster than a fixed facility, so the panel
   shows whichever is relevant — or both, clearly labelled.
+- **The route drawn on the map.** While the Insights panel is open, the
+  map highlights the inspected point and draws a line to each
+  destination — the actual road geometry when a route is available
+  (or a dashed straight line when it falls back to an estimate) — and
+  marks the nearest facility and outreach site, so you can judge terrain
+  and direction at a glance. The map fits the view around the route
+  automatically.
 - **Community assets within 3 km** — schools, places of worship,
   markets, water points, and transport nodes pulled live from
   OpenStreetMap, each with its distance. These show what services
