@@ -10047,10 +10047,12 @@ export async function registerRoutes(
   // the score live using the real travel-time and community-asset services.
   app.get("/api/unserved-clusters", isAuthenticated, requireTenant, async (req: any, res) => {
     try {
-      const limit = Math.min(
-        Math.max(parseInt(String(req.query.limit ?? "25"), 10) || 25, 1),
-        100,
-      );
+      // Return ALL ranked clusters by default so the planning view never
+      // silently hides any unserved cluster. An optional `limit` query param
+      // can cap the result for callers that only want the top N.
+      const rawLimit = req.query.limit != null ? parseInt(String(req.query.limit), 10) : null;
+      const limit =
+        rawLimit != null && Number.isFinite(rawLimit) && rawLimit > 0 ? rawLimit : null;
 
       const candidates = await db
         .select()
@@ -10183,7 +10185,7 @@ export async function registerRoutes(
       res.json({
         count: ranked.length,
         outreachSitesKnown: outreachSites.length > 0,
-        clusters: ranked.slice(0, limit),
+        clusters: limit != null ? ranked.slice(0, limit) : ranked,
       });
     } catch (err: any) {
       console.error("GET /api/unserved-clusters failed:", err);
