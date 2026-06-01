@@ -346,6 +346,15 @@ export default function SettlementIntelligence() {
     staleTime: 24 * 60 * 60 * 1000
   });
 
+  // Road/path-network walking-time zones (isochrones) for the travel-time layer.
+  // Falls back to plain circles when the routing provider is unavailable.
+  const { data: isochrones } = useQuery<any>({
+    queryKey: ["/api/geo/isochrones", tenantInfo?.id],
+    queryFn: () => apiRequest("GET", "/api/geo/isochrones"),
+    enabled: showTravelZones && !!tenantInfo?.id,
+    staleTime: 24 * 60 * 60 * 1000
+  });
+
   // Community-asset map layer: discover assets around the current map centre
   const { data: layerAssets, isLoading: layerAssetsLoading } = useQuery<any>({
     queryKey: ["/api/geo/community-assets", "layer", assetsCenter[0], assetsCenter[1]],
@@ -544,12 +553,35 @@ export default function SettlementIntelligence() {
     </div>
   );
 
-  // Walking-time rings (km radius at ~5 km/h) for the travel-time-zone layer
+  // Walking-time rings (km radius at ~5 km/h) for the travel-time-zone layer.
+  // Used as a graceful fallback when road-network isochrones are unavailable.
   const TRAVEL_RINGS = [
     { hours: 1, radiusM: 5000, color: "#16a34a" },
     { hours: 2, radiusM: 10000, color: "#d97706" },
     { hours: 3, radiusM: 15000, color: "#dc2626" },
   ];
+
+  // True road/path-network walking-time zones from the routing provider. When
+  // available we render these isochrone polygons instead of the circles above.
+  const isochroneFeatures: any[] =
+    isochrones?.available && Array.isArray(isochrones?.featureCollection?.features)
+      ? isochrones.featureCollection.features
+      : [];
+  const useIsochrones = isochroneFeatures.length > 0;
+
+  // GeoJSON polygons are [lng, lat]; Leaflet wants [lat, lng]. A Polygon's
+  // coordinates are an array of rings; MultiPolygon is an array of polygons.
+  const geoJsonToLatLngs = (geometry: any): [number, number][][][] => {
+    if (!geometry) return [];
+    const ringsToLatLng = (rings: any[]): [number, number][][] =>
+      rings.map((ring: any[]) =>
+        ring.map((pos: number[]) => [pos[1], pos[0]] as [number, number]),
+      );
+    if (geometry.type === "Polygon") return [ringsToLatLng(geometry.coordinates)];
+    if (geometry.type === "MultiPolygon")
+      return geometry.coordinates.map((poly: any[]) => ringsToLatLng(poly));
+    return [];
+  };
 
   return (
     <div className="flex h-[calc(100vh-4.5rem)] w-full overflow-hidden bg-slate-50 text-slate-800 font-sans">
@@ -996,8 +1028,39 @@ export default function SettlementIntelligence() {
               )
             ))}
 
-            {/* Travel-time zones: walking-time rings (~5 km/h) around facilities */}
-            {showTravelZones && facilities.map((f) => (
+            {/* Travel-time zones: true road/path-network walking-time isochrones
+                when the routing provider is available, otherwise plain rings. */}
+            {showTravelZones && useIsochrones &&
+              isochroneFeatures.flatMap((feature: any, idx: number) => {
+                const hours = feature?.properties?.hours;
+                const color = feature?.properties?.color || "#16a34a";
+                const facilityName = feature?.properties?.facilityName;
+                return geoJsonToLatLngs(feature?.geometry).map((positions, pIdx) => (
+                  <Polygon
+                    key={`iso-${idx}-${pIdx}`}
+                    positions={positions}
+                    pathOptions={{
+                      color,
+                      weight: 1.5,
+                      opacity: 0.7,
+                      fillColor: color,
+                      fillOpacity: 0.08
+                    }}
+                  >
+                    <Popup>
+                      <div className="text-xs p-1">
+                        <span className="font-bold" style={{ color }}>~{hours} h walk</span>
+                        <div className="text-[10px] text-slate-500">
+                          {facilityName ? `${facilityName} · ` : ""}road-network walking zone
+                        </div>
+                      </div>
+                    </Popup>
+                  </Polygon>
+                ));
+              })}
+
+            {/* Fallback: walking-time rings (~5 km/h) when isochrones unavailable */}
+            {showTravelZones && !useIsochrones && facilities.map((f) => (
               f.latitude && f.longitude && TRAVEL_RINGS.map((ring) => (
                 <Circle
                   key={`zone-${f.id}-${ring.hours}`}
@@ -1014,7 +1077,7 @@ export default function SettlementIntelligence() {
                   <Popup>
                     <div className="text-xs p-1">
                       <span className="font-bold" style={{ color: ring.color }}>~{ring.hours} h walk</span>
-                      <div className="text-[10px] text-slate-500">{f.name} · {ring.radiusM / 1000} km on foot</div>
+                      <div className="text-[10px] text-slate-500">{f.name} · {ring.radiusM / 1000} km on foot (approx.)</div>
                     </div>
                   </Popup>
                 </Circle>

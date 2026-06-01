@@ -22,3 +22,4 @@
 - [Day-plan required-field visibility](dayplan-required-field-visibility.md) — leadVaccinator is required by dayPlanFormSchema for ALL plan types; its input must render outside the campaign-only block or routine day-plans silently can't save.
 - [Settlement Intelligence map centers](settlement-intelligence-map-centers.md) — activeCenter drives setView (programmatic only); map-following layer queries must key on assetsCenter (debounced moveend), never activeCenter, and don't feed moveend back into activeCenter.
 - [GeoTIFF raster edge-proxy size limit](raster-edge-proxy-size-limit.md) — big WorldPop 100m rasters (Zambia ~63MB) 500 at the edge proxy; serve gdalwarp-downsampled ~1km by default, lock ?file= to basename+tiff+readdir.
+- [Walking-time isochrones](travel-time-isochrones.md) — Travel-Time Zones layer uses ORS foot-walking isochrones (needs OPENROUTESERVICE_API_KEY); keyless OSRM has no isochrone service. Always fall back to circles on no-key/failure.

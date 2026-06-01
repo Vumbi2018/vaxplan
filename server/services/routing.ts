@@ -65,6 +65,13 @@ export interface TravelTimeResult {
 const WALK_KMH = 5;
 const HEURISTIC_DRIVE_KMH = 4; // matches existing 15 min/km heuristic (60/15)
 
+// Walking-time bands rendered as travel-time zones (1/2/3 hours on foot).
+export const WALK_ISOCHRONE_BANDS = [
+  { hours: 1, seconds: 3600, color: "#16a34a" },
+  { hours: 2, seconds: 7200, color: "#d97706" },
+  { hours: 3, seconds: 10800, color: "#dc2626" },
+] as const;
+
 const TTL_MS = 6 * 60 * 60 * 1000; // routes are stable; cache 6h
 const cache = new Map<string, { value: TravelTimeResult; expires: number }>();
 const inFlight = new Map<string, Promise<TravelTimeResult>>();
@@ -377,5 +384,198 @@ export async function getTravelTimeToNearestFacility(
   })().finally(() => inFlight.delete(key));
 
   inFlight.set(key, promise);
+  return promise;
+}
+
+// ---------------------------------------------------------------------------
+// Walking-time isochrones (road/path-network travel-time zones)
+// ---------------------------------------------------------------------------
+//
+// The travel-time-zone map layer previously drew plain circles around each
+// facility. Real walking time follows roads, paths, rivers and terrain, so we
+// replace the circles with true isochrones computed by OpenRouteService (ORS)
+// over the OSM walking network. ORS requires an API key
+// (OPENROUTESERVICE_API_KEY). When no key is configured, or any upstream call
+// fails, this returns { available: false } and the client falls back to the
+// original circles — the map must never break because routing is unavailable.
+
+export interface IsochroneResult {
+  available: boolean;
+  reason?: string; // why isochrones are unavailable (for logs / client hints)
+  bands: Array<{ hours: number; seconds: number; color: string }>;
+  // GeoJSON FeatureCollection; each Feature is a walking-time polygon tagged
+  // with { hours, seconds, color, facilityName } in its properties.
+  featureCollection: {
+    type: "FeatureCollection";
+    features: any[];
+  };
+}
+
+const ORS_ISOCHRONE_URL =
+  "https://api.openrouteservice.org/v2/isochrones/foot-walking";
+const ORS_MAX_LOCATIONS_PER_REQUEST = 5; // ORS free tier limit
+const ORS_MAX_FACILITIES = 25; // bound outbound calls & rate-limit usage
+const ISOCHRONE_TTL_MS = 24 * 60 * 60 * 1000; // facility positions are stable
+
+const isochroneCache = new Map<
+  string,
+  { value: IsochroneResult; expires: number }
+>();
+const isochroneInFlight = new Map<string, Promise<IsochroneResult>>();
+
+interface FacilityCoords {
+  name: string;
+  longitude: number;
+  latitude: number;
+}
+
+async function getActiveFacilitiesWithCoords(
+  tenantId: string,
+): Promise<FacilityCoords[]> {
+  try {
+    const query = `
+      SELECT name, longitude::float AS longitude, latitude::float AS latitude
+      FROM facilities
+      WHERE tenant_id = $1
+        AND latitude IS NOT NULL
+        AND longitude IS NOT NULL
+        AND is_active = true
+      ORDER BY name ASC
+      LIMIT ${ORS_MAX_FACILITIES}
+    `;
+    const res = await pool.query(query, [tenantId]);
+    return res.rows
+      .map((r: any) => ({
+        name: r.name,
+        longitude: Number(r.longitude),
+        latitude: Number(r.latitude),
+      }))
+      .filter((f: FacilityCoords) => isFiniteCoord(f.latitude, f.longitude));
+  } catch (err: any) {
+    console.error("[routing] facility coords lookup failed:", err?.message);
+    return [];
+  }
+}
+
+// Fetch isochrones for up to ORS_MAX_LOCATIONS_PER_REQUEST facilities in one
+// ORS call. Returns the tagged features, or null on any failure.
+async function fetchOrsIsochroneBatch(
+  apiKey: string,
+  batch: FacilityCoords[],
+): Promise<any[] | null> {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    const res = await fetch(ORS_ISOCHRONE_URL, {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        Authorization: apiKey,
+        "Content-Type": "application/json",
+        Accept: "application/geo+json",
+      },
+      body: JSON.stringify({
+        locations: batch.map((f) => [f.longitude, f.latitude]),
+        range: WALK_ISOCHRONE_BANDS.map((b) => b.seconds),
+        range_type: "time",
+        location_type: "destination",
+        smoothing: 25,
+        attributes: [],
+      }),
+    });
+    clearTimeout(timer);
+    if (!res.ok) {
+      console.error(
+        `[routing] ORS isochrones HTTP ${res.status} for batch of ${batch.length}`,
+      );
+      return null;
+    }
+    const data: any = await res.json();
+    if (!data || !Array.isArray(data.features)) return null;
+
+    // ORS returns one feature per (location, range). group_index maps the
+    // feature back to its position in the `locations` array; value is the range
+    // in seconds. Tag each feature with band colour + facility name.
+    const tagged: any[] = [];
+    for (const feature of data.features) {
+      const props = feature?.properties || {};
+      const seconds = Number(props.value);
+      const band = WALK_ISOCHRONE_BANDS.find((b) => b.seconds === seconds);
+      if (!band) continue;
+      const facility = batch[Number(props.group_index)];
+      tagged.push({
+        ...feature,
+        properties: {
+          hours: band.hours,
+          seconds: band.seconds,
+          color: band.color,
+          facilityName: facility?.name ?? null,
+        },
+      });
+    }
+    return tagged;
+  } catch (err: any) {
+    console.error("[routing] ORS isochrones request failed:", err?.message);
+    return null;
+  }
+}
+
+/**
+ * Compute walking-time isochrones (1/2/3 hours on foot) for the tenant's active
+ * facilities. Always resolves (best-effort): returns { available: false } when
+ * no ORS key is configured or every upstream call fails, so the client can fall
+ * back to plain circles.
+ */
+export async function getWalkingIsochrones(
+  tenantId: string,
+): Promise<IsochroneResult> {
+  const bands = WALK_ISOCHRONE_BANDS.map((b) => ({ ...b }));
+  const unavailable = (reason: string): IsochroneResult => ({
+    available: false,
+    reason,
+    bands,
+    featureCollection: { type: "FeatureCollection", features: [] },
+  });
+
+  const apiKey = process.env.OPENROUTESERVICE_API_KEY;
+  if (!apiKey) return unavailable("no-api-key");
+
+  const cached = isochroneCache.get(tenantId);
+  if (cached && cached.expires > Date.now()) return cached.value;
+  const pending = isochroneInFlight.get(tenantId);
+  if (pending) return pending;
+
+  const promise = (async (): Promise<IsochroneResult> => {
+    const facilities = await getActiveFacilitiesWithCoords(tenantId);
+    if (facilities.length === 0) return unavailable("no-facilities");
+
+    const features: any[] = [];
+    for (let i = 0; i < facilities.length; i += ORS_MAX_LOCATIONS_PER_REQUEST) {
+      const batch = facilities.slice(i, i + ORS_MAX_LOCATIONS_PER_REQUEST);
+      const tagged = await fetchOrsIsochroneBatch(apiKey, batch);
+      if (tagged) features.push(...tagged);
+    }
+
+    // Total failure → let the client keep its circles.
+    if (features.length === 0) return unavailable("provider-unavailable");
+
+    // Draw larger bands first so the 1h zone paints on top of the 3h zone.
+    features.sort(
+      (a, b) => (b.properties?.seconds ?? 0) - (a.properties?.seconds ?? 0),
+    );
+
+    const result: IsochroneResult = {
+      available: true,
+      bands,
+      featureCollection: { type: "FeatureCollection", features },
+    };
+    isochroneCache.set(tenantId, {
+      value: result,
+      expires: Date.now() + ISOCHRONE_TTL_MS,
+    });
+    return result;
+  })().finally(() => isochroneInFlight.delete(tenantId));
+
+  isochroneInFlight.set(tenantId, promise);
   return promise;
 }

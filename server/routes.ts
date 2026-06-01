@@ -108,7 +108,7 @@ import {
 // Offline sync service
 import { pullChanges, batchMutate, getSyncStats, type OutboxMutation } from "./services/syncService";
 import { lookupGeo, reverseGeo, normalizeIp } from "./services/geo";
-import { getTravelTimeToNearestFacility } from "./services/routing";
+import { getTravelTimeToNearestFacility, getWalkingIsochrones } from "./services/routing";
 import { discoverCommunityAssets } from "./services/communityAssets";
 import {
   checkProximityAndPopulation,
@@ -10044,6 +10044,27 @@ export async function registerRoutes(
     } catch (err: any) {
       console.error("GET /api/geo/travel-time failed:", err);
       res.status(500).json({ message: "Failed to compute travel time" });
+    }
+  });
+
+  // 8b. GET /api/geo/isochrones
+  // Walking-time zones (1/2/3 h on foot) as true road/path-network isochrones
+  // for the tenant's active facilities (OpenRouteService). Best-effort: returns
+  // { available: false } when no routing key is configured or the provider is
+  // unavailable, so the client falls back to plain circles.
+  app.get("/api/geo/isochrones", isAuthenticated, requireTenant, async (req: any, res) => {
+    try {
+      const result = await getWalkingIsochrones(req.tenantId);
+      res.json(result);
+    } catch (err: any) {
+      console.error("GET /api/geo/isochrones failed:", err);
+      // Never break the map layer — signal unavailable so the client uses circles.
+      res.json({
+        available: false,
+        reason: "error",
+        bands: [],
+        featureCollection: { type: "FeatureCollection", features: [] },
+      });
     }
   });
 
