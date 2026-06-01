@@ -23,10 +23,12 @@ import {
   ArrowRight,
   Eye,
   EyeOff,
+  Loader2,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { PageHead } from "@/components/PageHead";
 import { versionLabel } from "@/lib/version";
+import { DEMO_ACCOUNT_PASSWORD } from "@shared/demoAccounts";
 
 interface PublicTenant {
   id: string;
@@ -387,6 +389,31 @@ export default function Landing() {
   });
   const tenantCount = tenants?.length ?? 0;
   const [loginOpen, setLoginOpen] = useState(false);
+  const [demoBusy, setDemoBusy] = useState<string | null>(null);
+  const [demoError, setDemoError] = useState<string | null>(null);
+
+  const demoLogin = async (email: string) => {
+    setDemoError(null);
+    setDemoBusy(email);
+    try {
+      const res = await fetch("/api/auth/login-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ email, password: DEMO_ACCOUNT_PASSWORD }),
+      });
+      if (res.ok) {
+        window.location.href = "/";
+        return;
+      }
+      const data = await res.json().catch(() => ({}));
+      setDemoError(data?.message || "Could not sign in to that demo account.");
+    } catch {
+      setDemoError("Could not sign in. Please check your connection and try again.");
+    } finally {
+      setDemoBusy(null);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -528,10 +555,13 @@ export default function Landing() {
                   textColor: "text-amber-400"
                 }
               ].map((c) => (
-                <a 
+                <button
                   key={c.email}
-                  href={`/api/login?email=${c.email}`}
-                  className={`flex flex-col justify-between p-5 rounded-2xl border transition-all duration-300 hover:shadow-lg text-left group cursor-pointer ${c.color}`}
+                  type="button"
+                  onClick={() => demoLogin(c.email)}
+                  disabled={demoBusy !== null}
+                  data-testid={`button-demo-login-${c.email}`}
+                  className={`flex flex-col justify-between p-5 rounded-2xl border transition-all duration-300 hover:shadow-lg text-left group cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${c.color}`}
                 >
                   <div>
                     <span className={`text-xs font-bold uppercase tracking-wider block mb-1 ${c.textColor}`}>{c.title}</span>
@@ -539,11 +569,21 @@ export default function Landing() {
                     <p className="text-xs text-muted-foreground/80 leading-relaxed font-sans">{c.desc}</p>
                   </div>
                   <span className={`inline-flex items-center gap-1 text-[11px] font-bold mt-4 ${c.textColor} group-hover:translate-x-1 transition-transform`}>
-                    Login Instant <ArrowRight className="h-3 w-3" />
+                    {demoBusy === c.email ? "Signing in…" : "Login Instant"}
+                    {demoBusy === c.email ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <ArrowRight className="h-3 w-3" />
+                    )}
                   </span>
-                </a>
+                </button>
               ))}
             </div>
+            {demoError && (
+              <p className="text-center text-xs text-red-500 mt-4" data-testid="text-demo-login-error">
+                {demoError}
+              </p>
+            )}
           </div>
         </section>
 

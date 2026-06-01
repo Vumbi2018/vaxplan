@@ -6,10 +6,78 @@ import session from "express-session";
 import type { Express, RequestHandler } from "express";
 import memoize from "memoizee";
 import connectPg from "connect-pg-simple";
+import bcrypt from "bcryptjs";
 import { storage } from "./storage";
 import { db } from "./db";
 import { users } from "@shared/schema";
 import { eq } from "drizzle-orm";
+import { DEMO_ACCOUNTS, DEMO_ACCOUNT_PASSWORD } from "@shared/demoAccounts";
+
+// Seed the public "Select a Test Identity" demo accounts as real
+// email/password users in the given tenant, so the landing-page demo cards can
+// sign in directly (POST /api/auth/login-password) with no Replit OIDC
+// redirect. Runs in both dev and production. Re-applies the shared demo
+// password on every boot so the one-click cards always work.
+async function seedDemoAccounts(tenantId: string) {
+  const passwordHash = await bcrypt.hash(DEMO_ACCOUNT_PASSWORD, 12);
+  for (const cfg of DEMO_ACCOUNTS) {
+    const existing = await storage.getUserByEmail(cfg.email);
+    if (!existing) {
+      await db.insert(users).values({
+        id: cfg.id,
+        email: cfg.email,
+        firstName: cfg.firstName,
+        lastName: cfg.lastName,
+        role: cfg.role as any,
+        roles: cfg.roles,
+        permissions: cfg.permissions,
+        dataAccessScope: cfg.dataAccessScope,
+        facilityId: cfg.facilityId,
+        districtId: cfg.districtId,
+        provinceId: cfg.provinceId,
+        isActive: true,
+        tenantId,
+        passwordHash,
+      } as any);
+    } else {
+      // Keep the demo identity in a known-good state for the demo cards.
+      await db.update(users)
+        .set({
+          role: cfg.role as any,
+          roles: cfg.roles,
+          permissions: cfg.permissions,
+          dataAccessScope: cfg.dataAccessScope,
+          facilityId: cfg.facilityId,
+          districtId: cfg.districtId,
+          provinceId: cfg.provinceId,
+          isActive: true,
+          passwordHash,
+          updatedAt: new Date(),
+        })
+        .where(eq(users.id, existing.id));
+    }
+  }
+}
+
+// Resolve the default demo tenant (PNG, else first active) and seed the demo
+// accounts into it. Best-effort: never block startup.
+function seedDemoAccountsForDefaultTenant() {
+  storage.getTenantByCode("PNG").then((tenant) => {
+    if (tenant) {
+      seedDemoAccounts(tenant.id).catch((err) =>
+        console.error("Failed to seed demo accounts:", err),
+      );
+    } else {
+      storage.listActiveTenants().then((activeTenants) => {
+        if (activeTenants.length > 0) {
+          seedDemoAccounts(activeTenants[0].id).catch((err) =>
+            console.error("Failed to seed demo accounts:", err),
+          );
+        }
+      });
+    }
+  }).catch((err) => console.error("Failed to resolve tenant for demo seed:", err));
+}
 
 const getOidcConfig = memoize(
   async () => {
@@ -118,114 +186,13 @@ export async function setupAuth(app: Express) {
   app.use(passport.initialize());
   app.use(passport.session());
 
+  // Seed the public demo accounts (with passwords) in every mode so the
+  // landing-page demo cards sign in directly, without any Replit OIDC redirect.
+  seedDemoAccountsForDefaultTenant();
+
   if (!process.env.REPL_ID) {
     console.log("No REPL_ID found. Booting VaxPlan in Local Developer Authentication mode.");
 
-    // Define seedGranularUsers function inside local auth scope
-    const seedGranularUsers = async (tenantId: string) => {
-      const seededUsersList = [
-        {
-          id: "seed-user-national-admin",
-          email: "national.admin@vaxplan.org",
-          firstName: "National",
-          lastName: "Admin",
-          role: "national_admin",
-          roles: ["national_admin"],
-          permissions: [],
-          dataAccessScope: { provinces: [], districts: [], facilities: [] },
-          facilityId: null,
-          districtId: null,
-          provinceId: null,
-          isActive: true,
-          tenantId,
-        },
-        {
-          id: "seed-user-provincial-coord",
-          email: "provincial.coord@vaxplan.org",
-          firstName: "Provincial",
-          lastName: "Coordinator",
-          role: "provincial_coordinator",
-          roles: ["provincial_coordinator"],
-          permissions: ["view_clients", "approve_plans", "manage_users"],
-          dataAccessScope: { provinces: [1], districts: [], facilities: [] }, // Locked to Province ID 1 (Highlands Province)
-          facilityId: null,
-          districtId: null,
-          provinceId: 1,
-          isActive: true,
-          tenantId,
-        },
-        {
-          id: "seed-user-district-mgr",
-          email: "district.mgr@vaxplan.org",
-          firstName: "District",
-          lastName: "Manager",
-          role: "district_manager",
-          roles: ["district_manager"],
-          permissions: ["view_clients", "manage_session_plans", "approve_plans"],
-          dataAccessScope: { provinces: [], districts: [1], facilities: [] }, // Locked to District ID 1 (District A)
-          facilityId: null,
-          districtId: 1,
-          provinceId: 1,
-          isActive: true,
-          tenantId,
-        },
-        {
-          id: "seed-user-facility-clerk",
-          email: "facility.clerk@vaxplan.org",
-          firstName: "Facility",
-          lastName: "Clerk",
-          role: "facility_clerk",
-          roles: ["facility_clerk", "gis_specialist"], // Dual-role
-          permissions: ["log_immunization"], // User permission override
-          dataAccessScope: { provinces: [], districts: [], facilities: [1] }, // Locked to Facility ID 1 (Facility A)
-          facilityId: 1,
-          districtId: 1,
-          provinceId: 1,
-          isActive: true,
-          tenantId,
-        },
-      ];
-
-      console.log("Seeding granular test accounts...");
-      for (const userConfig of seededUsersList) {
-        const existing = await storage.getUserByEmail(userConfig.email);
-        if (!existing) {
-          await db.insert(users).values(userConfig as any);
-          console.log(`Successfully pre-seeded test account: ${userConfig.email}`);
-        } else {
-          // Overwrite/sync to ensure exact state for demo credentials
-          await db.update(users)
-            .set({
-              role: userConfig.role as any,
-              roles: userConfig.roles,
-              permissions: userConfig.permissions,
-              dataAccessScope: userConfig.dataAccessScope,
-              facilityId: userConfig.facilityId,
-              districtId: userConfig.districtId,
-              provinceId: userConfig.provinceId,
-            })
-            .where(eq(users.id, existing.id));
-        }
-      }
-    };
-
-    // Auto-trigger seeding on bootstrap
-    storage.getTenantByCode("PNG").then((tenant) => {
-      if (tenant) {
-        seedGranularUsers(tenant.id).catch((err) => {
-          console.error("Failed to seed granular test accounts:", err);
-        });
-      } else {
-        storage.listActiveTenants().then((activeTenants) => {
-          if (activeTenants.length > 0) {
-            seedGranularUsers(activeTenants[0].id).catch((err) => {
-              console.error("Failed to seed granular test accounts:", err);
-            });
-          }
-        });
-      }
-    });
-    
     app.get("/api/login", async (req, res) => {
       // Get Papua New Guinea as the default active tenant
       let tenant = await storage.getTenantByCode("PNG");
