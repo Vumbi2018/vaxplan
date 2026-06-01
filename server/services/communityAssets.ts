@@ -1,15 +1,28 @@
 // Community-asset discovery for the Geospatial Intelligence Layer.
 //
 // Queries the OpenStreetMap Overpass API for community assets (schools,
-// churches/places of worship, markets, water points, transport nodes) within a
-// radius of a point. Used to enrich population clusters with what services
-// already exist nearby.
+// churches/places of worship, markets, water points, transport nodes,
+// pharmacies/drug stores, universities, government offices, transport &
+// logistics features such as airstrips/ferries/bridges/river crossings, and
+// vulnerable-population sites such as refugee/IDP camps and mining areas)
+// within a radius of a point. Used to enrich population clusters with what
+// services already exist nearby.
 //
 // Best-effort, mirroring server/services/geo.ts: results are cached, identical
 // concurrent lookups are coalesced, outbound calls are rate-limited (Overpass
 // is strict), and ANY failure resolves to an empty list rather than throwing.
 
-export type AssetType = "school" | "church" | "market" | "water_point" | "transport";
+export type AssetType =
+  | "school"
+  | "church"
+  | "market"
+  | "water_point"
+  | "transport"
+  | "pharmacy"
+  | "university"
+  | "government"
+  | "logistics"
+  | "vulnerable_site";
 
 export interface CommunityAsset {
   type: AssetType;
@@ -74,6 +87,29 @@ function classify(tags: Record<string, string> | undefined): AssetType | null {
   ) {
     return "transport";
   }
+  if (tags.amenity === "pharmacy" || tags.shop === "chemist") return "pharmacy";
+  if (tags.amenity === "university") return "university";
+  if (
+    tags.office === "government" ||
+    tags.amenity === "townhall" ||
+    tags.amenity === "courthouse" ||
+    tags.amenity === "police"
+  ) {
+    return "government";
+  }
+  if (
+    tags.aeroway === "aerodrome" ||
+    tags.aeroway === "airstrip" ||
+    tags.amenity === "ferry_terminal" ||
+    tags.amenity === "taxi" ||
+    tags.ford === "yes" ||
+    tags.man_made === "bridge"
+  ) {
+    return "logistics";
+  }
+  if (tags.amenity === "refugee_site" || tags.landuse === "quarry") {
+    return "vulnerable_site";
+  }
   return null;
 }
 
@@ -89,9 +125,29 @@ function labelFor(type: AssetType): string {
       return "Water point";
     case "transport":
       return "Transport node";
+    case "pharmacy":
+      return "Pharmacy / drug store";
+    case "university":
+      return "University";
+    case "government":
+      return "Government office";
+    case "logistics":
+      return "Transport & logistics";
+    case "vulnerable_site":
+      return "Vulnerable-population site";
   }
 }
 
+// Single additive Overpass query. The original five category selectors are
+// left exactly as they were (node-only). New categories are appended; some new
+// features (universities, government offices, aerodromes, bridges, quarries,
+// refugee sites) are areas/ways, so the union is emitted with `out center`
+// instead of `out body` — for the original node selectors this is identical
+// output (nodes always carry lat/lon), so no previously-returned asset is
+// dropped; the change is purely additive. The element cap is raised to fit the
+// extra categories. A two-query split (legacy + new) was rejected because
+// Overpass enforces a shared per-process throttle (OVERPASS_MIN_INTERVAL_MS),
+// which would make the second call return [] under normal usage.
 function buildQuery(lat: number, lng: number, radiusM: number): string {
   const a = `around:${radiusM},${lat},${lng}`;
   return (
@@ -109,7 +165,27 @@ function buildQuery(lat: number, lng: number, radiusM: number): string {
     `node["highway"="bus_stop"](${a});` +
     `node["amenity"="bus_station"](${a});` +
     `node["public_transport"="station"](${a});` +
-    `);out body 80;`
+    // Pharmacies / drug stores
+    `nwr["amenity"="pharmacy"](${a});` +
+    `nwr["shop"="chemist"](${a});` +
+    // Universities / higher education
+    `nwr["amenity"="university"](${a});` +
+    // Government / administrative offices
+    `nwr["office"="government"](${a});` +
+    `nwr["amenity"="townhall"](${a});` +
+    `nwr["amenity"="courthouse"](${a});` +
+    `nwr["amenity"="police"](${a});` +
+    // Transport & logistics: airstrips, ferries, river crossings, bridges, taxi ranks
+    `nwr["aeroway"="aerodrome"](${a});` +
+    `nwr["aeroway"="airstrip"](${a});` +
+    `nwr["amenity"="ferry_terminal"](${a});` +
+    `node["amenity"="taxi"](${a});` +
+    `node["ford"="yes"](${a});` +
+    `nwr["man_made"="bridge"](${a});` +
+    // Vulnerable-population sites: refugee/IDP camps, mining/quarry areas
+    `nwr["amenity"="refugee_site"](${a});` +
+    `nwr["landuse"="quarry"](${a});` +
+    `);out center 150;`
   );
 }
 
