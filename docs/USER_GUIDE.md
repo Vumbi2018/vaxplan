@@ -663,7 +663,11 @@ panel, top-right of the map):
   trustworthy picture than plain circles. If routing is briefly
   unavailable, the layer falls back to simple dashed rings so you always
   see something — see at a glance which clusters fall outside a
-  reasonable walking, driving, or cycling distance.
+  reasonable walking, driving, or cycling distance. On a busy map the
+  zones can overlap a lot, so a second toggle lets you show only
+  **Facilities**, only **Outreach** sites, or **Both** — focus on one
+  access question at a time. (Both the road-network zones and the
+  fallback rings respect the choice.)
 - **Community assets** — plots the schools, water points, and other
   assets found within 5 km of the current map centre. Pan or click
   **Locate** on a cluster, then turn this layer on to scan what's

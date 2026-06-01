@@ -278,6 +278,11 @@ export default function SettlementIntelligence() {
   const [travelProfile, setTravelProfile] = useState<
     "foot-walking" | "driving-car" | "cycling-regular"
   >("foot-walking");
+  // Travel-Time Zones can cover fixed facilities, active outreach sites, or
+  // both. This is a client-side filter over zones already tagged with `kind`.
+  const [travelZoneKind, setTravelZoneKind] = useState<
+    "facility" | "outreach" | "both"
+  >("both");
 
   // Geospatial insights dialog (real travel time + nearby community assets)
   const [insightsOpen, setInsightsOpen] = useState(false);
@@ -1073,7 +1078,13 @@ export default function SettlementIntelligence() {
             {/* Travel-time zones: true road/path-network walking-time isochrones
                 when the routing provider is available, otherwise plain rings. */}
             {showTravelZones && useIsochrones &&
-              isochroneFeatures.flatMap((feature: any, idx: number) => {
+              isochroneFeatures
+                .filter((feature: any) => {
+                  if (travelZoneKind === "both") return true;
+                  const isOutreach = feature?.properties?.locationKind === "outreach";
+                  return travelZoneKind === "outreach" ? isOutreach : !isOutreach;
+                })
+                .flatMap((feature: any, idx: number) => {
                 const label = feature?.properties?.label;
                 const color = feature?.properties?.color || "#16a34a";
                 const facilityName = feature?.properties?.facilityName;
@@ -1104,7 +1115,13 @@ export default function SettlementIntelligence() {
 
             {/* Fallback: travel-time rings (~5 km/h walk / ~30 km/h drive) when
                 isochrones unavailable — drawn around facilities AND outreach sites. */}
-            {showTravelZones && !useIsochrones && fallbackRingSites.map((site, sIdx) => (
+            {showTravelZones && !useIsochrones && fallbackRingSites
+              .filter((site) => {
+                if (travelZoneKind === "both") return true;
+                const isOutreach = site.kind === "outreach";
+                return travelZoneKind === "outreach" ? isOutreach : !isOutreach;
+              })
+              .map((site, sIdx) => (
               TRAVEL_RINGS.map((ring) => (
                 <Circle
                   key={`zone-${site.kind}-${sIdx}-${ring.label}`}
@@ -1278,6 +1295,49 @@ export default function SettlementIntelligence() {
                   data-testid="button-travel-cycling"
                 >
                   Cycling
+                </button>
+              </div>
+            )}
+
+            {/* Travel-Time Zones scope toggle: facilities, outreach sites, or
+                both. Filters zones tagged with locationKind / site.kind. */}
+            {showTravelZones && (
+              <div className="flex items-center gap-1 pl-3.5">
+                <button
+                  type="button"
+                  onClick={() => setTravelZoneKind("facility")}
+                  className={`flex-1 text-[10px] font-medium rounded-md px-2 py-1 border transition-colors ${
+                    travelZoneKind === "facility"
+                      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                      : "bg-white text-slate-500 border-slate-200 hover:bg-slate-50"
+                  }`}
+                  data-testid="button-zonekind-facility"
+                >
+                  Facilities
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTravelZoneKind("outreach")}
+                  className={`flex-1 text-[10px] font-medium rounded-md px-2 py-1 border transition-colors ${
+                    travelZoneKind === "outreach"
+                      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                      : "bg-white text-slate-500 border-slate-200 hover:bg-slate-50"
+                  }`}
+                  data-testid="button-zonekind-outreach"
+                >
+                  Outreach
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTravelZoneKind("both")}
+                  className={`flex-1 text-[10px] font-medium rounded-md px-2 py-1 border transition-colors ${
+                    travelZoneKind === "both"
+                      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                      : "bg-white text-slate-500 border-slate-200 hover:bg-slate-50"
+                  }`}
+                  data-testid="button-zonekind-both"
+                >
+                  Both
                 </button>
               </div>
             )}
