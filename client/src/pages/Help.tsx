@@ -66,6 +66,11 @@ const defaultFaqs = [
       "The system combines multiple population data sources (census, health registry, WorldPop estimates, and local surveys) using a weighted algorithm. Each source is given a confidence score, and the system calculates a best estimate based on data recency and reliability.",
   },
   {
+    question: "How do I read the population heatmap — does it show real people?",
+    answer:
+      "Yes. Turn on the population layer and the coloured cells show the estimated number of people living in each small grid cell (about 100 m × 100 m, roughly one hectare) — the legend reads in people, not an abstract density figure. When you click anywhere on the map, the popup gives you a real headcount: the estimated number of people living within 1 km of that point, worked out by adding up the people in every grid cell nearby. You don't have to convert density to people yourself — the app does the maths so you can plan an outreach session straight from the number.",
+  },
+  {
     question: "What are the vaccine wastage rates used in calculations?",
     answer:
       "Each country tenant configures its own vaccine wastage rates. Defaults follow common national immunization program guidelines (e.g. BCG ~40%, MR ~25%, OPV ~25%, TT ~25%, Penta/PCV ~11%, IPV/Rota ~5%) and can be reviewed in the Vaccine Calculator.",

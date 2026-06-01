@@ -471,36 +471,39 @@ function MapLegend({
           {showPopulationLegend && (
             <div className="border-t border-border/30 pt-2.5 space-y-2">
               <Label className="text-[10px] font-bold text-primary uppercase tracking-wider block">
-                Population Density
+                People per grid cell
               </Label>
+              <p className="text-[8px] text-muted-foreground leading-snug -mt-1">
+                Estimated people living in each ~100 m × 100 m cell (1 hectare). Click any cell for the headcount nearby.
+              </p>
               <div className="space-y-1 pl-0.5">
                 <div className="flex items-center gap-2">
                   <div className="w-2.5 h-2.5 rounded shadow-xs" style={{ backgroundColor: "rgba(127, 29, 29, 0.85)" }} />
-                  <span className="text-[9px] font-medium text-foreground">&gt; 1,000 / km² (Extreme)</span>
+                  <span className="text-[9px] font-medium text-foreground">&gt; 1,000 people (Extreme)</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="w-2.5 h-2.5 rounded shadow-xs" style={{ backgroundColor: "rgba(185, 28, 28, 0.8)" }} />
-                  <span className="text-[9px] font-medium text-foreground">501 - 1,000 / km² (High)</span>
+                  <span className="text-[9px] font-medium text-foreground">501 - 1,000 people (High)</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="w-2.5 h-2.5 rounded shadow-xs" style={{ backgroundColor: "rgba(220, 38, 38, 0.75)" }} />
-                  <span className="text-[9px] font-medium text-foreground">251 - 500 / km² (Med-High)</span>
+                  <span className="text-[9px] font-medium text-foreground">251 - 500 people (Med-High)</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="w-2.5 h-2.5 rounded shadow-xs" style={{ backgroundColor: "rgba(234, 88, 12, 0.7)" }} />
-                  <span className="text-[9px] font-medium text-foreground">101 - 250 / km² (Medium)</span>
+                  <span className="text-[9px] font-medium text-foreground">101 - 250 people (Medium)</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="w-2.5 h-2.5 rounded shadow-xs" style={{ backgroundColor: "rgba(249, 115, 22, 0.65)" }} />
-                  <span className="text-[9px] font-medium text-foreground">51 - 100 / km² (Low-Med)</span>
+                  <span className="text-[9px] font-medium text-foreground">51 - 100 people (Low-Med)</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="w-2.5 h-2.5 rounded shadow-xs" style={{ backgroundColor: "rgba(234, 179, 8, 0.6)" }} />
-                  <span className="text-[9px] font-medium text-foreground">11 - 50 / km² (Low)</span>
+                  <span className="text-[9px] font-medium text-foreground">11 - 50 people (Low)</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="w-2.5 h-2.5 rounded shadow-xs" style={{ backgroundColor: "rgba(34, 197, 94, 0.5)" }} />
-                  <span className="text-[9px] font-medium text-foreground">1 - 10 / km² (Scattered)</span>
+                  <span className="text-[9px] font-medium text-foreground">1 - 10 people (Scattered)</span>
                 </div>
               </div>
             </div>
@@ -1690,6 +1693,8 @@ export function MapView({
     lat: number;
     lng: number;
     density: number;
+    areaPopulation: number;
+    areaRadiusKm: number;
     nearestFacility: { id: number; name: string; distance: number } | null;
     nearestPlan: { id: number; name: string; distance: number } | null;
     nearestVillage?: { id: number; name: string; population: number; distance: number } | null;
@@ -3757,6 +3762,37 @@ export function MapView({
     return Math.round(totalPopulation);
   };
 
+  // Converts the gridded population raster (people per ~100m cell) into a REAL
+  // headcount around a clicked point by summing every actual cell value within
+  // the given radius. No uniform-density assumption: it adds up the real people
+  // the WorldPop model placed in each cell, so a health worker sees "people"
+  // instead of an abstract density figure they cannot act on.
+  const calculateRadiusPopulation = (lat: number, lng: number, radiusKm: number) => {
+    const sparse = getRasterSparse();
+    if (!sparse) return 0;
+
+    const degLat = radiusKm / 111;
+    const degLng = radiusKm / (111 * Math.cos((lat * Math.PI) / 180) || 1);
+    const bbox = {
+      minX: lng - degLng,
+      minY: lat - degLat,
+      maxX: lng + degLng,
+      maxY: lat + degLat,
+    };
+    const candidates = sparse.tree.search(bbox);
+    const cells = sparse.cells;
+    let total = 0;
+    for (let i = 0; i < candidates.length; i++) {
+      const idx = candidates[i].idx * 3;
+      const cellLng = cells[idx];
+      const cellLat = cells[idx + 1];
+      const rawVal = cells[idx + 2];
+      const d = distance([lng, lat], [cellLng, cellLat], { units: "kilometers" });
+      if (d <= radiusKm) total += rawVal;
+    }
+    return Math.round(total);
+  };
+
   // Memoize the three live-preview pop estimates so the dialog/JSX doesn't
   // re-run the bbox + inside-test sweep on every unrelated re-render. Recompute
   // only when the drawn polygon/route, draw type, village set, or loaded
@@ -3859,10 +3895,16 @@ export function MapView({
         }
       });
 
+      // Convert the gridded density into a real headcount within a 1km radius
+      const areaRadiusKm = 1;
+      const areaPopulation = calculateRadiusPopulation(lat, lng, areaRadiusKm);
+
       setMapClickDetails({
         lat: parseFloat(lat.toFixed(6)),
         lng: parseFloat(lng.toFixed(6)),
         density,
+        areaPopulation,
+        areaRadiusKm,
         nearestFacility: nearestFacility ? {
           id: (nearestFacility as any).id,
           name: (nearestFacility as any).name,
@@ -6650,10 +6692,10 @@ export function MapView({
           <DialogHeader>
             <DialogTitle className="text-lg font-bold flex items-center gap-2 text-primary font-black">
               <MapPin className="h-5 w-5 text-amber-500 animate-bounce" />
-              Unserved Density Cluster Identified
+              Unserved Population Cluster Identified
             </DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground pt-1 leading-relaxed">
-              Our gridded spatial population raster indicates an unserved or remote settlement at these exact coordinates.
+              Our gridded spatial population raster estimates the real number of people living near these coordinates, so you can plan an outreach session without doing the math.
             </DialogDescription>
           </DialogHeader>
 
@@ -6666,11 +6708,12 @@ export function MapView({
                   <span className="font-semibold text-foreground font-mono">{mapClickDetails.lat}, {mapClickDetails.lng}</span>
                 </div>
                 <div>
-                  <span className="text-muted-foreground block text-[10px] uppercase font-bold tracking-wider">Population Density</span>
+                  <span className="text-muted-foreground block text-[10px] uppercase font-bold tracking-wider">Estimated Population</span>
                   <span className="font-semibold text-foreground flex items-center gap-1">
                     <span className="inline-block w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
-                    {mapClickDetails.density} persons / 100m²
+                    ≈ {(mapClickDetails.areaPopulation ?? 0).toLocaleString()} people
                   </span>
+                  <span className="text-[9px] text-muted-foreground block mt-0.5">within {mapClickDetails.areaRadiusKm ?? 1} km of this point</span>
                 </div>
               </div>
 
@@ -6680,7 +6723,8 @@ export function MapView({
                 <div className="grid grid-cols-2 gap-3 text-[10px]">
                   <div className="p-2.5 bg-background border border-border/80 rounded-xl flex flex-col justify-between">
                     <span className="text-muted-foreground block text-[9px] uppercase font-bold tracking-wider mb-1">WorldPop Raster</span>
-                    <strong className="text-xs text-foreground font-mono">{mapClickDetails.density} persons / 100m²</strong>
+                    <strong className="text-xs text-foreground font-mono">≈ {(mapClickDetails.areaPopulation ?? 0).toLocaleString()} people</strong>
+                    <span className="text-[8px] text-muted-foreground block mt-0.5">within {mapClickDetails.areaRadiusKm ?? 1} km</span>
                   </div>
                   <div className="p-2.5 bg-background border border-border/80 rounded-xl flex flex-col justify-between">
                     <span className="text-muted-foreground block text-[9px] uppercase font-bold tracking-wider mb-1">Local Registry Census</span>

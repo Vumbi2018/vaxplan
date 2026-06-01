@@ -614,6 +614,15 @@ intelligence** layer. It overlays:
 - Building footprints (GRID3) and detected zero-dose clusters.
 - 5 km service-coverage gaps and suggested outreach sites.
 
+The population heatmap is read in **real people**, not an abstract
+density figure. Each coloured cell shows the estimated number of people
+living in that small grid cell (about 100 m × 100 m, roughly one
+hectare), and the legend is labelled in people. When you **click any
+point on the map**, the popup gives you a real headcount — the estimated
+number of people living within 1 km of that point, worked out by adding
+up the people in every nearby grid cell — so you can plan an outreach
+session straight from the number without converting density yourself.
+
 The **Zero-dose map** uses this data to highlight settlements with no
 recorded vaccinations. Click a hotspot to:
 

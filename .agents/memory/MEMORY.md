@@ -26,3 +26,4 @@
 - [GeoTIFF raster edge-proxy size limit](raster-edge-proxy-size-limit.md) — big WorldPop 100m rasters (Zambia ~63MB) 500 at the edge proxy; serve gdalwarp-downsampled ~1km by default, lock ?file= to basename+tiff+readdir.
 - [Travel-time isochrones](travel-time-isochrones.md) — Travel-Time Zones layer uses ORS isochrones (needs OPENROUTESERVICE_API_KEY), profile-selectable walking (1/2/3h) or driving (30/60/90min); keyless OSRM has no isochrone service. Cache keyed by tenant+profile. Always fall back to circles on no-key/failure.
 - [Default queryFn joins queryKey into URL](default-queryfn-url-join.md) — useQuery with extra cache-key segments and no queryFn fetches `/endpoint/<seg>` → 404; add explicit queryFn.
+- [WorldPop raster units](worldpop-raster-units.md) — raster cell value = people per ~100m cell (headcount), NOT a /km² density; sum cells for real population, label legend/popup in people, never "/km²".
