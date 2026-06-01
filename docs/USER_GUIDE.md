@@ -649,14 +649,17 @@ zero-dose cluster card or settlement record, click the **Insights**
 **Two extra map layers** (toggle them in the **Map Layers Control**
 panel, top-right of the map):
 
-- **Travel-time zones** — walking-time zones (about 1, 2, and 3 hours
-  on foot) around every health facility. When road routing is available
+- **Travel-time zones** — travel-time zones around every health
+  facility, with a **Walking / Driving** toggle in the Map Layers
+  Control panel. Walking shows about 1, 2, and 3 hours on foot; Driving
+  shows about 30, 60, and 90 minutes by vehicle (useful for planning
+  vehicle-based outreach and supply runs). When road routing is available
   these follow the real road and path network (so a settlement across a
   river or behind a ridge correctly shows as far), giving a far more
   trustworthy picture than plain circles. If routing is briefly
   unavailable, the layer falls back to simple dashed rings so you always
   see something — see at a glance which clusters fall outside a
-  reasonable walking distance.
+  reasonable walking or driving distance.
 - **Community assets** — plots the schools, water points, and other
   assets found within 5 km of the current map centre. Pan or click
   **Locate** on a cluster, then turn this layer on to scan what's

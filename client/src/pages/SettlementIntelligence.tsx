@@ -273,6 +273,9 @@ export default function SettlementIntelligence() {
   const [showOutreachRecs, setShowOutreachRecs] = useState(false);
   const [showCommunityAssets, setShowCommunityAssets] = useState(false);
   const [showTravelZones, setShowTravelZones] = useState(false);
+  // Travel-Time Zones profile: walking (default) or driving for vehicle-based
+  // outreach and supply runs.
+  const [travelProfile, setTravelProfile] = useState<"foot-walking" | "driving-car">("foot-walking");
 
   // Geospatial insights dialog (real travel time + nearby community assets)
   const [insightsOpen, setInsightsOpen] = useState(false);
@@ -349,8 +352,8 @@ export default function SettlementIntelligence() {
   // Road/path-network walking-time zones (isochrones) for the travel-time layer.
   // Falls back to plain circles when the routing provider is unavailable.
   const { data: isochrones } = useQuery<any>({
-    queryKey: ["/api/geo/isochrones", tenantInfo?.id],
-    queryFn: () => apiRequest("GET", "/api/geo/isochrones"),
+    queryKey: ["/api/geo/isochrones", tenantInfo?.id, travelProfile],
+    queryFn: () => apiRequest("GET", `/api/geo/isochrones?profile=${travelProfile}`),
     enabled: showTravelZones && !!tenantInfo?.id,
     staleTime: 24 * 60 * 60 * 1000
   });
@@ -553,13 +556,23 @@ export default function SettlementIntelligence() {
     </div>
   );
 
-  // Walking-time rings (km radius at ~5 km/h) for the travel-time-zone layer.
-  // Used as a graceful fallback when road-network isochrones are unavailable.
-  const TRAVEL_RINGS = [
-    { hours: 1, radiusM: 5000, color: "#16a34a" },
-    { hours: 2, radiusM: 10000, color: "#d97706" },
-    { hours: 3, radiusM: 15000, color: "#dc2626" },
-  ];
+  // Straight-line travel-time rings for the travel-time-zone layer, used as a
+  // graceful fallback when road-network isochrones are unavailable. Walking
+  // assumes ~5 km/h (1/2/3 h); driving assumes ~30 km/h on rural roads
+  // (30/60/90 min → 15/30/45 km).
+  const isDrivingProfile = travelProfile === "driving-car";
+  const TRAVEL_RINGS = isDrivingProfile
+    ? [
+        { label: "30 min", radiusM: 15000, color: "#16a34a" },
+        { label: "60 min", radiusM: 30000, color: "#d97706" },
+        { label: "90 min", radiusM: 45000, color: "#dc2626" },
+      ]
+    : [
+        { label: "1 h", radiusM: 5000, color: "#16a34a" },
+        { label: "2 h", radiusM: 10000, color: "#d97706" },
+        { label: "3 h", radiusM: 15000, color: "#dc2626" },
+      ];
+  const travelModeLabel = isDrivingProfile ? "drive" : "walk";
 
   // True road/path-network walking-time zones from the routing provider. When
   // available we render these isochrone polygons instead of the circles above.
@@ -1032,7 +1045,7 @@ export default function SettlementIntelligence() {
                 when the routing provider is available, otherwise plain rings. */}
             {showTravelZones && useIsochrones &&
               isochroneFeatures.flatMap((feature: any, idx: number) => {
-                const hours = feature?.properties?.hours;
+                const label = feature?.properties?.label;
                 const color = feature?.properties?.color || "#16a34a";
                 const facilityName = feature?.properties?.facilityName;
                 return geoJsonToLatLngs(feature?.geometry).map((positions, pIdx) => (
@@ -1049,9 +1062,9 @@ export default function SettlementIntelligence() {
                   >
                     <Popup>
                       <div className="text-xs p-1">
-                        <span className="font-bold" style={{ color }}>~{hours} h walk</span>
+                        <span className="font-bold" style={{ color }}>~{label} {travelModeLabel}</span>
                         <div className="text-[10px] text-slate-500">
-                          {facilityName ? `${facilityName} · ` : ""}road-network walking zone
+                          {facilityName ? `${facilityName} · ` : ""}road-network {travelModeLabel === "drive" ? "driving" : "walking"} zone
                         </div>
                       </div>
                     </Popup>
@@ -1063,7 +1076,7 @@ export default function SettlementIntelligence() {
             {showTravelZones && !useIsochrones && facilities.map((f) => (
               f.latitude && f.longitude && TRAVEL_RINGS.map((ring) => (
                 <Circle
-                  key={`zone-${f.id}-${ring.hours}`}
+                  key={`zone-${f.id}-${ring.label}`}
                   center={[parseFloat(f.latitude), parseFloat(f.longitude)]}
                   radius={ring.radiusM}
                   pathOptions={{
@@ -1076,8 +1089,8 @@ export default function SettlementIntelligence() {
                 >
                   <Popup>
                     <div className="text-xs p-1">
-                      <span className="font-bold" style={{ color: ring.color }}>~{ring.hours} h walk</span>
-                      <div className="text-[10px] text-slate-500">{f.name} · {ring.radiusM / 1000} km on foot (approx.)</div>
+                      <span className="font-bold" style={{ color: ring.color }}>~{ring.label} {travelModeLabel}</span>
+                      <div className="text-[10px] text-slate-500">{f.name} · {ring.radiusM / 1000} km by {isDrivingProfile ? "road" : "foot"} (approx.)</div>
                     </div>
                   </Popup>
                 </Circle>
@@ -1192,6 +1205,37 @@ export default function SettlementIntelligence() {
                 onCheckedChange={setShowTravelZones}
               />
             </div>
+
+            {/* Travel-Time Zones profile toggle: walking vs driving. Shown only
+                when the layer is active. */}
+            {showTravelZones && (
+              <div className="flex items-center gap-1 pl-3.5">
+                <button
+                  type="button"
+                  onClick={() => setTravelProfile("foot-walking")}
+                  className={`flex-1 text-[10px] font-medium rounded-md px-2 py-1 border transition-colors ${
+                    travelProfile === "foot-walking"
+                      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                      : "bg-white text-slate-500 border-slate-200 hover:bg-slate-50"
+                  }`}
+                  data-testid="button-travel-walking"
+                >
+                  Walking
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTravelProfile("driving-car")}
+                  className={`flex-1 text-[10px] font-medium rounded-md px-2 py-1 border transition-colors ${
+                    travelProfile === "driving-car"
+                      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                      : "bg-white text-slate-500 border-slate-200 hover:bg-slate-50"
+                  }`}
+                  data-testid="button-travel-driving"
+                >
+                  Driving
+                </button>
+              </div>
+            )}
 
             {/* Community assets switch */}
             <div className="flex items-center justify-between">

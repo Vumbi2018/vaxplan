@@ -65,12 +65,37 @@ export interface TravelTimeResult {
 const WALK_KMH = 5;
 const HEURISTIC_DRIVE_KMH = 4; // matches existing 15 min/km heuristic (60/15)
 
+// Travel-time zones can be computed for two routing profiles:
+//   - foot-walking: 1/2/3 hours on foot (default, for community access)
+//   - driving-car:  30/60/90 minutes by vehicle (for vehicle-based outreach
+//     and supply runs)
+// Each band carries a human label so the client can render it without knowing
+// the profile's time unit.
+export type IsochroneProfile = "foot-walking" | "driving-car";
+
+export interface IsochroneBand {
+  seconds: number;
+  color: string;
+  label: string; // e.g. "1 h" (walking) or "30 min" (driving)
+}
+
 // Walking-time bands rendered as travel-time zones (1/2/3 hours on foot).
-export const WALK_ISOCHRONE_BANDS = [
-  { hours: 1, seconds: 3600, color: "#16a34a" },
-  { hours: 2, seconds: 7200, color: "#d97706" },
-  { hours: 3, seconds: 10800, color: "#dc2626" },
+export const WALK_ISOCHRONE_BANDS: readonly IsochroneBand[] = [
+  { seconds: 3600, color: "#16a34a", label: "1 h" },
+  { seconds: 7200, color: "#d97706", label: "2 h" },
+  { seconds: 10800, color: "#dc2626", label: "3 h" },
 ] as const;
+
+// Driving-time bands rendered as travel-time zones (30/60/90 min by vehicle).
+export const DRIVE_ISOCHRONE_BANDS: readonly IsochroneBand[] = [
+  { seconds: 1800, color: "#16a34a", label: "30 min" },
+  { seconds: 3600, color: "#d97706", label: "60 min" },
+  { seconds: 5400, color: "#dc2626", label: "90 min" },
+] as const;
+
+function bandsForProfile(profile: IsochroneProfile): readonly IsochroneBand[] {
+  return profile === "driving-car" ? DRIVE_ISOCHRONE_BANDS : WALK_ISOCHRONE_BANDS;
+}
 
 const TTL_MS = 6 * 60 * 60 * 1000; // routes are stable; cache 6h
 const cache = new Map<string, { value: TravelTimeResult; expires: number }>();
@@ -402,17 +427,19 @@ export async function getTravelTimeToNearestFacility(
 export interface IsochroneResult {
   available: boolean;
   reason?: string; // why isochrones are unavailable (for logs / client hints)
-  bands: Array<{ hours: number; seconds: number; color: string }>;
-  // GeoJSON FeatureCollection; each Feature is a walking-time polygon tagged
-  // with { hours, seconds, color, facilityName } in its properties.
+  profile: IsochroneProfile; // which routing profile these zones describe
+  bands: IsochroneBand[];
+  // GeoJSON FeatureCollection; each Feature is a travel-time polygon tagged
+  // with { label, seconds, color, facilityName } in its properties.
   featureCollection: {
     type: "FeatureCollection";
     features: any[];
   };
 }
 
-const ORS_ISOCHRONE_URL =
-  "https://api.openrouteservice.org/v2/isochrones/foot-walking";
+// ORS isochrone endpoint is per-profile; the profile slug is appended below.
+const ORS_ISOCHRONE_BASE_URL =
+  "https://api.openrouteservice.org/v2/isochrones";
 const ORS_MAX_LOCATIONS_PER_REQUEST = 5; // ORS free tier limit
 const ORS_MAX_FACILITIES = 25; // bound outbound calls & rate-limit usage
 const ISOCHRONE_TTL_MS = 24 * 60 * 60 * 1000; // facility positions are stable
@@ -461,12 +488,14 @@ async function getActiveFacilitiesWithCoords(
 // ORS call. Returns the tagged features, or null on any failure.
 async function fetchOrsIsochroneBatch(
   apiKey: string,
+  profile: IsochroneProfile,
+  bands: readonly IsochroneBand[],
   batch: FacilityCoords[],
 ): Promise<any[] | null> {
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 8000);
-    const res = await fetch(ORS_ISOCHRONE_URL, {
+    const res = await fetch(`${ORS_ISOCHRONE_BASE_URL}/${profile}`, {
       method: "POST",
       signal: controller.signal,
       headers: {
@@ -476,7 +505,7 @@ async function fetchOrsIsochroneBatch(
       },
       body: JSON.stringify({
         locations: batch.map((f) => [f.longitude, f.latitude]),
-        range: WALK_ISOCHRONE_BANDS.map((b) => b.seconds),
+        range: bands.map((b) => b.seconds),
         range_type: "time",
         location_type: "destination",
         smoothing: 25,
@@ -486,7 +515,7 @@ async function fetchOrsIsochroneBatch(
     clearTimeout(timer);
     if (!res.ok) {
       console.error(
-        `[routing] ORS isochrones HTTP ${res.status} for batch of ${batch.length}`,
+        `[routing] ORS ${profile} isochrones HTTP ${res.status} for batch of ${batch.length}`,
       );
       return null;
     }
@@ -495,18 +524,18 @@ async function fetchOrsIsochroneBatch(
 
     // ORS returns one feature per (location, range). group_index maps the
     // feature back to its position in the `locations` array; value is the range
-    // in seconds. Tag each feature with band colour + facility name.
+    // in seconds. Tag each feature with band colour + label + facility name.
     const tagged: any[] = [];
     for (const feature of data.features) {
       const props = feature?.properties || {};
       const seconds = Number(props.value);
-      const band = WALK_ISOCHRONE_BANDS.find((b) => b.seconds === seconds);
+      const band = bands.find((b) => b.seconds === seconds);
       if (!band) continue;
       const facility = batch[Number(props.group_index)];
       tagged.push({
         ...feature,
         properties: {
-          hours: band.hours,
+          label: band.label,
           seconds: band.seconds,
           color: band.color,
           facilityName: facility?.name ?? null,
@@ -521,18 +550,23 @@ async function fetchOrsIsochroneBatch(
 }
 
 /**
- * Compute walking-time isochrones (1/2/3 hours on foot) for the tenant's active
- * facilities. Always resolves (best-effort): returns { available: false } when
- * no ORS key is configured or every upstream call fails, so the client can fall
- * back to plain circles.
+ * Compute travel-time isochrones for the tenant's active facilities, for the
+ * requested routing profile:
+ *   - "foot-walking" → 1/2/3 hours on foot (default)
+ *   - "driving-car"  → 30/60/90 minutes by vehicle
+ * Always resolves (best-effort): returns { available: false } when no ORS key
+ * is configured or every upstream call fails, so the client can fall back to
+ * plain circles.
  */
-export async function getWalkingIsochrones(
+export async function getTravelIsochrones(
   tenantId: string,
+  profile: IsochroneProfile = "foot-walking",
 ): Promise<IsochroneResult> {
-  const bands = WALK_ISOCHRONE_BANDS.map((b) => ({ ...b }));
+  const bands = bandsForProfile(profile).map((b) => ({ ...b }));
   const unavailable = (reason: string): IsochroneResult => ({
     available: false,
     reason,
+    profile,
     bands,
     featureCollection: { type: "FeatureCollection", features: [] },
   });
@@ -540,9 +574,12 @@ export async function getWalkingIsochrones(
   const apiKey = process.env.OPENROUTESERVICE_API_KEY;
   if (!apiKey) return unavailable("no-api-key");
 
-  const cached = isochroneCache.get(tenantId);
+  // Cache + coalesce per tenant AND profile so walking and driving zones don't
+  // clobber one another.
+  const cacheKey = `${tenantId}:${profile}`;
+  const cached = isochroneCache.get(cacheKey);
   if (cached && cached.expires > Date.now()) return cached.value;
-  const pending = isochroneInFlight.get(tenantId);
+  const pending = isochroneInFlight.get(cacheKey);
   if (pending) return pending;
 
   const promise = (async (): Promise<IsochroneResult> => {
@@ -552,30 +589,38 @@ export async function getWalkingIsochrones(
     const features: any[] = [];
     for (let i = 0; i < facilities.length; i += ORS_MAX_LOCATIONS_PER_REQUEST) {
       const batch = facilities.slice(i, i + ORS_MAX_LOCATIONS_PER_REQUEST);
-      const tagged = await fetchOrsIsochroneBatch(apiKey, batch);
+      const tagged = await fetchOrsIsochroneBatch(apiKey, profile, bands, batch);
       if (tagged) features.push(...tagged);
     }
 
     // Total failure → let the client keep its circles.
     if (features.length === 0) return unavailable("provider-unavailable");
 
-    // Draw larger bands first so the 1h zone paints on top of the 3h zone.
+    // Draw larger bands first so the innermost zone paints on top.
     features.sort(
       (a, b) => (b.properties?.seconds ?? 0) - (a.properties?.seconds ?? 0),
     );
 
     const result: IsochroneResult = {
       available: true,
+      profile,
       bands,
       featureCollection: { type: "FeatureCollection", features },
     };
-    isochroneCache.set(tenantId, {
+    isochroneCache.set(cacheKey, {
       value: result,
       expires: Date.now() + ISOCHRONE_TTL_MS,
     });
     return result;
-  })().finally(() => isochroneInFlight.delete(tenantId));
+  })().finally(() => isochroneInFlight.delete(cacheKey));
 
-  isochroneInFlight.set(tenantId, promise);
+  isochroneInFlight.set(cacheKey, promise);
   return promise;
+}
+
+/** Backward-compatible alias: walking-time isochrones only. */
+export async function getWalkingIsochrones(
+  tenantId: string,
+): Promise<IsochroneResult> {
+  return getTravelIsochrones(tenantId, "foot-walking");
 }
