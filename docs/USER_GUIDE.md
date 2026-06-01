@@ -687,7 +687,18 @@ for facility staff who can author plans — **Plan session** (jump straight
 to Session Planning, pre-filled for that cluster). This is a planning view
 only: it never changes any data and only shows clusters for your country.
 
-**Two extra map layers** (toggle them in the **Map Layers Control**
+**Ranked clusters on the map.** Turn on the **Ranked Clusters** layer in
+the Map Layers Control panel to plot the same scored clusters from the
+left panel directly on the map. Each pin is colour-graded by suitability
+band — **green** for high, **amber** for medium, **grey** for low — so you
+can judge geography and clustering at a glance alongside the facility and
+zero-dose layers. Click a pin to see its score, population, likely
+zero-dose children, distance to the nearest facility and outreach gap,
+with the same **Locate**, **Insights** and (for facility staff)
+**Plan session** actions as the list. Like the list, it's a planning view
+only and shows clusters for your country.
+
+**More map layers** (toggle them in the **Map Layers Control**
 panel, top-right of the map):
 
 - **Travel-time zones** — travel-time zones around every health

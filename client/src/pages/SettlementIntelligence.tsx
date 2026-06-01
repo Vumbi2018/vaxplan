@@ -315,6 +315,7 @@ export default function SettlementIntelligence() {
   const [showCoverageGaps, setShowCoverageGaps] = useState(false);
   const [showFacilities, setShowFacilities] = useState(true);
   const [showOutreachRecs, setShowOutreachRecs] = useState(false);
+  const [showUnservedClusters, setShowUnservedClusters] = useState(false);
   const [showCommunityAssets, setShowCommunityAssets] = useState(false);
   const [showTravelZones, setShowTravelZones] = useState(false);
   // Travel-Time Zones profile: walking (default), driving for vehicle-based
@@ -654,6 +655,15 @@ export default function SettlementIntelligence() {
     if (tone === "high") return "bg-emerald-100 text-emerald-700 border-emerald-200";
     if (tone === "medium") return "bg-amber-100 text-amber-700 border-amber-200";
     return "bg-slate-100 text-slate-600 border-slate-200";
+  };
+
+  // Map-marker colours (outline + fill) for a suitability score by band, used
+  // for the colour-graded ranked-cluster pins on the map.
+  const suitabilityMarkerColors = (score: number) => {
+    const { tone } = suitabilityBand(score);
+    if (tone === "high") return { color: "#047857", fillColor: "#10b981" }; // emerald
+    if (tone === "medium") return { color: "#b45309", fillColor: "#f59e0b" }; // amber
+    return { color: "#475569", fillColor: "#94a3b8" }; // slate
   };
 
   // Render the per-factor breakdown of an Outreach Site Suitability Score as a
@@ -1395,6 +1405,109 @@ export default function SettlementIntelligence() {
               </CircleMarker>
             ))}
 
+            {/* Render Ranked Outreach Clusters, colour-graded by suitability band */}
+            {showUnservedClusters && unservedClusters.map((cl) => {
+              const lat = Number(cl.latitude);
+              const lng = Number(cl.longitude);
+              if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+              const band = suitabilityBand(cl.suitabilityScore);
+              const colors = suitabilityMarkerColors(cl.suitabilityScore);
+              const label = cl.nearestNamedSettlement
+                ? `Near ${cl.nearestNamedSettlement}`
+                : `Unmapped Cluster #${cl.id}`;
+              return (
+                <CircleMarker
+                  key={`unserved-cluster-${cl.id}`}
+                  center={[lat, lng]}
+                  radius={8}
+                  pathOptions={{
+                    color: colors.color,
+                    fillColor: colors.fillColor,
+                    fillOpacity: 0.85,
+                    weight: 2,
+                  }}
+                >
+                  <Popup>
+                    <div className="text-xs p-2 space-y-2 w-64">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-bold text-slate-800 flex items-center gap-1.5 min-w-0">
+                          <Target className="h-4 w-4 text-teal-600 shrink-0" />
+                          <span className="truncate">{label}</span>
+                        </span>
+                        <div
+                          className={`flex items-center justify-center h-9 w-9 rounded-xl border font-extrabold text-sm shrink-0 ${suitabilityBadgeClass(cl.suitabilityScore)}`}
+                        >
+                          {cl.suitabilityScore}
+                        </div>
+                      </div>
+                      <div className="text-[10px] uppercase font-bold text-slate-400">
+                        {band.label} suitability
+                      </div>
+                      <hr className="border-slate-100" />
+                      <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-[10px]">
+                        <span className="text-slate-500">Est. Population:</span>
+                        <span className="text-slate-800 font-bold">
+                          {cl.estimatedPopulation?.toLocaleString?.() ?? cl.estimatedPopulation}
+                        </span>
+                        <span className="text-slate-500">Likely zero-dose:</span>
+                        <span className="text-slate-800 font-bold">~{cl.estimatedZeroDoseChildren}</span>
+                        <span className="text-slate-500">Nearest facility:</span>
+                        <span className="text-slate-800 font-medium">
+                          {cl.distanceToFacilityKm != null
+                            ? `${cl.distanceToFacilityKm.toFixed(1)} km`
+                            : "Unknown"}
+                        </span>
+                        <span className="text-slate-500">Outreach gap:</span>
+                        <span className="text-slate-800 font-medium">
+                          {cl.outreachGapKm != null
+                            ? `${cl.outreachGapKm.toFixed(1)} km`
+                            : "None nearby"}
+                        </span>
+                      </div>
+                      <div className="flex gap-1.5 justify-end pt-0.5">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-[10px] h-7 text-slate-600 hover:text-slate-900 px-2 hover:bg-slate-100"
+                          onClick={() => focusOnCoordinates(lat, lng)}
+                          data-testid={`button-locate-cluster-pin-${cl.id}`}
+                        >
+                          Locate
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-[10px] h-7 text-teal-700 hover:text-teal-900 px-2 hover:bg-teal-50 flex items-center gap-1"
+                          onClick={() =>
+                            handleOpenInsights(lat, lng, label, {
+                              population: cl.estimatedPopulation,
+                              distanceToFacilityKm: cl.distanceToFacilityKm,
+                              outreachGapKm: cl.outreachGapKm,
+                            })
+                          }
+                          data-testid={`button-insights-cluster-pin-${cl.id}`}
+                        >
+                          <Compass className="h-3 w-3" />
+                          Insights
+                        </Button>
+                        {canPlan && (
+                          <Button
+                            size="sm"
+                            className="text-[10px] h-7 bg-teal-600 hover:bg-teal-700 text-white px-2 font-bold rounded-lg flex items-center gap-1"
+                            onClick={() => handlePlanSessionForCluster(cl)}
+                            data-testid={`button-plan-cluster-pin-${cl.id}`}
+                          >
+                            <Plus className="h-3 w-3" />
+                            Plan
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  </Popup>
+                </CircleMarker>
+              );
+            })}
+
             {/* Render Base Health Facilities as Indigo Circle Markers */}
             {showFacilities && facilities.map((f) => (
               f.latitude && f.longitude && (
@@ -1565,6 +1678,37 @@ export default function SettlementIntelligence() {
                 onCheckedChange={setShowOutreachRecs}
               />
             </div>
+
+            {/* Ranked Outreach Clusters switch */}
+            <div className="flex items-center justify-between">
+              <Label htmlFor="layer-clusters" className="text-[11px] text-slate-700 cursor-pointer flex items-center gap-1.5 font-medium">
+                <span className="flex items-center gap-0.5">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500"></span>
+                  <span className="h-2 w-2 rounded-full bg-amber-500"></span>
+                  <span className="h-2 w-2 rounded-full bg-slate-400"></span>
+                </span>
+                Ranked Clusters
+              </Label>
+              <Switch
+                id="layer-clusters"
+                checked={showUnservedClusters}
+                onCheckedChange={setShowUnservedClusters}
+                data-testid="switch-layer-clusters"
+              />
+            </div>
+
+            {showUnservedClusters && (
+              <div className="text-[9px] text-slate-400 leading-tight flex items-center gap-1 pt-0.5 pl-3.5">
+                {unservedClustersLoading ? (
+                  <><Loader2 className="h-3 w-3 animate-spin" /> Scoring clusters…</>
+                ) : (
+                  <span>
+                    {unservedClusters.length} ranked cluster{unservedClusters.length === 1 ? "" : "s"} —
+                    green = high, amber = medium, grey = low
+                  </span>
+                )}
+              </div>
+            )}
 
             {/* Service Coverage Gaps switch */}
             <div className="flex items-center justify-between">
