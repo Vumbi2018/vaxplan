@@ -650,12 +650,14 @@ zero-dose cluster card or settlement record, click the **Insights**
 panel, top-right of the map):
 
 - **Travel-time zones** — travel-time zones around every health
-  facility, with a **Walking / Driving / Cycling** toggle in the Map
-  Layers Control panel. Walking shows about 1, 2, and 3 hours on foot;
-  Driving shows about 30, 60, and 90 minutes by vehicle (useful for
-  planning vehicle-based outreach and supply runs); Cycling shows about
-  30, 60, and 90 minutes by bicycle or motorbike (useful for outreach
-  teams that travel by two-wheeler). When road routing is available
+  facility **and every active outreach site** (outreach posts are often
+  closer to a remote cluster than a fixed facility, so they give a fuller
+  picture of real-world access), with a **Walking / Driving / Cycling**
+  toggle in the Map Layers Control panel. Walking shows about 1, 2, and 3
+  hours on foot; Driving shows about 30, 60, and 90 minutes by vehicle
+  (useful for planning vehicle-based outreach and supply runs); Cycling
+  shows about 30, 60, and 90 minutes by bicycle or motorbike (useful for
+  outreach teams that travel by two-wheeler). When road routing is available
   these follow the real road and path network (so a settlement across a
   river or behind a ridge correctly shows as far), giving a far more
   trustworthy picture than plain circles. If routing is briefly

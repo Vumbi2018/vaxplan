@@ -596,6 +596,21 @@ export default function SettlementIntelligence() {
       : [];
   const useIsochrones = isochroneFeatures.length > 0;
 
+  // Fallback-ring anchors: every facility AND active outreach site the server
+  // resolved (so rings cover outreach posts too, not just facilities). Falls
+  // back to the facilities query if the isochrone payload predates `sites`.
+  const fallbackRingSites: { name: string; latitude: number; longitude: number; kind: string }[] =
+    Array.isArray(isochrones?.sites) && isochrones.sites.length > 0
+      ? isochrones.sites
+      : facilities
+          .filter((f: any) => f.latitude && f.longitude)
+          .map((f: any) => ({
+            name: f.name,
+            latitude: parseFloat(f.latitude),
+            longitude: parseFloat(f.longitude),
+            kind: "facility",
+          }));
+
   // GeoJSON polygons are [lng, lat]; Leaflet wants [lat, lng]. A Polygon's
   // coordinates are an array of rings; MultiPolygon is an array of polygons.
   const geoJsonToLatLngs = (geometry: any): [number, number][][][] => {
@@ -1062,6 +1077,7 @@ export default function SettlementIntelligence() {
                 const label = feature?.properties?.label;
                 const color = feature?.properties?.color || "#16a34a";
                 const facilityName = feature?.properties?.facilityName;
+                const isOutreachZone = feature?.properties?.locationKind === "outreach";
                 return geoJsonToLatLngs(feature?.geometry).map((positions, pIdx) => (
                   <Polygon
                     key={`iso-${idx}-${pIdx}`}
@@ -1078,7 +1094,7 @@ export default function SettlementIntelligence() {
                       <div className="text-xs p-1">
                         <span className="font-bold" style={{ color }}>~{label} {travelModeLabel}</span>
                         <div className="text-[10px] text-slate-500">
-                          {facilityName ? `${facilityName} · ` : ""}road-network {isDrivingProfile ? "driving" : isCyclingProfile ? "cycling" : "walking"} zone
+                          {facilityName ? `${facilityName}${isOutreachZone ? " (outreach site)" : ""} · ` : ""}road-network {isDrivingProfile ? "driving" : isCyclingProfile ? "cycling" : "walking"} zone
                         </div>
                       </div>
                     </Popup>
@@ -1086,25 +1102,28 @@ export default function SettlementIntelligence() {
                 ));
               })}
 
-            {/* Fallback: walking-time rings (~5 km/h) when isochrones unavailable */}
-            {showTravelZones && !useIsochrones && facilities.map((f) => (
-              f.latitude && f.longitude && TRAVEL_RINGS.map((ring) => (
+            {/* Fallback: travel-time rings (~5 km/h walk / ~30 km/h drive) when
+                isochrones unavailable — drawn around facilities AND outreach sites. */}
+            {showTravelZones && !useIsochrones && fallbackRingSites.map((site, sIdx) => (
+              TRAVEL_RINGS.map((ring) => (
                 <Circle
-                  key={`zone-${f.id}-${ring.label}`}
-                  center={[parseFloat(f.latitude), parseFloat(f.longitude)]}
+                  key={`zone-${site.kind}-${sIdx}-${ring.label}`}
+                  center={[site.latitude, site.longitude]}
                   radius={ring.radiusM}
                   pathOptions={{
                     color: ring.color,
                     weight: 1,
                     opacity: 0.5,
                     fill: false,
-                    dashArray: "4, 6"
+                    dashArray: site.kind === "outreach" ? "2, 4" : "4, 6"
                   }}
                 >
                   <Popup>
                     <div className="text-xs p-1">
                       <span className="font-bold" style={{ color: ring.color }}>~{ring.label} {travelModeLabel}</span>
-                      <div className="text-[10px] text-slate-500">{f.name} · {ring.radiusM / 1000} km by {isDrivingProfile ? "road" : isCyclingProfile ? "bike" : "foot"} (approx.)</div>
+                      <div className="text-[10px] text-slate-500">
+                        {site.name}{site.kind === "outreach" ? " (outreach site)" : ""} · {ring.radiusM / 1000} km by {isDrivingProfile ? "road" : isCyclingProfile ? "bike" : "foot"} (approx.)
+                      </div>
                     </div>
                   </Popup>
                 </Circle>

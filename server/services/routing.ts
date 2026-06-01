@@ -178,17 +178,22 @@ async function getNearestFacilityWithCoords(
   }
 }
 
-// Nearest active outreach SITE with coordinates. An outreach site is an
-// outreach session (session_plans.session_type = 'outreach') resolved to a
-// point via its geojson, linked villages, or parent facility — the same
-// resolution used by the proximity check, so the two views stay consistent.
-// Done in app code (not pure SQL) because the coordinate lives in jsonb /
-// junction rows rather than columns on the session.
-async function getNearestOutreachSiteWithCoords(
+// A resolved active outreach site (no distance — that's caller-specific).
+interface OutreachSiteCoords {
+  name: string;
+  longitude: number;
+  latitude: number;
+}
+
+// Resolve ALL active outreach SITES to points. An outreach site is an outreach
+// session (session_plans.session_type = 'outreach') resolved to a point via its
+// geojson, linked villages, or parent facility — the same resolution used by the
+// proximity check, so every view (Insights routing AND travel-time zones) stays
+// consistent. Done in app code (not pure SQL) because the coordinate lives in
+// jsonb / junction rows rather than columns on the session.
+async function getActiveOutreachSitesWithCoords(
   tenantId: string,
-  longitude: number,
-  latitude: number,
-): Promise<NearestPlace | null> {
+): Promise<OutreachSiteCoords[]> {
   try {
     const all = await storage.getSessionPlans(tenantId);
     const outreach = (all as any[]).filter(
@@ -197,7 +202,7 @@ async function getNearestOutreachSiteWithCoords(
         s.status !== "cancelled" &&
         s.status !== "completed",
     );
-    if (outreach.length === 0) return null;
+    if (outreach.length === 0) return [];
 
     const facList = await storage.getFacilities(tenantId);
     const facMap = new Map<number, any>(facList.map((f: any) => [f.id, f]));
@@ -214,27 +219,44 @@ async function getNearestOutreachSiteWithCoords(
       svByPlan.set(r.sessionId, arr);
     }
 
-    let best: NearestPlace | null = null;
-    let bestKm = Infinity;
+    const sites: OutreachSiteCoords[] = [];
     for (const s of outreach) {
       const loc = await resolveSessionLocation(tenantId, s, vilMap, facMap, svByPlan);
       if (!loc || !isFiniteCoord(loc.lat, loc.lng)) continue;
-      const km = haversineKm(latitude, longitude, loc.lat, loc.lng);
-      if (km < bestKm) {
-        bestKm = km;
-        best = {
-          name: s.name,
-          longitude: loc.lng,
-          latitude: loc.lat,
-          straightLineKm: parseFloat(km.toFixed(2)),
-        };
-      }
+      sites.push({ name: s.name, longitude: loc.lng, latitude: loc.lat });
     }
-    return best;
+    return sites;
   } catch (err: any) {
-    console.error("[routing] nearest outreach site lookup failed:", err?.message);
-    return null;
+    console.error("[routing] active outreach sites lookup failed:", err?.message);
+    return [];
   }
+}
+
+// Nearest active outreach SITE with coordinates, derived from the full resolved
+// set above so the nearest-site routing and the travel-time zones agree.
+async function getNearestOutreachSiteWithCoords(
+  tenantId: string,
+  longitude: number,
+  latitude: number,
+): Promise<NearestPlace | null> {
+  const sites = await getActiveOutreachSitesWithCoords(tenantId);
+  if (sites.length === 0) return null;
+
+  let best: NearestPlace | null = null;
+  let bestKm = Infinity;
+  for (const site of sites) {
+    const km = haversineKm(latitude, longitude, site.latitude, site.longitude);
+    if (km < bestKm) {
+      bestKm = km;
+      best = {
+        name: site.name,
+        longitude: site.longitude,
+        latitude: site.latitude,
+        straightLineKm: parseFloat(km.toFixed(2)),
+      };
+    }
+  }
+  return best;
 }
 
 interface OsrmRoute {
@@ -437,24 +459,41 @@ export async function getTravelTimeToNearestFacility(
 // fails, this returns { available: false } and the client falls back to the
 // original circles — the map must never break because routing is unavailable.
 
+// A point the client can draw a fallback ring around when isochrones are
+// unavailable: a fixed facility or an active outreach site.
+export interface IsochroneSite {
+  name: string;
+  latitude: number;
+  longitude: number;
+  kind: "facility" | "outreach";
+}
+
 export interface IsochroneResult {
   available: boolean;
   reason?: string; // why isochrones are unavailable (for logs / client hints)
   profile: IsochroneProfile; // which routing profile these zones describe
   bands: IsochroneBand[];
   // GeoJSON FeatureCollection; each Feature is a travel-time polygon tagged
-  // with { label, seconds, color, facilityName } in its properties.
+  // with { label, seconds, color, facilityName, locationKind } in its
+  // properties.
   featureCollection: {
     type: "FeatureCollection";
     features: any[];
   };
+  // Every facility + active outreach site we drew (or would draw) zones around.
+  // The client uses these for fallback rings so they too cover outreach sites,
+  // not just facilities, when the routing provider is unavailable.
+  sites: IsochroneSite[];
 }
 
 // ORS isochrone endpoint is per-profile; the profile slug is appended below.
 const ORS_ISOCHRONE_BASE_URL =
   "https://api.openrouteservice.org/v2/isochrones";
 const ORS_MAX_LOCATIONS_PER_REQUEST = 5; // ORS free tier limit
-const ORS_MAX_FACILITIES = 25; // bound outbound calls & rate-limit usage
+// Total locations (facilities + outreach sites) we'll draw zones for. Bounds
+// outbound calls / rate-limit usage on the ORS free tier regardless of how the
+// tenant's sites split between fixed facilities and outreach posts.
+const ORS_MAX_LOCATIONS = 25;
 const ISOCHRONE_TTL_MS = 24 * 60 * 60 * 1000; // facility positions are stable
 
 const isochroneCache = new Map<
@@ -463,15 +502,18 @@ const isochroneCache = new Map<
 >();
 const isochroneInFlight = new Map<string, Promise<IsochroneResult>>();
 
-interface FacilityCoords {
+// A point we draw travel-time zones around. `kind` distinguishes a fixed health
+// facility from an active outreach site so the client can label each zone.
+interface IsochroneLocation {
   name: string;
   longitude: number;
   latitude: number;
+  kind: "facility" | "outreach";
 }
 
 async function getActiveFacilitiesWithCoords(
   tenantId: string,
-): Promise<FacilityCoords[]> {
+): Promise<IsochroneLocation[]> {
   try {
     const query = `
       SELECT name, longitude::float AS longitude, latitude::float AS latitude
@@ -481,7 +523,7 @@ async function getActiveFacilitiesWithCoords(
         AND longitude IS NOT NULL
         AND is_active = true
       ORDER BY name ASC
-      LIMIT ${ORS_MAX_FACILITIES}
+      LIMIT ${ORS_MAX_LOCATIONS}
     `;
     const res = await pool.query(query, [tenantId]);
     return res.rows
@@ -489,21 +531,22 @@ async function getActiveFacilitiesWithCoords(
         name: r.name,
         longitude: Number(r.longitude),
         latitude: Number(r.latitude),
+        kind: "facility" as const,
       }))
-      .filter((f: FacilityCoords) => isFiniteCoord(f.latitude, f.longitude));
+      .filter((f: IsochroneLocation) => isFiniteCoord(f.latitude, f.longitude));
   } catch (err: any) {
     console.error("[routing] facility coords lookup failed:", err?.message);
     return [];
   }
 }
 
-// Fetch isochrones for up to ORS_MAX_LOCATIONS_PER_REQUEST facilities in one
+// Fetch isochrones for up to ORS_MAX_LOCATIONS_PER_REQUEST locations in one
 // ORS call. Returns the tagged features, or null on any failure.
 async function fetchOrsIsochroneBatch(
   apiKey: string,
   profile: IsochroneProfile,
   bands: readonly IsochroneBand[],
-  batch: FacilityCoords[],
+  batch: IsochroneLocation[],
 ): Promise<any[] | null> {
   try {
     const controller = new AbortController();
@@ -537,21 +580,26 @@ async function fetchOrsIsochroneBatch(
 
     // ORS returns one feature per (location, range). group_index maps the
     // feature back to its position in the `locations` array; value is the range
-    // in seconds. Tag each feature with band colour + label + facility name.
+    // in seconds. Tag each feature with band colour + label + the location's
+    // name and kind (facility vs outreach site).
     const tagged: any[] = [];
     for (const feature of data.features) {
       const props = feature?.properties || {};
       const seconds = Number(props.value);
       const band = bands.find((b) => b.seconds === seconds);
       if (!band) continue;
-      const facility = batch[Number(props.group_index)];
+      const location = batch[Number(props.group_index)];
       tagged.push({
         ...feature,
         properties: {
           label: band.label,
           seconds: band.seconds,
           color: band.color,
-          facilityName: facility?.name ?? null,
+          // `facilityName` is kept for backward compatibility with existing
+          // clients; it now carries the location name whether facility or
+          // outreach site. `locationKind` lets newer clients distinguish them.
+          facilityName: location?.name ?? null,
+          locationKind: location?.kind ?? "facility",
         },
       });
     }
@@ -576,16 +624,17 @@ export async function getTravelIsochrones(
   profile: IsochroneProfile = "foot-walking",
 ): Promise<IsochroneResult> {
   const bands = bandsForProfile(profile).map((b) => ({ ...b }));
-  const unavailable = (reason: string): IsochroneResult => ({
+  const unavailable = (
+    reason: string,
+    sites: IsochroneSite[] = [],
+  ): IsochroneResult => ({
     available: false,
     reason,
     profile,
     bands,
     featureCollection: { type: "FeatureCollection", features: [] },
+    sites,
   });
-
-  const apiKey = process.env.OPENROUTESERVICE_API_KEY;
-  if (!apiKey) return unavailable("no-api-key");
 
   // Cache + coalesce per tenant AND profile so walking and driving zones don't
   // clobber one another.
@@ -596,18 +645,56 @@ export async function getTravelIsochrones(
   if (pending) return pending;
 
   const promise = (async (): Promise<IsochroneResult> => {
-    const facilities = await getActiveFacilitiesWithCoords(tenantId);
-    if (facilities.length === 0) return unavailable("no-facilities");
+    // Draw zones around both fixed facilities AND active outreach sites:
+    // outreach posts are often closer to remote clusters than facilities, so
+    // facility-only zones understate real-world access.
+    const [facilities, outreachSites] = await Promise.all([
+      getActiveFacilitiesWithCoords(tenantId),
+      getActiveOutreachSitesWithCoords(tenantId),
+    ]);
+    const outreachLocations: IsochroneLocation[] = outreachSites.map((s) => ({
+      name: s.name,
+      longitude: s.longitude,
+      latitude: s.latitude,
+      kind: "outreach" as const,
+    }));
+    // Facilities first, then outreach, capped to the ORS free-tier budget so a
+    // tenant with many of both never blows past the location limit.
+    const locations = [...facilities, ...outreachLocations].slice(
+      0,
+      ORS_MAX_LOCATIONS,
+    );
+    // Sites returned even when isochrones are unavailable so the client can
+    // draw fallback rings around facilities AND outreach sites alike.
+    const sites: IsochroneSite[] = locations.map((l) => ({
+      name: l.name,
+      latitude: l.latitude,
+      longitude: l.longitude,
+      kind: l.kind,
+    }));
+    if (locations.length === 0) return unavailable("no-facilities", sites);
+
+    // No routing provider configured → client falls back to rings around the
+    // resolved sites. Cache so we don't re-query the DB on every poll.
+    const apiKey = process.env.OPENROUTESERVICE_API_KEY;
+    if (!apiKey) {
+      const result = unavailable("no-api-key", sites);
+      isochroneCache.set(cacheKey, {
+        value: result,
+        expires: Date.now() + ISOCHRONE_TTL_MS,
+      });
+      return result;
+    }
 
     const features: any[] = [];
-    for (let i = 0; i < facilities.length; i += ORS_MAX_LOCATIONS_PER_REQUEST) {
-      const batch = facilities.slice(i, i + ORS_MAX_LOCATIONS_PER_REQUEST);
+    for (let i = 0; i < locations.length; i += ORS_MAX_LOCATIONS_PER_REQUEST) {
+      const batch = locations.slice(i, i + ORS_MAX_LOCATIONS_PER_REQUEST);
       const tagged = await fetchOrsIsochroneBatch(apiKey, profile, bands, batch);
       if (tagged) features.push(...tagged);
     }
 
-    // Total failure → let the client keep its circles.
-    if (features.length === 0) return unavailable("provider-unavailable");
+    // Total failure → let the client keep its circles (around all sites).
+    if (features.length === 0) return unavailable("provider-unavailable", sites);
 
     // Draw larger bands first so the innermost zone paints on top.
     features.sort(
@@ -619,6 +706,7 @@ export async function getTravelIsochrones(
       profile,
       bands,
       featureCollection: { type: "FeatureCollection", features },
+      sites,
     };
     isochroneCache.set(cacheKey, {
       value: result,
