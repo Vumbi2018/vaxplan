@@ -64,7 +64,7 @@ const ASSET_META: Record<string, { label: string; color: string; icon: any }> = 
   water_point: { label: "Water point", color: "#0891b2", icon: Droplets },
   transport: { label: "Transport node", color: "#475569", icon: Bus },
   pharmacy: { label: "Pharmacy / drug store", color: "#16a34a", icon: Pill },
-  university: { label: "University", color: "#4338ca", icon: BookOpen },
+  university: { label: "University / college", color: "#4338ca", icon: BookOpen },
   government: { label: "Government office", color: "#b45309", icon: Landmark },
   logistics: { label: "Transport & logistics", color: "#0f766e", icon: Waypoints },
   vulnerable_site: { label: "Vulnerable-population site", color: "#dc2626", icon: Tent },

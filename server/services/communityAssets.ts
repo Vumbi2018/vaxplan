@@ -2,11 +2,11 @@
 //
 // Queries the OpenStreetMap Overpass API for community assets (schools,
 // churches/places of worship, markets, water points, transport nodes,
-// pharmacies/drug stores, universities, government offices, transport &
-// logistics features such as airstrips/ferries/bridges/river crossings, and
-// vulnerable-population sites such as refugee/IDP camps and mining areas)
-// within a radius of a point. Used to enrich population clusters with what
-// services already exist nearby.
+// pharmacies/drug stores, universities/colleges, government offices, transport
+// & logistics features such as airstrips/helipads/ferries/bridges/piers/fuel/
+// river crossings, and vulnerable-population sites such as refugee/IDP camps
+// and mining sites) within a radius of a point. Used to enrich population
+// clusters with what services already exist nearby.
 //
 // Best-effort, mirroring server/services/geo.ts: results are cached, identical
 // concurrent lookups are coalesced, outbound calls are rate-limited (Overpass
@@ -66,7 +66,7 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): nu
 
 function classify(tags: Record<string, string> | undefined): AssetType | null {
   if (!tags) return null;
-  if (tags.amenity === "school" || tags.amenity === "kindergarten" || tags.amenity === "college") {
+  if (tags.amenity === "school" || tags.amenity === "kindergarten") {
     return "school";
   }
   if (tags.amenity === "place_of_worship") return "church";
@@ -87,27 +87,57 @@ function classify(tags: Record<string, string> | undefined): AssetType | null {
   ) {
     return "transport";
   }
-  if (tags.amenity === "pharmacy" || tags.shop === "chemist") return "pharmacy";
-  if (tags.amenity === "university") return "university";
+  if (
+    tags.amenity === "pharmacy" ||
+    tags.shop === "chemist" ||
+    tags.healthcare === "pharmacy"
+  ) {
+    return "pharmacy";
+  }
+  // Tertiary/higher education and training centres — deliberately distinct from
+  // the "school" bucket (OSM `amenity=college` is post-secondary).
+  if (
+    tags.amenity === "university" ||
+    tags.amenity === "college" ||
+    tags.office === "educational_institution"
+  ) {
+    return "university";
+  }
   if (
     tags.office === "government" ||
+    tags.office === "administrative" ||
     tags.amenity === "townhall" ||
     tags.amenity === "courthouse" ||
-    tags.amenity === "police"
+    tags.amenity === "police" ||
+    tags.amenity === "fire_station" ||
+    tags.amenity === "post_office"
   ) {
     return "government";
   }
   if (
     tags.aeroway === "aerodrome" ||
     tags.aeroway === "airstrip" ||
+    tags.aeroway === "helipad" ||
     tags.amenity === "ferry_terminal" ||
     tags.amenity === "taxi" ||
+    tags.amenity === "fuel" ||
+    tags.man_made === "bridge" ||
+    tags.man_made === "pier" ||
     tags.ford === "yes" ||
-    tags.man_made === "bridge"
+    tags.highway === "ford"
   ) {
     return "logistics";
   }
-  if (tags.amenity === "refugee_site" || tags.landuse === "quarry") {
+  // Vulnerable-population sites: refugee/IDP camps and mining sites (mining
+  // camps are typically near a quarry, mine, mineshaft or adit).
+  if (
+    tags.amenity === "refugee_site" ||
+    (tags.refugee !== undefined && tags.refugee !== "no") ||
+    tags.landuse === "quarry" ||
+    tags.industrial === "mine" ||
+    tags.man_made === "mineshaft" ||
+    tags.man_made === "adit"
+  ) {
     return "vulnerable_site";
   }
   return null;
@@ -128,7 +158,7 @@ function labelFor(type: AssetType): string {
     case "pharmacy":
       return "Pharmacy / drug store";
     case "university":
-      return "University";
+      return "University / college";
     case "government":
       return "Government office";
     case "logistics":
@@ -168,24 +198,39 @@ function buildQuery(lat: number, lng: number, radiusM: number): string {
     // Pharmacies / drug stores
     `nwr["amenity"="pharmacy"](${a});` +
     `nwr["shop"="chemist"](${a});` +
-    // Universities / higher education
+    `nwr["healthcare"="pharmacy"](${a});` +
+    // Universities / colleges / training centres (distinct from schools;
+    // amenity=college is queried in the block above and classified as university)
     `nwr["amenity"="university"](${a});` +
+    `nwr["office"="educational_institution"](${a});` +
     // Government / administrative offices
     `nwr["office"="government"](${a});` +
+    `nwr["office"="administrative"](${a});` +
     `nwr["amenity"="townhall"](${a});` +
     `nwr["amenity"="courthouse"](${a});` +
     `nwr["amenity"="police"](${a});` +
-    // Transport & logistics: airstrips, ferries, river crossings, bridges, taxi ranks
+    `nwr["amenity"="fire_station"](${a});` +
+    `nwr["amenity"="post_office"](${a});` +
+    // Transport & logistics: airstrips, helipads, ferries, river crossings,
+    // bridges, piers, fuel stations, taxi ranks
     `nwr["aeroway"="aerodrome"](${a});` +
     `nwr["aeroway"="airstrip"](${a});` +
+    `nwr["aeroway"="helipad"](${a});` +
     `nwr["amenity"="ferry_terminal"](${a});` +
+    `nwr["amenity"="fuel"](${a});` +
     `node["amenity"="taxi"](${a});` +
     `node["ford"="yes"](${a});` +
+    `node["highway"="ford"](${a});` +
     `nwr["man_made"="bridge"](${a});` +
-    // Vulnerable-population sites: refugee/IDP camps, mining/quarry areas
+    `nwr["man_made"="pier"](${a});` +
+    // Vulnerable-population sites: refugee/IDP camps, mining sites
     `nwr["amenity"="refugee_site"](${a});` +
+    `nwr["refugee"](${a});` +
     `nwr["landuse"="quarry"](${a});` +
-    `);out center 150;`
+    `nwr["industrial"="mine"](${a});` +
+    `nwr["man_made"="mineshaft"](${a});` +
+    `nwr["man_made"="adit"](${a});` +
+    `);out center 200;`
   );
 }
 

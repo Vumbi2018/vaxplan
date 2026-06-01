@@ -642,10 +642,11 @@ zero-dose cluster card or settlement record, click the **Insights**
   automatically.
 - **Community assets within 3 km** — schools, places of worship,
   markets, water points, transport nodes, pharmacies / drug stores,
-  universities, government offices, transport &
-  logistics features (airstrips, ferry terminals, river crossings,
-  bridges, taxi ranks), and vulnerable-population sites (refugee/IDP
-  camps and mining areas) pulled live from OpenStreetMap, each with
+  universities and colleges, government offices, transport &
+  logistics features (airstrips, helipads, ferry terminals, river
+  crossings, bridges, fuel stations, taxi ranks), and
+  vulnerable-population sites (refugee/IDP camps and mining sites)
+  pulled live from OpenStreetMap, each with
   its distance and a clearly coloured icon. These show what services
   already exist near a cluster, which helps you pick an outreach venue.
   If a remote cluster has nothing mapped nearby, the panel says so.
@@ -673,8 +674,8 @@ panel, top-right of the map):
   access question at a time. (Both the road-network zones and the
   fallback rings respect the choice.)
 - **Community assets** — plots schools, water points, pharmacies,
-  universities, government offices, transport & logistics features,
-  vulnerable-population sites, and other assets found within 5 km of
+  universities and colleges, government offices, transport & logistics
+  features, vulnerable-population sites, and other assets found within 5 km of
   the current map centre, each with its own coloured icon. Pan or click
   **Locate** on a cluster, then turn this layer on to scan what's
   around it.
