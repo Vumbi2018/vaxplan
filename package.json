@@ -5,8 +5,8 @@
     "license": "MIT",
     "scripts": {
         "dev": "npx tsx --env-file=.env server/index.ts",
-        "build": "tsx script/build.ts",
-        "start": "npm run db:push && NODE_ENV=production node dist/index.cjs",
+        "build": "tsx script/build.ts && npm run db:push",
+        "start": "NODE_ENV=production node dist/index.cjs",
         "check": "tsc",
         "test": "vitest run",
         "db:push": "drizzle-kit push",
