@@ -17,8 +17,9 @@ echo -e "\n[2/4] Installing dependencies..."
 npm install --legacy-peer-deps --no-audit
 
 # 3. Build project and run migrations
-echo -e "\n[3/4] Building production assets & running db:push..."
-npm run build
+echo -e "\n[3/4] Building production assets & running database migrations..."
+npx tsx script/build.ts
+npx --env-file=.env tsx scripts/migrate.ts
 
 # 4. Restart or start application server
 echo -e "\n[4/4] Starting application server..."

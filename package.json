@@ -10,6 +10,7 @@
         "check": "tsc",
         "test": "vitest run",
         "db:push": "drizzle-kit push",
+        "db:migrate": "tsx scripts/migrate.ts",
         "docs:pdf": "node scripts/build-user-guide-pdf.mjs",
         "docs:site": "node docs-site/build.mjs",
         "build:android": "powershell -ExecutionPolicy Bypass -File scripts/Build-Android.ps1",
