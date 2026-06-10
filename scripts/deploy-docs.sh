@@ -53,14 +53,14 @@ nginx -t && systemctl reload nginx
 echo "   ✔  Nginx reloaded"
 
 # ── SSL certificate (prompt) ──────────────────────────────────
-if ! [ -d "/etc/letsencrypt/live/doc.vaxplan.org" ]; then
+if ! [ -d "/etc/letsencrypt/live/doc.vaxplan.org" ] && ! [ -d "/etc/letsencrypt/live/docs.vaxplan.org" ]; then
   echo ""
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  echo "⚠️  No SSL certificate found for doc.vaxplan.org"
-  echo "   Make sure the DNS A-record for doc.vaxplan.org"
-  echo "   points to this server's IP, then run:"
+  echo "⚠️  No SSL certificate found for doc/docs.vaxplan.org"
+  echo "   Make sure the DNS A-record for both doc.vaxplan.org"
+  echo "   and docs.vaxplan.org point to this server's IP, then run:"
   echo ""
-  echo "   certbot --nginx -d doc.vaxplan.org"
+  echo "   certbot --nginx -d doc.vaxplan.org -d docs.vaxplan.org"
   echo ""
   echo "   Certbot will auto-fill SSL lines in the nginx config."
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
