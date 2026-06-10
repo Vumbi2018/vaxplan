@@ -1762,7 +1762,7 @@ export default function Surveillance() {
                           <td className="px-3 py-2.5 text-right" onClick={(e) => e.stopPropagation()}>
                             <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => { if (window.confirm("Delete this case?")) deleteCaseMutation.mutate(c.id); }}><Trash2 className="h-3 w-3" /></Button>
                           </td>
-                        </tr>                        </tr>
+                        </tr>
 
                       ))}
 
