@@ -1,0 +1,101 @@
+export type Permission =
+  | "view_clients"
+  | "create_client"
+  | "edit_client"
+  | "log_immunization"
+  | "send_reminders"
+  | "view_session_plans"
+  | "manage_session_plans"
+  | "approve_plans"
+  | "view_stock"
+  | "manage_stock"
+  | "view_mobilization"
+  | "manage_mobilization"
+  | "view_budget"
+  | "manage_budget"
+  | "approve_budget"
+  | "view_reports"
+  | "manage_reports"
+  | "manage_boundaries"
+  | "manage_users";
+
+export const ROLE_PERMISSIONS: Record<string, Permission[]> = {
+  facility_clerk: [
+    "view_clients",
+    "create_client",
+    "log_immunization",
+    "view_session_plans",
+    "manage_session_plans",
+    "view_stock",
+    "manage_stock",
+    "view_mobilization",
+    "manage_mobilization",
+    "view_budget",
+  ],
+  facility_in_charge: [
+    "view_clients",
+    "create_client",
+    "edit_client",
+    "log_immunization",
+    "view_session_plans",
+    "manage_session_plans",
+    "approve_plans",
+    "view_stock",
+    "manage_stock",
+    "view_mobilization",
+    "manage_mobilization",
+    "view_budget",
+    "manage_budget",
+    "view_reports",
+    "manage_reports",
+  ],
+  district_manager: [
+    "view_clients",
+    "view_session_plans",
+    "approve_plans",
+    "view_stock",
+    "view_mobilization",
+    "view_budget",
+    "approve_budget",
+    "view_reports",
+  ],
+  provincial_coordinator: [
+    "view_clients",
+    "view_session_plans",
+    "approve_plans",
+    "view_stock",
+    "view_mobilization",
+    "view_budget",
+    "approve_budget",
+    "view_reports",
+    "manage_users",
+  ],
+  gis_specialist: [
+    "view_clients",
+    "view_session_plans",
+    "view_mobilization",
+    "view_budget",
+    "manage_boundaries",
+  ],
+  national_admin: [
+    "view_clients",
+    "create_client",
+    "edit_client",
+    "log_immunization",
+    "send_reminders",
+    "view_session_plans",
+    "manage_session_plans",
+    "approve_plans",
+    "view_stock",
+    "manage_stock",
+    "view_mobilization",
+    "manage_mobilization",
+    "view_budget",
+    "manage_budget",
+    "approve_budget",
+    "view_reports",
+    "manage_reports",
+    "manage_boundaries",
+    "manage_users",
+  ],
+};

@@ -1,0 +1,579 @@
+/**
+ * Zero-Dose / Under-Immunized — per-village drilldown with map.
+ *
+ * Drills the dashboard's zero-dose tile into a ranked village list plus a
+ * Leaflet pin layer, so planners can spot exactly which catchment areas are
+ * driving the missed-child counts and target outreach accordingly.
+ *
+ * Planners can multi-select villages (via row checkboxes or map-pin clicks)
+ * and click "Create outreach microplan" to draft a routine microplan via
+ * `POST /api/missed-communities/create-outreach`, mirroring the flow on
+ * `client/src/pages/MissedCommunities.tsx`. The sticky action bar exposes
+ * antigen and year/quarter pickers — they default to the current mode's
+ * antigen (PENTA1 for zero-dose catch-up, PENTA3 for under-immunized
+ * defaulter follow-up) and the current calendar quarter, so the one-click
+ * flow still works, while planners can retarget a future quarter or a
+ * different antigen (e.g. MEASLES1 catch-up) without leaving this page.
+ */
+import { useEffect, useMemo, useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Link, useLocation } from "wouter";
+import { MapContainer, CircleMarker, Popup } from "react-leaflet";
+import { GeoCascadeFilter } from "@/components/GeoCascadeFilter";
+import {
+  BasemapSwitcher,
+  BasemapTileLayer,
+  usePersistedBasemap,
+} from "@/components/map/BasemapToggle";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
+import {
+  AlertTriangle, Syringe, MapPin, Layers, ArrowLeft, ArrowRight, RefreshCw,
+} from "lucide-react";
+
+interface VillageRow {
+  villageId: number | null;
+  villageName: string;
+  districtId: number;
+  districtName: string;
+  facilityId: number;
+  facilityName: string;
+  latitude: number | null;
+  longitude: number | null;
+  isHardToReach: boolean;
+  zeroDose: number;
+  underImmunized: number;
+  missed: number;
+  denominator: number;
+  pct: number;
+  underImmunizedPct: number;
+}
+
+interface ZeroDoseSummary {
+  total: number;
+  denominator: number;
+  pct: number;
+  underImmunized: { total: number; denominator: number; pct: number };
+  byDistrict: Array<{ districtId: number; districtName: string }>;
+  byVillage: VillageRow[];
+}
+
+type Mode = "zero" | "under";
+
+const OUTREACH_ANTIGENS = ["BCG", "PENTA1", "PENTA3", "MEASLES1", "MEASLES2", "OPV1", "OPV3"];
+const defaultAntigenFor = (m: Mode) => (m === "zero" ? "PENTA1" : "PENTA3");
+
+const now = new Date();
+const CURRENT_YEAR = now.getFullYear();
+const CURRENT_QUARTER = Math.floor(now.getMonth() / 3) + 1;
+const YEAR_OPTIONS = [CURRENT_YEAR, CURRENT_YEAR + 1];
+
+export default function ZeroDoseVillages() {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [, setLocation] = useLocation();
+
+  const [mode, setMode] = useState<Mode>("zero");
+  const [provinceId, setProvinceId] = useState<number | null>(null);
+  const [districtId, setDistrictId] = useState<number | null>(null);
+  const [facilityId, setFacilityId] = useState<number | null>(null);
+  const [search, setSearch] = useState("");
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [basemap, setBasemap] = usePersistedBasemap("osm");
+
+  const [antigen, setAntigen] = useState<string>(defaultAntigenFor("zero"));
+  const [antigenTouched, setAntigenTouched] = useState(false);
+  const [year, setYear] = useState<number>(CURRENT_YEAR);
+  const [quarter, setQuarter] = useState<number>(CURRENT_QUARTER);
+  const [outreachName, setOutreachName] = useState<string>("");
+
+  // Keep antigen in sync with the indicator mode unless the planner has
+  // explicitly picked one, so the one-click default flow still works.
+  useEffect(() => {
+    if (!antigenTouched) setAntigen(defaultAntigenFor(mode));
+  }, [mode, antigenTouched]);
+
+  const { data, isLoading } = useQuery<ZeroDoseSummary>({
+    queryKey: ["/api/indicators/zero-dose"],
+  });
+
+  const rows = data?.byVillage ?? [];
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return rows
+      .filter((r) => (mode === "zero" ? r.zeroDose > 0 : r.underImmunized > 0))
+      .filter((r) => !districtId || r.districtId === districtId)
+      .filter((r) => !facilityId || r.facilityId === facilityId)
+      .filter(
+        (r) =>
+          !q ||
+          r.villageName.toLowerCase().includes(q) ||
+          r.facilityName.toLowerCase().includes(q),
+      )
+      .sort((a, b) =>
+        mode === "zero"
+          ? b.zeroDose - a.zeroDose
+          : b.underImmunized - a.underImmunized,
+      );
+  }, [rows, mode, districtId, facilityId, search]);
+
+  const mapped = filtered.filter((v) => v.latitude != null && v.longitude != null);
+  const mapCenter: [number, number] = mapped.length
+    ? [mapped[0].latitude!, mapped[0].longitude!]
+    : [-6.314993, 143.95555];
+
+  const accentText = mode === "zero" ? "text-rose-600" : "text-amber-600";
+  const accentBorder = mode === "zero" ? "border-rose-200" : "border-amber-200";
+  const Icon = mode === "zero" ? AlertTriangle : Syringe;
+
+  const countFor = (r: VillageRow) => (mode === "zero" ? r.zeroDose : r.underImmunized);
+  const maxCount = Math.max(1, ...filtered.map(countFor));
+  const colorFor = (n: number) => {
+    const r = n / maxCount;
+    if (mode === "zero") {
+      if (r > 0.66) return "#dc2626";
+      if (r > 0.33) return "#ea580c";
+      return "#f59e0b";
+    }
+    if (r > 0.66) return "#d97706";
+    if (r > 0.33) return "#f59e0b";
+    return "#fbbf24";
+  };
+
+  const totalDisplay =
+    mode === "zero" ? data?.total ?? 0 : data?.underImmunized.total ?? 0;
+  const denominatorDisplay = data?.denominator ?? 0;
+  const pctDisplay =
+    mode === "zero" ? data?.pct ?? 0 : data?.underImmunized.pct ?? 0;
+
+  const toggleSelect = (vid: number | null) => {
+    if (vid == null) return;
+    setSelected((prev) => {
+      const next = new Set<number>(prev);
+      if (next.has(vid)) next.delete(vid); else next.add(vid);
+      return next;
+    });
+  };
+  const selectableIds = filtered
+    .map((r) => r.villageId)
+    .filter((id): id is number => id != null);
+  const selectTop = () => setSelected(new Set(selectableIds.slice(0, 50)));
+  const clearAll = () => setSelected(new Set());
+
+  const createOutreach = useMutation({
+    mutationFn: async () => {
+      const trimmedName = outreachName.trim();
+      return await apiRequest<any>("POST", "/api/missed-communities/create-outreach", {
+        villageIds: Array.from(selected),
+        antigen,
+        year,
+        quarter,
+        ...(trimmedName ? { name: trimmedName } : {}),
+      });
+    },
+    onSuccess: (res: any) => {
+      toast({
+        title: "Draft microplan created",
+        description: `${res.sessions.length} outreach session(s) drafted across ${selected.size} villages. Opening builder…`,
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/microplans"] });
+      setSelected(new Set());
+      setOutreachName("");
+      const first = res.microplans?.[0] ?? res.microplan;
+      if (first?.id) setLocation(`/microplans/routine/${first.id}`);
+    },
+    onError: (err: Error) =>
+      toast({
+        title: "Failed to create microplan",
+        description: err.message,
+        variant: "destructive",
+      }),
+  });
+
+  return (
+    <div className="p-6 space-y-6 max-w-7xl">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <Link
+            href="/"
+            className="text-xs text-muted-foreground inline-flex items-center gap-1 hover:underline mb-2"
+            data-testid="link-back-dashboard"
+          >
+            <ArrowLeft className="h-3 w-3" /> Back to dashboard
+          </Link>
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            <Icon className={`h-6 w-6 ${accentText}`} />
+            {mode === "zero" ? "Zero-dose children" : "Under-immunized children"} by village
+          </h1>
+          <p className="text-muted-foreground text-sm mt-1 max-w-2xl">
+            {mode === "zero"
+              ? "Children ≥12 months with no DTP1 (Pentavalent-1) dose recorded, broken down by the village they live in. Use this to pick catch-up outreach targets."
+              : "Children ≥12 months who received DTP1 but not DTP3 (Pentavalent-3), broken down by village. Use this to plan defaulter follow-up."}
+          </p>
+        </div>
+      </div>
+
+      {/* Filters + headline */}
+      <Card>
+        <CardContent className="p-4 space-y-3">
+          <GeoCascadeFilter
+            provinceId={provinceId}
+            districtId={districtId}
+            facilityId={facilityId}
+            onProvinceChange={(id) => {
+              setProvinceId(id);
+              setDistrictId(null);
+              setFacilityId(null);
+            }}
+            onDistrictChange={(id) => {
+              setDistrictId(id);
+              setFacilityId(null);
+            }}
+            onFacilityChange={setFacilityId}
+            showFacility
+            testIdPrefix="zd-geo"
+          />
+          <div className="grid sm:grid-cols-3 gap-3">
+            <div className="space-y-1">
+              <Label className="text-xs uppercase text-muted-foreground">Indicator</Label>
+              <Select
+                value={mode}
+                onValueChange={(v) => {
+                  setMode(v as Mode);
+                  setSelected(new Set());
+                }}
+              >
+                <SelectTrigger data-testid="select-mode"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="zero">Zero-dose (no DTP1)</SelectItem>
+                  <SelectItem value="under">Under-immunized (DTP1, no DTP3)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs uppercase text-muted-foreground">Search</Label>
+              <Input
+                placeholder="Village or facility…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                data-testid="input-search"
+              />
+            </div>
+            <div className="space-y-1 flex flex-col justify-end">
+              <Label className="text-xs uppercase text-muted-foreground">Total in scope</Label>
+              <div className="flex items-baseline gap-2">
+                <span className={`text-2xl font-bold ${accentText}`} data-testid="text-total">
+                  {totalDisplay.toLocaleString()}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  of {denominatorDisplay.toLocaleString()} · {pctDisplay}%
+                </span>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="grid lg:grid-cols-2 gap-6">
+        {/* Map */}
+        <Card className="overflow-hidden">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Layers className={`h-4 w-4 ${accentText}`} />
+              Village pins ({mapped.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="h-[500px] relative">
+              {isLoading ? (
+                <Skeleton className="h-full w-full" />
+              ) : mapped.length === 0 ? (
+                <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
+                  <MapPin className="h-5 w-5 mr-2" />
+                  No mapped villages with {mode === "zero" ? "zero-dose" : "under-immunized"} children for this filter.
+                </div>
+              ) : (
+                <>
+                <MapContainer
+                  key={`${mode}-${districtId ?? "all"}-${facilityId ?? "all"}`}
+                  center={mapCenter}
+                  zoom={6}
+                  className="h-full w-full"
+                  scrollWheelZoom
+                >
+                  <BasemapTileLayer basemap={basemap} />
+                  {mapped.map((v) => {
+                    const n = countFor(v);
+                    const color = colorFor(n);
+                    const radius = 6 + Math.round((n / maxCount) * 12);
+                    const isSelected = v.villageId != null && selected.has(v.villageId);
+                    const canSelect = v.villageId != null;
+                    return (
+                      <CircleMarker
+                        key={`${v.villageId ?? "f" + v.facilityId}`}
+                        center={[v.latitude!, v.longitude!]}
+                        radius={isSelected ? radius + 4 : radius}
+                        pathOptions={{
+                          color: isSelected ? "#1d4ed8" : color,
+                          fillColor: color,
+                          fillOpacity: 0.7,
+                          weight: isSelected ? 3 : 1,
+                        }}
+                        eventHandlers={
+                          canSelect
+                            ? { click: () => toggleSelect(v.villageId) }
+                            : undefined
+                        }
+                      >
+                        <Popup>
+                          <div className="text-xs space-y-1">
+                            <div className="font-semibold">{v.villageName}</div>
+                            <div>{v.facilityName} · {v.districtName}</div>
+                            <div>
+                              Zero-dose: <strong>{v.zeroDose}</strong> ({v.pct}%)
+                            </div>
+                            <div>
+                              Under-imm: <strong>{v.underImmunized}</strong> ({v.underImmunizedPct}%)
+                            </div>
+                            <div>of {v.denominator} eligible children</div>
+                            {v.isHardToReach && (
+                              <Badge className="bg-amber-500/10 text-amber-700">Hard-to-reach</Badge>
+                            )}
+                            {canSelect && (
+                              <div className="pt-1">
+                                <Button
+                                  size="sm"
+                                  variant={isSelected ? "secondary" : "default"}
+                                  onClick={() => toggleSelect(v.villageId)}
+                                  className="h-6 text-[11px]"
+                                  data-testid={`btn-popup-toggle-${v.villageId}`}
+                                >
+                                  {isSelected ? "Remove from selection" : "Add to selection"}
+                                </Button>
+                              </div>
+                            )}
+                          </div>
+                        </Popup>
+                      </CircleMarker>
+                    );
+                  })}
+                </MapContainer>
+                <BasemapSwitcher basemap={basemap} onChange={setBasemap} />
+                </>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Ranked list */}
+        <Card>
+          <CardHeader className="pb-2 flex flex-row items-center justify-between">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Icon className={`h-4 w-4 ${accentText}`} />
+              Ranked villages ({filtered.length})
+            </CardTitle>
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={selectTop}
+                className="h-7 text-xs"
+                disabled={selectableIds.length === 0}
+                data-testid="btn-select-top"
+              >
+                Select top 50
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={clearAll}
+                className="h-7 text-xs"
+                disabled={selected.size === 0}
+                data-testid="btn-clear-selection"
+              >
+                Clear
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="h-[500px] overflow-auto">
+              {isLoading ? (
+                <div className="p-4 space-y-2">
+                  {[1, 2, 3, 4, 5].map((i) => <Skeleton key={i} className="h-12 w-full" />)}
+                </div>
+              ) : filtered.length === 0 ? (
+                <div className="h-full flex items-center justify-center text-muted-foreground text-sm p-4 text-center">
+                  No villages have {mode === "zero" ? "zero-dose" : "under-immunized"} children for this filter.
+                </div>
+              ) : (
+                <table className="w-full text-xs">
+                  <thead className="sticky top-0 bg-card border-b border-border">
+                    <tr className="text-left">
+                      <th className="p-2 w-8"></th>
+                      <th className="p-2">Village</th>
+                      <th className="p-2">Facility · District</th>
+                      <th className="p-2 text-right">
+                        {mode === "zero" ? "Zero-dose" : "Under-imm."}
+                      </th>
+                      <th className="p-2 text-right">%</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.map((r) => {
+                      const n = countFor(r);
+                      const pct = mode === "zero" ? r.pct : r.underImmunizedPct;
+                      const canSelect = r.villageId != null;
+                      const isSelected = canSelect && selected.has(r.villageId!);
+                      return (
+                        <tr
+                          key={`${r.villageId ?? "f" + r.facilityId}`}
+                          className={`border-b border-border/50 hover:bg-secondary/40 ${isSelected ? (mode === "zero" ? "bg-rose-500/5" : "bg-amber-500/5") : ""}`}
+                          data-testid={`row-village-${r.villageId ?? "f" + r.facilityId}`}
+                        >
+                          <td className="p-2">
+                            {canSelect ? (
+                              <Checkbox
+                                checked={isSelected}
+                                onCheckedChange={() => toggleSelect(r.villageId)}
+                                data-testid={`checkbox-village-${r.villageId}`}
+                              />
+                            ) : (
+                              <span
+                                className="text-[10px] text-muted-foreground"
+                                title="Facility-level rollup — no specific village to target"
+                              >
+                                —
+                              </span>
+                            )}
+                          </td>
+                          <td className="p-2">
+                            <div className="font-medium flex items-center gap-1">
+                              {r.latitude != null && r.longitude != null && (
+                                <MapPin className="h-3 w-3 text-muted-foreground" />
+                              )}
+                              {r.villageName}
+                            </div>
+                            {r.isHardToReach && (
+                              <Badge
+                                variant="secondary"
+                                className="bg-amber-500/10 text-amber-700 text-[10px] mt-0.5"
+                              >
+                                HTR
+                              </Badge>
+                            )}
+                          </td>
+                          <td className="p-2 text-muted-foreground">
+                            <div>{r.facilityName}</div>
+                            <div className="text-[10px]">{r.districtName}</div>
+                          </td>
+                          <td className="p-2 text-right font-mono">
+                            <span className={`font-semibold ${accentText}`}>{n}</span>
+                            <span className="text-muted-foreground"> / {r.denominator}</span>
+                          </td>
+                          <td className="p-2 text-right">
+                            <Badge variant="outline" className={accentBorder}>
+                              {pct}%
+                            </Badge>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Sticky action bar — mirrors MissedCommunities.tsx */}
+      <div className="sticky bottom-4 z-10 flex justify-end">
+        <Card className={`shadow-2xl ${accentBorder}`}>
+          <CardContent className="p-3 flex items-center gap-3 flex-wrap">
+            <span className="text-sm font-medium" data-testid="text-selected-count">
+              {selected.size} village{selected.size === 1 ? "" : "s"} selected
+            </span>
+            <div className="flex items-center gap-1.5">
+              <Label className="text-[10px] uppercase text-muted-foreground">Antigen</Label>
+              <Select
+                value={antigen}
+                onValueChange={(v) => { setAntigen(v); setAntigenTouched(true); }}
+              >
+                <SelectTrigger className="h-8 w-[110px] text-xs" data-testid="select-outreach-antigen">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {OUTREACH_ANTIGENS.map((a) => (
+                    <SelectItem key={a} value={a}>{a}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Label className="text-[10px] uppercase text-muted-foreground">Name</Label>
+              <Input
+                value={outreachName}
+                onChange={(e) => setOutreachName(e.target.value)}
+                placeholder="Optional"
+                className="h-8 w-[180px] text-xs"
+                data-testid="input-outreach-name"
+              />
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Label className="text-[10px] uppercase text-muted-foreground">Year</Label>
+              <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
+                <SelectTrigger className="h-8 w-[90px] text-xs" data-testid="select-outreach-year">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {YEAR_OPTIONS.map((y) => (
+                    <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Label className="text-[10px] uppercase text-muted-foreground">Quarter</Label>
+              <Select value={String(quarter)} onValueChange={(v) => setQuarter(Number(v))}>
+                <SelectTrigger className="h-8 w-[80px] text-xs" data-testid="select-outreach-quarter">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {[1, 2, 3, 4].map((q) => (
+                    <SelectItem key={q} value={String(q)}>Q{q}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button
+              size="sm"
+              disabled={selected.size === 0 || createOutreach.isPending}
+              onClick={() => createOutreach.mutate()}
+              className={
+                mode === "zero"
+                  ? "gap-1.5 bg-rose-600 hover:bg-rose-500 text-white"
+                  : "gap-1.5 bg-amber-600 hover:bg-amber-500 text-white"
+              }
+              data-testid="btn-create-outreach"
+            >
+              {createOutreach.isPending
+                ? <><RefreshCw className="h-4 w-4 animate-spin" /> Creating…</>
+                : <>Create outreach microplan <ArrowRight className="h-4 w-4" /></>}
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}

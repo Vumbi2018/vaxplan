@@ -1,0 +1,73 @@
+# ============================================================
+# Nginx configuration for doc.vaxplan.org
+# Serves the static VaxPlan Documentation site
+# File: /etc/nginx/sites-available/doc.vaxplan.org
+# ============================================================
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name doc.vaxplan.org;
+
+    # Redirect HTTP → HTTPS once certificate is in place.
+    # Certbot will replace this block automatically when you run:
+    #   certbot --nginx -d doc.vaxplan.org
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name doc.vaxplan.org;
+
+    # ── SSL (managed by Certbot) ────────────────────────────
+    # Certbot will insert these lines automatically:
+    # ssl_certificate     /etc/letsencrypt/live/doc.vaxplan.org/fullchain.pem;
+    # ssl_certificate_key /etc/letsencrypt/live/doc.vaxplan.org/privkey.pem;
+    # include             /etc/letsencrypt/options-ssl-nginx.conf;
+    # ssl_dhparam         /etc/letsencrypt/ssl-dhparams.pem;
+
+    # ── Root (static docs site) ─────────────────────────────
+    root /var/www/doc.vaxplan.org;
+    index index.html;
+
+    # ── Security headers ─────────────────────────────────────
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header Permissions-Policy "geolocation=(), microphone=()" always;
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
+    # ── CORS for PDF downloads ───────────────────────────────
+    add_header Access-Control-Allow-Origin "https://vaxplan.org" always;
+
+    # ── Static assets — aggressive caching ──────────────────
+    location ~* \.(css|js|woff2?|ttf|eot|svg|ico|png|jpg|jpeg|webp)$ {
+        expires 30d;
+        add_header Cache-Control "public, max-age=2592000, immutable";
+        try_files $uri =404;
+    }
+
+    # ── PDF — no-cache so every deploy gets the fresh version ─
+    location ~* \.pdf$ {
+        add_header Content-Disposition "attachment";
+        add_header Cache-Control "no-cache, must-revalidate";
+        try_files $uri =404;
+    }
+
+    # ── Docs site (SPA-style: all paths → index.html) ────────
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # ── Gzip compression ─────────────────────────────────────
+    gzip on;
+    gzip_vary on;
+    gzip_min_length 1024;
+    gzip_types text/plain text/css text/html application/javascript application/json font/woff2;
+
+    # ── Logging ───────────────────────────────────────────────
+    access_log /var/log/nginx/doc.vaxplan.org.access.log;
+    error_log  /var/log/nginx/doc.vaxplan.org.error.log;
+}

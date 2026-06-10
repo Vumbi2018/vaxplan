@@ -1,0 +1,3029 @@
+import { useState, useMemo, useEffect, useRef } from "react";
+import { Link } from "wouter";
+import { FacilityCascadePicker } from "@/components/FacilityCascadePicker";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogFooter,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { DataTable } from "@/components/DataTable";
+import { GeoCascadeFilter } from "@/components/GeoCascadeFilter";
+import { buildGeoMaps, withGeoColumns } from "@/lib/geoHierarchy";
+import { ApprovalBadge } from "@/components/ApprovalBadge";
+import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
+import { canCreateSessionPlan, canApproveSessionPlan } from "@/lib/permissions";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { offlineDb, enqueueOutbox } from "@/lib/offlineDb";
+import {
+  Plus,
+  Calendar,
+  MapPin,
+  Users,
+  Car,
+  Footprints,
+  Ship,
+  Plane,
+  ShieldCheck,
+  Info,
+  ArrowRight,
+  CheckCircle2,
+  AlertTriangle,
+  History as HistoryIcon,
+  X,
+  Check,
+  ChevronsUpDown,
+  CloudOff,
+} from "lucide-react";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import { cn } from "@/lib/utils";
+import {
+  insertSessionPlanSchema,
+  type SessionPlan,
+  type Facility,
+  type Province,
+  type District,
+  type InsertSessionPlan,
+  type Microplan,
+  type VaccineConfig,
+  type Village,
+} from "@shared/schema";
+import { expandVaccineSchedule } from "@shared/vaccineSchedule";
+import { z } from "zod";
+
+const sessionFormSchema = insertSessionPlanSchema.extend({
+  name: z.string().min(2, "Name is required"),
+  facilityId: z.number({ required_error: "Pick a facility before saving" }),
+  microplanId: z.number({ required_error: "Pick a parent microplan before saving" }),
+  scheduledDate: z.preprocess(
+    (v) => {
+      if (v == null || v === "") return undefined;
+      if (v instanceof Date) return v;
+      const d = new Date(v as any);
+      return isNaN(d.getTime()) ? undefined : d;
+    },
+    z.date({ required_error: "Pick the scheduled date before saving" }),
+  ),
+});
+
+type PlanTypeFilter = "routine" | "campaign";
+
+const transportIcons: Record<string, typeof Car> = {
+  walking: Footprints,
+  road: Car,
+  boat: Ship,
+  air: Plane,
+};
+
+export default function SessionPlanning({
+  planTypeFilter = "routine",
+  lockedMicroplanId,
+}: { planTypeFilter?: PlanTypeFilter; lockedMicroplanId?: number } = {}) {
+  const { toast } = useToast();
+  const { user } = useAuth();
+  const [dialogOpen, setDialogOpen] = useState(false);
+  // Task #47 — Mark Done dialog state. Captures per-vaccine doses administered.
+  const [markDoneSession, setMarkDoneSession] = useState<SessionPlan | null>(null);
+  const [vaccinatedCounts, setVaccinatedCounts] = useState<Record<string, string>>({});
+  // Task #198 — After mark-done, surface the closure-of-loop summary for
+  // sessions scoped to a specific village (the "Plan defaulter follow-up here"
+  // flow). Server returns `defaultersCaughtUp` whenever the session had at
+  // least one attached village.
+  const [markDoneSummary, setMarkDoneSummary] = useState<
+    | {
+        sessionName: string;
+        totals: number;
+        defaultersCaughtUp: number;
+        defaulterVillageCount: number;
+      }
+    | null
+  >(null);
+  // Task #47 — Proximity panel state shown inside the edit dialog.
+  const [proximityWarning, setProximityWarning] = useState<{ nearby: any[]; reason?: string } | null>(null);
+  const [proximityChecking, setProximityChecking] = useState(false);
+  // Task #162 — Track which (facilityId, villageIds) the last proximity check
+  // was run against, so when the user adds/removes a linked village we can
+  // mark the existing result as stale and automatically re-run the check.
+  const [proximityCheckedKey, setProximityCheckedKey] = useState<string | null>(null);
+  const [proximityStale, setProximityStale] = useState(false);
+  // Task #50 — Proximity panel state shown inside the *create* dialog when
+  // prefilled from an unserved-place pin on the live map.
+  const [createProximity, setCreateProximity] = useState<{ nearby: any[]; reason?: string } | null>(null);
+  const [createProximityChecking, setCreateProximityChecking] = useState(false);
+  // Task #100 — Villages auto-attached to the new session from the "Plan a
+  // session here" / "Plan follow-up" flow. Stored as {id, name} chips so the
+  // user can see (and remove) the link before saving. Persisted into
+  // session_villages by POST /api/sessions when present.
+  const [attachedVillages, setAttachedVillages] = useState<Array<{ id: number; name: string }>>([]);
+  const isDetailMode = lockedMicroplanId != null;
+  const parentMicroplanTypeForRoute: "facility_routine" | "sia_campaign" =
+    planTypeFilter === "campaign" ? "sia_campaign" : "facility_routine";
+  const pageTitle = planTypeFilter === "campaign" ? "SIA Campaigns" : "Routine Microplan";
+  const pageSubtitle =
+    planTypeFilter === "campaign"
+      ? "Plan supplementary immunization campaigns (measles, polio, MR catch-up) and the sessions inside each campaign microplan."
+      : "Plan routine immunization sessions inside each facility's quarterly microplan.";
+  const { data: tenantInfo } = useQuery<any>({
+    queryKey: ["/api/me/tenant"],
+  });
+
+  const skipRegionLevel = tenantInfo?.settings?.skipRegionLevel ?? (tenantInfo?.countryCode === "ZMB" || false);
+  const rawAdminLabels = tenantInfo?.settings?.adminLevelLabels ?? {
+    level1: "Province",
+    level2: "District",
+    level3: "Facility",
+    level4: "Constituency",
+    level5: "Ward",
+  };
+  const adminLabels = useMemo(() => {
+    return skipRegionLevel ? {
+      level1: rawAdminLabels.level2 || "Province",
+      level2: rawAdminLabels.level3 || "District",
+      level3: rawAdminLabels.level4 || "Facility",
+    } : {
+      level1: rawAdminLabels.level2 || "Province",
+      level2: rawAdminLabels.level3 || "District",
+      level3: rawAdminLabels.level4 || "Facility",
+    };
+  }, [skipRegionLevel, rawAdminLabels]);
+
+  const [provinceId, setProvinceId] = useState<number | null>(null);
+  const [districtId, setDistrictId] = useState<number | null>(null);
+  // Geo cascade filter (separate from create-dialog selection)
+  const [geoFilterProvinceId, setGeoFilterProvinceId] = useState<number | null>(null);
+  const [geoFilterDistrictId, setGeoFilterDistrictId] = useState<number | null>(null);
+  // Task #197 — Filter chip on the session list: narrow to defaulter
+  // follow-up sessions only. Driven by the persisted `outreachPurpose`
+  // column so it survives planners renaming the session.
+  const [defaulterOnly, setDefaulterOnly] = useState<boolean>(false);
+  const [geoFilterFacilityId, setGeoFilterFacilityId] = useState<number | null>(() => {
+    if (typeof window === "undefined") return null;
+    const f = new URLSearchParams(window.location.search).get("facility");
+    return f && !Number.isNaN(Number(f)) ? Number(f) : null;
+  });
+
+  const isCreator = canCreateSessionPlan(user);
+  const isReviewer = canApproveSessionPlan(user);
+
+  // Task #50 — prefill from an unserved-place pin on the live map. When the
+  // user clicks "Plan a session here" in the map popup we land here with
+  // ?unservedVillageId=&unservedName=&unservedLat=&unservedLng=&autoOpen=1.
+  // In list mode we surface a banner and preserve the query on the microplan
+  // links; in detail mode we auto-open the New Session dialog, prefill the
+  // name, and run the proximity check against the village's coordinates.
+  const unservedPrefill = useMemo(() => {
+    if (typeof window === "undefined") return null;
+    const sp = new URLSearchParams(window.location.search);
+    if (sp.get("autoOpen") !== "1" || !sp.get("unservedName")) return null;
+    const lat = Number(sp.get("unservedLat"));
+    const lng = Number(sp.get("unservedLng"));
+    const vid = Number(sp.get("unservedVillageId"));
+    return {
+      villageId: Number.isFinite(vid) ? vid : null,
+      name: sp.get("unservedName") || "",
+      lat: Number.isFinite(lat) ? lat : null,
+      lng: Number.isFinite(lng) ? lng : null,
+      isHardToReach: sp.get("unservedHtr") === "1",
+      kind: (sp.get("prefillKind") as "village" | "followup" | "unserved" | "defaulter" | null) ?? "unserved",
+    };
+  }, []);
+  // Calendar prefill — the Sessions Hub calendar links here with
+  // `?scheduledDate=YYYY-MM-DD&autoOpen=1` when the user wants to start a
+  // new session on a specific day. We surface it as a self-contained
+  // prefill (no village dependency) so the new-session dialog opens with
+  // the date already filled in. List mode preserves the query on the
+  // microplan links so it survives the pick-a-microplan hop into detail
+  // mode where the dialog actually opens.
+  const scheduledDatePrefill = useMemo(() => {
+    if (typeof window === "undefined") return null;
+    const sp = new URLSearchParams(window.location.search);
+    if (sp.get("autoOpen") !== "1") return null;
+    const raw = sp.get("scheduledDate");
+    if (!raw) return null;
+    // Parse YYYY-MM-DD as a LOCAL date — `new Date("YYYY-MM-DD")` is
+    // interpreted as UTC midnight, which shifts the day in negative-offset
+    // locales (e.g. picking May 28 from a US tz would prefill May 27).
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+    const d = m
+      ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
+      : new Date(raw);
+    if (Number.isNaN(d.getTime())) return null;
+    return d;
+  }, []);
+  const preserveUnservedQs = useMemo(() => {
+    if (typeof window === "undefined") return "";
+    if (!unservedPrefill && !scheduledDatePrefill) return "";
+    return window.location.search || "";
+  }, [unservedPrefill, scheduledDatePrefill]);
+
+  /*
+  // Original Code: Direct online-only useQuery fetch calls that fail when offline.
+  const { data: sessions, isLoading: loadingSessions } = useQuery<SessionPlan[]>({
+    queryKey: ["/api/sessions"],
+  });
+  const { data: facilities } = useQuery<Facility[]>({ queryKey: ["/api/facilities"] });
+  const { data: provinces } = useQuery<Province[]>({
+    queryKey: ["/api/provinces"],
+    enabled: isCreator,
+  });
+  const { data: districts } = useQuery<District[]>({
+    queryKey: ["/api/districts"],
+    enabled: isCreator,
+  });
+  */
+
+  // Updated Code: Offline-aware useQuery configurations returning local Dexie IndexedDB cache when navigator.onLine is false.
+  const { data: sessions, isLoading: loadingSessions } = useQuery<SessionPlan[]>({
+    queryKey: ["/api/sessions"],
+    queryFn: async () => {
+      if (!navigator.onLine) {
+        return (await offlineDb.sessionPlans.toArray()) as unknown as SessionPlan[];
+      }
+      const res = await fetch("/api/sessions");
+      if (!res.ok) throw new Error("Failed to load sessions");
+      return res.json();
+    },
+  });
+
+  // Task #180 — Surface unsynced offline edits in the microplan list so a
+  // clerk can tell at a glance which rows still have changes queued in the
+  // outbox (and avoid double-editing them before reconnection). We poll the
+  // outbox cheaply on an interval so the badge clears once syncEngine flushes
+  // the entry, even without an explicit event channel.
+  const { data: pendingSessionSync } = useQuery<{
+    serverIds: Set<number>;
+    markDoneServerIds: Set<number>;
+    hasLocalCreate: boolean;
+  }>({
+    queryKey: ["offline-outbox", "sessionPlan"],
+    queryFn: async () => {
+      const entries = await offlineDb.outbox
+        .where("entityType")
+        .equals("sessionPlan")
+        .toArray();
+      const serverIds = new Set<number>();
+      const markDoneServerIds = new Set<number>();
+      let hasLocalCreate = false;
+      for (const e of entries) {
+        if (typeof e.serverId === "number") {
+          serverIds.add(e.serverId);
+          if (typeof e.url === "string" && e.url.includes("/mark-done")) {
+            markDoneServerIds.add(e.serverId);
+          }
+        } else if (e.method === "POST" && !e.serverId) {
+          hasLocalCreate = true;
+        }
+      }
+      return { serverIds, markDoneServerIds, hasLocalCreate };
+    },
+    refetchInterval: 3000,
+    refetchIntervalInBackground: false,
+    staleTime: 1000,
+  });
+
+  const isSessionPendingSync = (item: SessionPlan): boolean => {
+    if ((item as any)._localOnly) return true;
+    if (pendingSessionSync?.serverIds.has(item.id)) return true;
+    return false;
+  };
+
+  const { data: facilities } = useQuery<Facility[]>({
+    queryKey: ["/api/facilities"],
+    queryFn: async () => {
+      if (!navigator.onLine) {
+        return (await offlineDb.facilities.toArray()) as unknown as Facility[];
+      }
+      const res = await fetch("/api/facilities");
+      if (!res.ok) throw new Error("Failed to load facilities");
+      return res.json();
+    },
+  });
+
+  // Task #129 — Village list scoped to the chosen facility, used by the
+  // manual "Add village" picker in the new-session dialog so users can build
+  // the attached-villages chip list up front instead of waiting until after
+  // save.
+  const { data: villages } = useQuery<Village[]>({
+    queryKey: ["/api/villages"],
+    queryFn: async () => {
+      if (!navigator.onLine) {
+        return (await offlineDb.villages.toArray()) as unknown as Village[];
+      }
+      const res = await fetch("/api/villages");
+      if (!res.ok) throw new Error("Failed to load villages");
+      return res.json();
+    },
+  });
+  const [villagePickerOpen, setVillagePickerOpen] = useState(false);
+
+  const { data: provinces } = useQuery<Province[]>({
+    queryKey: ["/api/provinces"],
+    enabled: isCreator,
+    queryFn: async () => {
+      if (!navigator.onLine) {
+        return (await offlineDb.provinces.toArray()) as unknown as Province[];
+      }
+      const res = await fetch("/api/provinces");
+      if (!res.ok) throw new Error("Failed to load provinces");
+      return res.json();
+    },
+  });
+
+  const { data: districts } = useQuery<District[]>({
+    queryKey: ["/api/districts"],
+    enabled: isCreator,
+    queryFn: async () => {
+      if (!navigator.onLine) {
+        return (await offlineDb.districts.toArray()) as unknown as District[];
+      }
+      const res = await fetch("/api/districts");
+      if (!res.ok) throw new Error("Failed to load districts");
+      return res.json();
+    },
+  });
+
+  // Tenant antigen / dose schedule — drives the Mark Done dialog inputs so
+  // counts are captured per the tenant's actual schedule (not a hardcoded list).
+  const { data: vaccineConfigs } = useQuery<VaccineConfig[]>({
+    queryKey: ["/api/vaccines/config"],
+    queryFn: async () => {
+      if (!navigator.onLine) {
+        return (await offlineDb.vaccineConfigs.toArray()) as unknown as VaccineConfig[];
+      }
+      const res = await fetch("/api/vaccines/config");
+      if (!res.ok) throw new Error("Failed to load vaccine configs");
+      return res.json();
+    },
+  });
+
+  const doseStages = useMemo(() => expandVaccineSchedule(vaccineConfigs), [vaccineConfigs]);
+
+  // Task #128 — Tenant village list (used by the edit dialog's village picker).
+  const { data: tenantVillages } = useQuery<Village[]>({
+    queryKey: ["/api/villages"],
+    queryFn: async () => {
+      if (!navigator.onLine) {
+        return (await offlineDb.villages.toArray()) as unknown as Village[];
+      }
+      const res = await fetch("/api/villages");
+      if (!res.ok) throw new Error("Failed to load villages");
+      return res.json();
+    },
+  });
+
+  // Task #128 — All session↔village links for this tenant. We filter client-side
+  // by sessionId when opening the edit dialog. The endpoint is already used by
+  // other pages, so we share the cache key.
+  const { data: allSessionVillages } = useQuery<Array<{ sessionId: number; villageId: number }>>({
+    queryKey: ["/api/sessions/villages"],
+    queryFn: async () => {
+      // Task #163 — Offline-first read: serve the Dexie mirror when offline
+      // so village chips survive dialog close/reopen and refreshes. When
+      // online, fetch fresh and rewrite the Dexie mirror in the background.
+      if (!navigator.onLine) {
+        const rows = await offlineDb.sessionVillageLinks.toArray();
+        return rows.map((r) => ({ sessionId: r.sessionId, villageId: r.villageId }));
+      }
+      const res = await fetch("/api/sessions/villages");
+      if (!res.ok) throw new Error("Failed to load session-village links");
+      const data = (await res.json()) as Array<{ sessionId: number; villageId: number }>;
+      try {
+        const tenantId = user?.tenantId ?? "SSD";
+        const now = Date.now();
+        await offlineDb.transaction("rw", offlineDb.sessionVillageLinks, async () => {
+          await offlineDb.sessionVillageLinks.clear();
+          if (data.length > 0) {
+            await offlineDb.sessionVillageLinks.bulkPut(
+              data.map((sv) => ({
+                sessionId: Number(sv.sessionId),
+                villageId: Number(sv.villageId),
+                tenantId,
+                _syncedAt: now,
+              })),
+            );
+          }
+        });
+      } catch {
+        /* best-effort cache refresh */
+      }
+      return data;
+    },
+  });
+
+  // Master microplans of the route's planType. Required for the cascade:
+  // a session must belong to a parent microplan of matching planType.
+  const { data: allMicroplans } = useQuery<Microplan[]>({
+    queryKey: ["/api/microplans"],
+    queryFn: async () => {
+      const res = await fetch("/api/microplans");
+      if (!res.ok) throw new Error("Failed to load microplans");
+      return res.json();
+    },
+  });
+
+  const microplansOfRouteType = useMemo(
+    () =>
+      (allMicroplans ?? []).filter(
+        (m) => m.planType === parentMicroplanTypeForRoute,
+      ),
+    [allMicroplans, parentMicroplanTypeForRoute],
+  );
+
+  const filteredDistricts = useMemo(
+    () => (provinceId ? (districts ?? []).filter((d) => Number(d.provinceId) === Number(provinceId)) : []),
+    [districts, provinceId],
+  );
+  const filteredFacilities = useMemo(
+    () => (districtId ? (facilities ?? []).filter((f) => Number(f.districtId) === Number(districtId)) : []),
+    [facilities, districtId],
+  );
+
+  // Pre-fill cascade if the user is already pinned to a facility/district/province
+  useEffect(() => {
+    if (!isCreator || !user || !facilities || !districts) return;
+    if (user.facilityId) {
+      const f = facilities.find((x) => x.id === user.facilityId);
+      if (f) {
+        const d = districts.find((x) => x.id === f.districtId);
+        if (d) {
+          setProvinceId((p) => p ?? d.provinceId);
+          setDistrictId((d2) => d2 ?? f.districtId);
+        }
+      }
+    } else if (user.districtId) {
+      const d = districts.find((x) => x.id === user.districtId);
+      if (d) {
+        setProvinceId((p) => p ?? d.provinceId);
+        setDistrictId((d2) => d2 ?? user.districtId!);
+      }
+    } else if (user.provinceId) {
+      setProvinceId((p) => p ?? user.provinceId!);
+    }
+  }, [isCreator, user, facilities, districts]);
+
+  const form = useForm<InsertSessionPlan>({
+    resolver: zodResolver(sessionFormSchema),
+    defaultValues: {
+      name: "",
+      sessionType: "static",
+      quarter: Math.ceil((new Date().getMonth() + 1) / 3),
+      year: new Date().getFullYear(),
+      status: "planned",
+      approvalStatus: "draft",
+      facilityId: user?.facilityId ?? undefined,
+      microplanId: (lockedMicroplanId ?? undefined) as any,
+      scheduledDate: undefined as any,
+    },
+  });
+
+  // In detail mode, keep the form's microplanId pinned to the locked id.
+  useEffect(() => {
+    if (lockedMicroplanId != null) {
+      form.setValue("microplanId" as any, lockedMicroplanId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lockedMicroplanId]);
+
+  // When a parent microplan is picked, copy its facility/quarter/year into the
+  // session form so the user does not have to re-enter them (and they always match).
+  const watchedMicroplanId = form.watch("microplanId" as any);
+  useEffect(() => {
+    if (!watchedMicroplanId) return;
+    const mp = microplansOfRouteType.find((m) => m.id === Number(watchedMicroplanId));
+    if (!mp) return;
+    if (mp.facilityId) {
+      form.setValue("facilityId", mp.facilityId);
+      const fac = (facilities ?? []).find((f) => f.id === mp.facilityId);
+      if (fac) {
+        const d = (districts ?? []).find((x) => x.id === fac.districtId);
+        if (d) {
+          setProvinceId(d.provinceId);
+          setDistrictId(fac.districtId);
+        }
+      }
+    }
+    if (mp.quarter) form.setValue("quarter", mp.quarter);
+    if (mp.year) form.setValue("year", mp.year);
+    // Prefill the target population from the parent microplan when the session
+    // doesn't have one yet, so facility staff don't retype a value the
+    // microplan already established. Leave a user-entered value untouched.
+    if (mp.targetPopulation != null && !form.getValues("targetPopulation")) {
+      form.setValue("targetPopulation", mp.targetPopulation as any);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [watchedMicroplanId, microplansOfRouteType, facilities, districts]);
+
+  // Keep facilityId in the form synced with the cascade
+  useEffect(() => {
+    const current = form.getValues("facilityId");
+    if (current && filteredFacilities.length && !filteredFacilities.find((f) => f.id === current)) {
+      form.setValue("facilityId", undefined as any);
+    }
+  }, [filteredFacilities, form]);
+
+  // Task #50 — Run the proximity & population check directly from the create
+  // dialog using the unserved village's coordinates. Synthesises a midpoint
+  // scheduledDate from the form's quarter/year since the create form does not
+  // collect a date yet.
+  const runCreateProximityCheck = async (facilityId: number, lat: number, lng: number, villageId: number | null, quarter: number, year: number, targetPopulation?: number, scheduledDateOverride?: string | Date | null) => {
+    if (!navigator.onLine) {
+      setCreateProximity({ nearby: [], reason: "Offline — proximity check skipped." });
+      return;
+    }
+    setCreateProximityChecking(true);
+    try {
+      const picked = scheduledDateOverride ?? form.getValues("scheduledDate" as any);
+      const scheduledDate = picked
+        ? new Date(picked as any).toISOString()
+        : new Date(year, (quarter - 1) * 3 + 1, 15).toISOString();
+      const res = await apiRequest("POST", "/api/sessions/validate-proximity", {
+        facilityId,
+        scheduledDate,
+        targetPopulation: targetPopulation ?? 0,
+        villageIds: villageId ? [villageId] : [],
+        lat,
+        lng,
+      });
+      const json: any = await (res as any).json?.() ?? res;
+      setCreateProximity({ nearby: json?.nearby ?? [], reason: json?.reason });
+    } catch (e: any) {
+      setCreateProximity({ nearby: [], reason: e?.message ?? "Proximity check failed." });
+    } finally {
+      setCreateProximityChecking(false);
+    }
+  };
+
+  // Task #50 — In detail mode with an unserved-place prefill, auto-open the
+  // create dialog, prefill the session name, default to an outreach session,
+  // and (once a facility is resolved) run the proximity check automatically.
+  const lockedParentForPrefill = useMemo(
+    () =>
+      lockedMicroplanId != null
+        ? (microplansOfRouteType.find((m) => m.id === lockedMicroplanId)
+            ?? (allMicroplans ?? []).find((m) => m.id === lockedMicroplanId))
+        : undefined,
+    [lockedMicroplanId, microplansOfRouteType, allMicroplans],
+  );
+  const autoPrefillRanRef = useRef(false);
+  useEffect(() => {
+    if (!unservedPrefill || !isDetailMode || !isCreator) return;
+    if (autoPrefillRanRef.current) return;
+    if (!lockedParentForPrefill) return;
+    autoPrefillRanRef.current = true;
+    const prefix =
+      unservedPrefill.kind === "defaulter"
+        ? "Defaulter follow-up"
+        : unservedPrefill.kind === "followup"
+        ? "Follow-up"
+        : "Outreach";
+    form.setValue("name", `${prefix} — ${unservedPrefill.name}`);
+    form.setValue("sessionType", "outreach" as any);
+    // Task #100 — auto-attach the picked village so the user doesn't have to
+    // remember to re-select it before saving. They can still remove the chip
+    // in the dialog if they don't want the link.
+    if (unservedPrefill.villageId != null) {
+      setAttachedVillages([{ id: unservedPrefill.villageId, name: unservedPrefill.name }]);
+    }
+    setDialogOpen(true);
+  }, [unservedPrefill, isDetailMode, isCreator, lockedParentForPrefill]);
+
+  // Calendar prefill — when the user came from the Sessions Hub calendar
+  // with `?scheduledDate=YYYY-MM-DD&autoOpen=1`, open the New Session
+  // dialog (only if no unservedPrefill is also handling the open) and set
+  // the scheduledDate on the form so the day is already filled in.
+  const datePrefillRanRef = useRef(false);
+  useEffect(() => {
+    if (!scheduledDatePrefill || !isDetailMode || !isCreator) return;
+    if (datePrefillRanRef.current) return;
+    if (!lockedParentForPrefill) return;
+    datePrefillRanRef.current = true;
+    form.setValue("scheduledDate", scheduledDatePrefill as any);
+    if (!unservedPrefill) {
+      setDialogOpen(true);
+    }
+  }, [scheduledDatePrefill, isDetailMode, isCreator, lockedParentForPrefill, unservedPrefill]);
+
+  // Once the dialog is open and a facility is resolved from the locked parent
+  // microplan, fire the proximity check for the prefilled village exactly once.
+  const proxFiredRef = useRef(false);
+  useEffect(() => {
+    if (!unservedPrefill || !dialogOpen) return;
+    if (proxFiredRef.current) return;
+    if (unservedPrefill.lat == null || unservedPrefill.lng == null) return;
+    const fid = form.getValues("facilityId");
+    const q = form.getValues("quarter") || Math.ceil((new Date().getMonth() + 1) / 3);
+    const y = form.getValues("year") || new Date().getFullYear();
+    if (!fid) return;
+    proxFiredRef.current = true;
+    runCreateProximityCheck(Number(fid), unservedPrefill.lat, unservedPrefill.lng, unservedPrefill.villageId, q, y);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dialogOpen, unservedPrefill, watchedMicroplanId, facilities]);
+
+  /*
+  // Original Code: Direct online-only useMutation apiRequest post call.
+  const createMutation = useMutation({
+    mutationFn: async (data: InsertSessionPlan) => apiRequest("POST", "/api/sessions", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sessions"] });
+      setDialogOpen(false);
+      form.reset({
+        name: "",
+        sessionType: "static",
+        quarter: Math.ceil((new Date().getMonth() + 1) / 3),
+        year: new Date().getFullYear(),
+        status: "planned",
+        approvalStatus: "draft",
+        facilityId: user?.facilityId ?? undefined,
+      });
+      toast({
+        title: "Microplan submitted",
+        description:
+          "Your microplan has been saved as a draft. Submit it for approval when you're ready.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Could not save", description: error.message, variant: "destructive" });
+    },
+  });
+  */
+
+  // Updated Code: Offline-aware useMutation that writes directly to offlineDb and enqueues to sync outbox when offline.
+  const createMutation = useMutation({
+    mutationFn: async (data: InsertSessionPlan) => {
+      if (!navigator.onLine) {
+        // Generate a random temporary negative ID for local tracking
+        const newId = -Math.floor(Math.random() * 1000000);
+        const localSession = {
+          id: newId,
+          tenantId: user?.tenantId ?? "SSD",
+          facilityId: data.facilityId,
+          microplanId: (data as any).microplanId,
+          planType: planTypeFilter,
+          name: data.name,
+          sessionType: data.sessionType,
+          quarter: data.quarter,
+          year: data.year,
+          scheduledDate: data.scheduledDate ? new Date(data.scheduledDate).toISOString() as any : null,
+          transportMode: data.transportMode ?? null,
+          estimatedDuration: data.estimatedDuration ?? null,
+          targetPopulation: data.targetPopulation ?? null,
+          status: data.status ?? "planned",
+          approvalStatus: data.approvalStatus ?? "draft",
+          notes: data.notes ?? null,
+          // Task #197 — Carry the intent through offline saves so the badge
+          // and filter chip work before the row syncs to the server.
+          outreachPurpose: (data as any).outreachPurpose ?? null,
+          _syncedAt: 0,
+          _localOnly: true,
+        };
+
+        // Save locally to IndexedDB
+        await offlineDb.sessionPlans.put(localSession as any);
+
+        // Queue to sync outbox
+        await enqueueOutbox({
+          tenantId: user?.tenantId ?? "SSD",
+          entityType: "sessionPlan",
+          method: "POST",
+          url: "/api/sessions",
+          body: JSON.stringify(data),
+        });
+
+        return localSession;
+      }
+
+      return apiRequest("POST", "/api/sessions", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sessions"] });
+      setDialogOpen(false);
+      form.reset({
+        name: "",
+        sessionType: "static",
+        quarter: Math.ceil((new Date().getMonth() + 1) / 3),
+        year: new Date().getFullYear(),
+        status: "planned",
+        approvalStatus: "draft",
+        facilityId: user?.facilityId ?? undefined,
+        microplanId: undefined as any,
+        scheduledDate: undefined as any,
+      });
+      // Task #100 — clear the auto-attached village chips so they don't leak
+      // into the next "New session" dialog.
+      setAttachedVillages([]);
+      toast({
+        title: navigator.onLine ? "Session saved" : "Session queued offline",
+        description: navigator.onLine
+          ? `Your ${planTypeFilter === "campaign" ? "campaign" : "routine"} session has been saved as a draft. Submit it for approval when you're ready.`
+          : "Saved locally. Your session will sync automatically once internet is restored.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Could not save", description: error.message, variant: "destructive" });
+    },
+  });
+
+  // Edit & Delete CRUD modal state & mutations
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [editingPlan, setEditingPlan] = useState<SessionPlan | null>(null);
+  const [viewingPlan, setViewingPlan] = useState<SessionPlan | null>(null);
+
+  const [editName, setEditName] = useState("");
+  const [editSessionType, setEditSessionType] = useState<"static" | "outreach" | "mobile">("static");
+  const [editQuarter, setEditQuarter] = useState<number>(1);
+  const [editYear, setEditYear] = useState<number>(new Date().getFullYear());
+  const [editTargetPop, setEditTargetPop] = useState<number>(0);
+  const [editTransportMode, setEditTransportMode] = useState<string>("road");
+  const [editStatus, setEditStatus] = useState<string>("planned");
+  // Task #211 — Outreach purpose picker. Empty string means "no purpose set"
+  // and is converted to null when sent to the server. The whitelist
+  // (routine_outreach / unserved / defaulter_followup) is enforced server-side
+  // on PATCH /api/sessions/:id.
+  const [editOutreachPurpose, setEditOutreachPurpose] = useState<string>("");
+  const [editHR, setEditHR] = useState("");
+  const [editStakeholders, setEditStakeholders] = useState("");
+  const [editProvinceId, setEditProvinceId] = useState<number | null>(null);
+  const [editDistrictId, setEditDistrictId] = useState<number | null>(null);
+  const [editFacilityId, setEditFacilityId] = useState<number | null>(null);
+  // Task #128 — Editable list of villages linked to this session. Reconciled
+  // server-side on PATCH /api/sessions/:id. `editVillagesLoaded` flips true
+  // only once we've actually seen the link list for *this* session — if we
+  // saved before that, the server would treat an empty array as authoritative
+  // and wipe existing rows.
+  const [editVillageIds, setEditVillageIds] = useState<number[]>([]);
+  const [editVillagesLoaded, setEditVillagesLoaded] = useState(false);
+  const [addVillagePick, setAddVillagePick] = useState<string>("");
+
+  const isLocked = editingPlan?.approvalStatus === "approved" || editingPlan?.approvalStatus === "locked";
+
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: any }) => {
+      // Task #163 — Offline-aware PATCH. When the device is offline:
+      //   1. Apply the column edits to the local Dexie sessionPlans row so
+      //      the dialog/list reflects the change immediately.
+      //   2. Patch the cached /api/sessions/villages snapshot so the village
+      //      chips don't blink back to the old set on close.
+      //   3. Enqueue the PATCH to the outbox INCLUDING villageIds, so the
+      //      sync service can replay the village reconciliation once online.
+      if (!navigator.onLine) {
+        const incomingVillageIds: number[] | undefined = Array.isArray(data?.villageIds)
+          ? data.villageIds.map((v: any) => Number(v)).filter((n: number) => Number.isFinite(n))
+          : undefined;
+
+        try {
+          const existing = await offlineDb.sessionPlans.get(id);
+          if (existing) {
+            const merged: any = { ...existing };
+            for (const k of Object.keys(data)) {
+              if (k === "villageIds") continue;
+              merged[k] = (data as any)[k];
+            }
+            merged._syncedAt = 0;
+            merged._localOnly = true;
+            await offlineDb.sessionPlans.put(merged);
+          }
+        } catch {
+          /* best-effort local mirror */
+        }
+
+        if (incomingVillageIds) {
+          const tenantId = user?.tenantId ?? "SSD";
+          // Durable Dexie mirror — survives dialog close/reopen and refresh.
+          try {
+            await offlineDb.transaction("rw", offlineDb.sessionVillageLinks, async () => {
+              const stale = await offlineDb.sessionVillageLinks
+                .where("sessionId").equals(id).primaryKeys();
+              if (stale.length > 0) {
+                await offlineDb.sessionVillageLinks.bulkDelete(stale);
+              }
+              if (incomingVillageIds.length > 0) {
+                await offlineDb.sessionVillageLinks.bulkPut(
+                  incomingVillageIds.map((vid) => ({
+                    sessionId: id,
+                    villageId: vid,
+                    tenantId,
+                    _syncedAt: 0,
+                    _localOnly: true,
+                  })),
+                );
+              }
+            });
+          } catch {
+            /* best-effort local mirror */
+          }
+          // Keep the in-memory React Query cache aligned for the current page.
+          queryClient.setQueryData<Array<{ sessionId: number; villageId: number }>>(
+            ["/api/sessions/villages"],
+            (prev) => {
+              const others = (prev ?? []).filter((sv) => Number(sv.sessionId) !== Number(id));
+              const next = incomingVillageIds.map((vid) => ({ sessionId: id, villageId: vid }));
+              return [...others, ...next];
+            },
+          );
+        }
+
+        // Task #211 — Merge the patched columns (outreachPurpose, status,
+        // name, etc.) into the cached /api/sessions row so list badges and
+        // filters update immediately offline. onSuccess intentionally skips
+        // invalidation while offline, so the cache patch has to happen here.
+        queryClient.setQueryData<any[]>(["/api/sessions"], (prev) => {
+          if (!Array.isArray(prev)) return prev;
+          return prev.map((s) =>
+            Number((s as any).id) === Number(id)
+              ? { ...s, ...Object.fromEntries(Object.entries(data).filter(([k]) => k !== "villageIds")) }
+              : s,
+          );
+        });
+
+        await enqueueOutbox({
+          tenantId: user?.tenantId ?? "SSD",
+          entityType: "sessionPlan",
+          method: "PATCH",
+          url: `/api/sessions/${id}`,
+          body: JSON.stringify(data),
+          serverId: id,
+        });
+
+        return { id, ...data };
+      }
+      return apiRequest("PATCH", `/api/sessions/${id}`, data);
+    },
+    onSuccess: () => {
+      // Task #163 — Skip invalidation while offline. The villages queryFn
+      // would refetch from the Dexie mirror we just wrote, but invalidating
+      // the in-memory cache can still cause a one-frame flash of the old
+      // set in the dialog. Once back online, the next sync flush + manual
+      // refresh will repopulate naturally.
+      if (navigator.onLine) {
+        queryClient.invalidateQueries({ queryKey: ["/api/sessions"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/sessions/villages"] });
+      }
+      setIsEditOpen(false);
+      setEditingPlan(null);
+      toast({
+        title: navigator.onLine ? "Microplan updated" : "Microplan changes queued offline",
+        description: navigator.onLine
+          ? "Your session plan changes have been saved successfully."
+          : "Saved locally. Your changes (including village edits) will sync once internet is restored.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to update", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const deletePlanMutation = useMutation({
+    mutationFn: async (id: number) => {
+      return apiRequest("DELETE", `/api/sessions/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sessions"] });
+      setIsEditOpen(false);
+      setEditingPlan(null);
+      toast({
+        title: "Microplan deleted",
+        description: "The microplan has been permanently removed.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to delete", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const handleOpenEditModal = (plan: SessionPlan) => {
+    setEditingPlan(plan);
+    setEditName(plan.name);
+    setEditSessionType(plan.sessionType as any || "static");
+    setEditQuarter(plan.quarter);
+    setEditYear(plan.year);
+    setEditTargetPop(plan.targetPopulation || 0);
+    setEditTransportMode(plan.transportMode || "road");
+    setEditStatus(plan.status || "planned");
+    setEditHR((plan as any).humanResources || "");
+    setEditStakeholders((plan as any).keyStakeholders || "");
+    setEditOutreachPurpose(((plan as any).outreachPurpose as string) || "");
+
+    // Task #128 — Seed the editable village list from the session_villages
+    // links we already loaded for this tenant. If the query hasn't resolved
+    // yet, leave `editVillagesLoaded` false; the effect below will refill
+    // once the data arrives, and the Save button stays disabled until then
+    // so we can never PATCH an empty array over real links.
+    if (allSessionVillages !== undefined) {
+      const linkedIds = allSessionVillages
+        .filter((sv) => Number(sv.sessionId) === Number(plan.id))
+        .map((sv) => Number(sv.villageId));
+      setEditVillageIds(linkedIds);
+      setEditVillagesLoaded(true);
+    } else {
+      setEditVillageIds([]);
+      setEditVillagesLoaded(false);
+    }
+    setAddVillagePick("");
+
+    const fac = (facilities ?? []).find((f) => f.id === plan.facilityId);
+    if (fac) {
+      const dist = (districts ?? []).find((d) => d.id === fac.districtId);
+      setEditProvinceId(dist ? dist.provinceId : null);
+      setEditDistrictId(fac.districtId);
+      setEditFacilityId(plan.facilityId);
+    } else {
+      setEditProvinceId(null);
+      setEditDistrictId(null);
+      setEditFacilityId(plan.facilityId);
+    }
+
+    setIsEditOpen(true);
+  };
+
+  const handleUpdatePlan = () => {
+    if (!editingPlan) return;
+    if (!editName.trim()) {
+      toast({
+        title: "Validation Error",
+        description: "Please supply a microplan name.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!editFacilityId) {
+      toast({
+        title: "Validation Error",
+        description: "Please assign a facility location.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const payload = {
+      name: editName,
+      sessionType: editSessionType,
+      quarter: editQuarter,
+      year: editYear,
+      targetPopulation: editTargetPop,
+      transportMode: editTransportMode,
+      status: editStatus,
+      humanResources: editHR,
+      keyStakeholders: editStakeholders,
+      facilityId: editFacilityId,
+      // Task #211 — Allow planners to (re)classify outreach purpose from the
+      // edit dialog. Empty string maps to null so the column can be cleared.
+      outreachPurpose: editOutreachPurpose === "" ? null : editOutreachPurpose,
+    };
+    // Task #128 — Only include villageIds when we've actually loaded the
+    // current link set. Otherwise the server would treat an unsaved [] as
+    // "remove all linked villages" and silently wipe existing rows.
+    if (editVillagesLoaded) {
+      (payload as any).villageIds = editVillageIds;
+    }
+
+    updateMutation.mutate({ id: editingPlan.id, data: payload });
+  };
+
+  // Task #128 — If the dialog opens before /api/sessions/villages has
+  // resolved, refill the editable list as soon as the query lands so the
+  // user can edit (and save) without losing the existing village links.
+  useEffect(() => {
+    if (!isEditOpen || !editingPlan) return;
+    if (editVillagesLoaded) return;
+    if (allSessionVillages === undefined) return;
+    const linkedIds = allSessionVillages
+      .filter((sv) => Number(sv.sessionId) === Number(editingPlan.id))
+      .map((sv) => Number(sv.villageId));
+    setEditVillageIds(linkedIds);
+    setEditVillagesLoaded(true);
+  }, [isEditOpen, editingPlan, allSessionVillages, editVillagesLoaded]);
+
+  // Task #162 — When the user adds or removes a linked village (or swaps
+  // the facility) in the edit dialog, any existing proximity result no
+  // longer reflects what Save would enforce. Mark it stale immediately and
+  // debounce a re-run so the panel catches up without spamming the API.
+  useEffect(() => {
+    if (!isEditOpen || !editingPlan) return;
+    if (!editVillagesLoaded) return;
+    if (proximityCheckedKey === null) return; // never been checked → nothing to refresh
+    const facilityId = editFacilityId ?? (editingPlan as any).facilityId;
+    const sortedIds = [...editVillageIds].sort((a, b) => a - b);
+    const currentKey = `${facilityId}:${sortedIds.join(",")}`;
+    if (currentKey === proximityCheckedKey) {
+      if (proximityStale) setProximityStale(false);
+      return;
+    }
+    setProximityStale(true);
+    const t = setTimeout(() => {
+      runProximityCheck(editingPlan);
+    }, 600);
+    return () => clearTimeout(t);
+    // runProximityCheck is intentionally omitted: it's recreated each render
+    // but reads the latest state via the closures above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editVillageIds, editFacilityId, isEditOpen, editingPlan, editVillagesLoaded, proximityCheckedKey]);
+
+  const facilityNameById = useMemo(() => {
+    const m = new Map<number, string>();
+    (facilities ?? []).forEach((f) => m.set(f.id, f.name));
+    return m;
+  }, [facilities]);
+
+  // Task #128 — Village lookups used by the edit dialog: by id (chip labels)
+  // and the candidate list scoped to the session's facility for the picker.
+  const villageNameById = useMemo(() => {
+    const m = new Map<number, string>();
+    (tenantVillages ?? []).forEach((v) => m.set(v.id, v.name));
+    return m;
+  }, [tenantVillages]);
+
+  const facilityVillageOptions = useMemo(() => {
+    if (!editFacilityId) return [] as Village[];
+    const linkedSet = new Set(editVillageIds);
+    return (tenantVillages ?? [])
+      .filter((v) => Number((v as any).assignedFacilityId) === Number(editFacilityId))
+      .filter((v) => !linkedSet.has(v.id))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [tenantVillages, editFacilityId, editVillageIds]);
+
+  const geoMaps = useMemo(
+    () => buildGeoMaps({ provinces, districts, villages: tenantVillages ?? [], facilities }),
+    [provinces, districts, facilities, tenantVillages],
+  );
+
+  const filteredSessions = useMemo(() => {
+    // Build a fast lookup of microplanId → microplan.planType so we can filter
+    // sessions to those whose parent matches the route's planType. We trust the
+    // session.planType column too (it is server-copied from the parent), but
+    // joining the parent keeps the UI consistent if legacy rows ever drift.
+    const microplanTypeById = new Map<number, string>();
+    (allMicroplans ?? []).forEach((m) => microplanTypeById.set(m.id, m.planType));
+
+    const enriched = withGeoColumns((sessions ?? []) as any[], geoMaps);
+    return enriched.filter((item) => {
+      const parentType = item.microplanId ? microplanTypeById.get(Number(item.microplanId)) : undefined;
+      const sessionPlanType: string =
+        parentType === "sia_campaign"
+          ? "campaign"
+          : parentType === "facility_routine"
+            ? "routine"
+            : (item as any).planType || "routine";
+      if (sessionPlanType !== planTypeFilter) return false;
+      if (lockedMicroplanId != null && Number(item.microplanId) !== Number(lockedMicroplanId)) return false;
+      if (geoFilterProvinceId !== null && item._geoProvinceId !== geoFilterProvinceId) return false;
+      if (geoFilterDistrictId !== null && item._geoDistrictId !== geoFilterDistrictId) return false;
+      if (geoFilterFacilityId !== null && Number((item as any).facilityId) !== geoFilterFacilityId) return false;
+      // Task #197 — Defaulter-only filter chip.
+      if (defaulterOnly && (item as any).outreachPurpose !== "defaulter_followup") return false;
+      return true;
+    });
+  }, [sessions, allMicroplans, geoMaps, geoFilterProvinceId, geoFilterDistrictId, geoFilterFacilityId, planTypeFilter, defaulterOnly]);
+
+  // Task #197 — Count how many defaulter-follow-up sessions are visible under
+  // the current geo filters (ignoring the defaulter-only chip itself) so the
+  // chip can show a live count.
+  const defaulterCount = useMemo(() => {
+    const microplanTypeById = new Map<number, string>();
+    (allMicroplans ?? []).forEach((m) => microplanTypeById.set(m.id, m.planType));
+    const enriched = withGeoColumns((sessions ?? []) as any[], geoMaps);
+    return enriched.filter((item) => {
+      if ((item as any).outreachPurpose !== "defaulter_followup") return false;
+      const parentType = item.microplanId ? microplanTypeById.get(Number(item.microplanId)) : undefined;
+      const sessionPlanType: string =
+        parentType === "sia_campaign"
+          ? "campaign"
+          : parentType === "facility_routine"
+            ? "routine"
+            : (item as any).planType || "routine";
+      if (sessionPlanType !== planTypeFilter) return false;
+      if (lockedMicroplanId != null && Number(item.microplanId) !== Number(lockedMicroplanId)) return false;
+      if (geoFilterProvinceId !== null && item._geoProvinceId !== geoFilterProvinceId) return false;
+      if (geoFilterDistrictId !== null && item._geoDistrictId !== geoFilterDistrictId) return false;
+      if (geoFilterFacilityId !== null && Number((item as any).facilityId) !== geoFilterFacilityId) return false;
+      return true;
+    }).length;
+  }, [sessions, allMicroplans, geoMaps, geoFilterProvinceId, geoFilterDistrictId, geoFilterFacilityId, planTypeFilter, lockedMicroplanId]);
+
+  const columns = [
+    {
+      key: "_geoProvinceName",
+      header: adminLabels.level1 || "Province",
+      sortable: true,
+      render: (item: any) => (
+        <span className="text-sm">{item._geoProvinceName || "—"}</span>
+      ),
+    },
+    {
+      key: "_geoDistrictName",
+      header: adminLabels.level2 || "District",
+      sortable: true,
+      render: (item: any) => (
+        <span className="text-sm">{item._geoDistrictName || "—"}</span>
+      ),
+    },
+    {
+      key: "name",
+      header: "Session",
+      sortable: true,
+      render: (item: SessionPlan) => (
+        <div
+          className="flex items-center gap-2 cursor-pointer group"
+          onClick={() => setViewingPlan(item)}
+          data-testid={`row-open-session-${item.id}`}
+        >
+          <div className="h-8 w-8 rounded bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
+            <Calendar className="h-4 w-4 text-primary" />
+          </div>
+          <div>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <p className="font-semibold group-hover:text-indigo-600 dark:group-hover:text-indigo-400 group-hover:underline transition-all">
+                {item.name}
+              </p>
+              {isSessionPendingSync(item) && (
+                <Badge
+                  variant="outline"
+                  className="gap-1 border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 text-[10px] font-medium px-1.5 py-0 h-5"
+                  data-testid={`badge-pending-sync-${item.id}`}
+                  title="This row has changes saved on this device that haven't reached the server yet."
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <CloudOff className="h-3 w-3" />
+                  Pending sync
+                </Badge>
+              )}
+              {/* Task #197 — Surface defaulter follow-up intent even if the
+                  planner renamed the auto-prefilled session name. Driven by
+                  the persisted outreachPurpose column. */}
+              {(item as any).outreachPurpose === "defaulter_followup" && (
+                <Badge
+                  variant="outline"
+                  className="gap-1 border-red-500/40 bg-red-500/10 text-red-700 dark:text-red-300 text-[10px] font-medium px-1.5 py-0 h-5"
+                  data-testid={`badge-defaulter-followup-${item.id}`}
+                  title="Created from the under-immunized / zero-dose map pin as a defaulter follow-up."
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <AlertTriangle className="h-3 w-3" />
+                  Defaulter follow-up
+                </Badge>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Q{item.quarter} {item.year}
+            </p>
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: "facilityId",
+      header: "Geo Scope / Facility",
+      render: (item: SessionPlan) => {
+        const fac = (facilities ?? []).find((f) => f.id === item.facilityId);
+        if (!fac) return `#${item.facilityId}`;
+        const dist = (districts ?? []).find((d) => d.id === fac.districtId);
+        const prov = dist ? (provinces ?? []).find((p) => p.id === dist.provinceId) : undefined;
+        return (
+          <div className="flex flex-col text-xs space-y-0.5">
+            <span className="font-semibold text-foreground">{fac.name}</span>
+            <span className="text-[10px] text-muted-foreground uppercase">
+              {prov?.name || "Unknown Province"} · {dist?.name || "Unknown District"}
+            </span>
+          </div>
+        );
+      },
+    },
+    {
+      key: "sessionType",
+      header: "Type",
+      sortable: true,
+      render: (item: SessionPlan) => (
+        <Badge variant="secondary" className="capitalize">
+          {item.sessionType}
+        </Badge>
+      ),
+    },
+    {
+      key: "transportMode",
+      header: "Transport",
+      render: (item: SessionPlan) => {
+        if (!item.transportMode) return "-";
+        const Icon = transportIcons[item.transportMode] || Car;
+        return (
+          <div className="flex items-center gap-1 capitalize text-sm">
+            <Icon className="h-4 w-4 text-muted-foreground" />
+            {item.transportMode}
+          </div>
+        );
+      },
+    },
+    {
+      key: "targetPopulation",
+      header: "Target Pop.",
+      sortable: true,
+      render: (item: SessionPlan) => (
+        <div className="flex items-center gap-1 text-sm">
+          <Users className="h-3 w-3 text-muted-foreground" />
+          {item.targetPopulation?.toLocaleString() || "-"}
+        </div>
+      ),
+    },
+    {
+      key: "approvalStatus",
+      header: "Approval",
+      render: (item: SessionPlan) => <ApprovalBadge status={item.approvalStatus || "draft"} />,
+    },
+    {
+      key: "actions",
+      header: "Actions",
+      render: (item: SessionPlan) => (
+        <div className="flex items-center gap-1.5">
+          <Button
+            size="sm"
+            variant="ghost"
+            className="text-muted-foreground hover:text-indigo-500 hover:bg-indigo-500/10 h-8 px-2 rounded-lg text-xs"
+            onClick={() => handleOpenEditModal(item)}
+          >
+            Edit
+          </Button>
+          <Button asChild size="sm" variant="ghost" className="gap-1 text-primary hover:bg-primary/10 h-8 px-2 rounded-lg text-xs" data-testid={`btn-day-plans-${item.id}`}>
+            <Link href={`/sessions/${item.id}/day-plans`}>
+              <span>Day Plans</span>
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          </Button>
+          {item.status !== "completed" && item.status !== "cancelled" && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="gap-1 text-emerald-600 hover:bg-emerald-500/10 h-8 px-2 rounded-lg text-xs"
+              data-testid={`btn-mark-done-${item.id}`}
+              onClick={() => {
+                setMarkDoneSession(item);
+                setVaccinatedCounts({});
+              }}
+            >
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              Mark done
+            </Button>
+          )}
+        </div>
+      ),
+    },
+  ];
+
+  // Task #47 — Mark Done: posts vaccinated counts, sets status=completed.
+  // Falls back to outbox when offline so field workers can close out sessions
+  // even with no signal and have it sync later.
+  const markDoneMutation = useMutation({
+    mutationFn: async ({ id, counts }: { id: number; counts: Record<string, number> }) => {
+      const totals = Object.values(counts).reduce((s, n) => s + (Number(n) || 0), 0);
+      const payload = { perAntigen: counts, totals };
+      if (!navigator.onLine) {
+        await enqueueOutbox({
+          tenantId: user?.tenantId ?? "SSD",
+          entityType: "sessionPlan",
+          method: "POST",
+          url: `/api/sessions/${id}/mark-done`,
+          body: JSON.stringify(payload),
+          serverId: id,
+        });
+        return { queued: true };
+      }
+      return apiRequest("POST", `/api/sessions/${id}/mark-done`, payload);
+    },
+    onSuccess: (res: any, vars: { id: number; counts: Record<string, number> }) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sessions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sessions/map"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sessions/history"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/indicators/zero-dose"] });
+      toast({
+        title: res?.queued ? "Queued offline" : "Session marked done",
+        description: res?.queued ? "Will sync when back online." : "Moved to history.",
+      });
+      // Task #198 — When the session had attached villages (i.e. the server
+      // ran the defaulter follow-up impact calculation), keep the dialog open
+      // and replace its body with a "Defaulters caught up" summary so the
+      // planner sees the closure-of-loop number for the session they just
+      // closed out. For sessions without attached villages, or for offline
+      // queued submissions, fall through to the regular toast-and-close path.
+      if (
+        !res?.queued &&
+        markDoneSession &&
+        res &&
+        typeof res === "object" &&
+        res.defaultersCaughtUp != null
+      ) {
+        const totals = Object.values(vars.counts).reduce(
+          (s, n) => s + (Number(n) || 0),
+          0,
+        );
+        setMarkDoneSummary({
+          sessionName: markDoneSession.name,
+          totals,
+          defaultersCaughtUp: Number(res.defaultersCaughtUp) || 0,
+          defaulterVillageCount: Number(res.defaulterVillageCount) || 0,
+        });
+        setVaccinatedCounts({});
+        // Leave markDoneSession set so the dialog stays open while the summary
+        // view is shown; closing the summary clears both.
+        return;
+      }
+      // Task #106: when the server reports antigen codes outside the tenant's
+      // configured vaccine schedule, surface a warning so the health worker
+      // knows those counts went into an "unmapped" bucket and a sync/refresh
+      // is needed.
+      const unmapped: string[] = Array.isArray(res?.unmappedAntigenCodes)
+        ? res.unmappedAntigenCodes
+        : [];
+      if (unmapped.length > 0) {
+        toast({
+          title: "Some vaccines weren't recognised",
+          description:
+            `These codes are not in your current schedule and were saved as "unmapped": ` +
+            `${unmapped.join(", ")}. Refresh the app or sync your vaccine schedule so future ` +
+            `sessions record them correctly.`,
+          variant: "destructive",
+        });
+      }
+      setMarkDoneSession(null);
+      setVaccinatedCounts({});
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to mark done", description: err?.message ?? "Try again.", variant: "destructive" });
+    },
+  });
+
+  // Task #47 — Check nearby sessions (2km / ±14d) and population context for
+  // a candidate session. Shown as an inline panel inside the edit dialog.
+  const runProximityCheck = async (plan: SessionPlan) => {
+    // Task #162 — Use the *currently edited* village list and facility from
+    // the dialog state, not the saved plan, so the check matches what Save
+    // would actually enforce. Also record what we checked so subsequent
+    // edits to the village chips can mark the result stale and re-run.
+    const facilityId = editFacilityId ?? (plan as any).facilityId;
+    const villageIds = [...editVillageIds].sort((a, b) => a - b);
+    if (!navigator.onLine) {
+      setProximityWarning({ nearby: [], reason: "Offline — check skipped." });
+      setProximityCheckedKey(`${facilityId}:${villageIds.join(",")}`);
+      setProximityStale(false);
+      return;
+    }
+    setProximityChecking(true);
+    setProximityStale(false);
+    try {
+      const res = await apiRequest("POST", "/api/sessions/validate-proximity", {
+        facilityId,
+        villageIds,
+        scheduledDate: (plan as any).scheduledDate ?? null,
+        excludeSessionId: plan.id,
+      });
+      const json: any = await (res as any).json?.() ?? res;
+      setProximityWarning({ nearby: json?.nearby ?? [], reason: json?.reason });
+      setProximityCheckedKey(`${facilityId}:${villageIds.join(",")}`);
+    } catch (e: any) {
+      setProximityWarning({ nearby: [], reason: e?.message ?? "Check failed." });
+      setProximityCheckedKey(`${facilityId}:${villageIds.join(",")}`);
+    } finally {
+      setProximityChecking(false);
+    }
+  };
+
+  const onSubmit = (data: InsertSessionPlan) => {
+    // In detail mode the parent microplan is locked to the route id; force it
+    // server-side regardless of any client tampering.
+    if (lockedMicroplanId != null) {
+      (data as any).microplanId = lockedMicroplanId;
+    }
+    // A true duplicate is the same session type in the same microplan on the
+    // same scheduled date. Different dates — or an as-yet-unscheduled session —
+    // are legitimate additions (a microplan can hold many sessions), so only
+    // block exact same-day repeats and point the user to the existing one.
+    const normDate = (v: any): string => {
+      if (!v) return "";
+      const d = new Date(v);
+      return isNaN(d.getTime()) ? "" : d.toISOString().split("T")[0];
+    };
+    const newDate = normDate((data as any).scheduledDate);
+    const duplicate = newDate
+      ? (sessions ?? []).find(
+          (s) =>
+            Number((s as any).microplanId) === Number((data as any).microplanId) &&
+            s.sessionType === data.sessionType &&
+            normDate((s as any).scheduledDate) === newDate,
+        )
+      : undefined;
+    if (duplicate) {
+      toast({
+        title: "Session already exists",
+        description: `A ${data.sessionType} session is already planned in this microplan for ${newDate}. Open "${(duplicate as any).name}" instead of creating a duplicate.`,
+        variant: "destructive",
+      });
+      return;
+    }
+    // Task #100 — Carry the auto-attached village IDs through to the server so
+    // they're written into session_villages on create.
+    if (attachedVillages.length > 0) {
+      (data as any).villageIds = attachedVillages.map((v) => v.id);
+    }
+    // Task #197 — When the dialog was opened from a map prefill, persist the
+    // intent as a structured column. Survives the planner renaming the
+    // session — downstream views filter on this, not the name prefix.
+    if (unservedPrefill) {
+      const purpose =
+        unservedPrefill.kind === "defaulter"
+          ? "defaulter_followup"
+          : unservedPrefill.kind === "unserved"
+            ? "unserved"
+            : unservedPrefill.kind === "followup"
+              ? "routine_outreach"
+              : null;
+      if (purpose) (data as any).outreachPurpose = purpose;
+    }
+    createMutation.mutate(data);
+  };
+
+  const plannedSessions = filteredSessions.filter((s) => s.status === "planned");
+  const scheduledSessions = filteredSessions.filter((s) => s.status === "scheduled");
+  const conductedSessions = filteredSessions.filter((s) => s.status === "conducted");
+  const pendingApproval = filteredSessions.filter(
+    (s) => s.approvalStatus && s.approvalStatus !== "draft" && s.approvalStatus !== "approved",
+  );
+
+  if (loadingSessions) {
+    return (
+      <div className="p-6 space-y-6">
+        <Skeleton className="h-8 w-48" />
+        <Card>
+          <CardContent className="p-6">
+            <div className="space-y-4">
+              {[1, 2, 3].map((i) => (
+                <Skeleton key={i} className="h-16 w-full" />
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // LIST MODE: when not scoped to a specific microplan, this workspace shows
+  // the microplans of the route's planType (Routine or SIA). Sessions are
+  // created and viewed *inside* a microplan-detail page, never from here.
+  if (!isDetailMode) {
+    // Task #50: When prefilling from an unserved-place pin, route the user
+    // into SessionPlanning's own routed detail mode so the auto-open dialog +
+    // proximity check actually fires. Otherwise keep the legacy link into the
+    // Microplan Builder wizard for normal browsing.
+    const lockedParentBase = (unservedPrefill || scheduledDatePrefill)
+      ? (planTypeFilter === "campaign" ? "/sessions/campaign" : "/sessions/microplan")
+      : (planTypeFilter === "campaign" ? "/microplans/campaigns" : "/microplans/routine");
+    return (
+      <div className="p-6 space-y-6">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            <h1 className="text-2xl font-bold" data-testid="text-page-title">{pageTitle}</h1>
+            <p className="text-muted-foreground text-sm">{pageSubtitle}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Link href="/sessions/history">
+              <Button variant="outline" size="sm" data-testid="button-session-history">
+                <HistoryIcon className="h-4 w-4 mr-1" />
+                Session history
+              </Button>
+            </Link>
+            {isCreator && (
+              <Link href="/develop-microplan">
+                <Button variant="outline" data-testid="button-open-microplan-builder">
+                  <Plus className="h-4 w-4 mr-1" />
+                  New microplan (Builder)
+                </Button>
+              </Link>
+            )}
+          </div>
+        </div>
+
+        {unservedPrefill && (
+          <Alert data-testid="alert-unserved-prefill">
+            <MapPin className="h-4 w-4" />
+            <AlertTitle>
+              {unservedPrefill.kind === "defaulter"
+                ? `Plan defaulter follow-up for ${unservedPrefill.name}`
+                : `Plan a session for ${unservedPrefill.name}`}
+            </AlertTitle>
+            <AlertDescription>
+              Pick the microplan that will host this session. The new-session form will
+              open pre-filled and the proximity check will run automatically.
+              {unservedPrefill.isHardToReach && " This is a hard-to-reach community."}
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {microplansOfRouteType.length === 0 ? (
+          <Alert className="max-w-2xl">
+            <Info className="h-4 w-4" />
+            <AlertTitle>No {planTypeFilter === "campaign" ? "campaign" : "routine"} microplan yet</AlertTitle>
+            <AlertDescription>
+              {isCreator
+                ? <>Create one in the{" "}<Link href="/develop-microplan" className="underline font-medium">Microplan Builder</Link>{" "}to start adding sessions.</>
+                : <>There are no microplans of this type to review yet.</>}
+            </AlertDescription>
+          </Alert>
+        ) : (
+          <Card>
+            <CardHeader>
+              <CardTitle>{planTypeFilter === "campaign" ? "Campaign microplans" : "Routine microplans"}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ul className="divide-y" data-testid="list-microplans">
+                {microplansOfRouteType.map((m) => {
+                  const childCount = (sessions ?? []).filter((s) => (s as any).microplanId === m.id).length;
+                  return (
+                    <li
+                      key={m.id}
+                      className="flex items-center justify-between py-3 gap-4"
+                      data-testid={`row-microplan-${m.id}`}
+                    >
+                      <div className="min-w-0">
+                        <div className="font-medium truncate">{m.name}</div>
+                        <div className="text-xs text-muted-foreground">
+                          Q{m.quarter} {m.year} · {childCount} session{childCount === 1 ? "" : "s"}
+                          {m.status === "locked" ? " · locked" : ""}
+                        </div>
+                      </div>
+                      <Link href={`${lockedParentBase}/${m.id}${preserveUnservedQs}`}>
+                        <Button variant="outline" size="sm" data-testid={`button-open-microplan-${m.id}`}>
+                          {unservedPrefill ? "Add session here" : "Open"} <ArrowRight className="h-4 w-4 ml-1" />
+                        </Button>
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    );
+  }
+
+  // DETAIL MODE: scoped to a single microplan. Sessions are listed and created here.
+  const lockedParent = microplansOfRouteType.find((m) => m.id === lockedMicroplanId)
+    ?? (allMicroplans ?? []).find((m) => m.id === lockedMicroplanId);
+  const parentIsLocked = lockedParent?.status === "locked";
+  const backHref = planTypeFilter === "campaign" ? "/microplans/campaigns" : "/microplans/routine";
+
+  return (
+    <div className="p-6 space-y-6">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div>
+          <Link href={backHref} className="text-xs text-muted-foreground hover:underline">
+            ← Back to {pageTitle}
+          </Link>
+          <h1 className="text-2xl font-bold" data-testid="text-page-title">
+            {lockedParent?.name ?? `Microplan #${lockedMicroplanId}`}
+          </h1>
+          <p className="text-muted-foreground text-sm">
+            Sessions inside this {planTypeFilter === "campaign" ? "campaign" : "routine"} microplan.
+            {parentIsLocked && " This microplan is locked — sessions cannot be added or modified."}
+          </p>
+        </div>
+
+        {isCreator && (
+          <Dialog
+            open={dialogOpen}
+            onOpenChange={(open) => {
+              setDialogOpen(open);
+              // Task #100 — when the user dismisses the dialog without saving,
+              // forget the auto-attached village so reopening starts clean.
+              if (!open) setAttachedVillages([]);
+            }}
+          >
+            <DialogTrigger asChild>
+              <Button
+                data-testid="button-add-session"
+                disabled={parentIsLocked}
+                title={parentIsLocked ? "Parent microplan is locked" : undefined}
+              >
+                <Plus className="h-4 w-4 mr-1" />
+                New session
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>
+                  Add a session to a {planTypeFilter === "campaign" ? "campaign" : "routine"} microplan
+                </DialogTitle>
+                <DialogDescription>
+                  Pick the parent microplan first — facility, quarter, and year are inherited from it
+                  and cannot be changed on the session.
+                </DialogDescription>
+              </DialogHeader>
+              <Form {...form}>
+                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                  <FormItem>
+                    <FormLabel>Parent microplan</FormLabel>
+                    <div
+                      className="text-sm border rounded-md px-3 py-2 bg-muted"
+                      data-testid="locked-parent-microplan"
+                    >
+                      {lockedParent?.name ?? `Microplan #${lockedMicroplanId}`}
+                      {lockedParent ? ` · Q${lockedParent.quarter} ${lockedParent.year}` : ""}
+                      {parentIsLocked ? " · locked" : ""}
+                    </div>
+                  </FormItem>
+                  <FormField
+                    control={form.control}
+                    name="name"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Session name *</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="e.g. Q1 outreach — Riverside village"
+                            {...field}
+                            data-testid="input-session-name"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  {/* Cascading Province → District → Facility */}
+                  <div className="space-y-3 rounded-md border p-3 bg-muted/30">
+                    <div className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+                      <MapPin className="h-3.5 w-3.5" />
+                      Where is this microplan for?
+                    </div>
+
+                    <FormField
+                      control={form.control}
+                      name="facilityId"
+                      render={({ field }) => (
+                        <FormItem className="md:col-span-3">
+                          <FormLabel className="text-xs">Facility *</FormLabel>
+                          <FacilityCascadePicker
+                            value={field.value ?? null}
+                            onChange={(id) => field.onChange(id ?? undefined)}
+                            required
+                            showLabels={false}
+                            testIdPrefix="session-plan"
+                          />
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="sessionType"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Session type</FormLabel>
+                          <Select onValueChange={field.onChange} defaultValue={field.value || "static"}>
+                            <FormControl>
+                              <SelectTrigger data-testid="select-session-type">
+                                <SelectValue />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="static">Static</SelectItem>
+                              <SelectItem value="mobile">Mobile</SelectItem>
+                              <SelectItem value="outreach">Outreach</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="transportMode"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Transport</FormLabel>
+                          <Select
+                            onValueChange={field.onChange}
+                            value={field.value || undefined}
+                          >
+                            <FormControl>
+                              <SelectTrigger data-testid="select-transport">
+                                <SelectValue placeholder="Select" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="walking">Walking</SelectItem>
+                              <SelectItem value="road">Road</SelectItem>
+                              <SelectItem value="boat">Boat</SelectItem>
+                              <SelectItem value="air">Air</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="quarter"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Quarter</FormLabel>
+                          <Select
+                            onValueChange={(v) => field.onChange(parseInt(v))}
+                            value={field.value?.toString()}
+                          >
+                            <FormControl>
+                              <SelectTrigger data-testid="select-quarter">
+                                <SelectValue />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="1">Q1</SelectItem>
+                              <SelectItem value="2">Q2</SelectItem>
+                              <SelectItem value="3">Q3</SelectItem>
+                              <SelectItem value="4">Q4</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="year"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Year</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="number"
+                              {...field}
+                              onChange={(e) => field.onChange(parseInt(e.target.value))}
+                              data-testid="input-year"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
+                  <FormField
+                    control={form.control}
+                    name="scheduledDate"
+                    render={({ field }) => {
+                      const toInputValue = (v: any): string => {
+                        if (!v) return "";
+                        const d = v instanceof Date ? v : new Date(v);
+                        if (isNaN(d.getTime())) return "";
+                        const y = d.getFullYear();
+                        const m = String(d.getMonth() + 1).padStart(2, "0");
+                        const day = String(d.getDate()).padStart(2, "0");
+                        return `${y}-${m}-${day}`;
+                      };
+                      const todayStr = (() => {
+                        const t = new Date();
+                        const y = t.getFullYear();
+                        const m = String(t.getMonth() + 1).padStart(2, "0");
+                        const d = String(t.getDate()).padStart(2, "0");
+                        return `${y}-${m}-${d}`;
+                      })();
+                      return (
+                        <FormItem>
+                          <FormLabel>Scheduled date *</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="date"
+                              min={todayStr}
+                              value={toInputValue(field.value)}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                field.onChange(v ? new Date(`${v}T00:00:00`) : (undefined as any));
+                              }}
+                              data-testid="input-scheduled-date"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      );
+                    }}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="targetPopulation"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Target population</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            placeholder="500"
+                            {...field}
+                            value={field.value || ""}
+                            onChange={(e) =>
+                              field.onChange(e.target.value ? parseInt(e.target.value) : null)
+                            }
+                            data-testid="input-target-population"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="notes"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Notes</FormLabel>
+                        <FormControl>
+                          <Textarea
+                            placeholder="Anything reviewers should know — staffing, fuel, vaccine cold-chain, hard-to-reach villages…"
+                            {...field}
+                            value={field.value || ""}
+                            data-testid="input-notes"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  {(() => {
+                    const selectedFacilityId = form.watch("facilityId" as any);
+                    const facilityVillages = selectedFacilityId
+                      ? (villages ?? [])
+                          .filter((v) => Number((v as any).assignedFacilityId) === Number(selectedFacilityId))
+                          .sort((a, b) => a.name.localeCompare(b.name))
+                      : [];
+                    const attachedIds = new Set(attachedVillages.map((v) => v.id));
+                    const pickable = facilityVillages.filter((v) => !attachedIds.has(Number(v.id)));
+                    return (
+                      <div className="rounded-md border p-3 space-y-2" data-testid="attached-villages-panel">
+                        <div className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+                          <MapPin className="h-3.5 w-3.5" />
+                          Villages attached to this session
+                        </div>
+                        {attachedVillages.length > 0 ? (
+                          <div className="flex flex-wrap gap-1.5">
+                            {attachedVillages.map((v) => (
+                              <Badge
+                                key={v.id}
+                                variant="secondary"
+                                className="gap-1 pl-2 pr-1 py-1"
+                                data-testid={`attached-village-${v.id}`}
+                              >
+                                <span>{v.name}</span>
+                                <button
+                                  type="button"
+                                  className="ml-0.5 rounded-sm hover:bg-muted-foreground/20 p-0.5"
+                                  aria-label={`Remove ${v.name}`}
+                                  data-testid={`remove-attached-village-${v.id}`}
+                                  onClick={() =>
+                                    setAttachedVillages((prev) => prev.filter((x) => x.id !== v.id))
+                                  }
+                                >
+                                  <X className="h-3 w-3" />
+                                </button>
+                              </Badge>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="text-xs text-muted-foreground">
+                            No villages attached yet. Pick the ones this session will cover.
+                          </div>
+                        )}
+                        <Popover open={villagePickerOpen} onOpenChange={setVillagePickerOpen}>
+                          <PopoverTrigger asChild>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              role="combobox"
+                              disabled={!selectedFacilityId || pickable.length === 0}
+                              className="w-full justify-between font-normal"
+                              data-testid="button-add-attached-village"
+                            >
+                              <span className="truncate text-left">
+                                {!selectedFacilityId
+                                  ? "Pick a facility first"
+                                  : facilityVillages.length === 0
+                                  ? "No villages assigned to this facility"
+                                  : pickable.length === 0
+                                  ? "All assigned villages are attached"
+                                  : "Add village"}
+                              </span>
+                              <ChevronsUpDown className="h-4 w-4 opacity-50 shrink-0" />
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent
+                            className="p-0 w-[--radix-popover-trigger-width] min-w-[16rem]"
+                            align="start"
+                          >
+                            <Command>
+                              <CommandInput placeholder="Search villages..." />
+                              <CommandList>
+                                <CommandEmpty>No matches.</CommandEmpty>
+                                <CommandGroup>
+                                  {pickable.map((v) => (
+                                    <CommandItem
+                                      key={v.id}
+                                      value={v.name}
+                                      onSelect={() => {
+                                        setAttachedVillages((prev) =>
+                                          prev.some((x) => x.id === Number(v.id))
+                                            ? prev
+                                            : [...prev, { id: Number(v.id), name: v.name }],
+                                        );
+                                        setVillagePickerOpen(false);
+                                      }}
+                                      data-testid={`option-attach-village-${v.id}`}
+                                    >
+                                      <Check className={cn("mr-2 h-4 w-4 opacity-0")} />
+                                      {v.name}
+                                    </CommandItem>
+                                  ))}
+                                </CommandGroup>
+                              </CommandList>
+                            </Command>
+                          </PopoverContent>
+                        </Popover>
+                        <div className="text-xs text-muted-foreground">
+                          These villages will be linked to the session on save. Remove a chip if you don't want it attached.
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {unservedPrefill && (
+                    <div className="rounded-md border p-3 bg-red-50 dark:bg-red-950/20 space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="text-xs font-semibold text-red-700 dark:text-red-300 uppercase tracking-wider flex items-center gap-1.5">
+                          <MapPin className="h-3.5 w-3.5" />
+                          Prefilled from unserved place
+                        </div>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          data-testid="button-recheck-proximity"
+                          disabled={createProximityChecking}
+                          onClick={() => {
+                            const fid = form.getValues("facilityId");
+                            const q = form.getValues("quarter") || Math.ceil((new Date().getMonth() + 1) / 3);
+                            const y = form.getValues("year") || new Date().getFullYear();
+                            const tp = form.getValues("targetPopulation") || 0;
+                            if (!fid || unservedPrefill.lat == null || unservedPrefill.lng == null) return;
+                            runCreateProximityCheck(Number(fid), unservedPrefill.lat, unservedPrefill.lng, unservedPrefill.villageId, q, y, Number(tp));
+                          }}
+                        >
+                          {createProximityChecking ? "Checking…" : "Re-check"}
+                        </Button>
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        Village: <span className="font-semibold text-foreground">{unservedPrefill.name}</span>
+                        {unservedPrefill.lat != null && unservedPrefill.lng != null && (
+                          <> · {unservedPrefill.lat.toFixed(4)}, {unservedPrefill.lng.toFixed(4)}</>
+                        )}
+                        {unservedPrefill.isHardToReach && <> · <span className="text-rose-600 font-semibold">Hard-to-reach</span></>}
+                      </div>
+                      {createProximityChecking && !createProximity && (
+                        <div className="text-xs text-muted-foreground">Running proximity & population check…</div>
+                      )}
+                      {createProximity && (
+                        createProximity.nearby.length > 0 || createProximity.reason ? (
+                          <Alert variant="destructive" className="py-2">
+                            <AlertTriangle className="h-4 w-4" />
+                            <AlertTitle className="text-sm">Possible overlap</AlertTitle>
+                            <AlertDescription className="text-xs">
+                              {createProximity.reason && <div>{createProximity.reason}</div>}
+                              {createProximity.nearby.length > 0 && (
+                                <ul className="list-disc pl-4 mt-1">
+                                  {createProximity.nearby.slice(0, 5).map((n: any, i: number) => (
+                                    <li key={i}>
+                                      <span className="font-semibold">{n.name}</span> — {n.distanceKm?.toFixed?.(2) ?? n.distanceKm}km
+                                      {n.daysApart != null ? `, ${n.daysApart}d apart` : ""}
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                            </AlertDescription>
+                          </Alert>
+                        ) : (
+                          <div className="text-xs text-emerald-600 flex items-center gap-1.5">
+                            <CheckCircle2 className="h-3.5 w-3.5" /> No nearby session conflicts found.
+                          </div>
+                        )
+                      )}
+                    </div>
+                  )}
+
+                  <div className="flex justify-end gap-2 pt-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setDialogOpen(false)}
+                      data-testid="button-cancel"
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="submit"
+                      disabled={createMutation.isPending}
+                      data-testid="button-save-session"
+                    >
+                      {createMutation.isPending ? "Saving…" : "Save microplan"}
+                    </Button>
+                  </div>
+                </form>
+              </Form>
+            </DialogContent>
+          </Dialog>
+        )}
+      </div>
+
+      {isReviewer && (
+        <Alert data-testid="alert-reviewer-mode">
+          <ShieldCheck className="h-4 w-4" />
+          <AlertTitle>You're a reviewer</AlertTitle>
+          <AlertDescription className="flex items-center justify-between gap-4 flex-wrap">
+            <span>
+              Microplans are authored by facility staff. Your job is to review and
+              approve submissions from your{" "}
+              {user?.role === "district_manager"
+                ? "district"
+                : user?.role === "provincial_coordinator"
+                  ? "province"
+                  : "country"}
+              . {pendingApproval.length > 0 && (
+                <strong>{pendingApproval.length} awaiting your action.</strong>
+              )}
+            </span>
+            <Button asChild size="sm" variant="outline" data-testid="link-to-approvals">
+              <Link href="/approvals">
+                Open Approvals <ArrowRight className="ml-1 h-3.5 w-3.5" />
+              </Link>
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {isCreator && (
+        <Alert data-testid="alert-creator-mode">
+          <Info className="h-4 w-4" />
+          <AlertTitle>How approvals work</AlertTitle>
+          <AlertDescription>
+            Save your microplan as a draft, then submit it for approval. It travels
+            up the chain: <strong>Facility</strong> → <strong>District</strong> →{" "}
+            <strong>Province</strong> → <strong>National</strong>. You'll be
+            notified when each level acts on it.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Planned</p>
+                <p className="text-2xl font-bold" data-testid="text-count-planned">{plannedSessions.length}</p>
+              </div>
+              <Badge variant="outline">Pending</Badge>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Scheduled</p>
+                <p className="text-2xl font-bold" data-testid="text-count-scheduled">{scheduledSessions.length}</p>
+              </div>
+              <Badge variant="secondary">Active</Badge>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Conducted</p>
+                <p className="text-2xl font-bold" data-testid="text-count-conducted">{conductedSessions.length}</p>
+              </div>
+              <Badge variant="default">Complete</Badge>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">
+            {isCreator ? "My sessions" : "All sessions"}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-6 pt-0 space-y-4">
+          <GeoCascadeFilter
+            provinceId={geoFilterProvinceId}
+            districtId={geoFilterDistrictId}
+            facilityId={geoFilterFacilityId}
+            onProvinceChange={setGeoFilterProvinceId}
+            onDistrictChange={setGeoFilterDistrictId}
+            onFacilityChange={setGeoFilterFacilityId}
+            showFacility
+            provinces={provinces}
+            districts={districts}
+            facilities={facilities}
+            provinceLabel={adminLabels.level1 || "Province"}
+            districtLabel={adminLabels.level2 || "District"}
+            facilityLabel={adminLabels.level3 || "Facility"}
+            testIdPrefix="session"
+          />
+          {/* Task #197 — Filter chip: narrow the list to defaulter
+              follow-up sessions only. The count comes from the persisted
+              outreachPurpose column, so it stays correct even if planners
+              renamed the auto-prefilled session name. */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <Badge
+              role="button"
+              tabIndex={0}
+              data-testid="chip-filter-defaulter-followup"
+              aria-pressed={defaulterOnly}
+              onClick={() => setDefaulterOnly((v) => !v)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  setDefaulterOnly((v) => !v);
+                }
+              }}
+              variant={defaulterOnly ? "default" : "outline"}
+              className={
+                "gap-1 cursor-pointer select-none h-7 px-2 text-xs " +
+                (defaulterOnly
+                  ? "bg-red-600 hover:bg-red-700 text-white border-red-600"
+                  : "border-red-500/40 text-red-700 dark:text-red-300 hover:bg-red-500/10")
+              }
+            >
+              <AlertTriangle className="h-3 w-3" />
+              Defaulter follow-up only
+              <span
+                className={
+                  "ml-1 rounded-full px-1.5 text-[10px] font-semibold " +
+                  (defaulterOnly
+                    ? "bg-white/20 text-white"
+                    : "bg-red-500/15 text-red-700 dark:text-red-300")
+                }
+                data-testid="chip-filter-defaulter-followup-count"
+              >
+                {defaulterCount}
+              </span>
+            </Badge>
+            {defaulterOnly && (
+              <button
+                type="button"
+                className="text-xs text-muted-foreground hover:underline"
+                onClick={() => setDefaulterOnly(false)}
+                data-testid="chip-filter-defaulter-followup-clear"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+          <DataTable
+            data={filteredSessions}
+            columns={columns}
+            searchable
+            searchKeys={["name"]}
+            emptyMessage={
+              isCreator
+                ? "No sessions match the current filters. Click 'New microplan' to start one, or clear the filters above."
+                : "No sessions match the current filters. Try clearing the geo filters above."
+            }
+          />
+        </CardContent>
+      </Card>
+
+      {/* View Session Details Dialog — opened by clicking a session row.
+          Read-only. Shows ONLY this session's details. The full edit form
+          is reachable via the "Edit" action button in the row's Actions
+          column. */}
+      <Dialog
+        open={!!viewingPlan}
+        onOpenChange={(open) => {
+          if (!open) setViewingPlan(null);
+        }}
+      >
+        <DialogContent
+          className="max-w-xl max-h-[85vh] overflow-y-auto bg-card border border-border text-foreground rounded-3xl shadow-2xl p-6 font-sans"
+          data-testid="dialog-session-details"
+        >
+          {viewingPlan && (() => {
+            const fac = (facilities ?? []).find((f) => f.id === viewingPlan.facilityId);
+            const dist = fac ? (districts ?? []).find((d) => d.id === fac.districtId) : undefined;
+            const prov = dist ? (provinces ?? []).find((p) => p.id === dist.provinceId) : undefined;
+            const linkedVillageIds = (allSessionVillages ?? [])
+              .filter((sv) => Number(sv.sessionId) === Number(viewingPlan.id))
+              .map((sv) => Number(sv.villageId));
+            const purposeLabel = ({
+              routine_outreach: "Routine outreach",
+              unserved: "Unserved area",
+              defaulter_followup: "Defaulter follow-up",
+            } as Record<string, string>)[(viewingPlan as any).outreachPurpose] || null;
+            const Row = ({ label, value, testId }: { label: string; value: React.ReactNode; testId?: string }) => (
+              <div className="grid grid-cols-3 gap-3 py-2 border-b border-border/40 last:border-b-0">
+                <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider col-span-1">{label}</div>
+                <div className="text-sm col-span-2" data-testid={testId}>{value ?? <span className="text-muted-foreground italic">—</span>}</div>
+              </div>
+            );
+
+            return (
+              <>
+                <DialogHeader>
+                  <DialogTitle className="text-xl font-bold flex items-center gap-2">
+                    <Calendar className="h-5 w-5 text-indigo-500" />
+                    <span data-testid="view-session-name">{viewingPlan.name}</span>
+                  </DialogTitle>
+                </DialogHeader>
+
+                <div className="pt-4">
+                  <Row label="Session type" value={<span className="capitalize">{viewingPlan.sessionType}</span>} testId="view-session-type" />
+                  <Row label="Period" value={`Q${viewingPlan.quarter} ${viewingPlan.year}`} testId="view-session-period" />
+                  <Row label="Status" value={<ApprovalBadge status={viewingPlan.approvalStatus || "draft"} />} />
+                  <Row
+                    label="Execution"
+                    value={<span className="capitalize">{viewingPlan.status || "planned"}</span>}
+                    testId="view-session-status"
+                  />
+                  <Row label={adminLabels.level1 || "Province"} value={prov?.name} testId="view-session-province" />
+                  <Row label={adminLabels.level2 || "District"} value={dist?.name} testId="view-session-district" />
+                  <Row label={adminLabels.level3 || "Facility"} value={fac?.name} testId="view-session-facility" />
+                  <Row
+                    label="Transport"
+                    value={viewingPlan.transportMode ? <span className="capitalize">{viewingPlan.transportMode}</span> : null}
+                  />
+                  <Row
+                    label="Target population"
+                    value={viewingPlan.targetPopulation != null ? viewingPlan.targetPopulation.toLocaleString() : null}
+                    testId="view-session-targetpop"
+                  />
+                  {purposeLabel && <Row label="Outreach purpose" value={purposeLabel} />}
+                  {(viewingPlan as any).humanResources && (
+                    <Row label="Staffing" value={<span className="whitespace-pre-wrap">{(viewingPlan as any).humanResources}</span>} />
+                  )}
+                  {(viewingPlan as any).keyStakeholders && (
+                    <Row label="Stakeholders" value={<span className="whitespace-pre-wrap">{(viewingPlan as any).keyStakeholders}</span>} />
+                  )}
+                  <Row
+                    label="Linked villages"
+                    value={
+                      linkedVillageIds.length > 0 ? (
+                        <div className="flex flex-wrap gap-1.5">
+                          {linkedVillageIds.map((vid) => (
+                            <Badge key={vid} variant="secondary" className="text-xs">
+                              {villageNameById.get(vid) ?? `Village #${vid}`}
+                            </Badge>
+                          ))}
+                        </div>
+                      ) : null
+                    }
+                  />
+                </div>
+
+                <DialogFooter className="pt-4">
+                  <Button
+                    variant="outline"
+                    onClick={() => setViewingPlan(null)}
+                    data-testid="btn-close-session-details"
+                  >
+                    Close
+                  </Button>
+                </DialogFooter>
+              </>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Plan Dialog CRUD Modal */}
+      <Dialog
+        open={isEditOpen}
+        onOpenChange={(open) => {
+          setIsEditOpen(open);
+          if (!open) {
+            // Task #162 — Reset the proximity panel state so reopening
+            // the dialog on a different session starts from a clean slate.
+            setProximityWarning(null);
+            setProximityCheckedKey(null);
+            setProximityStale(false);
+          }
+        }}
+      >
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto bg-card border border-border text-foreground rounded-3xl shadow-2xl p-6 font-sans">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold flex items-center gap-2">
+              <Calendar className="h-5 w-5 text-indigo-500" />
+              Edit Microplan: {editName}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-6 pt-4">
+            {isLocked && (
+              <Alert variant="destructive" className="border-red-500/20 bg-red-500/5 text-red-600 dark:text-red-400 rounded-2xl">
+                <Info className="h-4 w-4 text-red-600 dark:text-red-400" />
+                <AlertTitle className="font-bold">Approved & Locked</AlertTitle>
+                <AlertDescription className="text-xs">
+                  This microplan has been officially approved and locked. Modifications are disabled to preserve execution audit trails.
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {/* Cascading Province → District → Facility */}
+            <div className="space-y-3 rounded-2xl border p-4 bg-muted/20">
+              <div className="text-xs font-bold text-indigo-500 uppercase tracking-wider block flex items-center gap-1.5">
+                <MapPin className="h-4 w-4 text-indigo-500" />
+                Assign Microplan Location Scope
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs font-semibold text-muted-foreground uppercase">{adminLabels.level1}</Label>
+                  <Select
+                    value={editProvinceId?.toString() ?? ""}
+                    onValueChange={(v) => {
+                      const val = v ? parseInt(v) : null;
+                      setEditProvinceId(val);
+                      setEditDistrictId(null);
+                      setEditFacilityId(null);
+                    }}
+                    disabled={isLocked}
+                  >
+                    <SelectTrigger className="bg-background rounded-xl text-xs h-9">
+                      <SelectValue placeholder={`Select ${adminLabels.level1}`} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(provinces ?? []).map((p) => (
+                        <SelectItem key={p.id} value={p.id.toString()}>
+                          {p.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs font-semibold text-muted-foreground uppercase">{adminLabels.level2}</Label>
+                  <Select
+                    value={editDistrictId?.toString() ?? ""}
+                    onValueChange={(v) => {
+                      const val = v ? parseInt(v) : null;
+                      setEditDistrictId(val);
+                      setEditFacilityId(null);
+                    }}
+                    disabled={!editProvinceId || isLocked}
+                  >
+                    <SelectTrigger className="bg-background rounded-xl text-xs h-9 disabled:opacity-50">
+                      <SelectValue
+                        placeholder={editProvinceId ? `Select ${adminLabels.level2}` : `Select ${adminLabels.level1} first`}
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(districts ?? [])
+                        .filter((d) => Number(d.provinceId) === Number(editProvinceId))
+                        .map((d) => (
+                          <SelectItem key={d.id} value={d.id.toString()}>
+                            {d.name}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs font-semibold text-muted-foreground uppercase">{adminLabels.level3} *</Label>
+                  <Select
+                    value={editFacilityId?.toString() ?? ""}
+                    onValueChange={(v) => {
+                      const val = v ? parseInt(v) : null;
+                      setEditFacilityId(val);
+                    }}
+                    disabled={!editDistrictId || isLocked}
+                  >
+                    <SelectTrigger className="bg-background rounded-xl text-xs h-9 disabled:opacity-50">
+                      <SelectValue
+                        placeholder={
+                          editDistrictId
+                            ? (facilities ?? []).filter((f) => Number(f.districtId) === Number(editDistrictId)).length
+                              ? `Select ${adminLabels.level3}`
+                              : `No facilities in this district`
+                            : `Select ${adminLabels.level2} first`
+                        }
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(facilities ?? [])
+                        .filter((f) => Number(f.districtId) === Number(editDistrictId))
+                        .map((f) => (
+                          <SelectItem key={f.id} value={f.id.toString()}>
+                            {f.name}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <Label htmlFor="edit-plan-name" className="text-xs font-semibold text-muted-foreground uppercase">
+                  Microplan Name *
+                </Label>
+                <Input
+                  id="edit-plan-name"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="bg-background rounded-xl"
+                  disabled={isLocked}
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label htmlFor="edit-plan-type" className="text-xs font-semibold text-muted-foreground uppercase">
+                  Session Type
+                </Label>
+                <Select
+                  value={editSessionType}
+                  onValueChange={(v) => setEditSessionType(v as any)}
+                  disabled={isLocked}
+                >
+                  <SelectTrigger id="edit-plan-type" className="bg-background rounded-xl">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="static">Static Session</SelectItem>
+                    <SelectItem value="outreach">Outreach Session</SelectItem>
+                    <SelectItem value="mobile">Mobile Session</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="space-y-1">
+                <Label htmlFor="edit-plan-quarter" className="text-xs font-semibold text-muted-foreground uppercase">
+                  Quarter
+                </Label>
+                <Select
+                  value={editQuarter.toString()}
+                  onValueChange={(v) => setEditQuarter(parseInt(v))}
+                  disabled={isLocked}
+                >
+                  <SelectTrigger id="edit-plan-quarter" className="bg-background rounded-xl">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">Q1</SelectItem>
+                    <SelectItem value="2">Q2</SelectItem>
+                    <SelectItem value="3">Q3</SelectItem>
+                    <SelectItem value="4">Q4</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1">
+                <Label htmlFor="edit-plan-year" className="text-xs font-semibold text-muted-foreground uppercase">
+                  Year
+                </Label>
+                <Input
+                  id="edit-plan-year"
+                  type="number"
+                  value={editYear}
+                  onChange={(e) => setEditYear(parseInt(e.target.value) || new Date().getFullYear())}
+                  className="bg-background rounded-xl"
+                  disabled={isLocked}
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label htmlFor="edit-plan-targetpop" className="text-xs font-semibold text-muted-foreground uppercase">
+                  Target Population
+                </Label>
+                <Input
+                  id="edit-plan-targetpop"
+                  type="number"
+                  value={editTargetPop}
+                  onChange={(e) => setEditTargetPop(parseInt(e.target.value) || 0)}
+                  className="bg-background rounded-xl"
+                  disabled={isLocked}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <Label htmlFor="edit-plan-transport" className="text-xs font-semibold text-muted-foreground uppercase">
+                  Transport Mode
+                </Label>
+                <Select
+                  value={editTransportMode}
+                  onValueChange={setEditTransportMode}
+                  disabled={isLocked}
+                >
+                  <SelectTrigger id="edit-plan-transport" className="bg-background rounded-xl">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="road">Road (Car/Bike)</SelectItem>
+                    <SelectItem value="walking">Walking / Foot</SelectItem>
+                    <SelectItem value="boat">Boat / Riverine</SelectItem>
+                    <SelectItem value="air">Air (Flight)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1">
+                <Label htmlFor="edit-plan-status" className="text-xs font-semibold text-muted-foreground uppercase">
+                  Execution Status
+                </Label>
+                <Select
+                  value={editStatus}
+                  onValueChange={setEditStatus}
+                  disabled={isLocked}
+                >
+                  <SelectTrigger id="edit-plan-status" className="bg-background rounded-xl">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="planned">Planned</SelectItem>
+                    <SelectItem value="scheduled">Scheduled</SelectItem>
+                    <SelectItem value="conducted">Conducted</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Task #211 — Outreach purpose picker. Lets planners re-tag a
+                session (e.g. classify an existing outreach as a defaulter
+                follow-up) without having to recreate it. Server whitelist on
+                PATCH /api/sessions/:id allows: routine_outreach, unserved,
+                defaulter_followup, or null (cleared). Radix Select can't use
+                an empty string as a value, so we map "__none__" ↔ null. */}
+            <div className="space-y-1">
+              <Label htmlFor="edit-outreach-purpose" className="text-xs font-semibold text-muted-foreground uppercase">
+                Outreach Purpose
+              </Label>
+              <Select
+                value={editOutreachPurpose === "" ? "__none__" : editOutreachPurpose}
+                onValueChange={(v) => setEditOutreachPurpose(v === "__none__" ? "" : v)}
+                disabled={isLocked}
+              >
+                <SelectTrigger id="edit-outreach-purpose" className="bg-background rounded-xl" data-testid="select-edit-outreach-purpose">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">None</SelectItem>
+                  <SelectItem value="routine_outreach">Routine outreach</SelectItem>
+                  <SelectItem value="unserved">Unserved area</SelectItem>
+                  <SelectItem value="defaulter_followup">Defaulter follow-up</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Premium HR and Stakeholders layout fields */}
+            <div className="border border-border rounded-2xl p-4 bg-muted/10 space-y-4">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-indigo-500">
+                Staff Allocation & Stakeholder Engagement
+              </h4>
+              
+              <div className="space-y-1">
+                <Label htmlFor="edit-plan-hr" className="text-xs font-semibold text-muted-foreground uppercase">
+                  Human Resources (HR) & Staffing
+                </Label>
+                <Textarea
+                  id="edit-plan-hr"
+                  placeholder="e.g. Vaccinators: John Doe, Mary Smith. Social Mobilizers: Chief Joseph. Logistics Guides: Peter..."
+                  value={editHR}
+                  onChange={(e) => setEditHR(e.target.value)}
+                  className="bg-background rounded-xl"
+                  rows={3}
+                  disabled={isLocked}
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label htmlFor="edit-plan-stakeholders" className="text-xs font-semibold text-muted-foreground uppercase">
+                  Key Stakeholders Engagement
+                </Label>
+                <Textarea
+                  id="edit-plan-stakeholders"
+                  placeholder="e.g. Church leaders, local chiefs, NGO coordinators, community health workers..."
+                  value={editStakeholders}
+                  onChange={(e) => setEditStakeholders(e.target.value)}
+                  className="bg-background rounded-xl"
+                  rows={3}
+                  disabled={isLocked}
+                />
+              </div>
+            </div>
+
+            {/* Task #128 — Linked Villages editor */}
+            <div className="border border-border rounded-2xl p-4 bg-muted/10 space-y-3" data-testid="edit-villages-panel">
+              <div className="flex items-center justify-between gap-2">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-indigo-500 flex items-center gap-1.5">
+                  <MapPin className="h-4 w-4" /> Linked Villages
+                </h4>
+                <Badge variant="outline" className="text-xs">{editVillageIds.length} attached</Badge>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                These villages will receive this session. Remove a chip to unlink, or add another from the picker. Only villages assigned to this facility appear.
+              </p>
+
+              {!editVillagesLoaded ? (
+                <div className="text-xs text-muted-foreground italic">Loading current village links…</div>
+              ) : editVillageIds.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {editVillageIds.map((vid) => (
+                    <Badge
+                      key={vid}
+                      variant="secondary"
+                      className="gap-1 pl-2 pr-1 py-1"
+                      data-testid={`edit-village-chip-${vid}`}
+                    >
+                      <span>{villageNameById.get(vid) ?? `Village #${vid}`}</span>
+                      {!isLocked && (
+                        <button
+                          type="button"
+                          className="ml-0.5 rounded-sm hover:bg-muted-foreground/20 p-0.5"
+                          aria-label={`Remove village ${villageNameById.get(vid) ?? vid}`}
+                          data-testid={`edit-village-remove-${vid}`}
+                          onClick={() => setEditVillageIds((prev) => prev.filter((id) => id !== vid))}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      )}
+                    </Badge>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-xs text-muted-foreground italic">No villages linked yet.</div>
+              )}
+
+              {!isLocked && (
+                <div className="flex items-end gap-2">
+                  <div className="flex-1 space-y-1">
+                    <Label className="text-xs font-semibold text-muted-foreground uppercase">Add a village</Label>
+                    <Select
+                      value={addVillagePick}
+                      onValueChange={(v) => setAddVillagePick(v)}
+                      disabled={!editFacilityId || facilityVillageOptions.length === 0}
+                    >
+                      <SelectTrigger className="bg-background rounded-xl text-xs h-9" data-testid="edit-village-add-select">
+                        <SelectValue
+                          placeholder={
+                            !editFacilityId
+                              ? "Pick a facility first"
+                              : facilityVillageOptions.length === 0
+                                ? "No more villages assigned to this facility"
+                                : "Select a village to add"
+                          }
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {facilityVillageOptions.map((v) => (
+                          <SelectItem key={v.id} value={String(v.id)}>
+                            {v.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="rounded-xl h-9"
+                    data-testid="edit-village-add-button"
+                    disabled={!addVillagePick}
+                    onClick={() => {
+                      const vid = Number(addVillagePick);
+                      if (!Number.isFinite(vid)) return;
+                      setEditVillageIds((prev) => (prev.includes(vid) ? prev : [...prev, vid]));
+                      setAddVillagePick("");
+                    }}
+                  >
+                    <Plus className="h-3.5 w-3.5 mr-1" /> Add
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            {/* Danger Zone: Delete Plan */}
+            {isCreator && (
+              <div className="border border-red-500/20 bg-red-500/5 rounded-2xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-red-600 dark:text-red-400">
+                    Danger Zone: Delete Microplan
+                  </h4>
+                  <Badge variant="outline" className="border-red-500/30 text-red-600 dark:text-red-400">
+                    Irreversible Action
+                  </Badge>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Permanently delete this microplanning session plan. This deletes all associated day itinerary records too.
+                </p>
+                <div className="flex justify-end">
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    onClick={() => {
+                      if (editingPlan && confirm("Are you absolutely sure you want to delete this microplanning session? This action is irreversible.")) {
+                        deletePlanMutation.mutate(editingPlan.id);
+                      }
+                    }}
+                    disabled={deletePlanMutation.isPending || isLocked}
+                    className="rounded-xl text-xs h-9 bg-red-600 hover:bg-red-500 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {deletePlanMutation.isPending ? "Deleting..." : "Delete Microplan"}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Task #47 — Proximity / population sanity panel. Calls the server
+              to find sessions within 2km & ±14 days and surfaces any pop check. */}
+          {editingPlan && (
+            <div className="pt-3 border-t mt-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                  <ShieldCheck className="h-3.5 w-3.5" /> Proximity & population check
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  data-testid="button-check-proximity"
+                  disabled={proximityChecking}
+                  onClick={() => runProximityCheck(editingPlan)}
+                >
+                  {proximityChecking
+                    ? "Checking…"
+                    : proximityWarning
+                      ? "Re-check"
+                      : "Check now"}
+                </Button>
+              </div>
+              {/* Task #162 — When the linked-village list changes after a
+                  check has been run, surface a stale hint while the
+                  debounced auto re-run is pending or in flight. */}
+              {proximityStale && (
+                <div
+                  className="text-xs text-amber-700 dark:text-amber-400 flex items-center gap-1.5"
+                  data-testid="proximity-stale-hint"
+                >
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                  Linked villages changed — {proximityChecking ? "re-checking…" : "re-checking shortly…"}
+                </div>
+              )}
+              {proximityWarning && (
+                proximityWarning.nearby.length > 0 || proximityWarning.reason ? (
+                  <Alert variant="destructive" className="py-2">
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertTitle className="text-sm">Possible overlap</AlertTitle>
+                    <AlertDescription className="text-xs">
+                      {proximityWarning.reason && <div>{proximityWarning.reason}</div>}
+                      {proximityWarning.nearby.length > 0 && (
+                        <ul className="list-disc pl-4 mt-1">
+                          {proximityWarning.nearby.slice(0, 5).map((n: any, i: number) => (
+                            <li key={i}>
+                              <span className="font-semibold">{n.name}</span> — {n.distanceKm?.toFixed?.(2) ?? n.distanceKm}km
+                              {n.daysApart != null ? `, ${n.daysApart}d apart` : ""}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </AlertDescription>
+                  </Alert>
+                ) : (
+                  <div className="text-xs text-emerald-600 flex items-center gap-1.5">
+                    <CheckCircle2 className="h-3.5 w-3.5" /> No nearby session conflicts found.
+                  </div>
+                )
+              )}
+            </div>
+          )}
+
+          <DialogFooter className="pt-4 border-t gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setIsEditOpen(false);
+                setEditingPlan(null);
+                setProximityWarning(null);
+                setProximityCheckedKey(null);
+                setProximityStale(false);
+              }}
+              className="rounded-xl"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={handleUpdatePlan}
+              disabled={updateMutation.isPending || isLocked || !editVillagesLoaded}
+              className="bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl disabled:opacity-50 disabled:cursor-not-allowed"
+              data-testid="button-save-session-edit"
+            >
+              {updateMutation.isPending
+                ? "Saving..."
+                : !editVillagesLoaded
+                  ? "Loading villages…"
+                  : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Task #47 — Mark Done dialog. Captures vaccinated counts per antigen
+          (free-form keys so it works across tenants/programs). */}
+      <Dialog open={!!markDoneSession} onOpenChange={(open) => { if (!open) { setMarkDoneSession(null); setVaccinatedCounts({}); setMarkDoneSummary(null); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+              {markDoneSummary ? "Session marked done" : "Mark session done"}
+            </DialogTitle>
+            <DialogDescription>
+              {markDoneSummary
+                ? "The session moved to history and stays on the live map for 30 more days."
+                : "Record how many people were vaccinated. The session moves to history and stays on the live map for 30 more days."}
+            </DialogDescription>
+          </DialogHeader>
+          {markDoneSummary ? (
+            <div className="space-y-3" data-testid="panel-mark-done-summary">
+              <div className="text-sm">
+                <div className="font-semibold">{markDoneSummary.sessionName}</div>
+                <div className="text-xs text-muted-foreground">
+                  {markDoneSummary.totals.toLocaleString()} dose
+                  {markDoneSummary.totals === 1 ? "" : "s"} recorded
+                </div>
+              </div>
+              <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3">
+                <div className="text-xs font-semibold text-emerald-800 uppercase tracking-wide">
+                  Defaulters caught up
+                </div>
+                <div
+                  className="mt-1 text-2xl font-bold text-emerald-700"
+                  data-testid="text-defaulters-caught-up"
+                >
+                  {markDoneSummary.defaultersCaughtUp}
+                </div>
+                <div className="text-xs text-emerald-900/80 mt-1">
+                  {markDoneSummary.defaultersCaughtUp === 0
+                    ? `No DTP1-no-DTP3 children in the attached village${markDoneSummary.defaulterVillageCount === 1 ? "" : "s"} received a missing dose at this session.`
+                    : `Children in the attached village${markDoneSummary.defaulterVillageCount === 1 ? "" : "s"} who hadn't received DTP3 yet and got a catch-up dose at this session.`}
+                </div>
+              </div>
+            </div>
+          ) : markDoneSession && (
+            <div className="space-y-3">
+              <div className="text-sm">
+                <div className="font-semibold">{markDoneSession.name}</div>
+                <div className="text-xs text-muted-foreground capitalize">
+                  {markDoneSession.sessionType} · target {markDoneSession.targetPopulation?.toLocaleString() ?? "—"}
+                </div>
+              </div>
+              {pendingSessionSync?.markDoneServerIds.has(markDoneSession.id) && (
+                <Alert
+                  className="border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-200"
+                  data-testid="alert-mark-done-pending-sync"
+                >
+                  <CloudOff className="h-4 w-4" />
+                  <AlertTitle className="text-sm">Mark-done already queued offline</AlertTitle>
+                  <AlertDescription className="text-xs">
+                    A previous mark-done for this session is still waiting to
+                    sync. Wait for it to reach the server before submitting
+                    another one, or you may overwrite the queued counts.
+                  </AlertDescription>
+                </Alert>
+              )}
+              <div className="space-y-2 max-h-[50vh] overflow-y-auto pr-1">
+                {doseStages.length === 0 ? (
+                  <div className="text-xs text-muted-foreground border rounded-md p-3">
+                    No antigen schedule is configured for this tenant yet. Ask
+                    your admin to set up vaccines in the Vaccine Calculator first.
+                  </div>
+                ) : (
+                  doseStages.map((stage) => (
+                    <div key={`${stage.configId}-${stage.doseNumber}`} className="flex items-center justify-between gap-3">
+                      <Label
+                        className="text-xs font-medium w-28 truncate"
+                        htmlFor={`vc-${stage.code}`}
+                        title={stage.label}
+                      >
+                        {stage.label}
+                      </Label>
+                      <Input
+                        id={`vc-${stage.code}`}
+                        data-testid={`input-vaccinated-${stage.code.toLowerCase()}`}
+                        type="number"
+                        min={0}
+                        placeholder="0"
+                        value={vaccinatedCounts[stage.code] ?? ""}
+                        onChange={(e) =>
+                          setVaccinatedCounts((s) => ({ ...s, [stage.code]: e.target.value }))
+                        }
+                        className="h-8"
+                      />
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+          <DialogFooter className="gap-2">
+            {markDoneSummary ? (
+              <Button
+                data-testid="button-close-mark-done-summary"
+                onClick={() => { setMarkDoneSession(null); setVaccinatedCounts({}); setMarkDoneSummary(null); }}
+                className="bg-emerald-600 hover:bg-emerald-500 text-white"
+              >
+                Close
+              </Button>
+            ) : (
+              <>
+                <Button variant="outline" onClick={() => { setMarkDoneSession(null); setVaccinatedCounts({}); }}>Cancel</Button>
+                <Button
+                  data-testid="button-confirm-mark-done"
+                  disabled={
+                    markDoneMutation.isPending ||
+                    !markDoneSession ||
+                    !!(markDoneSession && pendingSessionSync?.markDoneServerIds.has(markDoneSession.id))
+                  }
+                  onClick={() => {
+                    if (!markDoneSession) return;
+                    const counts: Record<string, number> = {};
+                    for (const [k, v] of Object.entries(vaccinatedCounts)) {
+                      const n = Number(v);
+                      if (Number.isFinite(n) && n > 0) counts[k] = n;
+                    }
+                    markDoneMutation.mutate({ id: markDoneSession.id, counts });
+                  }}
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white"
+                >
+                  {markDoneMutation.isPending ? "Saving…" : "Confirm"}
+                </Button>
+              </>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}

@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<style>
+  :root{
+    --primary:#127699;      /* AA-safe UNICEF-blue for text on white */
+    --primary-bright:#1CABE2;/* UNICEF cyan accent */
+    --ink:#0f2733;
+    --muted:#4a5b64;
+    --line:#d8e6ec;
+    --bg-soft:#f1f9fc;
+  }
+  @page{size:A4;margin:0;}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html,body{font-family:"Helvetica Neue",Arial,sans-serif;color:var(--ink);}
+  .page{
+    width:210mm;height:296mm;padding:14mm 14mm 12mm;margin:0 auto;overflow:hidden;
+    display:flex;flex-direction:column;
+  }
+  .header{display:flex;align-items:center;justify-content:space-between;border-bottom:3px solid var(--primary-bright);padding-bottom:10px;}
+  .brand{display:flex;align-items:center;gap:12px;}
+  .logo{width:46px;height:46px;border-radius:12px;background:linear-gradient(135deg,var(--primary-bright),var(--primary));display:flex;align-items:center;justify-content:center;color:#fff;font-size:24px;font-weight:800;}
+  .brand h1{font-size:30px;letter-spacing:-.5px;color:var(--primary);}
+  .brand .tag{font-size:12px;color:var(--muted);font-weight:600;letter-spacing:.5px;text-transform:uppercase;}
+  .kicker{text-align:right;font-size:11px;color:var(--muted);line-height:1.5;max-width:60mm;}
+  .lead{margin:14px 0 4px;font-size:15px;line-height:1.5;color:var(--ink);}
+  .lead strong{color:var(--primary);}
+  .section-title{font-size:12px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:var(--primary-bright);margin:16px 0 8px;}
+  .problem{background:var(--bg-soft);border-left:4px solid var(--primary-bright);padding:12px 14px;border-radius:0 8px 8px 0;font-size:12.5px;line-height:1.55;color:var(--muted);}
+  .problem b{color:var(--ink);}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:9px 16px;margin-top:6px;}
+  .feat{display:flex;gap:9px;align-items:flex-start;}
+  .feat .ic{flex:0 0 26px;height:26px;border-radius:7px;background:var(--bg-soft);display:flex;align-items:center;justify-content:center;color:var(--primary);}
+  .feat .ic svg{width:15px;height:15px;display:block;}
+  .feat .tx{font-size:11.6px;line-height:1.4;}
+  .feat .tx b{display:block;color:var(--primary);font-size:12px;margin-bottom:1px;}
+  .feat .tx span{color:var(--muted);}
+  .bands{display:flex;gap:10px;margin-top:14px;}
+  .band{flex:1;background:var(--primary);color:#fff;border-radius:10px;padding:11px 12px;}
+  .band:nth-child(2){background:#15869f;}
+  .band:nth-child(3){background:var(--primary-bright);}
+  .band h3{font-size:12px;letter-spacing:.4px;text-transform:uppercase;opacity:.9;margin-bottom:5px;}
+  .band p{font-size:11px;line-height:1.45;opacity:.97;}
+  .standards{margin-top:14px;font-size:11px;color:var(--muted);line-height:1.5;}
+  .standards b{color:var(--ink);}
+  .cta{margin-top:auto;border-top:2px solid var(--line);padding-top:12px;display:flex;justify-content:space-between;align-items:flex-end;gap:16px;}
+  .cta .ask{font-size:12.5px;line-height:1.5;color:var(--ink);}
+  .cta .ask b{color:var(--primary);}
+  .cta .ask .partners{color:var(--muted);font-size:11px;margin-top:3px;}
+  .cta .sign{text-align:right;font-size:11px;color:var(--muted);line-height:1.5;}
+  .cta .sign .slogan{color:var(--primary);font-weight:800;font-size:13px;font-style:italic;}
+  .disc{margin-top:9px;font-size:8.5px;color:#90a4ad;line-height:1.4;text-align:center;}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="header">
+    <div class="brand">
+      <div class="logo">V</div>
+      <div>
+        <h1>VaxPlan</h1>
+        <div class="tag">GIS Microplanning for Immunization</div>
+      </div>
+    </div>
+    <div class="kicker">
+      A stakeholder one-pager<br/>
+      for Ministries of Health,<br/>
+      NGOs &amp; global-health partners
+    </div>
+  </div>
+
+  <p class="lead">
+    <strong>Reach every child. Plan every session.</strong> VaxPlan is a mobile-first,
+    offline-capable platform that takes an immunization program from a map of its
+    facilities all the way to a vaccinator's daily itinerary — and back up to a live
+    national coverage dashboard. Built on the WHO RED and Gavi RED-Q strategies.
+  </p>
+
+  <div class="section-title">The problem</div>
+  <div class="problem">
+    Every year millions of children miss life-saving vaccines — not because vaccines
+    don't exist, but because <b>planning breaks down at the last mile.</b> Zero-dose
+    children live in communities that are never reliably mapped; microplans sit in
+    disconnected spreadsheets; denominators are guesswork; and field teams work offline
+    with tools that assume constant internet.
+  </div>
+
+  <div class="section-title">What VaxPlan does</div>
+  <div class="grid">
+    <div class="feat"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></div><div class="tx"><b>Maps &amp; GIS</b><span>Every facility, community &amp; catchment, with automatic overlap detection.</span></div></div>
+    <div class="feat"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg></div><div class="tx"><b>Equity targeting</b><span>Find zero-dose &amp; hard-to-reach children and missed settlements.</span></div></div>
+    <div class="feat"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div><div class="tx"><b>Real denominators</b><span>Census, HMIS, WorldPop &amp; community data with target cohorts.</span></div></div>
+    <div class="feat"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.27 6.96 12 12.01l8.73-5.05"/><path d="M12 22.08V12"/></svg></div><div class="tx"><b>Needs &amp; budgets</b><span>Doses, vials, syringes, safety boxes &amp; wastage, calculated automatically.</span></div></div>
+    <div class="feat"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div><div class="tx"><b>Microplanning</b><span>Guided RED / RED-Q wizard for routine programs and campaigns.</span></div></div>
+    <div class="feat"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="19" r="3"/><path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15"/><circle cx="18" cy="5" r="3"/></svg></div><div class="tx"><b>Field execution</b><span>Daily itineraries, session capture, defaulters &amp; client logbook.</span></div></div>
+    <div class="feat"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><rect x="7" y="11" width="3" height="6"/><rect x="12" y="7" width="3" height="10"/><rect x="17" y="13" width="3" height="4"/></svg></div><div class="tx"><b>Live analytics</b><span>Coverage, dropout, zero-dose &amp; supervision in real time.</span></div></div>
+    <div class="feat"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 1l22 22"/><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/><path d="M10.71 5.05A16 16 0 0 1 22.58 9"/><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg></div><div class="tx"><b>Offline-first</b><span>Full functionality with no internet; auto-sync when back online.</span></div></div>
+  </div>
+
+  <div class="bands">
+    <div class="band"><h3>Multi-country</h3><p>One secure platform multiple Ministries use independently, with strict per-country data isolation.</p></div>
+    <div class="band"><h3>Interoperable</h3><p>DHIS2 &amp; FHIR R4 adapters connect to existing national health information systems.</p></div>
+    <div class="band"><h3>Trusted</h3><p>Role-based access, geographic scoping &amp; full audit logging — auditable end to end.</p></div>
+  </div>
+
+  <div class="standards">
+    <b>Built on open foundations &amp; global standards:</b> OpenStreetMap, geoBoundaries, WorldPop,
+    GRID3, UN OCHA/HDX · WHO, UNICEF, Gavi, PAHO &amp; CDC immunization guidance · DHIS2 &amp; FHIR R4.
+  </div>
+
+  <div class="cta">
+    <div class="ask">
+      <b>I'm looking for partners.</b> This is an independent initiative, and I want it to help
+      programs reach more children.
+      <div class="partners">Open to: Ministries of Health &amp; EPI teams for pilots · NGOs implementing immunization · global-health funders · fellow digital-health builders.</div>
+    </div>
+    <div class="sign">
+      <div class="slogan">Reach every child.</div>
+      Request a live demo<br/>
+      &amp; full overview
+    </div>
+  </div>
+
+  <div class="disc">
+    Independent initiative. Not endorsed by or affiliated with WHO, UNICEF, Gavi, or any Ministry of Health.
+    References to these bodies relate only to their publicly available technical standards and open data.
+  </div>
+</div>
+</body>
+</html>

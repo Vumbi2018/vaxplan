@@ -1,0 +1,55 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1779461684709,
+      "tag": "0000_nosy_cerebro",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1779815182729,
+      "tag": "0001_orange_yellow_claw",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1779876022614,
+      "tag": "0002_oval_ken_ellis",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1780374920548,
+      "tag": "0003_aromatic_demogoblin",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1780728694063,
+      "tag": "0004_mushy_solo",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1780908273992,
+      "tag": "0005_tearful_steel_serpent",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1780972632102,
+      "tag": "0006_add_facility_staff_and_mobilization",
+      "breakpoints": true
+    }
+  ]
+}
