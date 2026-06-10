@@ -1,0 +1,11 @@
+.env
+node_modules/
+dist/
+electron-dist/
+out/
+*.log
+.local/
+local_dump.sql
+local_dump.sql.zip
+dump.rdb
+zipFile.zip
