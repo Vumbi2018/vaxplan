@@ -1658,7 +1658,20 @@ function GeoTIFFOverlay({ url, opacity = 0.65, onRasterLoaded, cacheScope, autoF
     }
 
     loadRaster().catch((err) => {
-      console.error("[GeoTIFF] Layer load failed:", { url, cacheScope, tenantId, error: err?.message || err });
+      const errMsg: string = err?.message || "";
+      // 404 = no raster uploaded yet. This is a data-configuration gap, not a runtime
+      // error the user can act on from the map. Skip the toast so the map does not
+      // alarm users; the population density overlay simply will not render until an
+      // admin uploads a WorldPop GeoTIFF via Settings → Resources.
+      if (
+        errMsg.includes("No population GeoTIFF") ||
+        errMsg.includes("not found in resources") ||
+        errMsg.includes("GeoTIFF population file")
+      ) {
+        console.info("[GeoTIFF] No raster available for this tenant — population overlay skipped.");
+        return;
+      }
+      console.error("[GeoTIFF] Layer load failed:", { url, cacheScope, tenantId, error: errMsg });
       if (!navigator.onLine) {
         toast({
           title: "Offline Population Layer",
@@ -1668,7 +1681,7 @@ function GeoTIFFOverlay({ url, opacity = 0.65, onRasterLoaded, cacheScope, autoF
       } else {
         toast({
           title: "Population Layer Unavailable",
-          description: `Could not load gridded population: ${err?.message || "unknown error"}.`,
+          description: `Could not load gridded population: ${errMsg || "unknown error"}.`,
           variant: "destructive",
         });
       }
@@ -1856,6 +1869,15 @@ export function MapView({
   const { data: rasterListData } = useQuery<{ success: boolean; files: Array<{ fileName: string; country: string; resolution: string }> }>({
     queryKey: ["/api/resources/geotiff/list"],
   });
+
+  // Auto-disable the population density overlay when no rasters have been uploaded yet.
+  // This prevents a 404 fetch (and its associated destructive toast) from firing on
+  // every map load in environments where WorldPop GeoTIFFs have not been seeded.
+  useEffect(() => {
+    if (rasterListData && (!rasterListData.files || rasterListData.files.length === 0)) {
+      setLayers((prev) => (prev.populationGeoTIFF ? { ...prev, populationGeoTIFF: false } : prev));
+    }
+  }, [rasterListData]);
 
   // Zero-dose / under-immunized per-village breakdown.
   // Only fetched when the layer is toggled on, to avoid extra load on initial map open.
