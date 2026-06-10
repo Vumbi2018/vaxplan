@@ -14,7 +14,14 @@ git pull origin main
 
 # 2. Install dependencies
 echo -e "\n[2/4] Installing dependencies..."
-npm install --legacy-peer-deps --no-audit
+if command -v pnpm &> /dev/null
+then
+    echo "pnpm detected. Installing dependencies with pnpm..."
+    pnpm install --no-frozen-lockfile
+else
+    echo "pnpm not detected. Installing dependencies with npm..."
+    npm install --legacy-peer-deps --no-audit
+fi
 
 # 3. Build project and run migrations
 echo -e "\n[3/4] Building production assets & running database migrations..."
