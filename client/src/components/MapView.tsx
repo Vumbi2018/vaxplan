@@ -23,6 +23,7 @@ import "leaflet/dist/leaflet.css";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { offlineDb } from "@/lib/offlineDb";
+import { loadActiveTenant } from "@/lib/tenantCache";
 import {
   usePopulationOverlay,
   PopulationWmsLayer,
@@ -2413,7 +2414,8 @@ export function MapView({
     queryKey: ["/api/provinces", tenantInfo?.id],
     queryFn: async () => {
       if (!navigator.onLine) {
-        return await offlineDb.provinces.toArray();
+        const _tid = loadActiveTenant()?.id;
+        return _tid ? offlineDb.provinces.where("tenantId").equals(_tid).toArray() : offlineDb.provinces.toArray();
       }
       const res = await fetch("/api/provinces", { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch provinces");
@@ -2426,7 +2428,8 @@ export function MapView({
     queryKey: ["/api/districts", tenantInfo?.id],
     queryFn: async () => {
       if (!navigator.onLine) {
-        return await offlineDb.districts.toArray();
+        const _tid = loadActiveTenant()?.id;
+        return _tid ? offlineDb.districts.where("tenantId").equals(_tid).toArray() : offlineDb.districts.toArray();
       }
       const res = await fetch("/api/districts", { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch districts");
@@ -2439,7 +2442,8 @@ export function MapView({
     queryKey: ["/api/llgs", tenantInfo?.id],
     queryFn: async () => {
       if (!navigator.onLine) {
-        return await offlineDb.llgs.toArray();
+        const _tid = loadActiveTenant()?.id;
+        return _tid ? offlineDb.llgs.where("tenantId").equals(_tid).toArray() : offlineDb.llgs.toArray();
       }
       const res = await fetch("/api/llgs", { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch llgs");
@@ -2452,7 +2456,8 @@ export function MapView({
     queryKey: ["/api/session-day-plans", tenantInfo?.id],
     queryFn: async () => {
       if (!navigator.onLine) {
-        return await offlineDb.sessionDayPlans.toArray();
+        const _tid = loadActiveTenant()?.id;
+        return _tid ? offlineDb.sessionDayPlans.where("tenantId").equals(_tid).toArray() : offlineDb.sessionDayPlans.toArray();
       }
       const res = await fetch("/api/session-day-plans", { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch day plans");
@@ -2466,7 +2471,8 @@ export function MapView({
     queryKey: ["/api/sessions", tenantInfo?.id],
     queryFn: async () => {
       if (!navigator.onLine) {
-        return await offlineDb.sessionPlans.toArray();
+        const _tid = loadActiveTenant()?.id;
+        return _tid ? offlineDb.sessionPlans.where("tenantId").equals(_tid).toArray() : offlineDb.sessionPlans.toArray();
       }
       const res = await fetch("/api/sessions", { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch sessions");
@@ -2479,7 +2485,8 @@ export function MapView({
     queryKey: ["/api/sessions", tenantInfo?.id],
     queryFn: async () => {
       if (!navigator.onLine) {
-        return await offlineDb.sessionPlans.toArray();
+        const _tid = loadActiveTenant()?.id;
+        return _tid ? offlineDb.sessionPlans.where("tenantId").equals(_tid).toArray() : offlineDb.sessionPlans.toArray();
       }
       const res = await fetch("/api/sessions", { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch sessions");

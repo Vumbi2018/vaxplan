@@ -1,5 +1,6 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 import { offlineDb, enqueueOutbox } from "./offlineDb";
+import { loadActiveTenant } from "./tenantCache";
 
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
@@ -16,56 +17,64 @@ async function getOfflineData(url: string): Promise<any> {
   const [pathname, searchStr] = cleanUrl.split("?");
   const searchParams = new URLSearchParams(searchStr || "");
 
+  // Scope all entity reads to the active tenant so that platform admins
+  // who browse multiple countries never see records from a previous country.
+  const _activeTenantId = ((): string | null => {
+    try { return loadActiveTenant()?.id ?? null; } catch { return null; }
+  })();
+  const _byTenant = async <T>(table: { toArray(): Promise<T[]>; where(idx: string): { equals(v: string): { toArray(): Promise<T[]> } } }): Promise<T[]> =>
+    _activeTenantId ? table.where("tenantId").equals(_activeTenantId).toArray() : table.toArray();
+
   if (pathname === "/api/regions") {
-    return await offlineDb.regions.toArray();
+    return await _byTenant(offlineDb.regions);
   }
   if (pathname === "/api/provinces") {
-    return await offlineDb.provinces.toArray();
+    return await _byTenant(offlineDb.provinces);
   }
   if (pathname === "/api/districts") {
-    return await offlineDb.districts.toArray();
+    return await _byTenant(offlineDb.districts);
   }
   if (pathname === "/api/llgs") {
-    return await offlineDb.llgs.toArray();
+    return await _byTenant(offlineDb.llgs);
   }
   if (pathname === "/api/facilities") {
-    return await offlineDb.facilities.toArray();
+    return await _byTenant(offlineDb.facilities);
   }
   if (pathname === "/api/villages") {
-    return await offlineDb.villages.toArray();
+    return await _byTenant(offlineDb.villages);
   }
   if (pathname === "/api/clients") {
     const facilityId = searchParams.get("facilityId");
     if (facilityId) {
       return await offlineDb.clients.where("facilityId").equals(Number(facilityId)).toArray();
     }
-    return await offlineDb.clients.toArray();
+    return await _byTenant(offlineDb.clients);
   }
   if (pathname === "/api/vaccines/config" || pathname === "/api/vaccines") {
-    return await offlineDb.vaccineConfigs.toArray();
+    return await _byTenant(offlineDb.vaccineConfigs);
   }
   if (pathname === "/api/population") {
-    return await offlineDb.populationData.toArray();
+    return await _byTenant(offlineDb.populationData);
   }
   if (pathname === "/api/stock/ledger") {
     const facilityId = searchParams.get("facilityId");
     if (facilityId) {
       return await offlineDb.stockTransactions.where("facilityId").equals(Number(facilityId)).toArray();
     }
-    return await offlineDb.stockTransactions.toArray();
+    return await _byTenant(offlineDb.stockTransactions);
   }
   if (pathname === "/api/monthly-reports") {
     const facilityId = searchParams.get("facilityId");
     if (facilityId) {
       return await offlineDb.monthlyReports.where("facilityId").equals(Number(facilityId)).toArray();
     }
-    return await offlineDb.monthlyReports.toArray();
+    return await _byTenant(offlineDb.monthlyReports);
   }
   if (pathname === "/api/sessions" || pathname === "/api/session-plans") {
-    return await offlineDb.sessionPlans.toArray();
+    return await _byTenant(offlineDb.sessionPlans);
   }
   if (pathname === "/api/session-day-plans") {
-    return await offlineDb.sessionDayPlans.toArray();
+    return await _byTenant(offlineDb.sessionDayPlans);
   }
   if (pathname === "/api/sessions/villages") {
     // Session ↔ village junction data is not replicated offline; return empty array
@@ -76,10 +85,10 @@ async function getOfflineData(url: string): Promise<any> {
     return [];
   }
   if (pathname === "/api/budget-items") {
-    return await offlineDb.budgetItems.toArray();
+    return await _byTenant(offlineDb.budgetItems);
   }
   if (pathname === "/api/mobilization") {
-    return await offlineDb.mobilizationActivities.toArray();
+    return await _byTenant(offlineDb.mobilizationActivities);
   }
 
   // Handle dynamic / parameterized endpoints

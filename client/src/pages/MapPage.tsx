@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { MapView } from "@/components/MapView";
 import type { Facility, Village } from "@shared/schema";
 import { offlineDb } from "../lib/offlineDb";
+import { loadActiveTenant } from "../lib/tenantCache";
 
 interface PublicTenant {
   id: string;
@@ -87,7 +88,10 @@ export default function MapPage() {
     queryKey: ["/api/facilities", activeTenantInfo?.id],
     queryFn: async () => {
       if (!navigator.onLine) {
-        return await offlineDb.facilities.toArray() as any[];
+        const _tid = loadActiveTenant()?.id;
+        return (_tid
+          ? offlineDb.facilities.where("tenantId").equals(_tid).toArray()
+          : offlineDb.facilities.toArray()) as any;
       }
       const res = await fetch("/api/facilities", { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch facilities");
@@ -100,7 +104,10 @@ export default function MapPage() {
     queryKey: ["/api/villages", activeTenantInfo?.id],
     queryFn: async () => {
       if (!navigator.onLine) {
-        return await offlineDb.villages.toArray() as any[];
+        const _tid = loadActiveTenant()?.id;
+        return (_tid
+          ? offlineDb.villages.where("tenantId").equals(_tid).toArray()
+          : offlineDb.villages.toArray()) as any;
       }
       const res = await fetch("/api/villages", { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch villages");

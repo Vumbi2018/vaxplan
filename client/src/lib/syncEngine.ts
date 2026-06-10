@@ -170,6 +170,17 @@ class SyncEngine {
     if (this._initializedTenantId === tenantId) return;
     this._initializedTenantId = tenantId;
 
+    // Detect active-tenant change across page loads and wipe the Dexie
+    // replica before syncing the new tenant.  Without this, records from
+    // previously-visited countries accumulate in the shared Dexie tables
+    // and show up as cross-country data mixing.
+    const _prevTenantRow = await offlineDb.syncMeta.get("syncedTenantId");
+    if (_prevTenantRow?.value && _prevTenantRow.value !== tenantId) {
+      await clearLocalTenantCache();
+      await offlineDb.syncMeta.delete("lastSyncAt");
+    }
+    await offlineDb.syncMeta.put({ key: "syncedTenantId", value: tenantId });
+
     // Load persisted last-sync time
     const lastSyncAt = await getLastSyncAt();
     const { pendingCount, stuckCount } = await this._countOutbox(tenantId);

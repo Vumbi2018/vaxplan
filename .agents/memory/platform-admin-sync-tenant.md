@@ -1,15 +1,41 @@
 ---
 name: Platform-admin tenant sync bug
-description: Why syncEngine must use the active viewing tenant as its IndexedDB key, not the user's home tenant.
+description: Why and how cross-country data mixing was fixed for platform super-admins.
 ---
 
-## Rule
-Always pass `getActiveSyncTenantId(user)` (from `client/src/lib/tenantCache.ts`) wherever the sync engine needs a tenant key — `init()`, `sync()`, and the realtime-sync trigger.
+## Rules
 
-**Why:** Platform super-admins can switch between countries (PNG → ZMB etc). Their `user.tenantId` is their home country (e.g. PNG) and never changes. The server correctly scopes responses to the viewed country via the session `viewTenantId` / `x-tenant-id` header. But the sync engine used `user.tenantId` as its IndexedDB partition key, so ZMB data returned by the server was stored in the PNG bucket. On subsequent incremental syncs both countries' records accumulated in the same bucket, showing mixed or stale data in the UI.
+### 1 — Sync engine must use the active viewing tenant as its key
+Use `getActiveSyncTenantId(user)` (from `client/src/lib/tenantCache.ts`) wherever
+the sync engine needs a tenant key — `init()`, `sync()`, and the realtime-sync trigger.
 
-**How to apply:** `getActiveSyncTenantId(user)` reads `localStorage.vaxplan_active_tenant` for platform admins (`user.isPlatformAdmin === true`), falling back to `user.tenantId` for all other users. Use it in:
-- `client/src/hooks/useSyncEngine.ts` — `init()` and `sync()` calls
-- `client/src/components/SyncStatus.tsx` — manual "Sync now" handler
-- `client/src/pages/Settings.tsx` — retry-outbox sync trigger
-- `client/src/hooks/useRealtimeSync.ts` — silent sync on WebSocket poke
+**Why:** Platform super-admins can switch countries. Their `user.tenantId` is always
+their home country. The sync engine used it as the IndexedDB partition key, so data
+for the viewed country was stored in the home-country bucket.
+
+**How to apply:** `getActiveSyncTenantId(user)` reads `localStorage.vaxplan_active_tenant`
+for platform admins (`user.isPlatformAdmin === true`), falling back to `user.tenantId`.
+Applied in: `useSyncEngine.ts`, `SyncStatus.tsx`, `Settings.tsx`, `useRealtimeSync.ts`.
+
+### 2 — Clear Dexie on tenant change (syncEngine.init)
+When `syncEngine.init(tenantId)` detects that the persisted `syncMeta.syncedTenantId`
+differs from the incoming `tenantId`, it must call `clearLocalTenantCache()` and delete
+`syncMeta.lastSyncAt` before proceeding, then persist the new `syncedTenantId`.
+
+**Why:** Without clearing, records from previously-visited countries accumulate in the
+shared Dexie tables forever. Both online and offline paths then return mixed results.
+
+**How to apply:** Already implemented in `syncEngine.init()`. The `syncedTenantId` key
+in `syncMeta` is the persistent record of which tenant was last synced.
+
+### 3 — Filter all offline Dexie reads by active tenant
+Every `.toArray()` in `getOfflineData()` (queryClient.ts), MapPage.tsx, and the inline
+queryFns in MapView.tsx must filter by `loadActiveTenant()?.id` via a `where("tenantId").equals(tid)` clause.
+
+**Why:** `.toArray()` returns ALL records from all tenants; without filtering, any
+offline fallback (or edge-case non-JSON server response) returns mixed country data.
+
+**How to apply:** `queryClient.ts` uses a `_byTenant()` helper; `MapPage.tsx` and
+`MapView.tsx` inline the same pattern. All entity tables (`offlineDb.provinces`,
+`offlineDb.facilities`, etc.) support `.where("tenantId")` because `tenantId` is
+an indexed column in the Dexie schema.
