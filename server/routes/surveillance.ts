@@ -197,6 +197,49 @@ surveillanceRouter.get("/cases/kpis", async (req: any, res) => {
   }
 });
 
+surveillanceRouter.get("/cases/epi-curve", async (req: any, res) => {
+  try {
+    const cases = await db
+      .select()
+      .from(surveillanceCases)
+      .where(eq(surveillanceCases.tenantId, req.tenantId));
+
+    // Build last 16 ISO epi-weeks
+    function getISOWeek(date: Date): { year: number; week: number } {
+      const d = new Date(date);
+      d.setHours(0, 0, 0, 0);
+      d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7));
+      const week1 = new Date(d.getFullYear(), 0, 4);
+      const week = 1 + Math.round(((d.getTime() - week1.getTime()) / 86400000 - 3 + ((week1.getDay() + 6) % 7)) / 7);
+      return { year: d.getFullYear(), week };
+    }
+
+    const now = new Date();
+    const buckets: Record<string, { week: string; afp: number; measles: number; nnt: number; yellow_fever: number; other: number }> = {};
+    for (let i = 15; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i * 7);
+      const { year, week } = getISOWeek(d);
+      const label = `W${String(week).padStart(2, "0")}/${String(year).slice(2)}`;
+      if (!buckets[label]) buckets[label] = { week: label, afp: 0, measles: 0, nnt: 0, yellow_fever: 0, other: 0 };
+    }
+
+    cases.forEach((c) => {
+      const { year, week } = getISOWeek(c.dateOfOnset);
+      const label = `W${String(week).padStart(2, "0")}/${String(year).slice(2)}`;
+      if (buckets[label]) {
+        const d = c.disease as string;
+        if (["afp", "measles", "nnt", "yellow_fever"].includes(d)) (buckets[label] as any)[d]++;
+        else buckets[label].other++;
+      }
+    });
+
+    res.json(Object.values(buckets));
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 surveillanceRouter.post("/cases", async (req: any, res) => {
   try {
     const parsed = insertSurveillanceCaseSchema.parse({

@@ -6364,27 +6364,38 @@ export function MapView({
           }
 
           if (lat !== null && lng !== null) {
-            const isConfirmed = c.classification === 'confirmed';
+            const SURV_DISEASE_COLORS: Record<string, string> = {
+            afp: '#3b82f6', measles: '#f97316', nnt: '#8b5cf6',
+            yellow_fever: '#eab308', cholera: '#14b8a6', covid19: '#6b7280', other: '#94a3b8',
+          };
+          const isConfirmed = c.classification === 'confirmed';
+          const pinColor = SURV_DISEASE_COLORS[c.disease as string] ?? '#94a3b8';
             return (
               <CircleMarker
                 key={`case-${c.id}-${i}`}
                 center={[lat, lng]}
-                radius={8}
+                radius={isConfirmed ? 10 : 7}
                 pathOptions={{
-                  color: isConfirmed ? '#ef4444' : '#f59e0b',
-                  fillColor: isConfirmed ? '#ef4444' : '#f59e0b',
-                  fillOpacity: 0.6,
-                  weight: 2
+                  color: isConfirmed ? '#dc2626' : pinColor,
+                  fillColor: pinColor,
+                  fillOpacity: isConfirmed ? 0.9 : 0.7,
+                  weight: isConfirmed ? 3 : 1.5,
                 }}
               >
                 <Popup className="custom-popup">
-                  <div className="p-2 space-y-1 min-w-[150px]">
-                    <div className="font-bold text-sm uppercase flex items-center gap-2">
-                      <AlertTriangle className="h-4 w-4 text-amber-500" />
-                      {c.disease}
+                  <div className="p-2 space-y-1.5 min-w-[170px]">
+                    <div className="font-bold text-sm flex items-center gap-2" style={{ color: (SURV_DISEASE_COLORS[c.disease as string] ?? '#94a3b8') }}>
+                      <AlertTriangle className="h-4 w-4" />
+                      {c.disease?.toUpperCase()}
                     </div>
-                    <div className="text-xs font-semibold">{c.patientName}</div>
-                    <div className="text-xs text-muted-foreground capitalize">Status: {c.classification}</div>
+                    <div className="text-xs font-semibold text-foreground">{c.patientName}</div>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${
+                        c.classification === 'confirmed' ? 'bg-rose-100 text-rose-700' :
+                        c.classification === 'probable' ? 'bg-amber-100 text-amber-700' :
+                        'bg-blue-100 text-blue-700'
+                      }`}>{c.classification}</span>
+                    </div>
                     {c.dateOfOnset && (
                       <div className="text-xs text-muted-foreground">Onset: {new Date(c.dateOfOnset).toLocaleDateString()}</div>
                     )}
@@ -6474,7 +6485,7 @@ export function MapView({
         </div>
       )}
 
-      {!isPrinting && (
+      {!isPrinting && mode !== "surveillance" && (
         <>
           <PopulationOverlayToggle
             overlay={populationOverlay}
@@ -6972,39 +6983,75 @@ export function MapView({
       )}
 
       {/* Surveillance Case Legend */}
-      {!isPrinting && mode === "surveillance" && panelVis.legend && (
+      {!isPrinting && mode === "surveillance" && panelVis.legend && (() => {
+        const SURV_LEGEND_COLORS: Record<string, string> = {
+          afp: '#3b82f6', measles: '#f97316', nnt: '#8b5cf6',
+          yellow_fever: '#eab308', cholera: '#14b8a6', covid19: '#6b7280', other: '#94a3b8',
+        };
+        const SURV_LEGEND_LABELS: Record<string, string> = {
+          afp: 'AFP', measles: 'Measles', nnt: 'NNT',
+          yellow_fever: 'Yellow Fever', cholera: 'Cholera', covid19: 'COVID-19', other: 'Other VPD',
+        };
+        const diseaseCounts: Record<string, number> = {};
+        cases?.forEach((c: any) => { diseaseCounts[c.disease] = (diseaseCounts[c.disease] || 0) + 1; });
+        const confirmedCount = cases?.filter((c: any) => c.classification === 'confirmed').length ?? 0;
+        const suspectedCount = (cases?.length ?? 0) - confirmedCount;
+        return (
         <div className={`absolute ${showFacilityList && ((panelVis.layers && layerPanelOpen) || (panelVis.filters && filterPanelOpen)) ? "left-72" : "left-4"} bottom-4 z-[1000] transition-all duration-300`} ref={disableLeafletPropagation}>
-          <Card className="w-56 shadow-2xl border border-white/15 bg-background/85 backdrop-blur-md rounded-xl select-none pointer-events-auto">
+          <Card className="w-60 shadow-2xl border border-white/15 bg-background/85 backdrop-blur-md rounded-xl select-none pointer-events-auto">
             <CardHeader className="p-3 border-b border-border/40">
               <CardTitle className="text-[10px] font-bold text-primary uppercase tracking-wider flex items-center gap-1.5">
                 <MapPin className="h-3 w-3" />
-                VPD Surveillance Legend
+                VPD Surveillance
+                <span className="ml-auto text-[10px] font-bold text-foreground">{cases?.length ?? 0} cases</span>
               </CardTitle>
             </CardHeader>
-            <CardContent className="p-3 space-y-2">
-              <div className="flex items-center gap-2 text-xs">
-                <div className="w-3 h-3 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)] border-2 border-white/20"></div>
-                <span>Confirmed Case</span>
-              </div>
-              <div className="flex items-center gap-2 text-xs">
-                <div className="w-3 h-3 rounded-full bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)] border-2 border-white/20"></div>
-                <span>Suspected Case</span>
-              </div>
-              <div className="flex items-center gap-2 text-xs mt-2">
-                <div className="w-4 h-4 text-primary flex items-center justify-center">
-                  <Building2 className="h-3.5 w-3.5" />
+            <CardContent className="p-3 space-y-1.5">
+              {/* Classification indicators */}
+              <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                <div className="flex items-center gap-1.5">
+                  <div className="w-3.5 h-3.5 rounded-full border-2" style={{ background: '#3b82f680', borderColor: '#dc2626' }}></div>
+                  <span>Confirmed</span>
                 </div>
+                <span className="font-bold text-rose-600">{confirmedCount}</span>
+              </div>
+              <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                <div className="flex items-center gap-1.5">
+                  <div className="w-3 h-3 rounded-full" style={{ background: '#94a3b880', border: '1.5px solid #94a3b8' }}></div>
+                  <span>Suspected/Probable</span>
+                </div>
+                <span className="font-bold">{suspectedCount}</span>
+              </div>
+              {/* Disease breakdown */}
+              {Object.keys(diseaseCounts).length > 0 && (
+                <div className="pt-1.5 border-t border-border/40 space-y-1">
+                  <p className="text-[9px] uppercase tracking-wider font-semibold text-muted-foreground/70">By Disease</p>
+                  {Object.entries(diseaseCounts).map(([disease, count]) => (
+                    <div key={disease} className="flex items-center justify-between text-[10px]">
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-2.5 h-2.5 rounded-full" style={{ background: SURV_LEGEND_COLORS[disease] ?? '#94a3b8' }}></div>
+                        <span className="text-muted-foreground">{SURV_LEGEND_LABELS[disease] ?? disease}</span>
+                      </div>
+                      <span className="font-bold tabular-nums">{count as number}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {/* Reporting facility */}
+              <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground pt-1 border-t border-border/40">
+                <Building2 className="h-3 w-3 text-primary" />
                 <span>Reporting Facility</span>
               </div>
             </CardContent>
           </Card>
         </div>
-      )}
+        );
+      })()}
 
       {/* Premium measurement, drawing & export buttons */}
       {!isPrinting && panelVis.tools && (
         <div className="absolute right-4 top-4 z-[1000] flex gap-2 items-center flex-wrap" ref={disableLeafletPropagation}>
-          {rasterListData?.success && rasterListData?.files && (
+          {mode !== "surveillance" && rasterListData?.success && rasterListData?.files && (
             <Select
               value={selectedRasterFile || "default"}
               onValueChange={(val) => {
@@ -7056,6 +7103,7 @@ export function MapView({
             </Select>
           )}
 
+          {mode !== "surveillance" && (
           <Button
             size="sm"
             variant={isMeasuring ? "default" : "secondary"}
@@ -7074,7 +7122,9 @@ export function MapView({
             <Ruler className="h-4 w-4 mr-1" />
             {isMeasuring ? "Measuring..." : "Measure"}
           </Button>
+          )}
 
+          {mode !== "surveillance" && (
           <Button
             size="sm"
             variant={isDrawingCatchment ? "default" : "secondary"}
@@ -7097,7 +7147,9 @@ export function MapView({
             <PenLine className="h-4 w-4 mr-1" />
             {isDrawingCatchment ? "Drawing..." : "Draw Catchment"}
           </Button>
+          )}
 
+          {mode !== "surveillance" && (
           <Button
             size="sm"
             variant={isDrawingSessionPolygon ? "default" : "secondary"}
@@ -7126,6 +7178,7 @@ export function MapView({
             <PenLine className="h-4 w-4 mr-1" />
             {isDrawingSessionPolygon ? "Drawing Path..." : "Draw Geofence"}
           </Button>
+          )}
 
           {showFacilityList && (
             <Button
