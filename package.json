@@ -162,7 +162,5 @@
         "bufferutil": "^4.0.8"
     },
     "main": "electron-dist/main.js",
-    "overrides": {
-        "es5-ext": "0.10.62"
-    }
+    "overrides": {}
 }
