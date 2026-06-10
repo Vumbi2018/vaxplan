@@ -4725,7 +4725,7 @@ export function MapView({
             layer that the user has not hidden this session is rendered here.
             Vector layers fetch their GeoJSON lazily; rasters stream the stored
             GeoTIFF via the dedicated raster endpoint. */}
-        {activeCustomLayers
+        {mode !== "surveillance" && activeCustomLayers
           .filter((l: any) => !hiddenCustomLayerIds.has(l.id))
           .map((l: any) =>
             l.layerType === "raster" ? (
@@ -5166,7 +5166,7 @@ export function MapView({
                       },
                       mouseout: (e) => {
                         const l = e.target;
-                        l.setStyle(getBoundaryStyle(b.adminLevel)); // Restores exact level style dynamically
+                        l.setStyle(getBoundaryStyle(b.adminLevel, mode)); // Restores exact level style dynamically
                       },
                     });
                     */
@@ -5187,7 +5187,7 @@ export function MapView({
                       },
                       mouseout: (e) => {
                         const l = e.target;
-                        l.setStyle(getBoundaryStyle(b.adminLevel)); // Restores exact level style dynamically
+                        l.setStyle(getBoundaryStyle(b.adminLevel, mode)); // Restores exact level style dynamically
                       },
                     });
                   }}
