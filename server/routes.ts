@@ -9775,9 +9775,10 @@ export async function registerRoutes(
       ];
       const settlements = settlementsQ.rows;
 
-      // Overpass fallback — only when nothing local matched and caller wants it.
+      // Aggressive OSM extraction — always run Overpass in parallel with local data.
+      // Returns unmapped places even when local DB has results (gives the most complete picture).
       let unmapped: Array<{ name: string; latitude: number; longitude: number; placeType: string; osmId?: string }> = [];
-      if (parsed.data.includeOsm && villagesAll.length === 0 && settlements.length === 0) {
+      if (parsed.data.includeOsm) {
         try {
           const bboxQ = await pool.query(
             `SELECT ST_XMin(g) AS minx, ST_YMin(g) AS miny, ST_XMax(g) AS maxx, ST_YMax(g) AS maxy
@@ -9787,7 +9788,7 @@ export async function registerRoutes(
           const b = bboxQ.rows[0];
           if (b && b.miny != null) {
             const overpassQL = `[out:json][timeout:15];(
-              node["place"~"village|hamlet|town|suburb|neighbourhood"](${b.miny},${b.minx},${b.maxy},${b.maxx});
+              node["place"~"village|hamlet|town|suburb|neighbourhood|locality|quarter|isolated_dwelling|farm"](${b.miny},${b.minx},${b.maxy},${b.maxx});
             );out body 200;`;
             const controller = new AbortController();
             const tm = setTimeout(() => controller.abort(), 18000);
@@ -9836,6 +9837,15 @@ export async function registerRoutes(
           // Non-fatal — Overpass is a best-effort fallback.
           console.warn("Overpass fallback failed:", (osmErr as any)?.message ?? osmErr);
         }
+      }
+
+      // Deduplicate: remove OSM entries whose names already exist in local data
+      if (unmapped.length > 0 && (villagesAll.length > 0 || settlements.length > 0)) {
+        const localNames = new Set([
+          ...villagesAll.map((v) => v.name.toLowerCase().trim()),
+          ...settlements.map((s) => s.name.toLowerCase().trim()),
+        ]);
+        unmapped = unmapped.filter((u) => !localNames.has(u.name.toLowerCase().trim()));
       }
 
       res.json({

@@ -15,6 +15,7 @@ import {
   PopulationOverlayToggle,
   PopulationOverlayLegend,
 } from "@/components/PopulationOverlay";
+import { CatchmentMapPanel } from "@/components/CatchmentMapPanel";
 
 // Fix Leaflet default marker icon asset pathways
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -1796,6 +1797,9 @@ export default function Facilities() {
                         <TabsTrigger value="communities" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent h-full px-4" disabled={!editingFacility}>
                           Communities Served (CRUD)
                         </TabsTrigger>
+                        <TabsTrigger value="gis" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent h-full px-4" disabled={!editingFacility}>
+                          Polygon Drawing
+                        </TabsTrigger>
                       </TabsList>
                       {editingFacility && (
                         <Button
@@ -2479,6 +2483,42 @@ export default function Facilities() {
                             })}
                           </MapContainer>
                         </div>
+                      </div>
+                    </TabsContent>
+
+                    <TabsContent value="gis" className="m-0">
+                      <div className="p-4 overflow-y-auto max-h-[80vh] space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h3 className="font-semibold text-base">Catchment &amp; Community Polygon Drawing</h3>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              Draw the HF catchment boundary, then draw individual community sub-polygons.
+                              Population is estimated from the local GeoTIFF grid data with WorldPop cascade fallback.
+                            </p>
+                          </div>
+                        </div>
+                        {editingFacility && (
+                          <CatchmentMapPanel
+                            facilityId={editingFacility.id}
+                            facilityName={editingFacility.name}
+                            facilityLat={editingFacility.latitude ? parseFloat(editingFacility.latitude.toString()) : undefined}
+                            facilityLng={editingFacility.longitude ? parseFloat(editingFacility.longitude.toString()) : undefined}
+                            communities={(villages?.filter(v => v.assignedFacilityId === editingFacility.id) || []).map(v => ({
+                              id: v.id,
+                              villageId: v.id,
+                              name: v.name,
+                              targetPopulation: v.targetPopulation?.toString(),
+                            }))}
+                            onCommunityPopUpdate={(name, population) => {
+                              const village = villages?.find(v => v.name === name && v.assignedFacilityId === editingFacility.id);
+                              if (village) {
+                                queryClient.setQueryData(["/api/villages"], (old: any[]) =>
+                                  old?.map(v => v.id === village.id ? { ...v, targetPopulation: population } : v)
+                                );
+                              }
+                            }}
+                          />
+                        )}
                       </div>
                     </TabsContent>
                   </Tabs>
