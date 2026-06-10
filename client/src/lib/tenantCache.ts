@@ -66,6 +66,28 @@ export function loadActiveTenant(): CachedTenant | null {
 }
 
 /**
+ * Return the tenant ID the sync engine should use as its IndexedDB partition
+ * key and server tenantId parameter.
+ *
+ * For platform super-admins the "active" tenant may differ from their home
+ * tenant — they can switch between countries.  In that case we want the sync
+ * engine to use the currently-viewed tenant so that each country's data is
+ * stored in its own IndexedDB bucket and never mixed with another country's
+ * data.  For ordinary users their home tenant is always the active one.
+ */
+export function getActiveSyncTenantId(user: {
+  tenantId: string;
+  isPlatformAdmin?: boolean;
+} | null | undefined): string | null {
+  if (!user?.tenantId) return null;
+  if (user.isPlatformAdmin) {
+    const active = loadActiveTenant();
+    if (active?.id) return active.id;
+  }
+  return user.tenantId;
+}
+
+/**
  * Merge a base tenant list with the active tenant, de-duplicating by id and
  * guaranteeing the active tenant is always present (even if the list fetch
  * failed offline or the active tenant was filtered out as demo).

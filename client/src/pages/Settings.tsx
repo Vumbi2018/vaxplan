@@ -131,7 +131,9 @@ function OutboxDiagnostics() {
       });
       toast({ title: "Retrying failed items", description: `${stuck.length} item(s) reset. Sync will run shortly.` });
       const { syncEngine } = await import("@/lib/syncEngine");
-      if (user?.tenantId) syncEngine.sync(user.tenantId);
+      const { getActiveSyncTenantId } = await import("@/lib/tenantCache");
+      const tid = getActiveSyncTenantId(user);
+      if (tid) syncEngine.sync(tid);
       await reload();
     } catch (e: any) {
       toast({ title: "Error", description: e?.message, variant: "destructive" });

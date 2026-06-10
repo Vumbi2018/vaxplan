@@ -14,7 +14,7 @@ import { RealtimeClient } from "@/lib/realtimeClient";
 import { useAuth } from "@/hooks/useAuth";
 import { queryClient } from "@/lib/queryClient";
 import { syncEngine } from "@/lib/syncEngine";
-import { loadActiveTenant } from "@/lib/tenantCache";
+import { loadActiveTenant, getActiveSyncTenantId } from "@/lib/tenantCache";
 
 export function useRealtimeSync(): void {
   const { user } = useAuth();
@@ -30,7 +30,11 @@ export function useRealtimeSync(): void {
     const tenantId = active?.id || (user as any)?.tenantId;
     if (!tenantId) return;
 
-    const homeTenant = (user as any)?.tenantId as string | undefined;
+    // The sync engine is keyed to the active viewing tenant (getActiveSyncTenantId
+    // returns the localStorage active tenant for platform admins, or the home
+    // tenant for everyone else), so real-time pokes should always trigger a sync
+    // against that same key.
+    const activeSyncTenantId = getActiveSyncTenantId(user as any);
 
     if (!clientRef.current) {
       clientRef.current = new RealtimeClient(() => {
@@ -46,13 +50,13 @@ export function useRealtimeSync(): void {
         } catch {
           /* non-fatal */
         }
-        // Only refresh the offline replica when the poke is for our OWN home
-        // tenant — that's the only partition the SyncEngine maintains. Syncing
-        // it for another viewed tenant would point the replica at the wrong
-        // partition, so we rely on the query invalidation above for those.
-        if (homeTenant && tenantId === homeTenant) {
+        // Refresh the offline replica using the active tenant key — the sync
+        // engine now maintains one bucket per viewing tenant so this is always
+        // safe regardless of whether the user is visiting their home tenant or
+        // a different country as a platform admin.
+        if (activeSyncTenantId) {
           try {
-            syncEngine.sync(homeTenant, { silent: true });
+            syncEngine.sync(activeSyncTenantId, { silent: true });
           } catch {
             /* non-fatal */
           }

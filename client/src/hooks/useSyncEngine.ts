@@ -15,6 +15,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { syncEngine, type SyncState } from "@/lib/syncEngine";
 import { useAuth } from "@/hooks/useAuth";
+import { getActiveSyncTenantId } from "@/lib/tenantCache";
 
 export function useSyncEngine() {
   const { user } = useAuth();
@@ -26,12 +27,17 @@ export function useSyncEngine() {
     return unsubscribe;
   }, []);
 
+  // Use the active viewing tenant (not necessarily the home tenant) so that
+  // platform admins who switch countries get a separate IndexedDB bucket per
+  // country and never see data from a previously-viewed country mixed in.
+  const activeTenantId = getActiveSyncTenantId(user);
+
   // Initialize engine with tenant context once user is known
   useEffect(() => {
-    if (user?.tenantId) {
-      syncEngine.init(user.tenantId);
+    if (activeTenantId) {
+      syncEngine.init(activeTenantId);
     }
-  }, [user?.tenantId]);
+  }, [activeTenantId]);
 
   // Windows (Electron) network events are now handled centrally inside syncEngine.init()
   // via platformNetwork.ts → onNetworkChange(), which transparently uses:
@@ -41,10 +47,10 @@ export function useSyncEngine() {
   // No platform-specific code needed here.
 
   const triggerSync = useCallback(() => {
-    if (user?.tenantId) {
-      syncEngine.sync(user.tenantId, { forceRetry: true });
+    if (activeTenantId) {
+      syncEngine.sync(activeTenantId, { forceRetry: true });
     }
-  }, [user?.tenantId]);
+  }, [activeTenantId]);
 
   return {
     ...syncState,

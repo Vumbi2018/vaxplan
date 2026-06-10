@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { syncEngine, type SyncState } from "@/lib/syncEngine";
 import { onServiceWorkerMessage } from "@/lib/backgroundSync";
 import { useAuth } from "@/hooks/useAuth";
+import { getActiveSyncTenantId } from "@/lib/tenantCache";
 
 interface SyncStatusProps {
   /** Optional overrides for legacy callers — when omitted, status is
@@ -48,10 +49,11 @@ export function SyncStatus(props: SyncStatusProps = {}) {
   // "Sync now" trigger — this is the always-visible control in the header, so
   // a user can force a sync at any time (the OfflineBanner's button only
   // appears when there are pending/offline/error states).
-  const canTriggerSync = online && !syncing && !!user?.tenantId;
+  const activeSyncTenantId = getActiveSyncTenantId(user);
+  const canTriggerSync = online && !syncing && !!activeSyncTenantId;
   const handleSync = () => {
-    if (canTriggerSync && user?.tenantId) {
-      syncEngine.sync(user.tenantId);
+    if (canTriggerSync && activeSyncTenantId) {
+      syncEngine.sync(activeSyncTenantId);
     }
   };
   const triggerProps = canTriggerSync
