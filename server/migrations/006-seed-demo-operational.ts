@@ -2175,13 +2175,17 @@ async function seedSurveillanceCases(
  */
 
 async function backfillPasswordHashes(): Promise<number> {
-  const nullUsers = await db.select({ id: users.id })
-    .from(users)
-    .where(sql`${users.passwordHash} IS NULL`);
-  if (nullUsers.length === 0) return 0;
+  const nullDemoUsers = await db.execute(
+    sql`SELECT id FROM users WHERE password_hash IS NULL AND email LIKE 'demo+%@%.vaxplan.test'`
+  );
+  const count = nullDemoUsers.rows.length;
+  if (count === 0) return 0;
   const hash = await hashPassword("vaxplan2024");
-  await db.execute(sql`UPDATE users SET password_hash = ${hash} WHERE password_hash IS NULL`);
-  return nullUsers.length;
+  await db.execute(sql`
+    UPDATE users SET password_hash = ${hash}
+    WHERE password_hash IS NULL AND email LIKE 'demo+%@%.vaxplan.test'
+  `);
+  return count;
 }
 
 export async function seedDemoOperational(): Promise<void> {

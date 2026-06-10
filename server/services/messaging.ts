@@ -82,7 +82,7 @@ export async function sendSms(options: SendSmsOptions): Promise<{ success: boole
       const username = config?.username || process.env.AFRICASTALKING_USERNAME;
       const senderId = config?.senderId || process.env.AFRICASTALKING_SENDER_ID;
       // 3. Call sms.send({ to: [to], message, from: senderId })
-      return { success: false, error: "Africa's Talking SDK is not yet implemented." };
+      return { success: false, error: "Africa's Talking SDK not installed. Set AFRICASTALKING_API_KEY, AFRICASTALKING_USERNAME, and AFRICASTALKING_SENDER_ID env vars and install the 'africastalking' npm package." };
     }
     
     return { success: false, error: "Unknown SMS provider" };
