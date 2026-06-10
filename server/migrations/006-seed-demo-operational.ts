@@ -27,6 +27,39 @@
  * Defaulter data for ZMB and SSD.)
  */
 
+import fs from 'node:fs';
+import path from 'node:path';
+
+// Load .env file for local development (Node 20.12+ built-in, no dotenv package needed)
+try {
+  // @ts-ignore
+  process.loadEnvFile?.();
+} catch {
+  // Silently skip if not present
+}
+
+// Simple fallback parser for older Node versions or if loadEnvFile failed but file exists
+if (!process.env.DATABASE_URL) {
+  const envPath = path.join(process.cwd(), '.env');
+  if (fs.existsSync(envPath)) {
+    try {
+      const envContent = fs.readFileSync(envPath, 'utf8');
+      for (const line of envContent.split('\n')) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('#')) continue;
+        const index = trimmed.indexOf('=');
+        if (index > 0) {
+          const key = trimmed.substring(0, index).trim();
+          let val = trimmed.substring(index + 1).trim();
+          if (val.startsWith('"') && val.endsWith('"')) val = val.slice(1, -1);
+          if (val.startsWith("'") && val.endsWith("'")) val = val.slice(1, -1);
+          process.env[key] = val;
+        }
+      }
+    } catch (e) {}
+  }
+}
+
 import { db } from "../db";
 import { sql, eq, and, inArray } from "drizzle-orm";
 import {
