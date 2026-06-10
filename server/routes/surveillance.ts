@@ -11,7 +11,7 @@ import {
   insertLabSampleSchema,
   populationData
 } from "@shared/schema";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, isNotNull } from "drizzle-orm";
 import { dispatchNotification } from "../services/uce";
 import { isAuthenticated, ensureDbUserFromSession } from "../replitAuth";
 import { requireTenant } from "../auth/tenantResolver";
@@ -192,6 +192,31 @@ surveillanceRouter.get("/cases/kpis", async (req: any, res) => {
       totalAfpCases: afpCases.length,
       totalMeaslesCases: measlesCases.length
     });
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Population choropleth data (district populations by source for heatmap)
+surveillanceRouter.get("/population/choropleth", async (req: any, res) => {
+  try {
+    const source = (req.query.source as string) || "nso";
+    const tenantId = req.tenantId;
+    const rows = await db
+      .select({
+        districtId: populationData.districtId,
+        population: sql<number>`SUM(${populationData.totalPopulation})`,
+      })
+      .from(populationData)
+      .where(
+        and(
+          eq(populationData.tenantId, tenantId),
+          eq(populationData.source, source as any),
+          isNotNull(populationData.districtId),
+        )
+      )
+      .groupBy(populationData.districtId);
+    res.json(rows);
   } catch (err: any) {
     res.status(500).json({ message: err.message });
   }

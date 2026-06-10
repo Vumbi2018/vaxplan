@@ -159,7 +159,12 @@ function Grid3PaneCreator() {
   return null;
 }
 
-const getBoundaryStyle = (adminLevel: number) => {
+const getBoundaryStyle = (adminLevel: number, mode?: string) => {
+  if (mode === "surveillance") {
+    if (adminLevel === 1) return { color: "#94a3b8", weight: 2, fillOpacity: 0, fillColor: "transparent", dashArray: "6 4" };
+    if (adminLevel === 2) return { color: "#64748b", weight: 1.5, fillOpacity: 0, fillColor: "transparent", dashArray: "4 3" };
+    return { color: "#475569", weight: 1, fillOpacity: 0, fillColor: "transparent", dashArray: "3 3" };
+  }
   if (adminLevel === 1) {
     return {
       color: "#6366f1", // Elegant Indigo
@@ -694,6 +699,7 @@ export interface MapOverlayLayers {
   wards: boolean;
   constituencies: boolean;
   populationGeoTIFF: boolean;
+  populationChoropleth: boolean;
   grid3Settlements: boolean;
   zeroDoseVillages: boolean; // Per-village zero-dose / under-immunized graduated pins
   underImmunizedVillages: boolean; // Per-village under-immunized (DTP1 but no DTP3) graduated pins
@@ -843,8 +849,11 @@ function LayerPanel({
                       subtext = `${adminLabels?.level2 || "Constituency"} level boundary polygons`;
                     }
                   } else if (key === "populationGeoTIFF") {
-                    displayName = "Population Density";
+                    displayName = "Population Density (Raster)";
                     subtext = "WorldPop gridded raster heat-map (upload via Resources)";
+                  } else if (key === "populationChoropleth") {
+                    displayName = "Population Choropleth";
+                    subtext = "District population from NSO/HMIS census data";
                   } else if (key === "grid3Settlements") {
                     displayName = "GRID3 Settlement Footprints";
                     if (countryCode !== "ZMB") {
@@ -873,7 +882,7 @@ function LayerPanel({
                       (key === "constituencies" && !hasLevel2) ||
                       (key === "grid3Settlements" && countryCode !== "ZMB")) {
                     dotColor = "bg-amber-400";
-                  } else if (key === "populationGeoTIFF") {
+                  } else if (key === "populationGeoTIFF" || key === "populationChoropleth") {
                     dotColor = "bg-sky-400";
                   } else if (key === "grid3Settlements") {
                     dotColor = "bg-violet-400";
@@ -1795,6 +1804,7 @@ export function MapView({
       wards: false,
       constituencies: false,
       populationGeoTIFF: !isSurveillance,
+      populationChoropleth: false,
       grid3Settlements: false,
       zeroDoseVillages: false,
       underImmunizedVillages: false,
@@ -3330,6 +3340,33 @@ export function MapView({
 
   // Fetch full GeoJSON for each active boundary
   const [boundaryGeoJSONs, setBoundaryGeoJSONs] = useState<Record<string, any>>({});
+
+  // Population choropleth source toggle
+  const [popChoroplethSource, setPopChoroplethSource] = useState<"nso" | "hmis">("nso");
+  const { data: choroplethData = [] } = useQuery<Array<{ districtId: number; population: number }>>(
+    {
+      queryKey: ["/api/surveillance/population/choropleth", popChoroplethSource],
+      queryFn: () => fetch(`/api/surveillance/population/choropleth?source=${popChoroplethSource}`, { credentials: "include" }).then((r) => r.json()),
+      enabled: layers.populationChoropleth,
+      staleTime: 5 * 60 * 1000,
+    }
+  );
+  const districtPopMap = useMemo(() => {
+    const m = new Map<number, number>();
+    if (choroplethData) choroplethData.forEach((r) => r.districtId && m.set(Number(r.districtId), Number(r.population)));
+    return m;
+  }, [choroplethData]);
+  const choroplethMax = useMemo(() => Math.max(1, ...Array.from(districtPopMap.values())), [districtPopMap]);
+  function getChoroplethColor(pop: number): string {
+    const t = Math.min(1, pop / choroplethMax);
+    if (t > 0.9) return "#083e7d";
+    if (t > 0.7) return "#1a5eb8";
+    if (t > 0.5) return "#3182bd";
+    if (t > 0.3) return "#6baed6";
+    if (t > 0.15) return "#9ecae1";
+    if (t > 0.05) return "#c6dbef";
+    return "#eff3ff";
+  }
   useEffect(() => {
     if (!boundaryList) return;
     boundaryList.forEach((b) => {
@@ -4972,13 +5009,23 @@ export function MapView({
               const geojson = filteredBoundaryGeoJSONs[b.id];
               if (!geojson || !geojson.features || geojson.features.length === 0) return null;
 
-              const style = getBoundaryStyle(b.adminLevel);
+              const choroplethStyleFn = layers.populationChoropleth && b.adminLevel === 2
+                ? (feature: any) => {
+                    const fName = feature?.properties?.name || feature?.properties?.NAME || feature?.properties?.shapeName || feature?.properties?.NAME_2 || "";
+                    const normN = fName.toLowerCase().replace(/[^a-z0-9]/g, "");
+                    const matchedDist = districts.find((d) => d.name.toLowerCase().replace(/[^a-z0-9]/g, "") === normN);
+                    const pop = matchedDist ? (districtPopMap.get(matchedDist.id) ?? 0) : 0;
+                    const col = pop > 0 ? getChoroplethColor(pop) : "#f1f5f9";
+                    return { color: "#334155", weight: 1.5, fillOpacity: 0.72, fillColor: col };
+                  }
+                : undefined;
+              const style = choroplethStyleFn ?? getBoundaryStyle(b.adminLevel, mode);
 
               return (
                 <GeoJSON
-                  key={`boundary-${b.id}-${selectedProvinceId}-${selectedDistrictId}-${selectedLlgId}-${layers.showLabels}`}
+                  key={`boundary-${b.id}-${selectedProvinceId}-${selectedDistrictId}-${selectedLlgId}-${layers.showLabels}-${layers.populationChoropleth}-${popChoroplethSource}`}
                   data={geojson}
-                  style={style}
+                  style={choroplethStyleFn ?? style}
                   onEachFeature={(feature, layer) => {
                     const name =
                       feature.properties?.name ||
@@ -6980,6 +7027,33 @@ export function MapView({
           showPopulationLegend={layers.populationGeoTIFF}
           facilityCount={filteredFacilities.length}
         />
+      )}
+
+      {/* Population choropleth source toggle (only when choropleth layer active) */}
+      {!isPrinting && layers.populationChoropleth && (
+        <div className="absolute left-4 top-16 z-[1000]" ref={disableLeafletPropagation}>
+          <div className="bg-background/90 backdrop-blur-sm border border-border/50 rounded-lg shadow-lg p-2.5 flex flex-col gap-1.5">
+            <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Population Source</p>
+            <div className="flex gap-1">
+              {(["nso", "hmis"] as const).map((s) => (
+                <button key={s} onClick={() => setPopChoroplethSource(s)}
+                  className={`px-2 py-0.5 rounded text-[10px] font-semibold border transition-all ${
+                    popChoroplethSource === s
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "border-border/50 text-muted-foreground hover:border-primary/40"
+                  }`}>{s.toUpperCase()}</button>
+              ))}
+            </div>
+            <div className="flex items-center gap-1 mt-0.5">
+              {["#eff3ff","#9ecae1","#3182bd","#083e7d"].map((col, i) => (
+                <div key={col} className="h-2.5 flex-1 rounded-sm" style={{ background: col }}></div>
+              ))}
+            </div>
+            <div className="flex justify-between text-[8px] text-muted-foreground">
+              <span>Low</span><span>High</span>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Surveillance Case Legend */}
