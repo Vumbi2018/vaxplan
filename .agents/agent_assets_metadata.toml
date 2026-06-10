@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "GqLrFae9wnC3V2Yw46vT9"
+uri = "file://vaxplan_dump.sql.gz"
+type = "unspecified"
+title = "VaxPlan Database Dump (compressed)"
