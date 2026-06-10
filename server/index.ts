@@ -27,7 +27,7 @@ import { applyPerfIndexes } from "./migrations/011-perf-indexes";
 */
 import { applyPerfIndexes } from "./migrations/011-perf-indexes";
 import { applyVillageColumns } from "./migrations/013-village-route-columns";
-import { applyOutreachColumns } from "./migrations/014-outreach-columns";
+import { applyOutreachColumns } from "./migrations/014-outreach-columns";import { applyMicroplanApprovalColumns } from "./migrations/015-microplan-approval-columns";
 
 
 const app = express();
@@ -298,6 +298,10 @@ async function backfillClientIds() {
   applyOutreachColumns()
     .then(() => log("outreach columns migration complete", "db"))
     .catch((err) => log(`outreach columns warning: ${err?.message ?? err}`, "db"));
+
+  applyMicroplanApprovalColumns()
+    .then(() => log("microplan approval columns migration complete", "db"))
+    .catch((err) => log(`microplan approval columns warning: ${err?.message ?? err}`, "db"));
 
   setupRealtime(httpServer, getSession());
   startPopulationRefreshScheduler();

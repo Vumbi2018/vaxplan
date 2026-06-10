@@ -1,0 +1,3 @@
+- [VaxPlan demo login](vaxplan-demo-login.md) — all demo users use demo+<slug>@<code-lower>.vaxplan.test / vaxplan2024; bcryptjs hashes
+- [VaxPlan DB restore strategy](vaxplan-db-restore.md) — CSV files absent; use local_dump.sql.zip to restore geographic data; always strip \restrict line first
+- [VaxPlan schema drift pattern](vaxplan-schema-drift.md) — new schema columns added to schema.ts often lack DB migrations; check microplans/session_plans on new env

@@ -234,9 +234,9 @@ export async function pullChanges(
       _geoVillageName: villages.name,
     })
     .from(clients)
-    .innerJoin(facilities, eq(facilities.id, clients.facilityId))
-    .innerJoin(districts, eq(districts.id, facilities.districtId))
-    .innerJoin(provinces, eq(provinces.id, districts.provinceId))
+    .leftJoin(facilities, eq(facilities.id, clients.facilityId))
+    .leftJoin(districts, eq(districts.id, facilities.districtId))
+    .leftJoin(provinces, eq(provinces.id, districts.provinceId))
     .leftJoin(villages, eq(villages.id, clients.villageId))
     .where(tenantFilter(clients)),
     db.select().from(clientVaccinations).where(tenantFilter(clientVaccinations)),

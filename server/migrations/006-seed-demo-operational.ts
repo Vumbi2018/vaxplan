@@ -48,6 +48,7 @@ import {
   stockTransactions,
   surveillanceCases,
 } from "../../shared/schema";
+import { hashPassword } from "../auth/passwordAuth";
 
 type TenantCode = "ZMB" | "SSD" | "PNG" | "ZAF";
 
@@ -232,6 +233,7 @@ async function seedUsers(
     });
   });
 
+  const hash = await hashPassword("vaxplan2024");
   let inserted = 0;
   for (const s of seeds) {
     const email = emailFor(tenantCode, s.slug);
@@ -253,6 +255,7 @@ async function seedUsers(
       facilityId: s.facilityId ?? null,
       districtId: s.districtId ?? null,
       provinceId: s.provinceId ?? null,
+      passwordHash: hash,
       isActive: true,
     });
     inserted++;
@@ -2170,8 +2173,19 @@ async function seedSurveillanceCases(
  * idempotent and gracefully skips tenants/facilities that aren't seeded yet.
  * Returns silently (no process.exit) so it can be invoked from server startup.
  */
+
+async function backfillPasswordHashes(): Promise<number> {
+  const nullUsers = await db.select({ id: users.id })
+    .from(users)
+    .where(sql`${users.passwordHash} IS NULL`);
+  if (nullUsers.length === 0) return 0;
+  const hash = await hashPassword("vaxplan2024");
+  await db.execute(sql`UPDATE users SET password_hash = ${hash} WHERE password_hash IS NULL`);
+  return nullUsers.length;
+}
+
 export async function seedDemoOperational(): Promise<void> {
-  for (const code of ["ZMB", "SSD", "PNG"] as TenantCode[]) {
+  for (const code of ["ZMB", "SSD", "PNG", "ZAF"] as TenantCode[]) {
     const rows = await db.select().from(tenants).where(eq(tenants.code, code)).limit(1);
     const tenant = rows[0];
     if (!tenant) {
@@ -2225,6 +2239,10 @@ export async function seedDemoOperational(): Promise<void> {
     console.log(
       `[${code}] picked ${picks.length} facilities • +${u} users • +${pop} facility-pop • +${vp} village-pop • +${vr} vaccine reqs • +${sp} session plans • +${mr} monthly reports (+${mrb} backfilled) • +${ic} imported-coverage rows • +${clientsInserted} demo clients • +${vaccinationsInserted} client vaccinations • +${ss} stock summaries • +${st} stock transactions • +${sc} surveillance cases`,
     );
+  }
+  const backfilled = await backfillPasswordHashes();
+  if (backfilled > 0) {
+    console.log(`[backfill] Set passwordHash for ${backfilled} users.`);
   }
 }
 
