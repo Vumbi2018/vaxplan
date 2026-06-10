@@ -225,10 +225,17 @@ export default function Surveillance() {
   const [isAlertsModalOpen,   setIsAlertsModalOpen]   = useState(false);
 
   const [selectedCase,        setSelectedCase]        = useState<any>(null);
+  const [caseEditData,        setCaseEditData]        = useState<any>(null);
+  const [isEditingCase,       setIsEditingCase]       = useState(false);
 
   const [checklistAnswers,    setChecklistAnswers]     = useState<Record<string, string>>({});
 
   const [reportChecklistAnswers, setReportChecklistAnswers] = useState<Record<string, string>>({});
+
+  // Chart drill-down state
+  const [chartDrillDisease,   setChartDrillDisease]   = useState<string | null>(null);
+  const [chartDrillWeek,      setChartDrillWeek]      = useState<string | null>(null);
+  const [activeTab,           setActiveTab]           = useState("dashboard");
 
 
 
@@ -314,7 +321,7 @@ export default function Surveillance() {
 
       selectedCase
 
-        ? apiRequest("GET", `/api/surveillance/cases/${selectedCase.id}/samples`).then((r) => r.json())
+        ? apiRequest("GET", `/api/surveillance/cases/${selectedCase.id}/samples`)
 
         : Promise.resolve([]),
 
@@ -328,7 +335,7 @@ export default function Surveillance() {
 
   const reportCaseMutation = useMutation({
 
-    mutationFn: (data: any) => apiRequest("POST", "/api/surveillance/cases", data).then((r) => r.json()),
+    mutationFn: (data: any) => apiRequest("POST", "/api/surveillance/cases", data),
 
     onSuccess: () => {
 
@@ -354,7 +361,7 @@ export default function Surveillance() {
 
   const updateCaseMutation = useMutation({
 
-    mutationFn: ({ id, ...data }: any) => apiRequest("PATCH", `/api/surveillance/cases/${id}`, data).then((r) => r.json()),
+    mutationFn: ({ id, ...data }: any) => apiRequest("PATCH", `/api/surveillance/cases/${id}`, data),
 
     onSuccess: (updated) => {
 
@@ -374,7 +381,7 @@ export default function Surveillance() {
 
   const deleteCaseMutation = useMutation({
 
-    mutationFn: (id: string) => apiRequest("DELETE", `/api/surveillance/cases/${id}`).then((r) => r.json()),
+    mutationFn: (id: string) => apiRequest("DELETE", `/api/surveillance/cases/${id}`),
 
     onSuccess: () => {
 
@@ -396,11 +403,11 @@ export default function Surveillance() {
 
       if (data.id) {
 
-        return apiRequest("PATCH", `/api/surveillance/templates/${data.id}`, data).then((r) => r.json());
+        return apiRequest("PATCH", `/api/surveillance/templates/${data.id}`, data);
 
       }
 
-      return apiRequest("POST", "/api/surveillance/templates", data).then((r) => r.json());
+      return apiRequest("POST", "/api/surveillance/templates", data);
 
     },
 
@@ -422,7 +429,7 @@ export default function Surveillance() {
 
   const deleteTemplateMutation = useMutation({
 
-    mutationFn: (id: string) => apiRequest("DELETE", `/api/surveillance/templates/${id}`).then((r) => r.json()),
+    mutationFn: (id: string) => apiRequest("DELETE", `/api/surveillance/templates/${id}`),
 
     onSuccess: () => {
 
@@ -438,7 +445,7 @@ export default function Surveillance() {
 
   const updateConfigMutation = useMutation({
 
-    mutationFn: (data: any) => apiRequest("POST", "/api/surveillance/config", data).then((r) => r.json()),
+    mutationFn: (data: any) => apiRequest("POST", "/api/surveillance/config", data),
 
     onSuccess: () => {
 
@@ -458,7 +465,7 @@ export default function Surveillance() {
 
     mutationFn: (data: any) =>
 
-      apiRequest("POST", `/api/surveillance/cases/${selectedCase?.id}/samples`, data).then((r) => r.json()),
+      apiRequest("POST", `/api/surveillance/cases/${selectedCase?.id}/samples`, data),
 
     onSuccess: () => {
 
@@ -480,7 +487,7 @@ export default function Surveillance() {
 
   const deleteSampleMutation = useMutation({
 
-    mutationFn: (id: string) => apiRequest("DELETE", `/api/surveillance/samples/${id}`).then((r) => r.json()),
+    mutationFn: (id: string) => apiRequest("DELETE", `/api/surveillance/samples/${id}`),
 
     onSuccess: () => {
 
@@ -721,10 +728,26 @@ export default function Surveillance() {
         const pId = distProvMap.get(Number(dId));
         if (Number(pId) !== Number(provinceFilter)) return false;
       }
+      if (chartDrillDisease) {
+        const effectiveDrillDisease = ["afp","measles","nnt","yellow_fever","cholera","covid19"].includes(chartDrillDisease) ? chartDrillDisease : "other";
+        if (effectiveDrillDisease === "other") {
+          if (["afp","measles","nnt","yellow_fever","cholera","covid19"].includes(c.disease)) return false;
+        } else if (c.disease !== chartDrillDisease) return false;
+      }
+      if (chartDrillWeek) {
+        const getEpiWeekLabel = (d: Date) => {
+          const tmp = new Date(d); tmp.setHours(0,0,0,0); tmp.setDate(tmp.getDate() + 3 - ((tmp.getDay()+6)%7));
+          const w1 = new Date(tmp.getFullYear(),0,4);
+          const wk = 1 + Math.round(((tmp.getTime()-w1.getTime())/86400000-3+((w1.getDay()+6)%7))/7);
+          return `W${String(wk).padStart(2,"0")}/${String(tmp.getFullYear()).slice(2)}`;
+        };
+        if (getEpiWeekLabel(new Date(c.dateOfOnset)) !== chartDrillWeek) return false;
+      }
       return true;
     });
   }, [cases, diseaseFilter, classificationFilter, statusFilter, searchQuery,
-      facilityFilter, districtFilter, provinceFilter, facilities, districts]);
+      facilityFilter, districtFilter, provinceFilter, facilities, districts,
+      chartDrillDisease, chartDrillWeek]);
 
 
 
@@ -1088,7 +1111,7 @@ export default function Surveillance() {
 
       {/* ── Tabs ─────────────────────────────────────────────────────────── */}
 
-      <Tabs defaultValue="dashboard" className="space-y-4">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
 
         <TabsList className="h-9">
 
@@ -1244,34 +1267,40 @@ export default function Surveillance() {
 
                   <ResponsiveContainer width="100%" height={208}>
 
-                    <BarChart data={epiCurveData} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
-
+                    <BarChart data={epiCurveData} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}
+                      style={{ cursor: "pointer" }}
+                      onClick={(data: any) => {
+                        if (data?.activeLabel) {
+                          setChartDrillWeek(data.activeLabel === chartDrillWeek ? null : data.activeLabel);
+                          setActiveTab("linelist");
+                        }
+                      }}
+                    >
                       <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-
                       <XAxis dataKey="week" tick={{ fontSize: 9 }} interval="preserveStartEnd" />
-
                       <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
-
                       <Tooltip
-
                         contentStyle={{ fontSize: 11, borderRadius: 8, border: "1px solid hsl(var(--border))", background: "hsl(var(--background))" }}
-
                         labelStyle={{ fontWeight: 700 }}
-
+                        formatter={(value: any, name: string) => [value, name]}
+                        cursor={{ fill: "hsl(var(--primary)/0.08)" }}
                       />
-
                       <Legend wrapperStyle={{ fontSize: 10 }} />
-
-                      <Bar dataKey="afp"          name="AFP"          stackId="a" fill={DISEASE_COLORS.afp}          radius={[0,0,0,0]} />
-
-                      <Bar dataKey="measles"       name="Measles"      stackId="a" fill={DISEASE_COLORS.measles}       radius={[0,0,0,0]} />
-
-                      <Bar dataKey="nnt"           name="NNT"          stackId="a" fill={DISEASE_COLORS.nnt}           radius={[0,0,0,0]} />
-
-                      <Bar dataKey="yellow_fever"  name="Yellow Fever" stackId="a" fill={DISEASE_COLORS.yellow_fever}  radius={[0,0,0,0]} />
-
-                      <Bar dataKey="other"         name="Other"        stackId="a" fill={DISEASE_COLORS.other}         radius={[4,4,0,0]} />
-
+                      <Bar dataKey="afp"          name="AFP"          stackId="a" fill={DISEASE_COLORS.afp}          radius={[0,0,0,0]}
+                        onClick={(_: any, __: any, e: any) => { e.stopPropagation(); setChartDrillDisease(chartDrillDisease === "afp" ? null : "afp"); setActiveTab("linelist"); }}
+                      />
+                      <Bar dataKey="measles"       name="Measles"      stackId="a" fill={DISEASE_COLORS.measles}       radius={[0,0,0,0]}
+                        onClick={(_: any, __: any, e: any) => { e.stopPropagation(); setChartDrillDisease(chartDrillDisease === "measles" ? null : "measles"); setActiveTab("linelist"); }}
+                      />
+                      <Bar dataKey="nnt"           name="NNT"          stackId="a" fill={DISEASE_COLORS.nnt}           radius={[0,0,0,0]}
+                        onClick={(_: any, __: any, e: any) => { e.stopPropagation(); setChartDrillDisease(chartDrillDisease === "nnt" ? null : "nnt"); setActiveTab("linelist"); }}
+                      />
+                      <Bar dataKey="yellow_fever"  name="Yellow Fever" stackId="a" fill={DISEASE_COLORS.yellow_fever}  radius={[0,0,0,0]}
+                        onClick={(_: any, __: any, e: any) => { e.stopPropagation(); setChartDrillDisease(chartDrillDisease === "yellow_fever" ? null : "yellow_fever"); setActiveTab("linelist"); }}
+                      />
+                      <Bar dataKey="other"         name="Other"        stackId="a" fill={DISEASE_COLORS.other}         radius={[4,4,0,0]}
+                        onClick={(_: any, __: any, e: any) => { e.stopPropagation(); setChartDrillDisease(chartDrillDisease === "other" ? null : "other"); setActiveTab("linelist"); }}
+                      />
                     </BarChart>
 
                   </ResponsiveContainer>
@@ -1312,11 +1341,13 @@ export default function Surveillance() {
 
                     <PieChart>
 
-                      <Pie data={diseaseBreakdown} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={60} innerRadius={32} paddingAngle={2}>
-
+                      <Pie data={diseaseBreakdown} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={60} innerRadius={32} paddingAngle={2}
+                    style={{ cursor: "pointer" }}
+                    onClick={(entry: any) => { setChartDrillDisease(chartDrillDisease === entry.key ? null : entry.key); setActiveTab("linelist"); }}
+                  >
                         {diseaseBreakdown.map((entry, idx) => (
 
-                          <Cell key={idx} fill={entry.color} />
+                          <Cell key={idx} fill={entry.color} stroke={chartDrillDisease === entry.key ? "hsl(var(--foreground))" : "transparent"} strokeWidth={2} />
 
                         ))}
 
@@ -1665,6 +1696,14 @@ export default function Surveillance() {
 
             <CardContent className="p-0">
 
+              {(chartDrillDisease || chartDrillWeek) && (
+                <div className="flex items-center gap-2 px-4 py-2 bg-primary/5 border-b text-xs">
+                  <span className="font-semibold text-primary">Drill-down active:</span>
+                  {chartDrillDisease && <span className="px-2 py-0.5 rounded-full text-[11px] font-bold uppercase" style={{ background: (DISEASE_COLORS[chartDrillDisease]??'#94a3b8')+'20', color: DISEASE_COLORS[chartDrillDisease]??'#94a3b8' }}>{DISEASE_LABELS[chartDrillDisease]??chartDrillDisease}</span>}
+                  {chartDrillWeek && <span className="px-2 py-0.5 rounded-full bg-muted text-muted-foreground font-mono">{chartDrillWeek}</span>}
+                  <button className="ml-auto text-muted-foreground hover:text-foreground" onClick={() => { setChartDrillDisease(null); setChartDrillWeek(null); }}>× Clear drill</button>
+                </div>
+              )}
               {casesLoading ? (
 
                 <div className="p-8 text-center text-sm text-muted-foreground">Loading cases...</div>
@@ -1678,21 +1717,15 @@ export default function Surveillance() {
                     <thead className="border-b bg-muted/30">
 
                       <tr>
-
                         <th className="h-9 px-3 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Disease</th>
-
-                        <th className="h-9 px-3 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Patient</th>
-
-                        <th className="h-9 px-3 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Age</th>
-
+                        <th className="h-9 px-3 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Patient Name</th>
+                        <th className="h-9 px-3 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Age/Sex</th>
                         <th className="h-9 px-3 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Onset Date</th>
-
+                        <th className="h-9 px-3 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Date Reported</th>
+                        <th className="h-9 px-3 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">District / Facility</th>
                         <th className="h-9 px-3 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Classification</th>
-
-                        <th className="h-9 px-3 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Facility</th>
-
+                        <th className="h-9 px-3 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Status</th>
                         <th className="h-9 px-3 text-right text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Actions</th>
-
                       </tr>
 
                     </thead>
@@ -1701,77 +1734,35 @@ export default function Surveillance() {
 
                       {filteredCases.length === 0 ? (
 
-                        <tr><td colSpan={7} className="p-8 text-center text-sm text-muted-foreground">No cases match the current filters.</td></tr>
+                        <tr><td colSpan={9} className="p-8 text-center text-sm text-muted-foreground">No cases match the current filters.</td></tr>
 
                       ) : filteredCases.map((c: any) => (
 
-                        <tr key={c.id} className="hover:bg-muted/30 transition-colors">
-
+                        <tr key={c.id} className="hover:bg-muted/30 transition-colors cursor-pointer" onClick={() => { setSelectedCase(c); setCaseEditData({ patientName: c.patientName || "", patientAgeMonths: c.patientAgeMonths ?? "", dateOfOnset: c.dateOfOnset ? new Date(c.dateOfOnset).toISOString().split("T")[0] : "", dateReported: c.dateReported ? new Date(c.dateReported).toISOString().split("T")[0] : "", facilityId: c.facilityId ?? "", classification: c.classification || "suspected", patientGender: c.patientGender || "", clinicalNotes: c.clinicalNotes || "" }); setIsEditingCase(false); setChecklistAnswers(c.formData || {}); setIsCaseWorkflowOpen(true); }}>
                           <td className="px-3 py-2.5">
-
-                            <span
-
-                              className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-bold uppercase"
-
-                              style={{ background: (DISEASE_COLORS[c.disease] ?? "#94a3b8") + "20", color: DISEASE_COLORS[c.disease] ?? "#94a3b8" }}
-
-                            >
-
+                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-bold uppercase"
+                              style={{ background: (DISEASE_COLORS[c.disease] ?? "#94a3b8") + "20", color: DISEASE_COLORS[c.disease] ?? "#94a3b8" }}>
                               <span className="w-1.5 h-1.5 rounded-full" style={{ background: DISEASE_COLORS[c.disease] ?? "#94a3b8" }} />
-
                               {DISEASE_LABELS[c.disease] ?? c.disease}
-
                             </span>
-
                           </td>
-
-                          <td className="px-3 py-2.5 font-medium">{c.patientName}</td>
-
-                          <td className="px-3 py-2.5 text-muted-foreground">{c.patientAge != null ? `${c.patientAge}y` : "—"}</td>
-
-                          <td className="px-3 py-2.5 text-muted-foreground tabular-nums">{new Date(c.dateOfOnset).toLocaleDateString()}</td>
-
+                          <td className="px-3 py-2.5 font-medium text-sm">{c.patientName || "—"}</td>
+                          <td className="px-3 py-2.5 text-xs text-muted-foreground">{c.patientAgeMonths != null ? `${c.patientAgeMonths}y` : "—"}{c.patientGender ? ` / ${c.patientGender.charAt(0).toUpperCase()}` : ""}</td>
+                          <td className="px-3 py-2.5 text-xs text-muted-foreground tabular-nums">{c.dateOfOnset ? new Date(c.dateOfOnset).toLocaleDateString() : "—"}</td>
+                          <td className="px-3 py-2.5 text-xs text-muted-foreground tabular-nums">{c.dateReported ? new Date(c.dateReported).toLocaleDateString() : "—"}</td>
+                          <td className="px-3 py-2.5 text-xs">
+                            {(() => { const fac = (facilities as any[]).find((f: any) => f.id === c.facilityId); const dist = fac ? (districts as any[]).find((d: any) => Number(d.id) === Number(fac.districtId)) : null; return (<><div className="font-medium text-foreground/80">{dist?.name ?? "—"}</div><div className="text-[10px] text-muted-foreground truncate max-w-[140px]">{fac?.name ?? `#${c.facilityId}`}</div></>); })()}
+                          </td>
                           <td className="px-3 py-2.5">
-
-                            <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-semibold uppercase border ${classificationBadgeClass(c.classification)}`}>
-
-                              {c.classification}
-
-                            </span>
-
+                            <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-semibold uppercase border ${classificationBadgeClass(c.classification)}`}>{c.classification}</span>
                           </td>
-
-                          <td className="px-3 py-2.5 text-xs text-muted-foreground max-w-[150px] truncate">
-
-                            {(facilities as any[]).find((f: any) => f.id === c.facilityId)?.name ?? `Facility #${c.facilityId ?? "—"}`}
-
+                          <td className="px-3 py-2.5">
+                            <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-semibold uppercase border ${c.status === "closed" ? "bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-300" : "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-400"}`}>{c.status || "open"}</span>
                           </td>
-
-                          <td className="px-3 py-2.5 text-right">
-
-                            <div className="flex justify-end gap-1.5">
-
-                              <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => {
-
-                                setSelectedCase(c);
-
-                                setChecklistAnswers(c.formData || {});
-
-                                setIsCaseWorkflowOpen(true);
-
-                              }}>Manage</Button>
-
-                              <Button variant="ghost" size="sm" className="h-7 text-xs text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => {
-
-                                if (window.confirm("Delete this case?")) deleteCaseMutation.mutate(c.id);
-
-                              }}><Trash2 className="h-3 w-3" /></Button>
-
-                            </div>
-
+                          <td className="px-3 py-2.5 text-right" onClick={(e) => e.stopPropagation()}>
+                            <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => { if (window.confirm("Delete this case?")) deleteCaseMutation.mutate(c.id); }}><Trash2 className="h-3 w-3" /></Button>
                           </td>
-
-                        </tr>
+                        </tr>                        </tr>
 
                       ))}
 
@@ -2406,105 +2397,155 @@ export default function Surveillance() {
                 {/* Metadata */}
 
                 <TabsContent value="info" className="space-y-4">
-
-                  <div className="grid grid-cols-2 gap-4 border p-4 rounded-xl bg-background shadow-sm">
-
-                    {[
-
-                      { label: "Target Disease",      value: <span className="text-sm font-bold uppercase" style={{ color: DISEASE_COLORS[selectedCase.disease] }}>{DISEASE_LABELS[selectedCase.disease] ?? selectedCase.disease}</span> },
-
-                      { label: "Facility",             value: (facilities as any[]).find((f: any) => f.id === selectedCase.facilityId)?.name || `Facility #${selectedCase.facilityId}` },
-
-                      { label: "Patient Name",         value: selectedCase.patientName },
-
-                      { label: "Age",                  value: selectedCase.patientAge != null ? `${selectedCase.patientAge} years` : "Not recorded" },
-
-                      { label: "Date of Onset",        value: new Date(selectedCase.dateOfOnset).toLocaleDateString() },
-
-                      { label: "Date Reported",        value: new Date(selectedCase.dateReported).toLocaleDateString() },
-
-                    ].map(({ label, value }) => (
-
-                      <div key={label} className="space-y-0.5">
-
-                        <p className="text-xs text-muted-foreground">{label}</p>
-
-                        <p className="text-sm font-semibold">{value as React.ReactNode}</p>
-
+                  {/* ── Editable patient details ───────────────────────── */}
+                  <div className="border rounded-xl bg-background shadow-sm overflow-hidden">
+                    <div className="flex items-center justify-between px-4 py-3 border-b bg-muted/20">
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Patient Details</p>
+                      {!isEditingCase ? (
+                        <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={() => setIsEditingCase(true)}>
+                          <span>✏</span> Edit
+                        </Button>
+                      ) : (
+                        <div className="flex gap-1.5">
+                          <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setIsEditingCase(false)}>Cancel</Button>
+                          <Button size="sm" className="h-7 text-xs" disabled={updateCaseMutation.isPending}
+                            onClick={() => {
+                              const payload: any = { id: selectedCase.id, ...caseEditData };
+                              if (payload.dateOfOnset) payload.dateOfOnset = new Date(payload.dateOfOnset).toISOString();
+                              if (payload.dateReported) payload.dateReported = new Date(payload.dateReported).toISOString();
+                              updateCaseMutation.mutate(payload);
+                              setIsEditingCase(false);
+                            }}>
+                            {updateCaseMutation.isPending ? "Saving…" : "Save"}
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-6 gap-y-4 p-4">
+                      {/* Disease */}
+                      <div className="space-y-1">
+                        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Target Disease</p>
+                        {isEditingCase ? (
+                          <Select value={caseEditData?.disease ?? selectedCase.disease} onValueChange={(v) => setCaseEditData((p: any) => ({ ...p, disease: v }))}>
+                            <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              {Object.entries(DISEASE_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v as string}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <span className="text-sm font-bold uppercase" style={{ color: DISEASE_COLORS[selectedCase.disease] }}>{DISEASE_LABELS[selectedCase.disease] ?? selectedCase.disease}</span>
+                        )}
                       </div>
-
-                    ))}
-
-                    <div className="space-y-0.5">
-
-                      <p className="text-xs text-muted-foreground">Classification</p>
-
-                      <span className={`inline-block px-2.5 py-0.5 rounded text-xs font-semibold uppercase border ${classificationBadgeClass(selectedCase.classification)}`}>{selectedCase.classification}</span>
-
+                      {/* Facility */}
+                      <div className="space-y-1">
+                        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Facility</p>
+                        {isEditingCase ? (
+                          <Select value={String(caseEditData?.facilityId ?? selectedCase.facilityId ?? "")} onValueChange={(v) => setCaseEditData((p: any) => ({ ...p, facilityId: Number(v) }))}>
+                            <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              {(facilities as any[]).map((f: any) => <SelectItem key={f.id} value={String(f.id)}>{f.name}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <p className="text-sm font-semibold">{(facilities as any[]).find((f: any) => f.id === selectedCase.facilityId)?.name || `Facility #${selectedCase.facilityId}`}</p>
+                        )}
+                      </div>
+                      {/* Patient Name */}
+                      <div className="space-y-1">
+                        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Patient Name</p>
+                        {isEditingCase ? (
+                          <Input className="h-8 text-xs" value={caseEditData?.patientName ?? ""} onChange={(e) => setCaseEditData((p: any) => ({ ...p, patientName: e.target.value }))} />
+                        ) : (
+                          <p className="text-sm font-semibold">{selectedCase.patientName || "—"}</p>
+                        )}
+                      </div>
+                      {/* Age */}
+                      <div className="space-y-1">
+                        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Age (years)</p>
+                        {isEditingCase ? (
+                          <Input className="h-8 text-xs" type="number" min={0} max={150} value={caseEditData?.patientAgeMonthsMonths ?? ""} onChange={(e) => setCaseEditData((p: any) => ({ ...p, patientAgeMonths: e.target.value }))} />
+                        ) : (
+                          <p className="text-sm font-semibold">{selectedCase.patientAge != null ? `${selectedCase.patientAge} years` : "Not recorded"}</p>
+                        )}
+                      </div>
+                      {/* Sex */}
+                      <div className="space-y-1">
+                        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Sex</p>
+                        {isEditingCase ? (
+                          <Select value={caseEditData?.patientGender ?? ""} onValueChange={(v) => setCaseEditData((p: any) => ({ ...p, patientGender: v }))}>
+                            <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select…" /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="male">Male</SelectItem>
+                              <SelectItem value="female">Female</SelectItem>
+                              <SelectItem value="unknown">Unknown</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <p className="text-sm font-semibold capitalize">{selectedCase.patientGender || "Not recorded"}</p>
+                        )}
+                      </div>
+                      {/* Date of Onset */}
+                      <div className="space-y-1">
+                        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Date of Onset</p>
+                        {isEditingCase ? (
+                          <Input className="h-8 text-xs" type="date" value={caseEditData?.dateOfOnset ?? ""} onChange={(e) => setCaseEditData((p: any) => ({ ...p, dateOfOnset: e.target.value }))} />
+                        ) : (
+                          <p className="text-sm font-semibold">{selectedCase.dateOfOnset ? new Date(selectedCase.dateOfOnset).toLocaleDateString() : "—"}</p>
+                        )}
+                      </div>
+                      {/* Date Reported */}
+                      <div className="space-y-1">
+                        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Date Reported</p>
+                        {isEditingCase ? (
+                          <Input className="h-8 text-xs" type="date" value={caseEditData?.dateReported ?? ""} onChange={(e) => setCaseEditData((p: any) => ({ ...p, dateReported: e.target.value }))} />
+                        ) : (
+                          <p className="text-sm font-semibold">{selectedCase.dateReported ? new Date(selectedCase.dateReported).toLocaleDateString() : "—"}</p>
+                        )}
+                      </div>
+                      {/* Classification */}
+                      <div className="space-y-1">
+                        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Classification</p>
+                        <Select value={caseEditData?.classification ?? selectedCase.classification} onValueChange={(v) => { setCaseEditData((p: any) => ({ ...(p||{}), classification: v })); updateCaseMutation.mutate({ id: selectedCase.id, classification: v }); }}>
+                          <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="suspected">Suspected</SelectItem>
+                            <SelectItem value="probable">Probable</SelectItem>
+                            <SelectItem value="confirmed">Confirmed</SelectItem>
+                            <SelectItem value="discarded">Discarded</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      {/* Clinical Notes */}
+                      <div className="col-span-2 space-y-1">
+                        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Clinical Notes</p>
+                        {isEditingCase ? (
+                          <textarea className="w-full h-20 text-xs border rounded-md px-3 py-2 bg-background resize-none focus:outline-none focus:ring-1 focus:ring-ring" value={caseEditData?.clinicalNotes ?? ""} onChange={(e) => setCaseEditData((p: any) => ({ ...p, clinicalNotes: e.target.value })) } />
+                        ) : (
+                          <p className="text-sm text-muted-foreground">{selectedCase.clinicalNotes || "No notes recorded."}</p>
+                        )}
+                      </div>
                     </div>
-
-                    <div className="space-y-0.5">
-
-                      <p className="text-xs text-muted-foreground">Update Classification</p>
-
-                      <Select value={selectedCase.classification} onValueChange={(v) => updateCaseMutation.mutate({ id: selectedCase.id, classification: v })}>
-
-                        <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-
-                        <SelectContent>
-
-                          <SelectItem value="suspected">Suspected</SelectItem>
-
-                          <SelectItem value="probable">Probable</SelectItem>
-
-                          <SelectItem value="confirmed">Confirmed</SelectItem>
-
-                          <SelectItem value="discarded">Discarded</SelectItem>
-
-                        </SelectContent>
-
-                      </Select>
-
-                    </div>
-
                   </div>
 
                   {/* Investigation date quick update */}
-
                   {!selectedCase.investigationDate && (
-
                     <div className="border border-amber-200 bg-amber-50 dark:bg-amber-950/30 p-3 rounded-xl flex items-center justify-between gap-3">
-
                       <div>
-
                         <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">Investigation Date Not Set</p>
-
                         <p className="text-[10px] text-amber-700 dark:text-amber-400 mt-0.5">IDSR standard: investigate within 48 hours of notification</p>
-
                       </div>
-
                       <Input type="date" className="h-8 w-40 text-xs" onChange={(e) => {
-
                         if (e.target.value) updateCaseMutation.mutate({ id: selectedCase.id, investigationDate: new Date(e.target.value).toISOString() });
-
                       }} />
-
                     </div>
-
                   )}
 
                   {/* Close case button */}
-
                   {selectedCase.status !== "closed" && (
-
-                    <Button variant="outline" size="sm" className="w-full text-xs" onClick={() => {
-
-                      if (window.confirm("Mark this case as closed?")) updateCaseMutation.mutate({ id: selectedCase.id, status: "closed" });
-
-                    }}>Mark Case as Closed</Button>
-
+                    <Button variant="outline" className="w-full h-9 text-sm border-dashed" onClick={() => updateCaseMutation.mutate({ id: selectedCase.id, status: "closed" })}>
+                      Mark Case as Closed
+                    </Button>
                   )}
-
                 </TabsContent>
 
 

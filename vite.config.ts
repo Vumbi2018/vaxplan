@@ -185,7 +185,7 @@ export default defineConfig({
     dedupe: ["react", "react-dom"],
   },
   optimizeDeps: {
-    include: ["react-leaflet", "@react-leaflet/core", "leaflet"],
+    include: ["react-leaflet", "@react-leaflet/core", "leaflet", "@e965/xlsx"],
   },
   root: path.resolve(import.meta.dirname, "client"),
   build: {
