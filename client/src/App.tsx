@@ -360,6 +360,7 @@ function AuthenticatedRouter() {
       <Route path="/api-reference" component={ApiReference} />
       <Route path="/surveillance" component={Surveillance} />
       <Route path="/settings" component={Settings} />
+      <Route path="/help" component={Help} />
       <Route path="/sync/conflicts" component={lazy(() => import("@/pages/SyncConflicts"))} />
       <Route component={NotFound} />
     </Switch>
