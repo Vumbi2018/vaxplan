@@ -267,7 +267,7 @@ export default function MicroplanPrintView() {
 
   const handleExportExcel = async () => {
     try {
-      const XLSX = await import("xlsx");
+      const XLSX = await import("@e965/xlsx");
       const wb = XLSX.utils.book_new();
 
       // Sheet 0: Cover Page

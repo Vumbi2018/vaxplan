@@ -175,6 +175,9 @@ export default defineConfig({
       "@": path.resolve(import.meta.dirname, "client", "src"),
       "@shared": path.resolve(import.meta.dirname, "shared"),
       "@assets": path.resolve(import.meta.dirname, "attached_assets"),
+      // Vite 6 requires packages to have an exports field; lucide-react 0.x
+      // does not, so point directly to its ESM bundle.
+      "lucide-react": path.resolve(import.meta.dirname, "node_modules/lucide-react/dist/esm/lucide-react.js"),
     },
     // Force a single React instance — react-leaflet (and other React-consuming
     // libs in optimizeDeps) must share the app's React or you get "Invalid

@@ -58,7 +58,7 @@ export async function exportToExcel(
   sheetName: string,
   filename: string
 ) {
-  const XLSX = await import("xlsx");
+  const XLSX = await import("@e965/xlsx");
   if (!rows.length) return;
 
   const flat = rows.map(rowToFlat);

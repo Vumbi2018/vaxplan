@@ -33,6 +33,7 @@
         "@capacitor/network": "^8.0.1",
         "@capacitor/push-notifications": "^8.1.1",
         "@capacitor/splash-screen": "^8.0.1",
+        "@e965/xlsx": "^0.20.3",
         "@hookform/resolvers": "^3.10.0",
         "@jridgewell/trace-mapping": "^0.3.25",
         "@radix-ui/react-accordion": "^1.2.4",
@@ -79,7 +80,7 @@
         "date-fns": "^3.6.0",
         "dexie": "^4.4.2",
         "docx": "^9.7.0",
-        "drizzle-orm": "^0.39.3",
+        "drizzle-orm": "^0.45.2",
         "drizzle-zod": "^0.7.0",
         "embla-carousel-react": "^8.6.0",
         "express": "^4.21.2",
@@ -122,7 +123,6 @@
         "workbox-window": "^7.4.1",
         "wouter": "^3.3.5",
         "ws": "^8.18.0",
-        "xlsx": "^0.18.5",
         "zod": "^3.24.2",
         "zod-validation-error": "^3.4.0"
     },
@@ -154,7 +154,7 @@
         "tailwindcss": "^3.4.17",
         "tsx": "^4.22.3",
         "typescript": "5.6.3",
-        "vite": "^5.4.20",
+        "vite": "^6.4.3",
         "vitest": "^4.1.7",
         "wait-on": "^9.0.10"
     },
@@ -162,5 +162,15 @@
         "bufferutil": "^4.0.8"
     },
     "main": "electron-dist/main.js",
-    "overrides": {}
+    "overrides": {
+        "braces": ">=3.0.3",
+        "serialize-javascript": ">=7.0.3",
+        "micromatch": ">=4.0.8",
+        "elliptic": ">=6.6.1",
+        "shell-quote": ">=1.8.4",
+        "es5-ext": "0.10.63",
+        "@esbuild-kit/core-utils": {
+            "esbuild": ">=0.25.0"
+        }
+    }
 }

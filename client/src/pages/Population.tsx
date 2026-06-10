@@ -868,7 +868,7 @@ export default function Population() {
         return;
       }
 
-      const XLSX = await import("xlsx");
+      const XLSX = await import("@e965/xlsx");
       const tabLabel = TAB_CONFIG.find(t => t.value === activeTab)?.label || activeTab;
       const exportData = filteredPopulationData.map((item) => ({
         [adminLabels.level1 || "Province"]: getProvinceNameForRecord(item),

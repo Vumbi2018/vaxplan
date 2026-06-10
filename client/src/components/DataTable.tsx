@@ -71,7 +71,7 @@ export function DataTable<T extends { id?: number | string }>({
     try {
       // Dynamically import xlsx only when the user clicks Export so the 142 kB
       // gzipped library stays out of the main bundle on every other page.
-      const XLSX = await import("xlsx");
+      const XLSX = await import("@e965/xlsx");
 
       const exportData = sortedData.map((item) => {
         const row: Record<string, unknown> = {};

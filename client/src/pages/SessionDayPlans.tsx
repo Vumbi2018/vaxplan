@@ -809,7 +809,7 @@ export default function SessionDayPlans() {
   const exportToExcel = async () => {
     if (!dayPlans || dayPlans.length === 0 || !vaccineConfigs) return;
     // Dynamically import xlsx so 142 kB gzipped lib stays out of the main bundle.
-    const XLSX = await import("xlsx");
+    const XLSX = await import("@e965/xlsx");
 
     const isCampaign = sessionPlan?.planType === "campaign";
     // Prepare headers
