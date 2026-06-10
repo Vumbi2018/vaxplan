@@ -220,11 +220,28 @@ async function run() {
 
   // 3b. Delete referencing rows in operational tables to avoid foreign key violations (including cross-tenant ones)
   if (facilityIds.length > 0) {
-    await db.delete(clientVaccinations).where(inArray(clientVaccinations.facilityId, facilityIds));
+    const clientIds = (await db
+      .select({ id: clients.id })
+      .from(clients)
+      .where(inArray(clients.facilityId, facilityIds))
+    ).map((c) => c.id);
+
+    if (clientIds.length > 0) {
+      await db.delete(clientVaccinations).where(inArray(clientVaccinations.clientId, clientIds));
+    }
     await db.delete(clients).where(inArray(clients.facilityId, facilityIds));
     await db.delete(monthlyReports).where(inArray(monthlyReports.facilityId, facilityIds));
     await db.delete(stockTransactions).where(inArray(stockTransactions.facilityId, facilityIds));
-    await db.delete(sessionDayPlans).where(inArray(sessionDayPlans.facilityId, facilityIds));
+
+    const sessionPlanIds = (await db
+      .select({ id: sessionPlans.id })
+      .from(sessionPlans)
+      .where(inArray(sessionPlans.facilityId, facilityIds))
+    ).map((sp) => sp.id);
+
+    if (sessionPlanIds.length > 0) {
+      await db.delete(sessionDayPlans).where(inArray(sessionDayPlans.sessionPlanId, sessionPlanIds));
+    }
     await db.delete(sessionPlans).where(inArray(sessionPlans.facilityId, facilityIds));
     await db.delete(microplans).where(inArray(microplans.facilityId, facilityIds));
     await db.delete(vaccineRequirements).where(inArray(vaccineRequirements.facilityId, facilityIds));
