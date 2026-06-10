@@ -3774,7 +3774,7 @@ function Step1({
                     </div>
                   )}
                   <Select
-                    value=""
+                    value={undefined}
                     onValueChange={(v) => toggleId("provinceIds", Number(v))}
                   >
                     <SelectTrigger className="h-8 text-xs" data-testid="select-province">
@@ -3832,7 +3832,7 @@ function Step1({
                     </div>
                   )}
                   <Select
-                    value=""
+                    value={undefined}
                     onValueChange={(v) => toggleId("districtIds", Number(v))}
                   >
                     <SelectTrigger className="h-8 text-xs" data-testid="select-district">
@@ -7600,10 +7600,10 @@ function StepChvProfile({ facilityId, villages, planType = "routine" }: { facili
           </div>
           <div>
             <Label className="text-xs">Responsible Village</Label>
-            <Select value={String(form.villageId || "")} onValueChange={(v) => setForm({ ...form, villageId: v })}>
+            <Select value={String(form.villageId || "")} onValueChange={(v) => setForm({ ...form, villageId: v === "__none__" ? "" : v })}>
               <SelectTrigger><SelectValue placeholder="Select village" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="">— None —</SelectItem>
+                <SelectItem value="__none__">— None —</SelectItem>
                 {safeVillages.filter((v) => v && v.villageId).map((v) => (
                   <SelectItem key={v.villageId} value={String(v.villageId)}>{v.name || ""}</SelectItem>
                 ))}
