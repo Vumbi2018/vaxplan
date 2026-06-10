@@ -7,6 +7,7 @@ const SEED_SCRIPTS = [
   "server/migrations/006-seed-png.ts",
   "server/migrations/010-seed-south-africa.ts",
   "server/migrations/006-seed-demo-operational.ts",
+  "scripts/seed-ssd-accounts.ts",
 ];
 
 function runScript(scriptPath: string): Promise<void> {
