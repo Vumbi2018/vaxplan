@@ -12,7 +12,7 @@
  */
 
 import { db } from "../db";
-import { sql, eq, and } from "drizzle-orm";
+import { sql, eq, and, inArray } from "drizzle-orm";
 import {
   tenants,
   regions,
@@ -22,6 +22,17 @@ import {
   facilities,
   populationData,
   villages,
+  htrScores,
+  sessionVillages,
+  clientVaccinations,
+  clients,
+  monthlyReports,
+  stockTransactions,
+  sessionDayPlans,
+  sessionPlans,
+  microplans,
+  vaccineRequirements,
+  importedCoverage,
 } from "../../shared/schema";
 import { readFileSync, mkdirSync, existsSync } from "fs";
 import { join } from "path";
@@ -181,6 +192,32 @@ async function run() {
     
     // Clear old administrative settings and cascade children to ensure clean, high-fidelity seeding
     console.log("Clearing old South Sudan administrative hierarchy and facilities…");
+    // 1a. Query all facility IDs and village IDs currently belonging to this tenant
+    const facilityIds = (await db
+      .select({ id: facilities.id })
+      .from(facilities)
+      .where(eq(facilities.tenantId, tenantId))
+    ).map((f) => f.id);
+
+    const villageIds = (await db
+      .select({ id: villages.id })
+      .from(villages)
+      .where(eq(villages.tenantId, tenantId))
+    ).map((v) => v.id);
+
+    // 1b. Delete referencing rows in operational tables to avoid foreign key violations (including cross-tenant ones)
+    if (villageIds.length > 0) {
+      await db.delete(sessionVillages).where(inArray(sessionVillages.villageId, villageIds));
+      await db.delete(htrScores).where(inArray(htrScores.villageId, villageIds));
+    }
+
+    if (facilityIds.length > 0) {
+      await db.delete(sessionPlans).where(inArray(sessionPlans.facilityId, facilityIds));
+      await db.delete(microplans).where(inArray(microplans.facilityId, facilityIds));
+      await db.delete(vaccineRequirements).where(inArray(vaccineRequirements.facilityId, facilityIds));
+    }
+
+    // 1c. Clear remaining tenant-scoped records
     await db.delete(populationData).where(eq(populationData.tenantId, tenantId));
     await db.delete(villages).where(eq(villages.tenantId, tenantId));
     await db.delete(facilities).where(eq(facilities.tenantId, tenantId));

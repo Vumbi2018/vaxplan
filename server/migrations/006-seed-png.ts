@@ -18,7 +18,7 @@
  */
 
 import { db } from "../db";
-import { sql, eq, and } from "drizzle-orm";
+import { sql, eq, and, inArray } from "drizzle-orm";
 import {
   tenants,
   regions,
@@ -28,6 +28,17 @@ import {
   facilities,
   populationData,
   villages,
+  htrScores,
+  sessionVillages,
+  clientVaccinations,
+  clients,
+  monthlyReports,
+  stockTransactions,
+  sessionDayPlans,
+  sessionPlans,
+  microplans,
+  vaccineRequirements,
+  importedCoverage,
 } from "../../shared/schema";
 import { readFileSync, existsSync } from "fs";
 import { join } from "path";
@@ -194,6 +205,38 @@ async function run() {
 
   // 3. Clear existing PNG hierarchy + facilities + population so seed is deterministic.
   console.log("Clearing existing PNG hierarchy / facilities / population…");
+  // 3a. Query all facility IDs and village IDs currently belonging to this tenant
+  const facilityIds = (await db
+    .select({ id: facilities.id })
+    .from(facilities)
+    .where(eq(facilities.tenantId, tenantId))
+  ).map((f) => f.id);
+
+  const villageIds = (await db
+    .select({ id: villages.id })
+    .from(villages)
+    .where(eq(villages.tenantId, tenantId))
+  ).map((v) => v.id);
+
+  // 3b. Delete referencing rows in operational tables to avoid foreign key violations (including cross-tenant ones)
+  if (facilityIds.length > 0) {
+    await db.delete(clientVaccinations).where(inArray(clientVaccinations.facilityId, facilityIds));
+    await db.delete(clients).where(inArray(clients.facilityId, facilityIds));
+    await db.delete(monthlyReports).where(inArray(monthlyReports.facilityId, facilityIds));
+    await db.delete(stockTransactions).where(inArray(stockTransactions.facilityId, facilityIds));
+    await db.delete(sessionDayPlans).where(inArray(sessionDayPlans.facilityId, facilityIds));
+    await db.delete(sessionPlans).where(inArray(sessionPlans.facilityId, facilityIds));
+    await db.delete(microplans).where(inArray(microplans.facilityId, facilityIds));
+    await db.delete(vaccineRequirements).where(inArray(vaccineRequirements.facilityId, facilityIds));
+    await db.delete(importedCoverage).where(inArray(importedCoverage.facilityId, facilityIds));
+  }
+
+  if (villageIds.length > 0) {
+    await db.delete(sessionVillages).where(inArray(sessionVillages.villageId, villageIds));
+    await db.delete(htrScores).where(inArray(htrScores.villageId, villageIds));
+  }
+
+  // 3c. Clear remaining tenant-scoped records
   await db.delete(populationData).where(eq(populationData.tenantId, tenantId));
   await db.delete(villages).where(eq(villages.tenantId, tenantId));
   await db.delete(facilities).where(eq(facilities.tenantId, tenantId));
