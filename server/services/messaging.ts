@@ -76,13 +76,56 @@ export async function sendSms(options: SendSmsOptions): Promise<{ success: boole
     }
     
     if (provider === 'africastalking') {
-      // 1. Install: npm install africastalking
-      // 2. Import and initialize with API Key & Username
-      const apiKey = config?.apiKey || process.env.AFRICASTALKING_API_KEY;
-      const username = config?.username || process.env.AFRICASTALKING_USERNAME;
-      const senderId = config?.senderId || process.env.AFRICASTALKING_SENDER_ID;
-      // 3. Call sms.send({ to: [to], message, from: senderId })
-      return { success: false, error: "Africa's Talking SDK not installed. Set AFRICASTALKING_API_KEY, AFRICASTALKING_USERNAME, and AFRICASTALKING_SENDER_ID env vars and install the 'africastalking' npm package." };
+      // Uses Africa's Talking REST API directly (no SDK needed).
+      // Tenant settings store credentials under generic keys:
+      //   accountSid -> apiKey, authToken -> username, senderNumber -> senderId
+      const apiKey = config?.apiKey || config?.accountSid || process.env.AFRICASTALKING_API_KEY;
+      const username = config?.username || config?.authToken || process.env.AFRICASTALKING_USERNAME;
+      const senderId = config?.senderId || config?.senderNumber || process.env.AFRICASTALKING_SENDER_ID;
+
+      if (!apiKey || !username) {
+        throw new Error("Missing Africa's Talking credentials. Set AFRICASTALKING_API_KEY and AFRICASTALKING_USERNAME, or configure them in tenant settings.");
+      }
+
+      const params = new URLSearchParams({ username, to, message });
+      if (senderId) {
+        params.append('from', senderId);
+      }
+
+      const atUrl = username === 'sandbox'
+        ? 'https://api.sandbox.africastalking.com/version1/messaging'
+        : 'https://api.africastalking.com/version1/messaging';
+
+      const response = await fetch(atUrl, {
+        method: 'POST',
+        headers: {
+          'apiKey': apiKey,
+          'Accept': 'application/json',
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: params.toString(),
+      });
+
+      const data = await response.json() as any;
+
+      if (!response.ok) {
+        throw new Error(`Africa's Talking HTTP ${response.status}: ${JSON.stringify(data)}`);
+      }
+
+      const recipients: any[] = data.SMSMessageData?.Recipients || [];
+      if (recipients.length === 0) {
+        throw new Error("Africa's Talking returned no recipients in response.");
+      }
+
+      const first = recipients[0];
+      // AT status code 101 = Sent, 102 = Queued are both success states
+      if (first.statusCode !== 101 && first.statusCode !== 102) {
+        throw new Error(`Africa's Talking delivery failed: ${first.status}`);
+      }
+
+      const messageId = first.messageId || `at-${Date.now()}`;
+      console.log(`[Africa's Talking] SMS sent to ${to}: messageId=${messageId}, status=${first.status}`);
+      return { success: true, messageId };
     }
     
     return { success: false, error: "Unknown SMS provider" };
