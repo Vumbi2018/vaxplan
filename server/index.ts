@@ -29,6 +29,7 @@ import { applyPerfIndexes } from "./migrations/011-perf-indexes";
 import { applyVillageColumns } from "./migrations/013-village-route-columns";
 import { applyOutreachColumns } from "./migrations/014-outreach-columns";import { applyMicroplanApprovalColumns } from "./migrations/015-microplan-approval-columns";
 import { applySessionsTable } from "./migrations/016-sessions-table";
+import { applyWikiPages } from "./migrations/017-wiki-pages";
 
 
 const app = express();
@@ -307,6 +308,10 @@ async function backfillClientIds() {
   applySessionsTable()
     .then(() => log("sessions table ensured", "db"))
     .catch((err) => log(`sessions table warning: ${err?.message ?? err}`, "db"));
+
+  applyWikiPages()
+    .then(() => log("wiki pages table ensured", "db"))
+    .catch((err) => log(`wiki pages warning: ${err?.message ?? err}`, "db"));
 
   setupRealtime(httpServer, getSession());
   startPopulationRefreshScheduler();

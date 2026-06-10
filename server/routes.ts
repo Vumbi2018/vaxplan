@@ -16650,6 +16650,177 @@ Instructions:
     }
   });
 
+  // ── Wiki / Docs API ───────────────────────────────────────────────────────
+  // Platform-wide (no tenant scope). Public reads; admin-only writes.
+  // Any user with national_admin, gis_specialist, or isPlatformAdmin may edit.
+
+  /** Inline guard: national_admin / gis_specialist / platform super-admin. */
+  const requireWikiAdmin = [
+    isAuthenticated,
+    loadDbUser,
+    (req: any, res: any, next: any) => {
+      const u = req.dbUser;
+      if (!u) return res.status(401).json({ message: "Unauthorized" });
+      const adminRoles = ["national_admin", "gis_specialist"];
+      const roleList: string[] = [u.role, ...(Array.isArray(u.roles) ? u.roles : [])].filter(Boolean);
+      if (u.isPlatformAdmin || adminRoles.some((r) => roleList.includes(r))) {
+        return next();
+      }
+      return res.status(403).json({ message: "Wiki editing requires national admin or GIS specialist role." });
+    },
+  ] as const;
+
+  /**
+   * GET /api/wiki/pages
+   * Public — returns all published pages (slug, title, sort_order, updated_at).
+   * Ordered by sort_order ASC, id ASC.
+   */
+  app.get("/api/wiki/pages", async (_req: any, res: any) => {
+    try {
+      const result = await db.execute(
+        sql.raw(
+          `SELECT id, slug, title, sort_order, updated_at
+           FROM wiki_pages
+           WHERE is_published = TRUE
+           ORDER BY sort_order ASC, id ASC`
+        )
+      );
+      return res.json({ success: true, data: result.rows });
+    } catch (err: any) {
+      console.error("[wiki] GET /api/wiki/pages error:", err);
+      return res.status(500).json({ message: "Failed to fetch wiki pages." });
+    }
+  });
+
+  /**
+   * GET /api/wiki/pages/:slug
+   * Public — returns full page including body Markdown.
+   */
+  app.get("/api/wiki/pages/:slug", async (req: any, res: any) => {
+    try {
+      const { slug } = req.params;
+      const result = await db.execute(
+        sql.raw(
+          `SELECT id, slug, title, body, sort_order, is_published, updated_by, updated_at
+           FROM wiki_pages
+           WHERE slug = '${slug.replace(/'/g, "''")}' AND is_published = TRUE
+           LIMIT 1`
+        )
+      );
+      if (!result.rows.length) {
+        return res.status(404).json({ message: "Page not found." });
+      }
+      return res.json({ success: true, data: result.rows[0] });
+    } catch (err: any) {
+      console.error("[wiki] GET /api/wiki/pages/:slug error:", err);
+      return res.status(500).json({ message: "Failed to fetch wiki page." });
+    }
+  });
+
+  /**
+   * POST /api/wiki/pages
+   * Admin only — create a new wiki page.
+   * Body: { slug, title, body, sort_order? }
+   */
+  app.post("/api/wiki/pages", ...requireWikiAdmin, async (req: any, res: any) => {
+    try {
+      const { slug, title, body = "", sort_order = 0 } = req.body ?? {};
+      if (!slug || !title) {
+        return res.status(400).json({ message: "slug and title are required." });
+      }
+      const safeSlug = String(slug).toLowerCase().replace(/[^a-z0-9-]/g, "-").slice(0, 120);
+      const userId = getCurrentUserId(req);
+      const result = await db.execute(
+        sql.raw(
+          `INSERT INTO wiki_pages (slug, title, body, sort_order, is_published, created_by, updated_by)
+           VALUES (
+             '${safeSlug.replace(/'/g, "''")}',
+             '${String(title).replace(/'/g, "''")}',
+             '${String(body).replace(/'/g, "''")}',
+             ${Number(sort_order) || 0},
+             TRUE,
+             '${String(userId).replace(/'/g, "''")}',
+             '${String(userId).replace(/'/g, "''")}'
+           )
+           RETURNING *`
+        )
+      );
+      return res.status(201).json({ success: true, data: result.rows[0] });
+    } catch (err: any) {
+      if (err.message?.includes("unique")) {
+        return res.status(409).json({ message: "A page with that slug already exists." });
+      }
+      console.error("[wiki] POST /api/wiki/pages error:", err);
+      return res.status(500).json({ message: "Failed to create wiki page." });
+    }
+  });
+
+  /**
+   * PUT /api/wiki/pages/:slug
+   * Admin only — update title, body, sort_order, or is_published.
+   * Body: { title?, body?, sort_order?, is_published? }
+   */
+  app.put("/api/wiki/pages/:slug", ...requireWikiAdmin, async (req: any, res: any) => {
+    try {
+      const { slug } = req.params;
+      const userId = getCurrentUserId(req);
+      const { title, body, sort_order, is_published } = req.body ?? {};
+
+      const setClauses: string[] = [
+        `updated_at = NOW()`,
+        `updated_by = '${String(userId).replace(/'/g, "''")}'`,
+      ];
+      if (title !== undefined)       setClauses.push(`title = '${String(title).replace(/'/g, "''")}'`);
+      if (body !== undefined)        setClauses.push(`body = '${String(body).replace(/'/g, "''")}'`);
+      if (sort_order !== undefined)  setClauses.push(`sort_order = ${Number(sort_order) || 0}`);
+      if (is_published !== undefined) setClauses.push(`is_published = ${Boolean(is_published)}`);
+
+      const result = await db.execute(
+        sql.raw(
+          `UPDATE wiki_pages
+           SET ${setClauses.join(", ")}
+           WHERE slug = '${slug.replace(/'/g, "''")}'
+           RETURNING *`
+        )
+      );
+      if (!result.rows.length) {
+        return res.status(404).json({ message: "Page not found." });
+      }
+      return res.json({ success: true, data: result.rows[0] });
+    } catch (err: any) {
+      console.error("[wiki] PUT /api/wiki/pages/:slug error:", err);
+      return res.status(500).json({ message: "Failed to update wiki page." });
+    }
+  });
+
+  /**
+   * DELETE /api/wiki/pages/:slug
+   * Admin only — soft-delete (sets is_published = false).
+   */
+  app.delete("/api/wiki/pages/:slug", ...requireWikiAdmin, async (req: any, res: any) => {
+    try {
+      const { slug } = req.params;
+      const userId = getCurrentUserId(req);
+      const result = await db.execute(
+        sql.raw(
+          `UPDATE wiki_pages
+           SET is_published = FALSE, updated_at = NOW(), updated_by = '${String(userId).replace(/'/g, "''")}'
+           WHERE slug = '${slug.replace(/'/g, "''")}'
+           RETURNING slug, title`
+        )
+      );
+      if (!result.rows.length) {
+        return res.status(404).json({ message: "Page not found." });
+      }
+      return res.json({ success: true, message: "Page unpublished.", data: result.rows[0] });
+    } catch (err: any) {
+      console.error("[wiki] DELETE /api/wiki/pages/:slug error:", err);
+      return res.status(500).json({ message: "Failed to unpublish wiki page." });
+    }
+  });
+  // ── End Wiki API ──────────────────────────────────────────────────────────
+
   return httpServer;
 
 }
+

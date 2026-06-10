@@ -118,6 +118,7 @@ const adminNavItems = [
   { title: "Boundary Manager", path: "/admin/boundaries", icon: Map },
   { title: "Custom Layers", path: "/admin/custom-layers", icon: Layers },
   { title: "National Plan", path: "/national-plan", icon: FileText },
+  { title: "Wiki / Docs", path: "/admin/wiki", icon: BookOpen, wikiAdminOnly: true },
 ];
 
 const systemNavItems = [
@@ -221,6 +222,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
   const isPlatformAdmin = (user as any).isPlatformAdmin === true;
   const canAccessHis = user.role === "national_admin" || user.role === "gis_specialist";
   const canAccessAdmin = isNationalAdmin || user.role === "provincial_coordinator" || isPlatformAdmin;
+  const canEditWiki = isNationalAdmin || user.role === "gis_specialist" || isPlatformAdmin;
   const canReconcile = user.role === "national_admin" || user.role === "district_manager";
   // Field Teams page is available to district_manager and above (not facility-level roles)
   const canAccessFieldTeams = ["district_manager", "provincial_coordinator", "national_admin", "gis_specialist"].includes(user.role || "") || isPlatformAdmin;
@@ -443,6 +445,10 @@ export function AppSidebar({ user }: AppSidebarProps) {
                   // country-specific admins can never create new countries.
                   if ((item as any).superAdminOnly) {
                     return isPlatformAdmin;
+                  }
+                  // Wiki editor is for national_admin / gis_specialist / platform admins.
+                  if ((item as any).wikiAdminOnly) {
+                    return canEditWiki;
                   }
                   // User Management + Access Requests are visible to any admin
                   // (national_admin or provincial_coordinator). The deeper
