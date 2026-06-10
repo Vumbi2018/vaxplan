@@ -50,6 +50,13 @@
       "when": 1780972632102,
       "tag": "0006_add_facility_staff_and_mobilization",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1781114954810,
+      "tag": "0007_striped_venom",
+      "breakpoints": true
     }
   ]
 }
