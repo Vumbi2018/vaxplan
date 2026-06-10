@@ -181,6 +181,14 @@ export function registerPasswordAuthRoutes(app: Express) {
   // emails have accounts.
   app.post("/api/auth/request-password-reset", async (req: Request, res: Response) => {
     const emailRaw = String((req.body && req.body.email) || "").trim().toLowerCase();
+    const resetKey = rateKey(req, emailRaw);
+    const lockedFor = checkLocked(resetKey);
+    if (lockedFor !== null) {
+      return res.status(429).json({
+        message: `Too many requests. Try again in ${Math.ceil(lockedFor / 60)} min.`,
+      });
+    }
+    recordFailure(resetKey);
     try {
       if (emailRaw && /.+@.+\..+/.test(emailRaw)) {
         const dbUser = await storage.getUserByEmail(emailRaw);

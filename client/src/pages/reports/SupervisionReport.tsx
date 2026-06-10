@@ -95,10 +95,8 @@ export default function SupervisionReport({ filters, setFilter }: Props) {
   // Updated Code: bar-level click handler (Recharts bar-level onClick avoids event swallowing)
   const handleBarClick = (data: any) => {
     const clickedData = data?.payload || data;
-    console.log("[SupervisionReport] handleBarClick clickedData:", clickedData, "chartLevel:", chartLevel);
     if (clickedData && clickedData.id) {
       const clickedId = Number(clickedData.id);
-      console.log("[SupervisionReport] setFilter to id:", clickedId);
       if (chartLevel === "province") {
         setFilter?.("provinceId", clickedId);
       } else if (chartLevel === "district") {

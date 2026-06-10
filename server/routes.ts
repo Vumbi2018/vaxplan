@@ -6233,7 +6233,9 @@ export async function registerRoutes(
   app.get("/api/population/:id", ...auth, async (req: any, res) => {
     try {
       const dbUser = req.dbUser!;
-      const pop = await storage.getPopulationDataById(req.tenantId, parseInt(req.params.id));
+      const parsedId = parseInt(req.params.id);
+      if (isNaN(parsedId)) return res.status(400).json({ message: "Invalid population data id" });
+      const pop = await storage.getPopulationDataById(req.tenantId, parsedId);
       if (!pop) return res.status(404).json({ message: "Population data not found" });
       if (!(await userCanAccessGeo(dbUser, req.tenantId, {
         facilityId: (pop as any).facilityId,

@@ -55,9 +55,9 @@ function getFacilityHash(facilityId: number, salt: string): number {
 // Geographic metadata helper lookups
 // ---------------------------------------------------------------------------
 async function getProvincesMap(tenantId: string): Promise<Map<number, string>> {
-  const provincesList = await db.execute(sql.raw(`
-    SELECT id, name FROM provinces WHERE tenant_id = '${tenantId}'
-  `));
+  const provincesList = await db.execute(sql`
+    SELECT id, name FROM provinces WHERE tenant_id = ${tenantId}
+  `);
   const provincesMap = new Map<number, string>();
   for (const p of provincesList.rows as any) {
     provincesMap.set(Number(p.id), String(p.name));
@@ -66,9 +66,9 @@ async function getProvincesMap(tenantId: string): Promise<Map<number, string>> {
 }
 
 async function getDistrictsMap(tenantId: string): Promise<Map<number, { name: string; provinceId: number }>> {
-  const districtsList = await db.execute(sql.raw(`
-    SELECT id, name, province_id FROM districts WHERE tenant_id = '${tenantId}'
-  `));
+  const districtsList = await db.execute(sql`
+    SELECT id, name, province_id FROM districts WHERE tenant_id = ${tenantId}
+  `);
   const districtsMap = new Map<number, { name: string; provinceId: number }>();
   for (const d of districtsList.rows as any) {
     districtsMap.set(Number(d.id), { name: String(d.name), provinceId: Number(d.province_id) });
@@ -215,11 +215,15 @@ function rollupHierarchy(
 // R1 — Session Summary
 // ---------------------------------------------------------------------------
 export async function getSessionReport(filters: ReportFilters): Promise<HierarchyRow[]> {
-  const yearClause    = filters.year    ? `AND sp.year    = ${filters.year}`    : "";
-  const quarterClause = filters.quarter ? `AND sp.quarter = ${filters.quarter}` : "";
+  const yearClause    = filters.year    ? sql` AND sp.year = ${filters.year}`    : sql``;
+  const quarterClause = filters.quarter ? sql` AND sp.quarter = ${filters.quarter}` : sql``;
+  const facilityFilter = filters.facilityId ? sql` AND f.id = ${filters.facilityId}` : sql``;
+  const districtFilter = filters.districtId ? sql` AND d.id = ${filters.districtId}` : sql``;
+  const provinceFilter = filters.provinceId ? sql` AND p.id = ${filters.provinceId}` : sql``;
+
 
   // Query all facilities in scope, left joined with session plans
-  const dbRows = await db.execute(sql.raw(`
+  const dbRows = await db.execute(sql`
     SELECT
       f.id                                     AS id,
       f.name                                   AS name,
@@ -237,14 +241,14 @@ export async function getSessionReport(filters: ReportFilters): Promise<Hierarch
     FROM facilities f
     JOIN districts d ON d.id = f.district_id
     JOIN provinces p ON p.id = d.province_id
-    LEFT JOIN session_plans sp ON sp.facility_id = f.id ${yearClause} ${quarterClause}
-    WHERE f.tenant_id = '${filters.tenantId}'
-      ${filters.facilityId  ? `AND f.id = ${filters.facilityId}`  : ""}
-      ${filters.districtId  ? `AND d.id = ${filters.districtId}`  : ""}
-      ${filters.provinceId  ? `AND p.id = ${filters.provinceId}`  : ""}
+    LEFT JOIN session_plans sp ON sp.facility_id = f.id${yearClause}${quarterClause}
+    WHERE f.tenant_id = ${filters.tenantId}
+      ${facilityFilter}
+      ${districtFilter}
+      ${provinceFilter}
     GROUP BY f.id, f.name, f.district_id
     ORDER BY f.name
-  `));
+  `);
 
   // Map database rows and generate deterministic fallback for unseeded facilities
   const facilities = (dbRows.rows as any[]).map((row) => {
@@ -306,10 +310,13 @@ export async function getSessionReport(filters: ReportFilters): Promise<Hierarch
 // R2 — Microplan Status
 // ---------------------------------------------------------------------------
 export async function getMicroplanReport(filters: ReportFilters): Promise<HierarchyRow[]> {
-  const yearClause    = filters.year    ? `AND m.year    = ${filters.year}`    : "";
-  const quarterClause = filters.quarter ? `AND m.quarter = ${filters.quarter}` : "";
+  const yearClause    = filters.year    ? sql` AND m.year = ${filters.year}`    : sql``;
+  const quarterClause = filters.quarter ? sql` AND m.quarter = ${filters.quarter}` : sql``;
+  const facilityFilter = filters.facilityId ? sql` AND f.id = ${filters.facilityId}` : sql``;
+  const districtFilter = filters.districtId ? sql` AND d.id = ${filters.districtId}` : sql``;
+  const provinceFilter = filters.provinceId ? sql` AND p.id = ${filters.provinceId}` : sql``;
 
-  const dbRows = await db.execute(sql.raw(`
+  const dbRows = await db.execute(sql`
     SELECT
       f.id                                                                AS id,
       f.name                                                              AS name,
@@ -324,14 +331,14 @@ export async function getMicroplanReport(filters: ReportFilters): Promise<Hierar
     FROM facilities f
     JOIN districts d ON d.id = f.district_id
     JOIN provinces p ON p.id = d.province_id
-    LEFT JOIN microplans m ON m.facility_id = f.id ${yearClause} ${quarterClause}
-    WHERE f.tenant_id = '${filters.tenantId}'
-      ${filters.facilityId ? `AND f.id = ${filters.facilityId}` : ""}
-      ${filters.districtId ? `AND d.id = ${filters.districtId}` : ""}
-      ${filters.provinceId ? `AND p.id = ${filters.provinceId}` : ""}
+    LEFT JOIN microplans m ON m.facility_id = f.id${yearClause}${quarterClause}
+    WHERE f.tenant_id = ${filters.tenantId}
+      ${facilityFilter}
+      ${districtFilter}
+      ${provinceFilter}
     GROUP BY f.id, f.name, f.district_id
     ORDER BY f.name
-  `));
+  `);
 
   const facilities = (dbRows.rows as any[]).map((row) => {
     const fId = Number(row.id);
@@ -375,7 +382,11 @@ export async function getMicroplanReport(filters: ReportFilters): Promise<Hierar
 // R3 — Zero-Dose Communities
 // ---------------------------------------------------------------------------
 export async function getZeroDoseReport(filters: ReportFilters): Promise<HierarchyRow[]> {
-  const dbRows = await db.execute(sql.raw(`
+  const facilityFilter = filters.facilityId ? sql` AND f.id = ${filters.facilityId}` : sql``;
+  const districtFilter = filters.districtId ? sql` AND d.id = ${filters.districtId}` : sql``;
+  const provinceFilter = filters.provinceId ? sql` AND p.id = ${filters.provinceId}` : sql``;
+
+  const dbRows = await db.execute(sql`
     SELECT
       f.id                              AS id,
       f.name                            AS name,
@@ -397,16 +408,16 @@ export async function getZeroDoseReport(filters: ReportFilters): Promise<Hierarc
     ) sv ON true
     LEFT JOIN (
       SELECT village_id, MAX(under_1_population) AS under_1_population, MAX(under_5_population) AS under_5_population
-      FROM population_data WHERE tenant_id = '${filters.tenantId}'
+      FROM population_data WHERE tenant_id = ${filters.tenantId}
       GROUP BY village_id
     ) pd ON pd.village_id = v.id
-    WHERE f.tenant_id = '${filters.tenantId}'
-      ${filters.facilityId ? `AND f.id = ${filters.facilityId}` : ""}
-      ${filters.districtId ? `AND d.id = ${filters.districtId}` : ""}
-      ${filters.provinceId ? `AND p.id = ${filters.provinceId}` : ""}
+    WHERE f.tenant_id = ${filters.tenantId}
+      ${facilityFilter}
+      ${districtFilter}
+      ${provinceFilter}
     GROUP BY f.id, f.name, f.district_id
     ORDER BY f.name
-  `));
+  `);
 
   const facilities = (dbRows.rows as any[]).map((row) => {
     const fId = Number(row.id);
@@ -461,10 +472,14 @@ export async function getZeroDoseReport(filters: ReportFilters): Promise<Hierarc
 // R4 — Missed Communities
 // ---------------------------------------------------------------------------
 export async function getMissedCommunitiesReport(filters: ReportFilters): Promise<HierarchyRow[]> {
-  const yearClause    = filters.year    ? `AND sp.year    = ${filters.year}`    : "";
-  const quarterClause = filters.quarter ? `AND sp.quarter = ${filters.quarter}` : "";
+  const yearClause    = filters.year    ? sql` AND sp.year = ${filters.year}`    : sql``;
+  const quarterClause = filters.quarter ? sql` AND sp.quarter = ${filters.quarter}` : sql``;
+  const facilityFilter = filters.facilityId ? sql` AND f.id = ${filters.facilityId}` : sql``;
+  const districtFilter = filters.districtId ? sql` AND d.id = ${filters.districtId}` : sql``;
+  const provinceFilter = filters.provinceId ? sql` AND p.id = ${filters.provinceId}` : sql``;
 
-  const dbRows = await db.execute(sql.raw(`
+
+  const dbRows = await db.execute(sql`
     SELECT
       f.id                               AS id,
       f.name                             AS name,
@@ -476,15 +491,15 @@ export async function getMissedCommunitiesReport(filters: ReportFilters): Promis
     FROM facilities f
     JOIN districts d ON d.id = f.district_id
     JOIN provinces p ON p.id = d.province_id
-    LEFT JOIN session_plans sp ON sp.facility_id = f.id ${yearClause} ${quarterClause}
+    LEFT JOIN session_plans sp ON sp.facility_id = f.id${yearClause}${quarterClause}
     LEFT JOIN session_villages sv ON sv.session_id = sp.id
-    WHERE f.tenant_id = '${filters.tenantId}'
-      ${filters.facilityId ? `AND f.id = ${filters.facilityId}` : ""}
-      ${filters.districtId ? `AND d.id = ${filters.districtId}` : ""}
-      ${filters.provinceId ? `AND p.id = ${filters.provinceId}` : ""}
+    WHERE f.tenant_id = ${filters.tenantId}
+      ${facilityFilter}
+      ${districtFilter}
+      ${provinceFilter}
     GROUP BY f.id, f.name, f.district_id
     ORDER BY f.name
-  `));
+  `);
 
   const facilities = (dbRows.rows as any[]).map((row) => {
     const fId = Number(row.id);
@@ -522,10 +537,14 @@ export async function getMissedCommunitiesReport(filters: ReportFilters): Promis
 // R5 — Vaccination Coverage
 // ---------------------------------------------------------------------------
 export async function getCoverageReport(filters: ReportFilters): Promise<HierarchyRow[]> {
-  const yearClause    = filters.year    ? `AND sp.year    = ${filters.year}`    : "";
-  const quarterClause = filters.quarter ? `AND sp.quarter = ${filters.quarter}` : "";
+  const yearClause    = filters.year    ? sql` AND sp.year = ${filters.year}`    : sql``;
+  const quarterClause = filters.quarter ? sql` AND sp.quarter = ${filters.quarter}` : sql``;
+  const facilityFilter = filters.facilityId ? sql` AND f.id = ${filters.facilityId}` : sql``;
+  const districtFilter = filters.districtId ? sql` AND d.id = ${filters.districtId}` : sql``;
+  const provinceFilter = filters.provinceId ? sql` AND p.id = ${filters.provinceId}` : sql``;
 
-  const dbRows = await db.execute(sql.raw(`
+
+  const dbRows = await db.execute(sql`
     SELECT
       f.id                               AS id,
       f.name                             AS name,
@@ -537,14 +556,14 @@ export async function getCoverageReport(filters: ReportFilters): Promise<Hierarc
     FROM facilities f
     JOIN districts d ON d.id = f.district_id
     JOIN provinces p ON p.id = d.province_id
-    LEFT JOIN session_plans sp ON sp.facility_id = f.id ${yearClause} ${quarterClause}
-    WHERE f.tenant_id = '${filters.tenantId}'
-      ${filters.facilityId ? `AND f.id = ${filters.facilityId}` : ""}
-      ${filters.districtId ? `AND d.id = ${filters.districtId}` : ""}
-      ${filters.provinceId ? `AND p.id = ${filters.provinceId}` : ""}
+    LEFT JOIN session_plans sp ON sp.facility_id = f.id${yearClause}${quarterClause}
+    WHERE f.tenant_id = ${filters.tenantId}
+      ${facilityFilter}
+      ${districtFilter}
+      ${provinceFilter}
     GROUP BY f.id, f.name, f.district_id
     ORDER BY f.name
-  `));
+  `);
 
   const facilities = (dbRows.rows as any[]).map((row) => {
     const fId = Number(row.id);
@@ -590,7 +609,11 @@ export async function getCoverageReport(filters: ReportFilters): Promise<Hierarc
 // R6 — Hard-to-Reach Status
 // ---------------------------------------------------------------------------
 export async function getHtrReport(filters: ReportFilters): Promise<HierarchyRow[]> {
-  const dbRows = await db.execute(sql.raw(`
+  const facilityFilter = filters.facilityId ? sql` AND f.id = ${filters.facilityId}` : sql``;
+  const districtFilter = filters.districtId ? sql` AND d.id = ${filters.districtId}` : sql``;
+  const provinceFilter = filters.provinceId ? sql` AND p.id = ${filters.provinceId}` : sql``;
+
+  const dbRows = await db.execute(sql`
     SELECT
       f.id AS id,
       f.name AS name,
@@ -607,13 +630,13 @@ export async function getHtrReport(filters: ReportFilters): Promise<HierarchyRow
     JOIN provinces p ON p.id = d.province_id
     LEFT JOIN villages v ON v.assigned_facility_id = f.id
     LEFT JOIN htr_scores h ON h.village_id = v.id
-    WHERE f.tenant_id = '${filters.tenantId}'
-      ${filters.facilityId ? `AND f.id = ${filters.facilityId}` : ""}
-      ${filters.districtId ? `AND d.id = ${filters.districtId}` : ""}
-      ${filters.provinceId ? `AND p.id = ${filters.provinceId}` : ""}
+    WHERE f.tenant_id = ${filters.tenantId}
+      ${facilityFilter}
+      ${districtFilter}
+      ${provinceFilter}
     GROUP BY f.id, f.name, f.district_id
     ORDER BY f.name
-  `));
+  `);
 
   const facilities = (dbRows.rows as any[]).map((row) => {
     const fId = Number(row.id);
@@ -672,10 +695,14 @@ export async function getHtrReport(filters: ReportFilters): Promise<HierarchyRow
 // R7 — Budget & Resources
 // ---------------------------------------------------------------------------
 export async function getBudgetReport(filters: ReportFilters): Promise<HierarchyRow[]> {
-  const yearClause    = filters.year    ? `AND bi.year    = ${filters.year}`    : "";
-  const quarterClause = filters.quarter ? `AND bi.quarter = ${filters.quarter}` : "";
+  const yearClause    = filters.year    ? sql` AND bi.year = ${filters.year}`    : sql``;
+  const quarterClause = filters.quarter ? sql` AND bi.quarter = ${filters.quarter}` : sql``;
+  const facilityFilter = filters.facilityId ? sql` AND f.id = ${filters.facilityId}` : sql``;
+  const districtFilter = filters.districtId ? sql` AND d.id = ${filters.districtId}` : sql``;
+  const provinceFilter = filters.provinceId ? sql` AND p.id = ${filters.provinceId}` : sql``;
 
-  const dbRows = await db.execute(sql.raw(`
+
+  const dbRows = await db.execute(sql`
     SELECT
       f.id AS id,
       f.name AS name,
@@ -691,14 +718,14 @@ export async function getBudgetReport(filters: ReportFilters): Promise<Hierarchy
     FROM facilities f
     JOIN districts d ON d.id = f.district_id
     JOIN provinces p ON p.id = d.province_id
-    LEFT JOIN budget_items bi ON bi.facility_id = f.id ${yearClause} ${quarterClause}
-    WHERE f.tenant_id = '${filters.tenantId}'
-      ${filters.facilityId ? `AND f.id = ${filters.facilityId}` : ""}
-      ${filters.districtId ? `AND d.id = ${filters.districtId}` : ""}
-      ${filters.provinceId ? `AND p.id = ${filters.provinceId}` : ""}
+    LEFT JOIN budget_items bi ON bi.facility_id = f.id${yearClause}${quarterClause}
+    WHERE f.tenant_id = ${filters.tenantId}
+      ${facilityFilter}
+      ${districtFilter}
+      ${provinceFilter}
     GROUP BY f.id, f.name, f.district_id
     ORDER BY f.name
-  `));
+  `);
 
   const facilities = (dbRows.rows as any[]).map((row) => {
     const fId = Number(row.id);
@@ -754,13 +781,17 @@ export async function getBudgetReport(filters: ReportFilters): Promise<Hierarchy
 // ---------------------------------------------------------------------------
 export async function getSupervisionReport(filters: ReportFilters): Promise<HierarchyRow[]> {
   const yearClause = filters.year
-    ? `AND EXTRACT(YEAR FROM sv.scheduled_date) = ${filters.year}`
-    : "";
+    ? sql` AND EXTRACT(YEAR FROM sv.scheduled_date) = ${filters.year}`
+    : sql``;
   const quarterClause = filters.quarter
-    ? `AND CEIL(EXTRACT(MONTH FROM sv.scheduled_date) / 3.0) = ${filters.quarter}`
-    : "";
+    ? sql` AND CEIL(EXTRACT(MONTH FROM sv.scheduled_date) / 3.0) = ${filters.quarter}`
+    : sql``;
+  const facilityFilter = filters.facilityId ? sql` AND f.id = ${filters.facilityId}` : sql``;
+  const districtFilter = filters.districtId ? sql` AND d.id = ${filters.districtId}` : sql``;
+  const provinceFilter = filters.provinceId ? sql` AND p.id = ${filters.provinceId}` : sql``;
 
-  const dbRows = await db.execute(sql.raw(`
+
+  const dbRows = await db.execute(sql`
     SELECT
       f.id AS id,
       f.name AS name,
@@ -774,14 +805,14 @@ export async function getSupervisionReport(filters: ReportFilters): Promise<Hier
     FROM facilities f
     JOIN districts d ON d.id = f.district_id
     JOIN provinces p ON p.id = d.province_id
-    LEFT JOIN supervision_visits sv ON sv.facility_id = f.id ${yearClause} ${quarterClause}
-    WHERE f.tenant_id = '${filters.tenantId}'
-      ${filters.facilityId ? `AND f.id = ${filters.facilityId}` : ""}
-      ${filters.districtId ? `AND d.id = ${filters.districtId}` : ""}
-      ${filters.provinceId ? `AND p.id = ${filters.provinceId}` : ""}
+    LEFT JOIN supervision_visits sv ON sv.facility_id = f.id${yearClause}${quarterClause}
+    WHERE f.tenant_id = ${filters.tenantId}
+      ${facilityFilter}
+      ${districtFilter}
+      ${provinceFilter}
     GROUP BY f.id, f.name, f.district_id
     ORDER BY f.name
-  `));
+  `);
 
   const facilities = (dbRows.rows as any[]).map((row) => {
     const fId = Number(row.id);

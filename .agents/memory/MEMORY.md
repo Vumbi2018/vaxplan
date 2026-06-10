@@ -1,1 +1,1 @@
-- [Platform-admin tenant sync bug](platform-admin-sync-tenant.md) — syncEngine must use active viewing tenant (not home tenant) as IndexedDB key; getActiveSyncTenantId() helper in tenantCache.ts.
+- [Security sweep results](security-sweep.md) — which issues were real vs already-fixed; CRLF file list

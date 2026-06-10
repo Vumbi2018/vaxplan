@@ -2,6 +2,7 @@
 // import { useState } from "react";
 import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { loadActiveTenant } from "@/lib/tenantCache";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -179,7 +180,8 @@ export default function BudgetPlanning() {
     queryKey: ["/api/budget-items"],
     queryFn: async () => {
       if (!navigator.onLine) {
-        return await offlineDb.budgetItems.toArray() as any[];
+        const _tid = loadActiveTenant()?.id;
+        return (_tid ? offlineDb.budgetItems.where("tenantId").equals(_tid).toArray() : offlineDb.budgetItems.toArray()) as any[];
       }
       const res = await fetch("/api/budget-items");
       if (!res.ok) throw new Error("Failed to fetch budget items");
@@ -191,7 +193,8 @@ export default function BudgetPlanning() {
     queryKey: ["/api/facilities"],
     queryFn: async () => {
       if (!navigator.onLine) {
-        return await offlineDb.facilities.toArray() as any[];
+        const _tid = loadActiveTenant()?.id;
+        return (_tid ? offlineDb.facilities.where("tenantId").equals(_tid).toArray() : offlineDb.facilities.toArray()) as any[];
       }
       const res = await fetch("/api/facilities");
       if (!res.ok) throw new Error("Failed to fetch facilities");
@@ -203,7 +206,8 @@ export default function BudgetPlanning() {
     queryKey: ["/api/sessions"],
     queryFn: async () => {
       if (!navigator.onLine) {
-        return await offlineDb.sessionPlans.toArray() as any[];
+        const _tid = loadActiveTenant()?.id;
+        return (_tid ? offlineDb.sessionPlans.where("tenantId").equals(_tid).toArray() : offlineDb.sessionPlans.toArray()) as any[];
       }
       const res = await fetch("/api/sessions");
       if (!res.ok) throw new Error("Failed to fetch session plans");
@@ -279,7 +283,7 @@ export default function BudgetPlanning() {
 
         // Queue in outbox
         await enqueueOutbox({
-          tenantId: data.tenantId || "default",
+          tenantId: data.tenantId || loadActiveTenant()?.id || "",
           entityType: "budget_item",
           method: "POST",
           url: "/api/budget-items",
@@ -360,7 +364,7 @@ export default function BudgetPlanning() {
         } else {
           await offlineDb.budgetItems.delete(itemId);
           await enqueueOutbox({
-            tenantId: user?.tenantId || "default",
+            tenantId: user?.tenantId || loadActiveTenant()?.id || "",
             entityType: "budget_item",
             method: "DELETE",
             url: `/api/budget-items/${itemId}`,

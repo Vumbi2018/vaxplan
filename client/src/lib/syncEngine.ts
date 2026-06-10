@@ -176,8 +176,12 @@ class SyncEngine {
     // and show up as cross-country data mixing.
     const _prevTenantRow = await offlineDb.syncMeta.get("syncedTenantId");
     if (_prevTenantRow?.value && _prevTenantRow.value !== tenantId) {
-      await clearLocalTenantCache();
-      await offlineDb.syncMeta.delete("lastSyncAt");
+      if (navigator.onLine) {
+        // Only wipe local data when online — if offline, the user has no way
+        // to repopulate the new tenant and would see a blank app.
+        await clearLocalTenantCache();
+        await offlineDb.syncMeta.delete("lastSyncAt");
+      }
     }
     await offlineDb.syncMeta.put({ key: "syncedTenantId", value: tenantId });
 

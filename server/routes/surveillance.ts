@@ -295,6 +295,11 @@ surveillanceRouter.delete("/cases/:id", async (req: any, res) => {
 
 surveillanceRouter.get("/cases/:caseId/samples", async (req: any, res) => {
   try {
+    const [parentCase] = await db
+      .select({ id: surveillanceCases.id })
+      .from(surveillanceCases)
+      .where(and(eq(surveillanceCases.id, req.params.caseId), eq(surveillanceCases.tenantId, req.tenantId)));
+    if (!parentCase) return res.status(404).json({ message: "Case not found or access denied" });
     const samples = await db
       .select()
       .from(labSamples)
@@ -307,6 +312,11 @@ surveillanceRouter.get("/cases/:caseId/samples", async (req: any, res) => {
 
 surveillanceRouter.post("/cases/:caseId/samples", async (req: any, res) => {
   try {
+    const [parentCase] = await db
+      .select({ id: surveillanceCases.id })
+      .from(surveillanceCases)
+      .where(and(eq(surveillanceCases.id, req.params.caseId), eq(surveillanceCases.tenantId, req.tenantId)));
+    if (!parentCase) return res.status(404).json({ message: "Case not found or access denied" });
     const parsed = insertLabSampleSchema.parse({
       ...req.body,
       caseId: req.params.caseId,

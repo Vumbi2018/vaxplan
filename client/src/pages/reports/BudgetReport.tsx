@@ -95,10 +95,8 @@ export default function BudgetReport({ filters, setFilter }: Props) {
   // Updated Code: bar-level click handler (Recharts bar-level onClick avoids event swallowing)
   const handleBarClick = (data: any) => {
     const clickedData = data?.payload || data;
-    console.log("[BudgetReport] handleBarClick clickedData:", clickedData, "chartLevel:", chartLevel);
     if (clickedData && clickedData.id) {
       const clickedId = Number(clickedData.id);
-      console.log("[BudgetReport] setFilter to id:", clickedId);
       if (chartLevel === "province") {
         setFilter?.("provinceId", clickedId);
       } else if (chartLevel === "district") {

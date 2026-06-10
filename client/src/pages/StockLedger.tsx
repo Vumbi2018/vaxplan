@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
+import { loadActiveTenant } from "@/lib/tenantCache";
 import type { Province, District, Village } from "@shared/schema";
 import { GeoCascadeFilter } from "@/components/GeoCascadeFilter";
 import { buildGeoMaps } from "@/lib/geoHierarchy";
@@ -136,7 +137,10 @@ export default function StockLedger() {
     queryKey: ["/api/facilities"],
     queryFn: async () => {
       if (!navigator.onLine) {
-        return (await offlineDb.facilities.toArray()) as unknown as Facility[];
+        const _tid = loadActiveTenant()?.id;
+        return (_tid
+          ? offlineDb.facilities.where("tenantId").equals(_tid).toArray()
+          : offlineDb.facilities.toArray()) as unknown as Facility[];
       }
       const res = await fetch("/api/facilities");
       if (!res.ok) throw new Error("Failed to load facilities");
@@ -149,7 +153,10 @@ export default function StockLedger() {
     queryKey: ["/api/vaccines/config"],
     queryFn: async () => {
       if (!navigator.onLine) {
-        return (await offlineDb.vaccineConfigs.toArray()) as unknown as VaccineConfig[];
+        const _tid = loadActiveTenant()?.id;
+        return (_tid
+          ? offlineDb.vaccineConfigs.where("tenantId").equals(_tid).toArray()
+          : offlineDb.vaccineConfigs.toArray()) as unknown as VaccineConfig[];
       }
       const res = await fetch("/api/vaccines/config");
       if (!res.ok) throw new Error("Failed to load configs");
@@ -189,7 +196,10 @@ export default function StockLedger() {
     queryKey: [`/api/stock/ledger`, { facilityId: null }],
     queryFn: async () => {
       if (!navigator.onLine) {
-        const localTxns = await offlineDb.stockTransactions.toArray();
+        const _tid = loadActiveTenant()?.id;
+        const localTxns = _tid
+          ? await offlineDb.stockTransactions.where("tenantId").equals(_tid).toArray()
+          : await offlineDb.stockTransactions.toArray();
         return (localTxns as unknown as StockTransaction[]).sort(
           (a, b) => new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime()
         );
@@ -205,7 +215,10 @@ export default function StockLedger() {
     queryKey: [`/api/monthly-reports`, { facilityId: null }],
     queryFn: async () => {
       if (!navigator.onLine) {
-        const localReports = await offlineDb.monthlyReports.toArray();
+        const _tid = loadActiveTenant()?.id;
+        const localReports = _tid
+          ? await offlineDb.monthlyReports.where("tenantId").equals(_tid).toArray()
+          : await offlineDb.monthlyReports.toArray();
         return localReports as unknown as MonthlyReport[];
       }
       const res = await fetch(`/api/monthly-reports`);
