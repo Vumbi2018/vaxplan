@@ -38,16 +38,12 @@ mkdir -p "$DOCS_DIR"
 rsync -a --delete docs-site/ "$DOCS_DIR/"
 echo "   ✔  Files synced: $(ls $DOCS_DIR | wc -l) files in $DOCS_DIR"
 
-# ── 3. Nginx config (first-time only) ────────────────────────
+# ── 3. Nginx config ──────────────────────────────────────────
 echo ""
 echo "▶  [4/4] Configuring Nginx …"
-if [ ! -f "$NGINX_CONF" ]; then
-  cp scripts/vps-setup/doc.vaxplan.org.nginx "$NGINX_CONF"
-  ln -sf "$NGINX_CONF" /etc/nginx/sites-enabled/doc.vaxplan.org
-  echo "   ✔  Nginx config installed"
-else
-  echo "   ℹ  Nginx config already exists — skipping (edit $NGINX_CONF to change)"
-fi
+cp scripts/vps-setup/doc.vaxplan.org.nginx "$NGINX_CONF"
+ln -sf "$NGINX_CONF" /etc/nginx/sites-enabled/doc.vaxplan.org
+echo "   ✔  Nginx config installed and enabled"
 
 nginx -t && systemctl reload nginx
 echo "   ✔  Nginx reloaded"

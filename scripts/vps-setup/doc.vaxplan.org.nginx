@@ -9,22 +9,6 @@ server {
     listen [::]:80;
     server_name doc.vaxplan.org docs.vaxplan.org;
 
-    # Redirect HTTP → HTTPS once certificate is in place.
-    return 301 https://$host$request_uri;
-}
-
-server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
-    server_name doc.vaxplan.org docs.vaxplan.org;
-
-    # ── SSL (managed by Certbot) ────────────────────────────
-    # Certbot will insert these lines automatically:
-    # ssl_certificate     /etc/letsencrypt/live/doc.vaxplan.org/fullchain.pem;
-    # ssl_certificate_key /etc/letsencrypt/live/doc.vaxplan.org/privkey.pem;
-    # include             /etc/letsencrypt/options-ssl-nginx.conf;
-    # ssl_dhparam         /etc/letsencrypt/ssl-dhparams.pem;
-
     # ── Root (static docs site) ─────────────────────────────
     root /var/www/doc.vaxplan.org;
     index index.html;
@@ -35,14 +19,11 @@ server {
     add_header X-Content-Type-Options "nosniff" always;
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
     add_header Permissions-Policy "geolocation=(), microphone=()" always;
-    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
 
     # ── CORS for cross-origin requests ──────────────────────
     add_header Access-Control-Allow-Origin "https://vaxplan.org" always;
 
     # ── API proxy — forward /api/* to the VaxPlan Express app ─
-    # This allows the docs site (docs.vaxplan.org) to call the
-    # wiki API (/api/wiki/pages) without cross-origin issues.
     location /api/ {
         proxy_pass         http://127.0.0.1:5000;
         proxy_http_version 1.1;
@@ -61,7 +42,6 @@ server {
     }
 
     # ── Uploads proxy — forward /uploads/* to the VaxPlan Express app ─
-    # This allows pictures/media uploaded in the wiki to show correctly on the docs site.
     location /uploads/ {
         proxy_pass         http://127.0.0.1:5000;
         proxy_http_version 1.1;
