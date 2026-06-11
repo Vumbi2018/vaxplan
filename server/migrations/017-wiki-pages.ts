@@ -59,8 +59,11 @@ export async function applyWikiPages(): Promise<void> {
     return;
   }
 
-  // Locate USER_GUIDE.md relative to this file (server/migrations/ → docs/)
-  const guidePath = join(__dirname, "../../docs/USER_GUIDE.md");
+  // Locate USER_GUIDE.md
+  let guidePath = join(process.cwd(), "docs/USER_GUIDE.md");
+  if (!existsSync(guidePath)) {
+    guidePath = join(__dirname, "../../docs/USER_GUIDE.md");
+  }
   if (!existsSync(guidePath)) {
     console.warn(
       `[migration:017] USER_GUIDE.md not found at ${guidePath} — seeding skipped.`
