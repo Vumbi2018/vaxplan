@@ -100,12 +100,7 @@ function renderMarkdown(md: string): string {
 // ── API helpers ───────────────────────────────────────────────────────────────
 
 async function fetchPages(): Promise<WikiPage[]> {
-  // The public GET /api/wiki/pages only returns published pages.
-  // For the editor we need all pages including unpublished ones, so we
-  // call the same endpoint but the editor can call a private endpoint if added.
-  // For now, we fetch published list and note that unpublished show only
-  // after the admin toggles them back on.
-  const res = await fetch("/api/wiki/pages");
+  const res = await fetch("/api/wiki/pages?all=true");
   if (!res.ok) throw new Error("Failed to load wiki pages");
   const json = await res.json();
   return json.data as WikiPage[];
@@ -148,6 +143,48 @@ export default function WikiEditor() {
   const [isNewPage, setIsNewPage] = useState(false);
 
   const bodyRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploadingMedia, setUploadingMedia] = useState(false);
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadingMedia(true);
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const res = await fetch("/api/wiki/upload", {
+        method: "POST",
+        body: formData,
+      });
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.message || "Failed to upload file");
+      }
+      const data = await res.json();
+      
+      const isVideo = file.type.startsWith("video/");
+      const isPdf = file.type === "application/pdf";
+      let mdInsert = "";
+      if (isVideo) {
+        mdInsert = `\n<video controls src="${data.url}" style="max-width: 100%; border-radius: 8px;"></video>\n`;
+      } else if (isPdf) {
+        mdInsert = `\n[Download PDF](${data.url})\n`;
+      } else {
+        mdInsert = `\n![${file.name}](${data.url})\n`;
+      }
+      
+      insertMd(mdInsert);
+      toast({ title: "Upload successful", description: `Uploaded ${file.name} successfully.` });
+    } catch (err: any) {
+      toast({ title: "Upload failed", description: err.message, variant: "destructive" });
+    } finally {
+      setUploadingMedia(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
 
   // ── Queries ─────────────────────────────────────────────────────────────────
   const {
@@ -155,17 +192,17 @@ export default function WikiEditor() {
     isLoading: pagesLoading,
     refetch: refetchPages,
   } = useQuery<WikiPage[]>({
-    queryKey: ["/api/wiki/pages"],
+    queryKey: ["/api/wiki/pages?all=true"],
     queryFn: fetchPages,
   });
 
   // ── Mutations ────────────────────────────────────────────────────────────────
 
-  const invalidatePages = () => qc.invalidateQueries({ queryKey: ["/api/wiki/pages"] });
+  const invalidatePages = () => qc.invalidateQueries({ queryKey: ["/api/wiki/pages?all=true"] });
 
   const createMutation = useMutation({
     mutationFn: async (data: { slug: string; title: string; body: string; sort_order: number }) => {
-      const res = await apiRequest("POST", "/api/wiki/pages", data);
+      const res: any = await apiRequest("POST", "/api/wiki/pages", data);
       return res.json();
     },
     onSuccess: () => {
@@ -184,7 +221,7 @@ export default function WikiEditor() {
       slug: string;
       data: Partial<{ title: string; body: string; sort_order: number; is_published: boolean }>;
     }) => {
-      const res = await apiRequest("PUT", `/api/wiki/pages/${slug}`, data);
+      const res: any = await apiRequest("PUT", `/api/wiki/pages/${slug}`, data);
       return res.json();
     },
     onSuccess: () => {
@@ -197,7 +234,7 @@ export default function WikiEditor() {
 
   const deleteMutation = useMutation({
     mutationFn: async (slug: string) => {
-      const res = await apiRequest("DELETE", `/api/wiki/pages/${slug}`, undefined);
+      const res: any = await apiRequest("DELETE", `/api/wiki/pages/${slug}`, undefined);
       return res.json();
     },
     onSuccess: () => {
@@ -549,6 +586,23 @@ export default function WikiEditor() {
                 {t.label}
               </button>
             ))}
+            <button
+              type="button"
+              disabled={uploadingMedia}
+              onClick={() => fileInputRef.current?.click()}
+              title="Upload Image/Video/PDF"
+              className="px-2 py-0.5 text-xs border rounded hover:bg-muted transition-colors font-mono flex items-center gap-1 bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-200 dark:border-sky-850"
+            >
+              {uploadingMedia ? "Uploading..." : "📷 Upload Media"}
+            </button>
+            <input
+              type="file"
+              ref={fileInputRef}
+              accept="image/*,video/*,application/pdf"
+              onChange={handleFileUpload}
+              className="hidden"
+            />
+
             <div className="ml-auto flex items-center gap-1">
               <Button
                 size="sm"

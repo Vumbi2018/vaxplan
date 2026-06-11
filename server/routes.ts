@@ -1055,6 +1055,15 @@ export async function registerRoutes(
         dotfiles: "deny",
       }),
     );
+
+    // Serve the standalone docs site under /docs/ for localhost previewing
+    const docsSitePath = _path.resolve(process.cwd(), "docs-site");
+    app.use(
+      "/docs",
+      express.static(docsSitePath, {
+        maxAge: "5m",
+      })
+    );
   }
 
   app.use(tenantContext);
@@ -16675,13 +16684,26 @@ Instructions:
    * Public — returns all published pages (slug, title, sort_order, updated_at).
    * Ordered by sort_order ASC, id ASC.
    */
-  app.get("/api/wiki/pages", async (_req: any, res: any) => {
+  app.get("/api/wiki/pages", async (req: any, res: any) => {
     try {
+      let showUnpublished = false;
+      if (req.query.all === "true" && req.session?.userId) {
+        const u = await storage.getUser(req.session.userId);
+        if (u) {
+          const adminRoles = ["national_admin", "gis_specialist"];
+          const roleList: string[] = [u.role, ...(Array.isArray(u.roles) ? u.roles : [])].filter(Boolean);
+          if (u.isPlatformAdmin || adminRoles.some((r) => roleList.includes(r))) {
+            showUnpublished = true;
+          }
+        }
+      }
+
+      const whereClause = showUnpublished ? "" : "WHERE is_published = TRUE";
       const result = await db.execute(
-        sql.raw(
-          `SELECT id, slug, title, sort_order, updated_at
+        dsql.raw(
+          `SELECT id, slug, title, sort_order, is_published, updated_at
            FROM wiki_pages
-           WHERE is_published = TRUE
+           ${whereClause}
            ORDER BY sort_order ASC, id ASC`
         )
       );
@@ -16699,11 +16721,25 @@ Instructions:
   app.get("/api/wiki/pages/:slug", async (req: any, res: any) => {
     try {
       const { slug } = req.params;
+      
+      let showUnpublished = false;
+      if (req.session?.userId) {
+        const u = await storage.getUser(req.session.userId);
+        if (u) {
+          const adminRoles = ["national_admin", "gis_specialist"];
+          const roleList: string[] = [u.role, ...(Array.isArray(u.roles) ? u.roles : [])].filter(Boolean);
+          if (u.isPlatformAdmin || adminRoles.some((r) => roleList.includes(r))) {
+            showUnpublished = true;
+          }
+        }
+      }
+
+      const publishedCondition = showUnpublished ? "" : "AND is_published = TRUE";
       const result = await db.execute(
-        sql.raw(
+        dsql.raw(
           `SELECT id, slug, title, body, sort_order, is_published, updated_by, updated_at
            FROM wiki_pages
-           WHERE slug = '${slug.replace(/'/g, "''")}' AND is_published = TRUE
+           WHERE slug = '${slug.replace(/'/g, "''")}' ${publishedCondition}
            LIMIT 1`
         )
       );
@@ -16731,7 +16767,7 @@ Instructions:
       const safeSlug = String(slug).toLowerCase().replace(/[^a-z0-9-]/g, "-").slice(0, 120);
       const userId = getCurrentUserId(req);
       const result = await db.execute(
-        sql.raw(
+        dsql.raw(
           `INSERT INTO wiki_pages (slug, title, body, sort_order, is_published, created_by, updated_by)
            VALUES (
              '${safeSlug.replace(/'/g, "''")}',
@@ -16776,7 +16812,7 @@ Instructions:
       if (is_published !== undefined) setClauses.push(`is_published = ${Boolean(is_published)}`);
 
       const result = await db.execute(
-        sql.raw(
+        dsql.raw(
           `UPDATE wiki_pages
            SET ${setClauses.join(", ")}
            WHERE slug = '${slug.replace(/'/g, "''")}'
@@ -16802,7 +16838,7 @@ Instructions:
       const { slug } = req.params;
       const userId = getCurrentUserId(req);
       const result = await db.execute(
-        sql.raw(
+        dsql.raw(
           `UPDATE wiki_pages
            SET is_published = FALSE, updated_at = NOW(), updated_by = '${String(userId).replace(/'/g, "''")}'
            WHERE slug = '${slug.replace(/'/g, "''")}'
@@ -16818,6 +16854,80 @@ Instructions:
       return res.status(500).json({ message: "Failed to unpublish wiki page." });
     }
   });
+
+  /**
+   * POST /api/wiki/upload
+   * Admin only — upload images/media to wiki-media storage directory on disk.
+   */
+  app.post(
+    "/api/wiki/upload",
+    ...requireWikiAdmin,
+    async (req: any, res: any) => {
+      try {
+        const _multer = (await import("multer")).default;
+        const _path = await import("path");
+        const _fs = await import("fs");
+        const _crypto = await import("crypto");
+
+        const wikiMediaDir = _path.resolve(process.cwd(), "data", "uploads", "wiki-media");
+        try { _fs.mkdirSync(wikiMediaDir, { recursive: true }); } catch {}
+
+        const ALLOWED_MIME: Record<string, string> = {
+          "image/png": ".png",
+          "image/jpeg": ".jpg",
+          "image/jpg": ".jpg",
+          "image/gif": ".gif",
+          "image/svg+xml": ".svg",
+          "image/webp": ".webp",
+          "video/mp4": ".mp4",
+          "video/quicktime": ".mov",
+          "application/pdf": ".pdf"
+        };
+
+        const upload = _multer({
+          storage: _multer.memoryStorage(),
+          limits: { fileSize: 50 * 1024 * 1024 }, // 50 MB limit
+          fileFilter: (_req, file, cb) => {
+            if (ALLOWED_MIME[file.mimetype]) return cb(null, true);
+            cb(new Error("Unsupported format. Use images (PNG, JPG, GIF, WebP, SVG), videos (MP4, MOV), or PDFs."));
+          }
+        });
+
+        upload.single("file")(req, res, async (err: any) => {
+          if (err) {
+            return res.status(400).json({ message: err.message || "File upload failed" });
+          }
+          if (!req.file) {
+            return res.status(400).json({ message: "No file uploaded (field name: file)" });
+          }
+
+          const ext = ALLOWED_MIME[req.file.mimetype] ?? ".bin";
+          const rand = _crypto.randomBytes(8).toString("hex");
+          const safeBasename = _path.basename(req.file.originalname, _path.extname(req.file.originalname))
+            .toLowerCase()
+            .replace(/[^a-z0-9]/g, "-")
+            .slice(0, 50);
+          
+          const filename = `${safeBasename}-${Date.now()}-${rand}${ext}`;
+          const fullPath = _path.join(wikiMediaDir, filename);
+
+          await _fs.promises.writeFile(fullPath, req.file.buffer);
+          const url = `/uploads/wiki-media/${filename}`;
+
+          await logAudit(req, "upload_wiki_media", "wiki", null, null, {
+            filename,
+            size: req.file.size,
+            mimetype: req.file.mimetype
+          });
+
+          return res.json({ success: true, url, filename, size: req.file.size });
+        });
+      } catch (err: any) {
+        console.error("POST /api/wiki/upload failed:", err);
+        return res.status(500).json({ message: err.message || "Failed to upload file." });
+      }
+    }
+  );
   // ── End Wiki API ──────────────────────────────────────────────────────────
 
   return httpServer;

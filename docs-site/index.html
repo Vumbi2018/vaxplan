@@ -3,17 +3,19 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>VaxPlan Documentation — Reference Manual</title>
-  <meta name="description" content="Complete reference manual for VaxPlan — the GIS-powered health microplanning platform for Ministries of Health.">
-  <meta name="keywords" content="VaxPlan, microplanning, immunization, vaccination, GIS, health, WHO, UNICEF">
-  <meta property="og:title" content="VaxPlan Documentation">
-  <meta property="og:description" content="Reference manual for the VaxPlan health microplanning platform.">
-  <meta property="og:url" content="https://docs.vaxplan.org">
+  <title>VaxPlan Documentation Wiki — Reference Manual</title>
+  <meta name="description" content="Dynamic reference manual and learning hub for VaxPlan — the GIS-powered health microplanning platform.">
+  <meta name="keywords" content="VaxPlan, wiki, microplanning, immunization, vaccination, GIS, health, WHO, UNICEF">
+  <meta property="og:title" content="VaxPlan Documentation Wiki">
+  <meta property="og:description" content="Dynamic reference manual for the VaxPlan health microplanning platform.">
+  <meta property="og:url" content="https://doc.vaxplan.org">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <!-- marked.js for Markdown → HTML rendering (no build step needed) -->
+  
+  <!-- marked.js for client-side Markdown rendering of live edits -->
   <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
+  
   <style>
     :root {
       --bg: #0f172a;
@@ -48,19 +50,39 @@
       transition: background 0.2s, color 0.2s;
     }
 
+    /* ── Sticky slim progress bar ───────────────────────── */
+    #topProgressBarContainer {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+      background: transparent;
+      z-index: 9999;
+    }
+    #topProgressBar {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #3b82f6, #0ea5e9, #22c55e);
+      transition: width 0.3s ease;
+      box-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
+    }
+
     /* ── Header ─────────────────────────────────────────── */
     header {
       position: fixed;
       top: 0; left: 0; right: 0;
       height: var(--header-height);
-      background: var(--bg-card);
+      background: rgba(30, 41, 59, 0.75);
       border-bottom: 1px solid var(--border);
       display: flex;
       align-items: center;
       justify-content: space-between;
       padding: 0 1.5rem;
       z-index: 100;
-      backdrop-filter: blur(10px);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+    }
+    .light header {
+      background: rgba(255, 255, 255, 0.75);
     }
     .header-brand {
       display: flex;
@@ -104,9 +126,24 @@
       background: linear-gradient(135deg, var(--primary), var(--accent));
       color: white; border: none; border-radius: 8px;
       padding: 0.4rem 1rem; font-size: 0.8rem; font-weight: 600;
-      text-decoration: none; transition: opacity 0.2s, transform 0.15s; cursor: pointer;
+      text-decoration: none; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); cursor: pointer;
     }
-    .btn-pdf:hover { opacity: 0.9; transform: translateY(-1px); }
+    .btn-pdf:hover { opacity: 0.9; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3); }
+    .btn-primary {
+      display: inline-flex; align-items: center; gap: 0.4rem;
+      background: linear-gradient(135deg, var(--primary), var(--accent));
+      color: white; border: none; border-radius: 10px;
+      padding: 0.65rem 1.4rem; font-size: 0.9rem; font-weight: 600;
+      text-decoration: none; cursor: pointer; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .btn-primary:hover { opacity: 0.9; transform: translateY(-2px); box-shadow: 0 8px 25px rgba(59, 130, 246, 0.35); }
+    .btn-secondary {
+      display: inline-flex; align-items: center; gap: 0.4rem;
+      background: transparent; color: var(--text); border: 1px solid var(--border);
+      border-radius: 10px; padding: 0.65rem 1.4rem; font-size: 0.9rem; font-weight: 500;
+      text-decoration: none; cursor: pointer; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .btn-secondary:hover { background: var(--bg-card); border-color: var(--primary); transform: translateY(-1px); }
 
     /* ── Layout ──────────────────────────────────────────── */
     .layout { display: flex; margin-top: var(--header-height); min-height: calc(100vh - var(--header-height)); }
@@ -116,7 +153,7 @@
       width: var(--sidebar-width); background: var(--bg-sidebar);
       border-right: 1px solid var(--border);
       position: fixed; top: var(--header-height); bottom: 0; left: 0;
-      overflow-y: auto; padding: 1.5rem 0; transition: transform 0.3s; z-index: 50;
+      overflow-y: auto; padding: 1rem 0; transition: transform 0.3s; z-index: 50;
     }
     .sidebar::-webkit-scrollbar { width: 4px; }
     .sidebar::-webkit-scrollbar-track { background: transparent; }
@@ -186,6 +223,12 @@
       background: rgba(59,130,246,0.12); color: var(--primary-light);
       padding: 0.15em 0.4em; border-radius: 4px;
     }
+    .doc-section img {
+      max-width: 100%; height: auto; border-radius: 8px; margin: 1rem 0;
+      cursor: zoom-in; transition: transform 0.3s;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+    .doc-section img:hover { transform: scale(1.01); }
     .doc-section pre {
       background: #0a0e1a; border: 1px solid var(--border);
       border-radius: 10px; padding: 1.25rem 1.5rem; overflow-x: auto; margin: 1rem 0;
@@ -221,27 +264,13 @@
     }
     .hero p { color: var(--text-muted); font-size: 1.05rem; max-width: 540px; margin: 0 auto 2rem; }
     .hero-actions { display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap; }
-    .btn-primary {
-      display: inline-flex; align-items: center; gap: 0.4rem;
-      background: linear-gradient(135deg, var(--primary), var(--accent));
-      color: white; border: none; border-radius: 10px;
-      padding: 0.65rem 1.4rem; font-size: 0.9rem; font-weight: 600;
-      text-decoration: none; cursor: pointer; transition: all 0.2s;
-    }
-    .btn-primary:hover { opacity: 0.9; transform: translateY(-2px); box-shadow: 0 8px 25px rgba(59,130,246,0.35); }
-    .btn-secondary {
-      display: inline-flex; align-items: center; gap: 0.4rem;
-      background: transparent; color: var(--text); border: 1px solid var(--border);
-      border-radius: 10px; padding: 0.65rem 1.4rem; font-size: 0.9rem; font-weight: 500;
-      text-decoration: none; cursor: pointer; transition: all 0.2s;
-    }
-    .btn-secondary:hover { background: var(--bg-card); border-color: var(--primary); }
+    
     .cards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1rem; margin: 2rem 0; }
     .info-card {
       background: var(--bg-card); border: 1px solid var(--border);
-      border-radius: 12px; padding: 1.25rem; transition: border-color 0.2s, transform 0.15s;
+      border-radius: 12px; padding: 1.25rem; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     }
-    .info-card:hover { border-color: var(--primary); transform: translateY(-2px); }
+    .info-card:hover { border-color: var(--primary); transform: translateY(-4px); box-shadow: 0 12px 20px -10px rgba(59, 130, 246, 0.3); }
     .info-card-icon { font-size: 1.5rem; margin-bottom: 0.6rem; }
     .info-card-title { font-size: 0.9rem; font-weight: 600; margin-bottom: 0.3rem; }
     .info-card-desc { font-size: 0.78rem; color: var(--text-muted); line-height: 1.5; }
@@ -288,6 +317,11 @@
 </head>
 <body class="">
 
+<!-- Slim Progress Bar -->
+<div id="topProgressBarContainer">
+  <div id="topProgressBar"></div>
+</div>
+
 <!-- Search Overlay -->
 <div class="search-overlay" id="searchOverlay" onclick="closeSearch(event)">
   <div class="search-modal" onclick="event.stopPropagation()">
@@ -307,7 +341,7 @@
   <a href="#top" class="header-brand" onclick="scrollToTop()">
     <div class="header-logo">V</div>
     <div>
-      <div class="header-title">VaxPlan Docs</div>
+      <div class="header-title">VaxPlan Docs Wiki</div>
       <div class="header-subtitle">Reference Manual</div>
     </div>
   </a>
@@ -337,8 +371,27 @@
     <nav>
       <ul>
         <li><a href="#top" class="nav-link" onclick="navigate('top')">🏠 Overview</a></li>
+        <li><a href="#quickstart" class="nav-link" onclick="navigate('quickstart')">⚡ Facility Quick-Start</a></li>
       </ul>
     </nav>
+
+    <!-- Reading Progress panel -->
+    <div class="sidebar-progress-panel" style="padding: 0.75rem 1.25rem 1rem; border-bottom: 1px solid var(--border); background: rgba(59,130,246,0.03);">
+      <div style="font-size: 0.72rem; font-weight: 600; color: var(--text-muted); margin-bottom: 0.5rem; display: flex; justify-content: space-between;">
+        <span>Academy Progress</span>
+        <span id="progressText">0%</span>
+      </div>
+      <div style="height: 5px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden;">
+        <div id="sidebarProgressBar" style="height: 100%; width: 0%; background: var(--primary); transition: width 0.3s;"></div>
+      </div>
+    </div>
+
+    <!-- Achievements badges -->
+    <div class="sidebar-label">Achievements</div>
+    <div id="sidebarBadges" style="padding: 0 1.25rem 1rem; display: flex; flex-direction: column; gap: 0.5rem;">
+      <!-- Populated dynamically -->
+    </div>
+
     <div class="sidebar-label">User Guide</div>
     <nav>
       <ul id="sidebarNav">
@@ -359,9 +412,9 @@
   <main class="main" id="main">
     <!-- Hero -->
     <div class="hero" id="top">
-      <div class="hero-badge">📖 Reference Manual</div>
-      <h1>VaxPlan Documentation</h1>
-      <p>Complete role-by-role manual for the VaxPlan GIS microplanning platform — built for Ministries of Health.</p>
+      <div class="hero-badge">📖 Learning &amp; Training Academy</div>
+      <h1>VaxPlan Wiki Hub</h1>
+      <p>Dynamic handbook and interactive reference manual for the VaxPlan GIS microplanning platform.</p>
       <div class="hero-actions">
         <button class="btn-primary" id="readGuideBtn" onclick="navigateFirstSection()">Read the Guide →</button>
         <a href="/VaxPlan-User-Guide.pdf" download class="btn-secondary">⬇ Download PDF</a>
@@ -402,6 +455,120 @@
       </div>
     </div>
 
+    <!-- Quickstart section -->
+    <section id="quickstart" class="doc-section">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; flex-wrap:wrap; gap:0.5rem;">
+        <h2 style="margin:0; background:none; -webkit-text-fill-color:var(--text); font-size:1.5rem; font-weight:700;">
+          ⚡ Facility Quick-Start
+        </h2>
+        <button class="btn-secondary" id="read-btn-quickstart" onclick="toggleRead('quickstart')" style="padding:0.3rem 0.75rem; font-size:0.75rem;">
+          📖 Mark as Read
+        </button>
+      </div>
+      <div class="info-card" style="background:rgba(34,197,94,0.06);border-color:rgba(34,197,94,0.2);margin-bottom:1.5rem">
+        <strong>⚡ New to VaxPlan?</strong> This quick-start covers the essential steps for facility staff to get up and running in minutes.
+      </div>
+      <div class="doc-body">
+        <h1 id="vaxplan-facility-staff-quick-start">VaxPlan — Facility Staff Quick-Start</h1>
+
+<blockquote>Pin this card next to your workstation. It covers the things</blockquote>
+<blockquote>you'll do most days as a facility clerk or in-charge.</blockquote>
+
+<h2 id="1-sign-in">1. Sign in</h2>
+<ul><li>Open the VaxPlan link your administrator gave you.</li>
+<li>Click <strong>Sign in</strong> and complete your organisation's login.</li>
+<li>The first time, you'll land on your facility's dashboard</li>
+<p></ul>  automatically.</p>
+<ul><li><strong>Change your password</strong> anytime: click your name (top-right) →</li>
+<p></ul>  <strong>Change password</strong>. Forgot it? Use <strong>Forgot password?</strong> on the</p>
+<p>  sign-in screen and your admin will help.</p>
+
+<h2 id="2-add-a-community-village">2. Add a community (village)</h2>
+<ul><li>Sidebar → <strong>Facilities</strong> → <strong>Communities</strong> tab → <strong>Add Community</strong>.</li>
+<li>Your facility is <strong>pinned automatically</strong> — you can't pick another.</li>
+<li>Enter the <strong>name</strong>, then set the location: drop a <strong>single pin</strong>, or</li>
+<p></ul>   use <strong>Draw Polygon Mode</strong> to trace the <strong>catchment boundary</strong> on the map.</p>
+<ul><li><strong>Save.</strong> If your boundary overlaps another community, a</li>
+<p></ul>   <strong>Catchment overlap</strong> panel appears — click <strong>Request harmonization</strong></p>
+<p>   to flag it and email the other facility's in-charge.</p>
+
+<blockquote>You can add <strong>communities</strong>, but only coordinators/admins can add a new</blockquote>
+<blockquote><strong>health facility</strong> — that button won't show for you.</blockquote>
+
+<h2 id="3-build-a-quarterly-microplan">3. Build a quarterly microplan</h2>
+<ul><li>Sidebar → <strong>Microplans → Routine</strong></li>
+<li><strong>New microplan</strong> → pick the quarter and year.</li>
+<li>Tick the <strong>villages</strong> your facility will serve.</li>
+<li>Confirm the <strong>target population</strong> (Registered / WorldPop / Manual).</li>
+<li>Confirm the <strong>antigens</strong> to offer.</li>
+<li>Declare <strong>outreach sessions per village per month</strong>.</li>
+<li><strong>Save as draft</strong> or <strong>Submit for approval</strong>.</li>
+<p></ul></p>
+<h2 id="4-plan-the-session-days-itinerary">4. Plan the session days (itinerary)</h2>
+<ul><li>Open a session → <strong>Add Vaccination Session Itinerary Day</strong>.</li>
+<li>Enter the <strong>lead vaccinator's</strong> name, a <strong>date at least 7 days ahead</strong>,</li>
+<p></ul>   the <strong>target population</strong>, and tick at least one <strong>community</strong>.</p>
+<ul><li>The <strong>Calculated Vaccine Supplies</strong> panel estimates realistic doses per</li>
+<p></ul>   antigen (target × doses-per-child × wastage) — ~50 children gives tens of</p>
+<p>   doses, not thousands.</p>
+<ul><li>If a day won't save, the message names the field to fix.</li>
+<p></ul></p>
+<blockquote>Tip: From <strong>All sessions → calendar</strong>, "Plan a session on this day" opens</blockquote>
+<blockquote>the New Session form (not the microplan wizard) with the date filled in.</blockquote>
+
+<h2 id="5-run-a-session-in-the-field">5. Run a session in the field</h2>
+<ul><li>Sidebar → <strong>Sessions</strong> → find today's session.</li>
+<li><strong>Start session</strong> (works offline).</li>
+<li><strong>Add client</strong> for each child or pregnant woman vaccinated.</li>
+<p></ul>   - Pick antigens administered; the next-due dose is preselected.</p>
+<ul><li>When done, <strong>Mark session done</strong> → confirm counts → <strong>Submit</strong>.</li>
+<li>Sync when you're back in range (cloud icon, top-right).</li>
+<p></ul></p>
+<h2 id="6-follow-up-defaulters">6. Follow up defaulters</h2>
+<ul><li>Sidebar → <strong>Coverage</strong> → <strong>Under-immunised list</strong>.</li>
+<li>Click a child to see their history.</li>
+<li>Click <strong>Create defaulter follow-up session</strong> to schedule outreach.</li>
+<p></ul></p>
+<h2 id="7-track-stock">7. Track stock</h2>
+<ul><li>Sidebar → <strong>Stock</strong>.</li>
+<li>Enter <strong>Receipts</strong> when supply arrives.</li>
+<li><strong>Issues</strong> are auto-recorded when you close a session.</li>
+<li>At month-end, review and submit the <strong>Monthly stock summary</strong>.</li>
+<p></ul></p>
+<hr>
+
+<h2 id="daily-checklist">Daily checklist</h2>
+
+<ul><li>[ ] Open today's sessions before leaving for outreach.</li>
+<li>[ ] Capture clients during the session (offline is fine).</li>
+<li>[ ] Mark session done before packing up.</li>
+<li>[ ] Tap the <strong>sync badge</strong> (top-right) to sync when back in cellular range.</li>
+<li>[ ] Skim the <strong>Under-immunised list</strong> weekly for defaulters.</li>
+<li>[ ] Submit the <strong>Monthly stock summary</strong> on the last working day.</li>
+<p></ul></p>
+<blockquote><strong>Good to know.</strong> When you're online, the app updates on its own</blockquote>
+<blockquote>within seconds if anything changes for your facility — no need to</blockquote>
+<blockquote>refresh. You only ever see your own facility's data. If a newer</blockquote>
+<blockquote>version of the app is published, a banner appears at the top: tap</blockquote>
+<blockquote><strong>Reload</strong> in the browser, or <strong>Download update</strong> in the Windows /</blockquote>
+<blockquote>Android app, to get the latest features (your data keeps syncing</blockquote>
+<blockquote>either way).</blockquote>
+
+<h2 id="who-to-call">Who to call</h2>
+
+<p>| Problem | Contact |</p>
+<p>| --- | --- |</p>
+<p>| My role hasn't been approved | Your district manager |</p>
+<p>| Missing villages on my list | Add them yourself (Facilities → Communities → Add Community) |</p>
+<p>| Need a new health facility added | Your provincial coordinator or national admin |</p>
+<p>| Stock alert / wastage threshold | Your in-charge or district manager |</p>
+<p>| Cannot sign in | Your IT focal point |</p>
+<p>| App keeps crashing | Open Help → Send feedback (a national admin will see it) |</p>
+<p>| Where does the map / population / facility data come from? | Sidebar → <strong>Data Sources</strong> lists every source and its licence |</p>
+
+      </div>
+    </section>
+
     <!-- Content populated dynamically -->
     <div id="wikiContent">
       <!-- Skeleton loaders -->
@@ -425,37 +592,153 @@
   </main>
 </div>
 
+<!-- Lightbox Modal -->
+<div id="lightbox" onclick="closeLightbox()" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.85); z-index:99999; backdrop-filter:blur(5px); justify-content:center; align-items:center; padding:2rem; cursor:zoom-out;">
+  <button onclick="closeLightbox()" style="position:absolute; top:1.5rem; right:1.5rem; background:rgba(255,255,255,0.1); border:none; border-radius:50%; width:40px; height:40px; color:white; font-size:1.25rem; cursor:pointer; display:flex; align-items:center; justify-content:center;">✕</button>
+  <img id="lightboxImg" src="" alt="Zoomed Screenshot" style="max-width:100%; max-height:90vh; object-fit:contain; border-radius:8px; box-shadow:0 25px 50px rgba(0,0,0,0.5);">
+</div>
+
+<!-- Fallback JSON loaded at build-time -->
+<script id="fallback-data" type="application/json">
+  {"pages":[{"id":1,"slug":"1-what-vaxplan-does","title":"1. What VaxPlan does","sort_order":1,"is_published":true,"updated_at":"2026-06-11"},{"id":2,"slug":"2-roles-at-a-glance","title":"2. Roles at a glance","sort_order":2,"is_published":true,"updated_at":"2026-06-11"},{"id":3,"slug":"3-signing-in","title":"3. Signing in","sort_order":3,"is_published":true,"updated_at":"2026-06-11"},{"id":4,"slug":"4-the-home-screen-and-switching-country","title":"4. The home screen and switching country","sort_order":4,"is_published":true,"updated_at":"2026-06-11"},{"id":5,"slug":"5-facility-staff-your-daily-workflow","title":"5. Facility staff — your daily workflow","sort_order":5,"is_published":true,"updated_at":"2026-06-11"},{"id":6,"slug":"6-district-managers-review-and-oversight","title":"6. District managers — review and oversight","sort_order":6,"is_published":true,"updated_at":"2026-06-11"},{"id":7,"slug":"7-provincial-coordinators-approvals-and-visibility","title":"7. Provincial coordinators — approvals and visibility","sort_order":7,"is_published":true,"updated_at":"2026-06-11"},{"id":8,"slug":"8-national-administrators","title":"8. National administrators","sort_order":8,"is_published":true,"updated_at":"2026-06-11"},{"id":9,"slug":"9-tenant-onboarding-new-ministry-of-health","title":"9. Tenant onboarding (new Ministry of Health)","sort_order":9,"is_published":true,"updated_at":"2026-06-11"},{"id":10,"slug":"9b-local-development-database-restore","title":"9b. Local Development Database & Restore","sort_order":10,"is_published":true,"updated_at":"2026-06-11"},{"id":11,"slug":"10-map-and-boundary-management","title":"10. Map and boundary management","sort_order":11,"is_published":true,"updated_at":"2026-06-11"},{"id":12,"slug":"11-settlement-intelligence-and-zero-dose-targeting","title":"11. Settlement intelligence and zero-dose targeting","sort_order":12,"is_published":true,"updated_at":"2026-06-11"},{"id":13,"slug":"12-settings-customisation-and-labels","title":"12. Settings, customisation, and labels","sort_order":13,"is_published":true,"updated_at":"2026-06-11"},{"id":14,"slug":"13-supervision-visits","title":"13. Supervision visits","sort_order":14,"is_published":true,"updated_at":"2026-06-11"},{"id":15,"slug":"14-reports-and-exports","title":"14. Reports and exports","sort_order":15,"is_published":true,"updated_at":"2026-06-11"},{"id":16,"slug":"14b-indicator-reference-manual-knowledge-mastery","title":"14b. Indicator reference manual & Knowledge Mastery","sort_order":16,"is_published":true,"updated_at":"2026-06-11"},{"id":17,"slug":"15-troubleshooting","title":"15. Troubleshooting","sort_order":17,"is_published":true,"updated_at":"2026-06-11"},{"id":18,"slug":"16-data-sources-and-acknowledgements","title":"16. Data sources and acknowledgements","sort_order":18,"is_published":true,"updated_at":"2026-06-11"},{"id":19,"slug":"17-glossary","title":"17. Glossary","sort_order":19,"is_published":true,"updated_at":"2026-06-11"}],"cache":{"1-what-vaxplan-does":{"slug":"1-what-vaxplan-does","title":"1. What VaxPlan does","body":"\r\nVaxPlan is a multi-country microplanning system used by Ministries of\r\nHealth to plan, run, and track routine immunisation and supplementary\r\nimmunisation activities (SIAs).\r\n\r\n**Core workflows it covers:**\r\n\r\n- **Microplanning:** facility-level quarterly plans that combine\r\n  catchment population, vaccine schedules, and outreach intent into a\r\n  list of executable sessions.\r\n- **Session execution:** scheduling, running, and closing out\r\n  vaccination sessions (fixed-site, outreach, mobile).\r\n- **Coverage analytics:** by antigen, by dose, by month, by location,\r\n  with under-immunised and zero-dose surfacing.\r\n- **Stock and supply:** vaccine requirements, wastage thresholds,\r\n  cold-chain stock balances, and reconciliation.\r\n- **Supervision:** scheduled supervisory visits with rolled-up\r\n  reporting to district and province.\r\n- **Mapping:** every facility, village, settlement, and session plotted\r\n  on Leaflet maps with admin boundary overlays (GeoBoundaries +\r\n  custom GeoJSON uploads).\r\n- **Multitenant SaaS:** each Ministry of Health is a separate tenant\r\n  with its own data, users, and SSO. Every account belongs to exactly\r\n  one country and can only ever access that country. The single\r\n  exception is a **Super Admin**, who can access and switch between all\r\n  countries from the header.\r\n\r\n**See the full feature list.** For a complete, plain-language catalogue\r\nof everything VaxPlan can do today, open **Standards Alignment** from the\r\nsidebar and select the **Features** tab. It groups every feature by area\r\n(dashboards, microplanning, vaccines & stock, maps & GIS, supervision,\r\nusers & access, offline & sync, security, and more), and the filter box\r\nlets you jump straight to anything.\r\n\r\n**Where the data lives.** Everything is stored in PostgreSQL on a\r\ntenant-isolated schema. Facility and village reference data is loaded\r\nonce during onboarding and then maintained by national administrators.\r\nDay-to-day operational data (sessions, coverage, stock) is written by\r\nfacility staff.\r\n\r\n---\r\n\r\n","renderedHtml":"\r\n<p>VaxPlan is a multi-country microplanning system used by Ministries of</p>\r\n<p>Health to plan, run, and track routine immunisation and supplementary</p>\r\n<p>immunisation activities (SIAs).</p>\r\n\r\n<p><strong>Core workflows it covers:</strong></p>\r\n\r\n<ul><li><strong>Microplanning:</strong> facility-level quarterly plans that combine</li></ul>\r\n<p>  catchment population, vaccine schedules, and outreach intent into a</p>\r\n<p>  list of executable sessions.</p>\r\n<ul><li><strong>Session execution:</strong> scheduling, running, and closing out</li></ul>\r\n<p>  vaccination sessions (fixed-site, outreach, mobile).</p>\r\n<ul><li><strong>Coverage analytics:</strong> by antigen, by dose, by month, by location,</li></ul>\r\n<p>  with under-immunised and zero-dose surfacing.</p>\r\n<ul><li><strong>Stock and supply:</strong> vaccine requirements, wastage thresholds,</li></ul>\r\n<p>  cold-chain stock balances, and reconciliation.</p>\r\n<ul><li><strong>Supervision:</strong> scheduled supervisory visits with rolled-up</li></ul>\r\n<p>  reporting to district and province.</p>\r\n<ul><li><strong>Mapping:</strong> every facility, village, settlement, and session plotted</li></ul>\r\n<p>  on Leaflet maps with admin boundary overlays (GeoBoundaries +</p>\r\n<p>  custom GeoJSON uploads).</p>\r\n<ul><li><strong>Multitenant SaaS:</strong> each Ministry of Health is a separate tenant</li></ul>\r\n<p>  with its own data, users, and SSO. Every account belongs to exactly</p>\r\n<p>  one country and can only ever access that country. The single</p>\r\n<p>  exception is a <strong>Super Admin</strong>, who can access and switch between all</p>\r\n<p>  countries from the header.</p>\r\n\r\n<p><strong>See the full feature list.</strong> For a complete, plain-language catalogue</p>\r\n<p>of everything VaxPlan can do today, open <strong>Standards Alignment</strong> from the</p>\r\n<p>sidebar and select the <strong>Features</strong> tab. It groups every feature by area</p>\r\n<p>(dashboards, microplanning, vaccines & stock, maps & GIS, supervision,</p>\r\n<p>users & access, offline & sync, security, and more), and the filter box</p>\r\n<p>lets you jump straight to anything.</p>\r\n\r\n<p><strong>Where the data lives.</strong> Everything is stored in PostgreSQL on a</p>\r\n<p>tenant-isolated schema. Facility and village reference data is loaded</p>\r\n<p>once during onboarding and then maintained by national administrators.</p>\r\n<p>Day-to-day operational data (sessions, coverage, stock) is written by</p>\r\n<p>facility staff.</p>\r\n\r\n<hr>\r\n\r\n"},"2-roles-at-a-glance":{"slug":"2-roles-at-a-glance","title":"2. Roles at a glance","body":"\r\n| Role | What they can do | Where they work |\r\n| --- | --- | --- |\r\n| **Facility clerk** | Authors microplans and sessions, captures session results, manages stock balances. | Their own facility only. |\r\n| **Facility in-charge** | Same as clerk, plus signs off (submits) the microplan and session results. | Their own facility only. |\r\n| **District manager** | Reviews and approves microplans from facilities in the district, runs supervision visits, reads coverage. | Their district. |\r\n| **Provincial coordinator** | Approves district-level plans, sees rolled-up coverage, escalates issues. | Their province. |\r\n| **National admin** | Manages users, facilities, vaccine schedule, labels, boundaries, and the country dashboard. | Their own country only. |\r\n| **Super Admin** | Onboards new countries, configures SSO, provisions national admins, and is the only role that can access and switch between all countries (and promote other Super Admins). | All countries. |\r\n\r\nMicroplan authoring (creating new microplans and session plans) is\r\n**reserved for facility staff** (clerk and in-charge), so accountability\r\nstays with the people who actually run the sessions. National admins can\r\nalso author when setting up or correcting a country's data. District\r\nmanagers and provincial coordinators are reviewers and approvers only —\r\nthey cannot author plans on a facility's behalf.\r\n\r\n---\r\n\r\n","renderedHtml":"\r\n<p>| Role | What they can do | Where they work |</p>\r\n<p>| --- | --- | --- |</p>\r\n<p>| <strong>Facility clerk</strong> | Authors microplans and sessions, captures session results, manages stock balances. | Their own facility only. |</p>\r\n<p>| <strong>Facility in-charge</strong> | Same as clerk, plus signs off (submits) the microplan and session results. | Their own facility only. |</p>\r\n<p>| <strong>District manager</strong> | Reviews and approves microplans from facilities in the district, runs supervision visits, reads coverage. | Their district. |</p>\r\n<p>| <strong>Provincial coordinator</strong> | Approves district-level plans, sees rolled-up coverage, escalates issues. | Their province. |</p>\r\n<p>| <strong>National admin</strong> | Manages users, facilities, vaccine schedule, labels, boundaries, and the country dashboard. | Their own country only. |</p>\r\n<p>| <strong>Super Admin</strong> | Onboards new countries, configures SSO, provisions national admins, and is the only role that can access and switch between all countries (and promote other Super Admins). | All countries. |</p>\r\n\r\n<p>Microplan authoring (creating new microplans and session plans) is</p>\r\n<p><strong>reserved for facility staff</strong> (clerk and in-charge), so accountability</p>\r\n<p>stays with the people who actually run the sessions. National admins can</p>\r\n<p>also author when setting up or correcting a country's data. District</p>\r\n<p>managers and provincial coordinators are reviewers and approvers only —</p>\r\n<p>they cannot author plans on a facility's behalf.</p>\r\n\r\n<hr>\r\n\r\n"},"3-signing-in":{"slug":"3-signing-in","title":"3. Signing in","body":"\r\nVaxPlan supports two sign-in modes:\r\n\r\n1. **Email and password** (used during onboarding and colleague\r\n   testing).\r\n2. **Tenant SSO** — once your Ministry of Health is fully onboarded,\r\n   you sign in with your own organisational identity (OIDC or SAML —\r\n   for example Microsoft Entra, Google Workspace, Okta).\r\n\r\n**To sign in:**\r\n\r\n1. Open the VaxPlan URL provided by your administrator (each tenant\r\n   has either a subdomain or a path-based URL).\r\n2. Click **Sign in**.\r\n3. You will be redirected to your identity provider; complete the\r\n   login there.\r\n4. On first login, your home tenant is set automatically from your\r\n   email domain (if your administrator has configured a domain\r\n   mapping) or from the signup invite you accepted. You'll land on\r\n   your home tenant's dashboard.\r\n\r\nIf you signed up but no role has been granted yet, you'll see a\r\n\"pending approval\" message. Your district or national administrator\r\nneeds to confirm your role before you can use the system. They will\r\nreceive an inbox notification automatically.\r\n\r\n**Passwords (email sign-in):**\r\n\r\n- **Change your own password.** Click your name in the top-right\r\n  corner and choose **Change password**. Enter your current password\r\n  (leave it blank if you've never set one), then your new password\r\n  twice. Passwords must be at least 8 characters.\r\n- **Forgot your password?** On the sign-in screen click **Forgot\r\n  password?** and enter your email. Your administrator is notified so\r\n  they can set a new one for you, which they'll share with you\r\n  securely.\r\n- **Administrators** can set or reset passwords for users — see\r\n  section 8.\r\n\r\n---\r\n\r\n","renderedHtml":"\r\n<p>VaxPlan supports two sign-in modes:</p>\r\n\r\n<ul><li><strong>Email and password</strong> (used during onboarding and colleague</li></ul>\r\n<p>   testing).</p>\r\n<ul><li><strong>Tenant SSO</strong> — once your Ministry of Health is fully onboarded,</li></ul>\r\n<p>   you sign in with your own organisational identity (OIDC or SAML —</p>\r\n<p>   for example Microsoft Entra, Google Workspace, Okta).</p>\r\n\r\n<p><strong>To sign in:</strong></p>\r\n\r\n<ul><li>Open the VaxPlan URL provided by your administrator (each tenant</li></ul>\r\n<p>   has either a subdomain or a path-based URL).</p>\r\n<ul><li>Click <strong>Sign in</strong>.</li></ul>\r\n<ul><li>You will be redirected to your identity provider; complete the</li></ul>\r\n<p>   login there.</p>\r\n<ul><li>On first login, your home tenant is set automatically from your</li></ul>\r\n<p>   email domain (if your administrator has configured a domain</p>\r\n<p>   mapping) or from the signup invite you accepted. You'll land on</p>\r\n<p>   your home tenant's dashboard.</p>\r\n\r\n<p>If you signed up but no role has been granted yet, you'll see a</p>\r\n<p>\"pending approval\" message. Your district or national administrator</p>\r\n<p>needs to confirm your role before you can use the system. They will</p>\r\n<p>receive an inbox notification automatically.</p>\r\n\r\n<p><strong>Passwords (email sign-in):</strong></p>\r\n\r\n<ul><li><strong>Change your own password.</strong> Click your name in the top-right</li></ul>\r\n<p>  corner and choose <strong>Change password</strong>. Enter your current password</p>\r\n<p>  (leave it blank if you've never set one), then your new password</p>\r\n<p>  twice. Passwords must be at least 8 characters.</p>\r\n<ul><li><strong>Forgot your password?</strong> On the sign-in screen click **Forgot</li></ul>\r\n<p>  password?** and enter your email. Your administrator is notified so</p>\r\n<p>  they can set a new one for you, which they'll share with you</p>\r\n<p>  securely.</p>\r\n<ul><li><strong>Administrators</strong> can set or reset passwords for users — see</li></ul>\r\n<p>  section 8.</p>\r\n\r\n<hr>\r\n\r\n"},"4-the-home-screen-and-switching-country":{"slug":"4-the-home-screen-and-switching-country","title":"4. The home screen and switching country","body":"\r\nThe header has three constant elements:\r\n\r\n- **Country switcher (top-left)** — this appears **only for a Super\r\n  Admin**. It shows the current country and a dropdown to switch\r\n  between all countries. Switching changes which country's data you're\r\n  working in. Every other account is permanently locked to its own\r\n  country and never sees this switcher.\r\n- **Navigation sidebar (collapsible)** — your modules. Items that\r\n  your role can't access are hidden, so the menu adapts to who you\r\n  are.\r\n- **Profile menu (top-right)** — language, theme (light/dark), and\r\n  sign-out.\r\n\r\n**Country isolation rule:** every account — including a national admin\r\n— can only ever access its own country. There is no way to view or\r\nedit another country's data. Only a Super Admin can move between\r\ncountries; when a Super Admin switches, they act fully within whichever\r\ncountry they have selected. A Super Admin can also grant Super Admin to\r\nanother user from that user's edit screen (Users → open a user → Super\r\nAdmin access).\r\n\r\n**What you can see within your country.** VaxPlan also scopes data by\r\nyour place in the hierarchy. A facility clerk or in-charge sees only\r\ntheir **own facility's** facilities, villages, population, microplans,\r\nsessions, and reports. A district manager sees their district; a\r\nprovincial coordinator sees their province; a national admin sees the\r\nwhole country. You won't see — or be able to open — a record that\r\nbelongs to a facility outside your area, even with a direct link. This\r\nkeeps each facility's data private to the people responsible for it.\r\n\r\n---\r\n\r\n","renderedHtml":"\r\n<p>The header has three constant elements:</p>\r\n\r\n<ul><li><strong>Country switcher (top-left)</strong> — this appears **only for a Super</li></ul>\r\n<p>  Admin**. It shows the current country and a dropdown to switch</p>\r\n<p>  between all countries. Switching changes which country's data you're</p>\r\n<p>  working in. Every other account is permanently locked to its own</p>\r\n<p>  country and never sees this switcher.</p>\r\n<ul><li><strong>Navigation sidebar (collapsible)</strong> — your modules. Items that</li></ul>\r\n<p>  your role can't access are hidden, so the menu adapts to who you</p>\r\n<p>  are.</p>\r\n<ul><li><strong>Profile menu (top-right)</strong> — language, theme (light/dark), and</li></ul>\r\n<p>  sign-out.</p>\r\n\r\n<p><strong>Country isolation rule:</strong> every account — including a national admin</p>\r\n<p>— can only ever access its own country. There is no way to view or</p>\r\n<p>edit another country's data. Only a Super Admin can move between</p>\r\n<p>countries; when a Super Admin switches, they act fully within whichever</p>\r\n<p>country they have selected. A Super Admin can also grant Super Admin to</p>\r\n<p>another user from that user's edit screen (Users → open a user → Super</p>\r\n<p>Admin access).</p>\r\n\r\n<p><strong>What you can see within your country.</strong> VaxPlan also scopes data by</p>\r\n<p>your place in the hierarchy. A facility clerk or in-charge sees only</p>\r\n<p>their <strong>own facility's</strong> facilities, villages, population, microplans,</p>\r\n<p>sessions, and reports. A district manager sees their district; a</p>\r\n<p>provincial coordinator sees their province; a national admin sees the</p>\r\n<p>whole country. You won't see — or be able to open — a record that</p>\r\n<p>belongs to a facility outside your area, even with a direct link. This</p>\r\n<p>keeps each facility's data private to the people responsible for it.</p>\r\n\r\n<hr>\r\n\r\n"},"5-facility-staff-your-daily-workflow":{"slug":"5-facility-staff-your-daily-workflow","title":"5. Facility staff — your daily workflow","body":"\r\nThis is the most important section for clerks and in-charges. Read it\r\nend-to-end the first time, then return to specific subsections as\r\nneeded. There is also a separate one-page card,\r\n`QUICKSTART_FACILITY.md`, you can print and pin next to your\r\nworkstation.\r\n\r\n### 5.1 Build a routine microplan\r\n\r\nA **microplan** is your facility's quarterly plan. It declares:\r\n\r\n- which villages your facility serves this quarter,\r\n- the target population (under-1s and pregnant women by default —\r\n  configurable per tenant),\r\n- the antigens you will offer,\r\n- the outreach sessions you intend to run (fixed-site sessions are\r\n  automatic).\r\n\r\n**Steps:**\r\n\r\n1. From the sidebar, open **Microplans → Routine**.\r\n2. Click **New microplan**. The wizard opens.\r\n3. **Step 1 — Scope.** Pick the quarter and year. Your facility is\r\n   pre-filled from your profile and cannot be changed.\r\n4. **Step 2 — Catchment.** Tick the villages the facility will serve\r\n   this quarter. The list is your facility's assigned villages from\r\n   the registry. If a community is missing you can add it yourself —\r\n   see **5.8 Manage your communities** below — then return to the\r\n   wizard.\r\n5. **Step 3 — Population.** Confirm the target denominators. Three\r\n   data sources feed this:\r\n   - **Registered population** (your registry, the default),\r\n   - **WorldPop raster** (an open population grid — useful for\r\n     remote villages without a recent census), and\r\n   - **Manual override** (with a justification note).\r\n   Pick the source per village; the wizard sums everything and shows\r\n   you the totals.\r\n6. **Step 4 — Vaccine schedule.** The default schedule is your\r\n   tenant's. Untick antigens that don't apply (for example, if your\r\n   facility doesn't carry HPV).\r\n7. **Step 5 — Outreach intent.** Declare how many outreach sessions\r\n   per village you expect to run. The system creates one session\r\n   plan per (village × month × declared count). You can edit\r\n   individual sessions later.\r\n8. **Step 6 — Review and submit.** Check the totals, then **Save as\r\n   draft** (you can keep editing) or **Submit for approval** (your\r\n   district manager sees it in their queue).\r\n\r\n> **Tip.** You can save a draft at any step. Drafts are private to you\r\n> until you submit.\r\n\r\n### 5.2 Plan a session\r\n\r\nOnce a microplan is approved, its sessions appear on the **Sessions**\r\npage. Each session is created automatically from the microplan's\r\noutreach intent. You can also add ad-hoc sessions for defaulter\r\nfollow-up.\r\n\r\n**To edit a session:**\r\n\r\n1. Open **Sessions** from the sidebar.\r\n2. Use the **Province → District → Facility** cascade filter at the\r\n   top to find your sessions. The row count below changes as you\r\n   filter.\r\n3. Click a session name. The edit dialog opens.\r\n4. Fill in:\r\n   - **Scheduled date** — the day you'll run it.\r\n   - **Site type** — fixed, outreach, or mobile.\r\n   - **Villages served** (for outreach) — pick from the facility's\r\n     catchment.\r\n   - **Cold-chain plan** — vaccine carrier, ice packs, expected\r\n     vaccines.\r\n5. Click **Save**.\r\n\r\nIf GPS coordinates are missing for the village, the system warns you\r\nwhen you save and offers a \"Capture GPS now\" link to record them from\r\nyour phone in the field.\r\n\r\n**Tip — plan from the calendar.** On **All sessions**, pick a day and\r\nclick **Plan a session on this day**. This opens the New Session form\r\n(not the microplan wizard) with the date already filled in; pick the\r\nparent microplan and the form inherits its facility, quarter, year, and\r\ntarget population.\r\n\r\n**Add itinerary days.** Inside a session, use **Add Vaccination Session\r\nItinerary Day** to plan each outreach day. Each day needs a **lead\r\nvaccinator**, a **date at least 7 days ahead**, a **target population**,\r\nand at least one **community** (tick from the list or quick-add from the\r\nmap). The **Calculated Vaccine Supplies** panel estimates realistic doses\r\nper antigen — target × doses-per-child × wastage — so ~50 children yields\r\ntens of doses, not thousands. If a day won't save, the error names the\r\nfield that needs fixing.\r\n\r\n### 5.3 Run a session in the field\r\n\r\nThe session execution screen is designed for use **offline**, on a\r\nphone or tablet, while you're at the village.\r\n\r\n1. From **Sessions**, tap your session for today.\r\n2. Tap **Start session**. The screen switches to capture mode.\r\n3. For each child or pregnant woman vaccinated:\r\n   - Tap **Add client** (or scan their card if you've enabled barcode\r\n     scanning).\r\n   - Pick the antigens administered. The system auto-picks the next\r\n     due dose based on the schedule.\r\n   - Confirm.\r\n4. The session totals update live. Stock balances on the device\r\n   decrement automatically.\r\n\r\nYou can capture an entire day's session with no connectivity. The\r\ndevice queues every entry into an **offline outbox** (see 5.7).\r\n\r\n### 5.4 Mark a session done\r\n\r\nAfter you've finished vaccinating:\r\n\r\n1. Tap **Mark session done**.\r\n2. Confirm the per-antigen counts. The system pre-fills these from\r\n   your capture; you can adjust if your physical tally differs.\r\n3. Add session notes (issues, no-shows, supply problems).\r\n4. Tap **Submit**.\r\n\r\n**What happens behind the scenes:**\r\n\r\n- Per-antigen counts are validated against your tenant's vaccine\r\n  schedule. Known codes are stored under their canonical name (so\r\n  `opv-1` and `OPV-1` are treated the same).\r\n- Unknown codes — usually from older offline entries — are stored in a\r\n  separate bucket so they still count toward totals but don't pollute\r\n  per-antigen rollups. You'll see a warning if any were found, and\r\n  your national admin can review them in the audit log.\r\n- Stock movements are recorded.\r\n- The session is locked. Reopening requires district approval.\r\n\r\n### 5.5 Coverage and the under-immunised list\r\n\r\n**Coverage** is shown on the **Coverage** page. You'll see:\r\n\r\n- Coverage by antigen, this quarter and year-to-date.\r\n- A heatmap of villages by coverage percentage.\r\n- An **under-immunised list** of children who have started but not\r\n  completed a vaccine series (for example, OPV-1 done but OPV-2\r\n  missing past the due date).\r\n\r\n**Acting on the under-immunised list:**\r\n\r\n- Click a child to see their full vaccination history.\r\n- Click **Create defaulter follow-up session** to spin up a new\r\n  outreach session targeting that child's village. The session is\r\n  tagged so it shows up under the **Defaulter follow-up only** filter\r\n  on the Sessions page.\r\n\r\n### 5.6 Stock, wastage, and supply\r\n\r\nThe **Stock** page tracks vaccine balances at your facility:\r\n\r\n- **On hand** by antigen and lot, with expiry dates.\r\n- **Receipts** — when supply arrives from the district, enter the\r\n  delivery note.\r\n- **Issues** — automatic when you mark a session done, manual if\r\n  you give vaccines to another facility.\r\n- **Wastage** — auto-computed from session counts vs. opened vials,\r\n  with a per-antigen wastage threshold. Vials wasted above threshold\r\n  trigger an alert visible to your in-charge and district manager.\r\n\r\nThe **monthly stock summary** is your end-of-month return: review,\r\nadjust if you find a discrepancy on physical count, and submit.\r\n\r\n### 5.7 Offline mode and sync\r\n\r\nVaxPlan works without an internet connection. Here's what you need\r\nto know:\r\n\r\n- The first time you sign in, the app **caches your reference data**\r\n  (facilities, villages, vaccine schedule, microplans) into an\r\n  on-device IndexedDB.\r\n- When you create or update something offline (a session result, a\r\n  stock movement, a new defaulter session), it goes into an\r\n  **outbox**. The header shows a small cloud/sync badge with the number\r\n  of pending items.\r\n- **\"Sync now\" is built into the header.** The sync badge is always\r\n  visible. Whenever you're online, tap it to push your outbox and pull\r\n  the latest server data immediately — whether you have items queued or\r\n  just want a refresh. While you're offline it shows your status and\r\n  pending count, and syncs as soon as you're back online.\r\n- When connectivity returns, the outbox **syncs automatically in the\r\n  background** — even if you've closed the tab or locked the phone, on\r\n  devices that support background sync (most Android browsers). On\r\n  devices that don't (for example iPhones), it syncs the next time you\r\n  open the app.\r\n- **Live updates across devices.** While you're online, VaxPlan keeps a\r\n  lightweight live connection open. If a colleague — or you on another\r\n  device — changes something for your facility, your screen refreshes\r\n  within a few seconds, with no manual reload. If that live connection\r\n  drops, the app quietly falls back to periodic checks.\r\n- If a sync entry is rejected (for example, a session was already\r\n  closed on the server), the system shows the rejection inline and\r\n  asks you to resolve it.\r\n\r\n> **Best practice.** Sync at the end of each session day, when you're\r\n> back in cellular range. Don't let the outbox grow longer than a\r\n> week's worth of entries.\r\n\r\n### 5.8 Manage your communities\r\n\r\nYou can add and edit the communities (villages) your facility serves —\r\nyou don't need to wait for your national admin.\r\n\r\n**To add a community:**\r\n\r\n1. Open **Facilities** from the sidebar and switch to the\r\n   **Communities** tab.\r\n2. Click **Add Community**.\r\n3. **Facility.** If you're facility staff, the facility is pinned to\r\n   your own facility and can't be changed. District staff can pick any\r\n   facility in their district; coordinators and admins get a searchable\r\n   **Province → District → Facility** picker.\r\n4. Fill in the community **name** and any other details.\r\n5. **Set the location.** Either drop a **single pin** for the centre of\r\n   the community, or switch to **Draw Polygon Mode** and click points on\r\n   the map to trace the community's **catchment boundary**. Boundaries\r\n   are saved and shown on the map everywhere in the app, and can be\r\n   reused later.\r\n6. Click **Save**.\r\n\r\n> **Note.** Facility and district staff can add and edit **communities**,\r\n> but only provincial coordinators and national admins can add a new\r\n> **health facility**. The **Add Facility** button is hidden for staff\r\n> who aren't allowed to use it.\r\n\r\n**Catchment overlap and harmonization.** If the boundary you draw\r\noverlaps another community's catchment, VaxPlan shows a **Catchment\r\noverlap detected** panel after you save. It lists each overlapping\r\ncommunity, the other facility, and how much they overlap. To resolve a\r\nclash, click **Request harmonization** next to a community: VaxPlan\r\nrecords the conflict and emails that community's facility in-charge so\r\nthe two facilities can agree on who covers the shared area.\r\n\r\n---\r\n\r\n","renderedHtml":"\r\n<p>This is the most important section for clerks and in-charges. Read it</p>\r\n<p>end-to-end the first time, then return to specific subsections as</p>\r\n<p>needed. There is also a separate one-page card,</p>\r\n<p><code>QUICKSTART_FACILITY.md</code>, you can print and pin next to your</p>\r\n<p>workstation.</p>\r\n\r\n<h3 id=\"51-build-a-routine-microplan\">5.1 Build a routine microplan</h3>\r\n\r\n<p>A <strong>microplan</strong> is your facility's quarterly plan. It declares:</p>\r\n\r\n<ul><li>which villages your facility serves this quarter,</li></ul>\r\n<ul><li>the target population (under-1s and pregnant women by default —</li></ul>\r\n<p>  configurable per tenant),</p>\r\n<ul><li>the antigens you will offer,</li></ul>\r\n<ul><li>the outreach sessions you intend to run (fixed-site sessions are</li></ul>\r\n<p>  automatic).</p>\r\n\r\n<p><strong>Steps:</strong></p>\r\n\r\n<ul><li>From the sidebar, open <strong>Microplans → Routine</strong>.</li></ul>\r\n<ul><li>Click <strong>New microplan</strong>. The wizard opens.</li></ul>\r\n<ul><li><strong>Step 1 — Scope.</strong> Pick the quarter and year. Your facility is</li></ul>\r\n<p>   pre-filled from your profile and cannot be changed.</p>\r\n<ul><li><strong>Step 2 — Catchment.</strong> Tick the villages the facility will serve</li></ul>\r\n<p>   this quarter. The list is your facility's assigned villages from</p>\r\n<p>   the registry. If a community is missing you can add it yourself —</p>\r\n<p>   see <strong>5.8 Manage your communities</strong> below — then return to the</p>\r\n<p>   wizard.</p>\r\n<ul><li><strong>Step 3 — Population.</strong> Confirm the target denominators. Three</li></ul>\r\n<p>   data sources feed this:</p>\r\n<p>   - <strong>Registered population</strong> (your registry, the default),</p>\r\n<p>   - <strong>WorldPop raster</strong> (an open population grid — useful for</p>\r\n<p>     remote villages without a recent census), and</p>\r\n<p>   - <strong>Manual override</strong> (with a justification note).</p>\r\n<p>   Pick the source per village; the wizard sums everything and shows</p>\r\n<p>   you the totals.</p>\r\n<ul><li><strong>Step 4 — Vaccine schedule.</strong> The default schedule is your</li></ul>\r\n<p>   tenant's. Untick antigens that don't apply (for example, if your</p>\r\n<p>   facility doesn't carry HPV).</p>\r\n<ul><li><strong>Step 5 — Outreach intent.</strong> Declare how many outreach sessions</li></ul>\r\n<p>   per village you expect to run. The system creates one session</p>\r\n<p>   plan per (village × month × declared count). You can edit</p>\r\n<p>   individual sessions later.</p>\r\n<ul><li><strong>Step 6 — Review and submit.</strong> Check the totals, then **Save as</li></ul>\r\n<p>   draft<strong> (you can keep editing) or </strong>Submit for approval** (your</p>\r\n<p>   district manager sees it in their queue).</p>\r\n\r\n<blockquote><strong>Tip.</strong> You can save a draft at any step. Drafts are private to you</blockquote>\r\n<blockquote>until you submit.</blockquote>\r\n\r\n<h3 id=\"52-plan-a-session\">5.2 Plan a session</h3>\r\n\r\n<p>Once a microplan is approved, its sessions appear on the <strong>Sessions</strong></p>\r\n<p>page. Each session is created automatically from the microplan's</p>\r\n<p>outreach intent. You can also add ad-hoc sessions for defaulter</p>\r\n<p>follow-up.</p>\r\n\r\n<p><strong>To edit a session:</strong></p>\r\n\r\n<ul><li>Open <strong>Sessions</strong> from the sidebar.</li></ul>\r\n<ul><li>Use the <strong>Province → District → Facility</strong> cascade filter at the</li></ul>\r\n<p>   top to find your sessions. The row count below changes as you</p>\r\n<p>   filter.</p>\r\n<ul><li>Click a session name. The edit dialog opens.</li></ul>\r\n<ul><li>Fill in:</li></ul>\r\n<p>   - <strong>Scheduled date</strong> — the day you'll run it.</p>\r\n<p>   - <strong>Site type</strong> — fixed, outreach, or mobile.</p>\r\n<p>   - <strong>Villages served</strong> (for outreach) — pick from the facility's</p>\r\n<p>     catchment.</p>\r\n<p>   - <strong>Cold-chain plan</strong> — vaccine carrier, ice packs, expected</p>\r\n<p>     vaccines.</p>\r\n<ul><li>Click <strong>Save</strong>.</li></ul>\r\n\r\n<p>If GPS coordinates are missing for the village, the system warns you</p>\r\n<p>when you save and offers a \"Capture GPS now\" link to record them from</p>\r\n<p>your phone in the field.</p>\r\n\r\n<p><strong>Tip — plan from the calendar.</strong> On <strong>All sessions</strong>, pick a day and</p>\r\n<p>click <strong>Plan a session on this day</strong>. This opens the New Session form</p>\r\n<p>(not the microplan wizard) with the date already filled in; pick the</p>\r\n<p>parent microplan and the form inherits its facility, quarter, year, and</p>\r\n<p>target population.</p>\r\n\r\n<p><strong>Add itinerary days.</strong> Inside a session, use **Add Vaccination Session</p>\r\n<p>Itinerary Day<strong> to plan each outreach day. Each day needs a </strong>lead</p>\r\n<p>vaccinator<strong>, a </strong>date at least 7 days ahead<strong>, a </strong>target population**,</p>\r\n<p>and at least one <strong>community</strong> (tick from the list or quick-add from the</p>\r\n<p>map). The <strong>Calculated Vaccine Supplies</strong> panel estimates realistic doses</p>\r\n<p>per antigen — target × doses-per-child × wastage — so ~50 children yields</p>\r\n<p>tens of doses, not thousands. If a day won't save, the error names the</p>\r\n<p>field that needs fixing.</p>\r\n\r\n<h3 id=\"53-run-a-session-in-the-field\">5.3 Run a session in the field</h3>\r\n\r\n<p>The session execution screen is designed for use <strong>offline</strong>, on a</p>\r\n<p>phone or tablet, while you're at the village.</p>\r\n\r\n<ul><li>From <strong>Sessions</strong>, tap your session for today.</li></ul>\r\n<ul><li>Tap <strong>Start session</strong>. The screen switches to capture mode.</li></ul>\r\n<ul><li>For each child or pregnant woman vaccinated:</li></ul>\r\n<p>   - Tap <strong>Add client</strong> (or scan their card if you've enabled barcode</p>\r\n<p>     scanning).</p>\r\n<p>   - Pick the antigens administered. The system auto-picks the next</p>\r\n<p>     due dose based on the schedule.</p>\r\n<p>   - Confirm.</p>\r\n<ul><li>The session totals update live. Stock balances on the device</li></ul>\r\n<p>   decrement automatically.</p>\r\n\r\n<p>You can capture an entire day's session with no connectivity. The</p>\r\n<p>device queues every entry into an <strong>offline outbox</strong> (see 5.7).</p>\r\n\r\n<h3 id=\"54-mark-a-session-done\">5.4 Mark a session done</h3>\r\n\r\n<p>After you've finished vaccinating:</p>\r\n\r\n<ul><li>Tap <strong>Mark session done</strong>.</li></ul>\r\n<ul><li>Confirm the per-antigen counts. The system pre-fills these from</li></ul>\r\n<p>   your capture; you can adjust if your physical tally differs.</p>\r\n<ul><li>Add session notes (issues, no-shows, supply problems).</li></ul>\r\n<ul><li>Tap <strong>Submit</strong>.</li></ul>\r\n\r\n<p><strong>What happens behind the scenes:</strong></p>\r\n\r\n<ul><li>Per-antigen counts are validated against your tenant's vaccine</li></ul>\r\n<p>  schedule. Known codes are stored under their canonical name (so</p>\r\n<p>  <code>opv-1</code> and <code>OPV-1</code> are treated the same).</p>\r\n<ul><li>Unknown codes — usually from older offline entries — are stored in a</li></ul>\r\n<p>  separate bucket so they still count toward totals but don't pollute</p>\r\n<p>  per-antigen rollups. You'll see a warning if any were found, and</p>\r\n<p>  your national admin can review them in the audit log.</p>\r\n<ul><li>Stock movements are recorded.</li></ul>\r\n<ul><li>The session is locked. Reopening requires district approval.</li></ul>\r\n\r\n<h3 id=\"55-coverage-and-the-under-immunised-list\">5.5 Coverage and the under-immunised list</h3>\r\n\r\n<p><strong>Coverage</strong> is shown on the <strong>Coverage</strong> page. You'll see:</p>\r\n\r\n<ul><li>Coverage by antigen, this quarter and year-to-date.</li></ul>\r\n<ul><li>A heatmap of villages by coverage percentage.</li></ul>\r\n<ul><li>An <strong>under-immunised list</strong> of children who have started but not</li></ul>\r\n<p>  completed a vaccine series (for example, OPV-1 done but OPV-2</p>\r\n<p>  missing past the due date).</p>\r\n\r\n<p><strong>Acting on the under-immunised list:</strong></p>\r\n\r\n<ul><li>Click a child to see their full vaccination history.</li></ul>\r\n<ul><li>Click <strong>Create defaulter follow-up session</strong> to spin up a new</li></ul>\r\n<p>  outreach session targeting that child's village. The session is</p>\r\n<p>  tagged so it shows up under the <strong>Defaulter follow-up only</strong> filter</p>\r\n<p>  on the Sessions page.</p>\r\n\r\n<h3 id=\"56-stock-wastage-and-supply\">5.6 Stock, wastage, and supply</h3>\r\n\r\n<p>The <strong>Stock</strong> page tracks vaccine balances at your facility:</p>\r\n\r\n<ul><li><strong>On hand</strong> by antigen and lot, with expiry dates.</li></ul>\r\n<ul><li><strong>Receipts</strong> — when supply arrives from the district, enter the</li></ul>\r\n<p>  delivery note.</p>\r\n<ul><li><strong>Issues</strong> — automatic when you mark a session done, manual if</li></ul>\r\n<p>  you give vaccines to another facility.</p>\r\n<ul><li><strong>Wastage</strong> — auto-computed from session counts vs. opened vials,</li></ul>\r\n<p>  with a per-antigen wastage threshold. Vials wasted above threshold</p>\r\n<p>  trigger an alert visible to your in-charge and district manager.</p>\r\n\r\n<p>The <strong>monthly stock summary</strong> is your end-of-month return: review,</p>\r\n<p>adjust if you find a discrepancy on physical count, and submit.</p>\r\n\r\n<h3 id=\"57-offline-mode-and-sync\">5.7 Offline mode and sync</h3>\r\n\r\n<p>VaxPlan works without an internet connection. Here's what you need</p>\r\n<p>to know:</p>\r\n\r\n<ul><li>The first time you sign in, the app <strong>caches your reference data</strong></li></ul>\r\n<p>  (facilities, villages, vaccine schedule, microplans) into an</p>\r\n<p>  on-device IndexedDB.</p>\r\n<ul><li>When you create or update something offline (a session result, a</li></ul>\r\n<p>  stock movement, a new defaulter session), it goes into an</p>\r\n<p>  <strong>outbox</strong>. The header shows a small cloud/sync badge with the number</p>\r\n<p>  of pending items.</p>\r\n<ul><li><strong>\"Sync now\" is built into the header.</strong> The sync badge is always</li></ul>\r\n<p>  visible. Whenever you're online, tap it to push your outbox and pull</p>\r\n<p>  the latest server data immediately — whether you have items queued or</p>\r\n<p>  just want a refresh. While you're offline it shows your status and</p>\r\n<p>  pending count, and syncs as soon as you're back online.</p>\r\n<ul><li>When connectivity returns, the outbox **syncs automatically in the</li></ul>\r\n<p>  background** — even if you've closed the tab or locked the phone, on</p>\r\n<p>  devices that support background sync (most Android browsers). On</p>\r\n<p>  devices that don't (for example iPhones), it syncs the next time you</p>\r\n<p>  open the app.</p>\r\n<ul><li><strong>Live updates across devices.</strong> While you're online, VaxPlan keeps a</li></ul>\r\n<p>  lightweight live connection open. If a colleague — or you on another</p>\r\n<p>  device — changes something for your facility, your screen refreshes</p>\r\n<p>  within a few seconds, with no manual reload. If that live connection</p>\r\n<p>  drops, the app quietly falls back to periodic checks.</p>\r\n<ul><li>If a sync entry is rejected (for example, a session was already</li></ul>\r\n<p>  closed on the server), the system shows the rejection inline and</p>\r\n<p>  asks you to resolve it.</p>\r\n\r\n<blockquote><strong>Best practice.</strong> Sync at the end of each session day, when you're</blockquote>\r\n<blockquote>back in cellular range. Don't let the outbox grow longer than a</blockquote>\r\n<blockquote>week's worth of entries.</blockquote>\r\n\r\n<h3 id=\"58-manage-your-communities\">5.8 Manage your communities</h3>\r\n\r\n<p>You can add and edit the communities (villages) your facility serves —</p>\r\n<p>you don't need to wait for your national admin.</p>\r\n\r\n<p><strong>To add a community:</strong></p>\r\n\r\n<ul><li>Open <strong>Facilities</strong> from the sidebar and switch to the</li></ul>\r\n<p>   <strong>Communities</strong> tab.</p>\r\n<ul><li>Click <strong>Add Community</strong>.</li></ul>\r\n<ul><li><strong>Facility.</strong> If you're facility staff, the facility is pinned to</li></ul>\r\n<p>   your own facility and can't be changed. District staff can pick any</p>\r\n<p>   facility in their district; coordinators and admins get a searchable</p>\r\n<p>   <strong>Province → District → Facility</strong> picker.</p>\r\n<ul><li>Fill in the community <strong>name</strong> and any other details.</li></ul>\r\n<ul><li><strong>Set the location.</strong> Either drop a <strong>single pin</strong> for the centre of</li></ul>\r\n<p>   the community, or switch to <strong>Draw Polygon Mode</strong> and click points on</p>\r\n<p>   the map to trace the community's <strong>catchment boundary</strong>. Boundaries</p>\r\n<p>   are saved and shown on the map everywhere in the app, and can be</p>\r\n<p>   reused later.</p>\r\n<ul><li>Click <strong>Save</strong>.</li></ul>\r\n\r\n<blockquote><strong>Note.</strong> Facility and district staff can add and edit <strong>communities</strong>,</blockquote>\r\n<blockquote>but only provincial coordinators and national admins can add a new</blockquote>\r\n<blockquote><strong>health facility</strong>. The <strong>Add Facility</strong> button is hidden for staff</blockquote>\r\n<blockquote>who aren't allowed to use it.</blockquote>\r\n\r\n<p><strong>Catchment overlap and harmonization.</strong> If the boundary you draw</p>\r\n<p>overlaps another community's catchment, VaxPlan shows a **Catchment</p>\r\n<p>overlap detected** panel after you save. It lists each overlapping</p>\r\n<p>community, the other facility, and how much they overlap. To resolve a</p>\r\n<p>clash, click <strong>Request harmonization</strong> next to a community: VaxPlan</p>\r\n<p>records the conflict and emails that community's facility in-charge so</p>\r\n<p>the two facilities can agree on who covers the shared area.</p>\r\n\r\n<hr>\r\n\r\n"},"6-district-managers-review-and-oversight":{"slug":"6-district-managers-review-and-oversight","title":"6. District managers — review and oversight","body":"\r\nYou sit between facilities and the province. Your day-to-day:\r\n\r\n- **Approval queue.** Open **Approvals**. You'll see microplans\r\n  submitted by facilities in your district. For each, you can:\r\n  - **Approve** — the plan locks and its sessions go live.\r\n  - **Request changes** — the plan returns to the facility with your\r\n    note.\r\n  - **Reject** — for plans that should be rebuilt from scratch.\r\n- **Coverage rollup.** The **Coverage** page shows you the whole\r\n  district at a glance. Drill down by facility or village.\r\n- **Supervision visits.** Schedule visits to facilities; see §13.\r\n- **Stock alerts.** You'll receive a weekly digest of facilities with\r\n  stockouts, wastage above threshold, or upcoming expiries.\r\n- **Cross-facility intelligence.** The **Map** view shows every\r\n  session in your district pinned by status (planned, conducted,\r\n  overdue, cancelled). Use it to spot uneven coverage by location.\r\n\r\nYou **cannot** author microplans for a facility — that responsibility\r\nstays with facility staff. You can, however, edit catchment\r\nassignments (which villages belong to which facility) if you spot a\r\nboundary issue.\r\n\r\n---\r\n\r\n","renderedHtml":"\r\n<p>You sit between facilities and the province. Your day-to-day:</p>\r\n\r\n<ul><li><strong>Approval queue.</strong> Open <strong>Approvals</strong>. You'll see microplans</li></ul>\r\n<p>  submitted by facilities in your district. For each, you can:</p>\r\n<p>  - <strong>Approve</strong> — the plan locks and its sessions go live.</p>\r\n<p>  - <strong>Request changes</strong> — the plan returns to the facility with your</p>\r\n<p>    note.</p>\r\n<p>  - <strong>Reject</strong> — for plans that should be rebuilt from scratch.</p>\r\n<ul><li><strong>Coverage rollup.</strong> The <strong>Coverage</strong> page shows you the whole</li></ul>\r\n<p>  district at a glance. Drill down by facility or village.</p>\r\n<ul><li><strong>Supervision visits.</strong> Schedule visits to facilities; see §13.</li></ul>\r\n<ul><li><strong>Stock alerts.</strong> You'll receive a weekly digest of facilities with</li></ul>\r\n<p>  stockouts, wastage above threshold, or upcoming expiries.</p>\r\n<ul><li><strong>Cross-facility intelligence.</strong> The <strong>Map</strong> view shows every</li></ul>\r\n<p>  session in your district pinned by status (planned, conducted,</p>\r\n<p>  overdue, cancelled). Use it to spot uneven coverage by location.</p>\r\n\r\n<p>You <strong>cannot</strong> author microplans for a facility — that responsibility</p>\r\n<p>stays with facility staff. You can, however, edit catchment</p>\r\n<p>assignments (which villages belong to which facility) if you spot a</p>\r\n<p>boundary issue.</p>\r\n\r\n<hr>\r\n\r\n"},"7-provincial-coordinators-approvals-and-visibility":{"slug":"7-provincial-coordinators-approvals-and-visibility","title":"7. Provincial coordinators — approvals and visibility","body":"\r\nYour role mirrors the district manager's, scoped to the province:\r\n\r\n- District-level **plan approvals**: when a district manager signs off\r\n  on aggregated district-level outreach plans (for SIAs, mostly),\r\n  they come to you next.\r\n- **Province-wide coverage** dashboards.\r\n- **Cross-district comparison** — see which districts are on track\r\n  and which are slipping.\r\n- **Resource allocation** — request stock reallocations between\r\n  districts using the **Supply request** workflow.\r\n\r\nYou also have access to the **National admin** read-only views (you\r\ncannot edit users or facilities, but you can see them).\r\n\r\n---\r\n\r\n","renderedHtml":"\r\n<p>Your role mirrors the district manager's, scoped to the province:</p>\r\n\r\n<ul><li>District-level <strong>plan approvals</strong>: when a district manager signs off</li></ul>\r\n<p>  on aggregated district-level outreach plans (for SIAs, mostly),</p>\r\n<p>  they come to you next.</p>\r\n<ul><li><strong>Province-wide coverage</strong> dashboards.</li></ul>\r\n<ul><li><strong>Cross-district comparison</strong> — see which districts are on track</li></ul>\r\n<p>  and which are slipping.</p>\r\n<ul><li><strong>Resource allocation</strong> — request stock reallocations between</li></ul>\r\n<p>  districts using the <strong>Supply request</strong> workflow.</p>\r\n\r\n<p>You also have access to the <strong>National admin</strong> read-only views (you</p>\r\n<p>cannot edit users or facilities, but you can see them).</p>\r\n\r\n<hr>\r\n\r\n"},"8-national-administrators":{"slug":"8-national-administrators","title":"8. National administrators","body":"\r\nNational admins are the power users for your country. Your modules:\r\n\r\n- **Users.** Invite users, assign roles, suspend or reactivate\r\n  accounts. You can also bulk-import users from a CSV. When creating a\r\n  user you can set an **initial password** so they can sign in right\r\n  away, and you can **reset any user's password** later from the\r\n  user's edit screen (open a user → **Reset Password**). Passwords must\r\n  be at least 8 characters — share them with the user securely. (Only\r\n  national admins and Super Admins see these password controls. A\r\n  national admin can only manage users in **their own country**; a\r\n  Super Admin can manage users in whichever country they're working in.)\r\n- **Facilities.** The registry of all facilities. Import from CSV (a\r\n  template is downloadable), edit GPS coordinates, merge duplicates,\r\n  or retire facilities.\r\n- **Villages and catchments.** The same for villages. The **catchment\r\n  matrix** lets you assign villages to facilities.\r\n- **Vaccine schedule.** Your tenant's authoritative schedule.\r\n  Adding an antigen here makes it available in microplans nationwide.\r\n- **Labels.** Customise the administrative level labels (e.g.\r\n  \"Province\" → \"Region\" for South Sudan).\r\n- **Boundaries.** See §10.\r\n- **Country dashboard.** Top-line KPIs for the country, including\r\n  coverage by antigen, dropout rates, stock health, and supervision\r\n  compliance.\r\n- **Approvals (escalations).** Anything a district or province\r\n  rejected escalates to you.\r\n- **Audit log.** Every change to sensitive data is logged with who,\r\n  when, and what.\r\n- **Site activity.** A panel on your country dashboard shows who is\r\n  online right now and where they are signed in from, a live map\r\n  pinning those users, visits today and over the last two weeks, your\r\n  busiest pages, and a breakdown of login locations. Users stay counted\r\n  as online while their tab is open — the app sends a quiet heartbeat —\r\n  so someone reading a single page without clicking around still shows\r\n  up. When a user allows location access in their browser, the map uses\r\n  their device's real GPS position; otherwise it falls back to a\r\n  best-effort estimate from the network address, which often resolves\r\n  only to the nearest large city. Platform super admins can tap any\r\n  online person for full detail — email, IP address, device, and exact\r\n  coordinates. It is visible only to national and platform\r\n  administrators.\r\n\r\nNational admins can also configure **scheduled jobs** — population\r\nrefresh from WorldPop, stock-alert digests, and supervision digests\r\nall run on schedules you can tune in **Settings → Schedules**.\r\n\r\n---\r\n\r\n","renderedHtml":"\r\n<p>National admins are the power users for your country. Your modules:</p>\r\n\r\n<ul><li><strong>Users.</strong> Invite users, assign roles, suspend or reactivate</li></ul>\r\n<p>  accounts. You can also bulk-import users from a CSV. When creating a</p>\r\n<p>  user you can set an <strong>initial password</strong> so they can sign in right</p>\r\n<p>  away, and you can <strong>reset any user's password</strong> later from the</p>\r\n<p>  user's edit screen (open a user → <strong>Reset Password</strong>). Passwords must</p>\r\n<p>  be at least 8 characters — share them with the user securely. (Only</p>\r\n<p>  national admins and Super Admins see these password controls. A</p>\r\n<p>  national admin can only manage users in <strong>their own country</strong>; a</p>\r\n<p>  Super Admin can manage users in whichever country they're working in.)</p>\r\n<ul><li><strong>Facilities.</strong> The registry of all facilities. Import from CSV (a</li></ul>\r\n<p>  template is downloadable), edit GPS coordinates, merge duplicates,</p>\r\n<p>  or retire facilities.</p>\r\n<ul><li><strong>Villages and catchments.</strong> The same for villages. The **catchment</li></ul>\r\n<p>  matrix** lets you assign villages to facilities.</p>\r\n<ul><li><strong>Vaccine schedule.</strong> Your tenant's authoritative schedule.</li></ul>\r\n<p>  Adding an antigen here makes it available in microplans nationwide.</p>\r\n<ul><li><strong>Labels.</strong> Customise the administrative level labels (e.g.</li></ul>\r\n<p>  \"Province\" → \"Region\" for South Sudan).</p>\r\n<ul><li><strong>Boundaries.</strong> See §10.</li></ul>\r\n<ul><li><strong>Country dashboard.</strong> Top-line KPIs for the country, including</li></ul>\r\n<p>  coverage by antigen, dropout rates, stock health, and supervision</p>\r\n<p>  compliance.</p>\r\n<ul><li><strong>Approvals (escalations).</strong> Anything a district or province</li></ul>\r\n<p>  rejected escalates to you.</p>\r\n<ul><li><strong>Audit log.</strong> Every change to sensitive data is logged with who,</li></ul>\r\n<p>  when, and what.</p>\r\n<ul><li><strong>Site activity.</strong> A panel on your country dashboard shows who is</li></ul>\r\n<p>  online right now and where they are signed in from, a live map</p>\r\n<p>  pinning those users, visits today and over the last two weeks, your</p>\r\n<p>  busiest pages, and a breakdown of login locations. Users stay counted</p>\r\n<p>  as online while their tab is open — the app sends a quiet heartbeat —</p>\r\n<p>  so someone reading a single page without clicking around still shows</p>\r\n<p>  up. When a user allows location access in their browser, the map uses</p>\r\n<p>  their device's real GPS position; otherwise it falls back to a</p>\r\n<p>  best-effort estimate from the network address, which often resolves</p>\r\n<p>  only to the nearest large city. Platform super admins can tap any</p>\r\n<p>  online person for full detail — email, IP address, device, and exact</p>\r\n<p>  coordinates. It is visible only to national and platform</p>\r\n<p>  administrators.</p>\r\n\r\n<p>National admins can also configure <strong>scheduled jobs</strong> — population</p>\r\n<p>refresh from WorldPop, stock-alert digests, and supervision digests</p>\r\n<p>all run on schedules you can tune in <strong>Settings → Schedules</strong>.</p>\r\n\r\n<hr>\r\n\r\n"},"9-tenant-onboarding-new-ministry-of-health":{"slug":"9-tenant-onboarding-new-ministry-of-health","title":"9. Tenant onboarding (new Ministry of Health)","body":"\r\nThis section is for the VaxPlan **Super Admin** onboarding a new country.\r\nOnboarding a new country is **restricted to Super Admins** — country\r\nadministrators (national admins) manage only their own country and cannot\r\nadd new countries. The **Country Onboarding** screen (sidebar →\r\nAdministration → Country Onboarding) is hidden from everyone except Super\r\nAdmins, and it carries a built-in step-by-step guide that mirrors the\r\nsteps below.\r\n\r\n1. **Create the tenant.** Use **Settings → Tenants → New** and pick:\r\n   - Country name and ISO-3 code.\r\n   - Default time zone.\r\n   - Default admin level labels (e.g. Province/District/Facility,\r\n     or Region/State/Health Area).\r\n   - Default vaccine schedule (clone from a sibling country if you\r\n     have one, then edit).\r\n2. **Configure SSO.** Add the OIDC or SAML configuration for the\r\n   ministry's identity provider. Test the connection before going\r\n   live.\r\n3. **Map email domains.** Adding `@health.gov.xx` makes anyone who\r\n   signs in from that domain land on this tenant by default.\r\n4. **Provision the first national admin.** They will receive an\r\n   invite email and be able to onboard everyone else.\r\n5. **Load reference data.**\r\n   - Admin boundaries — use the **Boundary Manager** (§10).\r\n   - Facilities — import via CSV.\r\n   - Villages and catchments — import via CSV.\r\n   - Population — either ingest a WorldPop raster (national admin\r\n     can do this on demand) or rely on registered population.\r\n   - Where you only have an open facility list with province (but not\r\n     district) labels, VaxPlan can fill in districts automatically by\r\n     matching each facility's GPS coordinates against GeoBoundaries\r\n     ADM2 polygons. See `docs/COUNTRY_ONBOARDING.md` for the repeatable\r\n     prep-and-seed scripts (used to onboard South Africa).\r\n6. **Set the approval workflow.** Decide whether plans need 1, 2, or\r\n   3 levels of approval (facility → district → province → national).\r\n7. **Go live.** The national admin sends out user invites and\r\n   training links.\r\n\r\n---\r\n\r\n","renderedHtml":"\r\n<p>This section is for the VaxPlan <strong>Super Admin</strong> onboarding a new country.</p>\r\n<p>Onboarding a new country is <strong>restricted to Super Admins</strong> — country</p>\r\n<p>administrators (national admins) manage only their own country and cannot</p>\r\n<p>add new countries. The <strong>Country Onboarding</strong> screen (sidebar →</p>\r\n<p>Administration → Country Onboarding) is hidden from everyone except Super</p>\r\n<p>Admins, and it carries a built-in step-by-step guide that mirrors the</p>\r\n<p>steps below.</p>\r\n\r\n<ul><li><strong>Create the tenant.</strong> Use <strong>Settings → Tenants → New</strong> and pick:</li></ul>\r\n<p>   - Country name and ISO-3 code.</p>\r\n<p>   - Default time zone.</p>\r\n<p>   - Default admin level labels (e.g. Province/District/Facility,</p>\r\n<p>     or Region/State/Health Area).</p>\r\n<p>   - Default vaccine schedule (clone from a sibling country if you</p>\r\n<p>     have one, then edit).</p>\r\n<ul><li><strong>Configure SSO.</strong> Add the OIDC or SAML configuration for the</li></ul>\r\n<p>   ministry's identity provider. Test the connection before going</p>\r\n<p>   live.</p>\r\n<ul><li><strong>Map email domains.</strong> Adding <code>@health.gov.xx</code> makes anyone who</li></ul>\r\n<p>   signs in from that domain land on this tenant by default.</p>\r\n<ul><li><strong>Provision the first national admin.</strong> They will receive an</li></ul>\r\n<p>   invite email and be able to onboard everyone else.</p>\r\n<ul><li><strong>Load reference data.</strong></li></ul>\r\n<p>   - Admin boundaries — use the <strong>Boundary Manager</strong> (§10).</p>\r\n<p>   - Facilities — import via CSV.</p>\r\n<p>   - Villages and catchments — import via CSV.</p>\r\n<p>   - Population — either ingest a WorldPop raster (national admin</p>\r\n<p>     can do this on demand) or rely on registered population.</p>\r\n<p>   - Where you only have an open facility list with province (but not</p>\r\n<p>     district) labels, VaxPlan can fill in districts automatically by</p>\r\n<p>     matching each facility's GPS coordinates against GeoBoundaries</p>\r\n<p>     ADM2 polygons. See <code>docs/COUNTRY_ONBOARDING.md</code> for the repeatable</p>\r\n<p>     prep-and-seed scripts (used to onboard South Africa).</p>\r\n<ul><li><strong>Set the approval workflow.</strong> Decide whether plans need 1, 2, or</li></ul>\r\n<p>   3 levels of approval (facility → district → province → national).</p>\r\n<ul><li><strong>Go live.</strong> The national admin sends out user invites and</li></ul>\r\n<p>   training links.</p>\r\n\r\n<hr>\r\n\r\n"},"9b-local-development-database-restore":{"slug":"9b-local-development-database-restore","title":"9b. Local Development Database & Restore","body":"\r\nVaxPlan includes a compressed database dump `local_dump.sql.zip` in the root of the project. This dump contains all available development data, including pre-seeded mock health facilities, routine/campaign microplans, volunteer/CHV profiles, spatial boundary definitions, performance indexes, indicators, and multi-tenant profiles (e.g., Zambia and South Africa).\r\n\r\nTo set up your local development database with this data:\r\n\r\n1. **Unzip the Database Dump**:\r\n   Unzip the compressed archive to extract the raw SQL dump file:\r\n   ```bash\r\n   unzip local_dump.sql.zip\r\n   ```\r\n\r\n2. **Restore to PostgreSQL**:\r\n   Make sure you have a local PostgreSQL database named `vaxplan` running, then restore the dump using `psql`:\r\n   ```bash\r\n   psql -U postgres -d vaxplan -f local_dump.sql\r\n   ```\r\n   *Note: If your local database has different credentials, adjust the username (`-U`) and database name (`-d`) accordingly.*\r\n\r\n3. **Verify Restored Schema**:\r\n   Run the dev server (`npm run dev`) and test the landing page to verify that all country tenants (Zambia, South Africa, etc.) are listed and accessible with pre-configured demo credentials.\r\n\r\n---\r\n\r\n","renderedHtml":"\r\n<p>VaxPlan includes a compressed database dump <code>local_dump.sql.zip</code> in the root of the project. This dump contains all available development data, including pre-seeded mock health facilities, routine/campaign microplans, volunteer/CHV profiles, spatial boundary definitions, performance indexes, indicators, and multi-tenant profiles (e.g., Zambia and South Africa).</p>\r\n\r\n<p>To set up your local development database with this data:</p>\r\n\r\n<ul><li><strong>Unzip the Database Dump</strong>:</li></ul>\r\n<p>   Unzip the compressed archive to extract the raw SQL dump file:</p>\r\n<p>   ``<code>bash</p>\r\n<p>   unzip local_dump.sql.zip</p>\r\n<p>   </code>`<code></p>\r\n\r\n<ul><li><strong>Restore to PostgreSQL</strong>:</li></ul>\r\n<p>   Make sure you have a local PostgreSQL database named </code>vaxplan<code> running, then restore the dump using </code>psql<code>:</p>\r\n<p>   </code>`<code>bash</p>\r\n<p>   psql -U postgres -d vaxplan -f local_dump.sql</p>\r\n<p>   </code>`<code></p>\r\n<p>   <em>Note: If your local database has different credentials, adjust the username (</code>-U<code>) and database name (</code>-d<code>) accordingly.</em></p>\r\n\r\n<ul><li><strong>Verify Restored Schema</strong>:</li></ul>\r\n<p>   Run the dev server (</code>npm run dev`) and test the landing page to verify that all country tenants (Zambia, South Africa, etc.) are listed and accessible with pre-configured demo credentials.</p>\r\n\r\n<hr>\r\n\r\n"},"10-map-and-boundary-management":{"slug":"10-map-and-boundary-management","title":"10. Map and boundary management","body":"\r\nEvery map in VaxPlan (Sessions, Coverage, Settlement intelligence,\r\nMicroplans) draws boundaries on top of OpenStreetMap tiles.\r\n\r\n> **Boundary disclaimer.** The credit at the bottom-right of every map\r\n> carries a short notice that boundaries are approximate, for planning\r\n> and reference only, and do not imply endorsement — and that disputed\r\n> areas are not authoritatively depicted. The full statement, including\r\n> how disputed regions are handled, is in the **Acknowledgements** on the\r\n> Data Sources page (§16).\r\n\r\nBoundaries come from two sources:\r\n\r\n- **GeoBoundaries API** — public, covers 200+ countries, available\r\n  for admin levels 0 to 2 or 3 depending on the country.\r\n- **Custom GeoJSON upload** — your own files, for levels GeoBoundaries\r\n  doesn't cover (e.g. South Sudan Payam) or for your authoritative\r\n  national geometry.\r\n\r\n**To fetch from GeoBoundaries:**\r\n\r\n1. Open **Settings → Boundary Manager**.\r\n2. Click **Fetch from GeoBoundaries API**.\r\n3. Pick country and admin level. Level names are pre-filled (you can\r\n   edit them).\r\n4. Click **Fetch Boundaries**. Large countries (Nigeria, DRC,\r\n   Ethiopia) take 30 to 60 seconds.\r\n\r\n**To upload custom GeoJSON:**\r\n\r\n1. In Boundary Manager, click **Upload Custom GeoJSON**.\r\n2. **ISO-3 country code** (3 letters, e.g. `SSD`, `ZMB`, `PNG`).\r\n3. Pick the admin level and edit the level label if needed.\r\n4. Choose the file (`.geojson` or `.json`). Files up to 50 MB are\r\n   accepted.\r\n5. Click **Upload & Store**.\r\n\r\n> **GADM users.** GADM ships shapefiles, not GeoJSON. Convert with\r\n> the free [mapshaper.org](https://mapshaper.org) website (drag in\r\n> the `.shp`, `.shx`, `.dbf` files, export as GeoJSON).\r\n\r\n---\r\n\r\n","renderedHtml":"\r\n<p>Every map in VaxPlan (Sessions, Coverage, Settlement intelligence,</p>\r\n<p>Microplans) draws boundaries on top of OpenStreetMap tiles.</p>\r\n\r\n<blockquote><strong>Boundary disclaimer.</strong> The credit at the bottom-right of every map</blockquote>\r\n<blockquote>carries a short notice that boundaries are approximate, for planning</blockquote>\r\n<blockquote>and reference only, and do not imply endorsement — and that disputed</blockquote>\r\n<blockquote>areas are not authoritatively depicted. The full statement, including</blockquote>\r\n<blockquote>how disputed regions are handled, is in the <strong>Acknowledgements</strong> on the</blockquote>\r\n<blockquote>Data Sources page (§16).</blockquote>\r\n\r\n<p>Boundaries come from two sources:</p>\r\n\r\n<ul><li><strong>GeoBoundaries API</strong> — public, covers 200+ countries, available</li></ul>\r\n<p>  for admin levels 0 to 2 or 3 depending on the country.</p>\r\n<ul><li><strong>Custom GeoJSON upload</strong> — your own files, for levels GeoBoundaries</li></ul>\r\n<p>  doesn't cover (e.g. South Sudan Payam) or for your authoritative</p>\r\n<p>  national geometry.</p>\r\n\r\n<p><strong>To fetch from GeoBoundaries:</strong></p>\r\n\r\n<ul><li>Open <strong>Settings → Boundary Manager</strong>.</li></ul>\r\n<ul><li>Click <strong>Fetch from GeoBoundaries API</strong>.</li></ul>\r\n<ul><li>Pick country and admin level. Level names are pre-filled (you can</li></ul>\r\n<p>   edit them).</p>\r\n<ul><li>Click <strong>Fetch Boundaries</strong>. Large countries (Nigeria, DRC,</li></ul>\r\n<p>   Ethiopia) take 30 to 60 seconds.</p>\r\n\r\n<p><strong>To upload custom GeoJSON:</strong></p>\r\n\r\n<ul><li>In Boundary Manager, click <strong>Upload Custom GeoJSON</strong>.</li></ul>\r\n<ul><li><strong>ISO-3 country code</strong> (3 letters, e.g. <code>SSD</code>, <code>ZMB</code>, <code>PNG</code>).</li></ul>\r\n<ul><li>Pick the admin level and edit the level label if needed.</li></ul>\r\n<ul><li>Choose the file (<code>.geojson</code> or <code>.json</code>). Files up to 50 MB are</li></ul>\r\n<p>   accepted.</p>\r\n<ul><li>Click <strong>Upload & Store</strong>.</li></ul>\r\n\r\n<blockquote><strong>GADM users.</strong> GADM ships shapefiles, not GeoJSON. Convert with</blockquote>\r\n<blockquote>the free <a href=\"https://mapshaper.org\" target=\"_blank\" rel=\"noopener\">mapshaper.org</a> website (drag in</blockquote>\r\n<blockquote>the <code>.shp</code>, <code>.shx</code>, <code>.dbf</code> files, export as GeoJSON).</blockquote>\r\n\r\n<hr>\r\n\r\n"},"11-settlement-intelligence-and-zero-dose-targeting":{"slug":"11-settlement-intelligence-and-zero-dose-targeting","title":"11. Settlement intelligence and zero-dose targeting","body":"\r\nFor countries where village-level registration is patchy (parts of\r\nSouth Sudan, PNG highlands, Sahel), VaxPlan offers a **settlement\r\nintelligence** layer. It overlays:\r\n\r\n- WorldPop-derived populated cells (250m or 1km).\r\n- Building footprints (GRID3) and detected zero-dose clusters.\r\n- 5 km service-coverage gaps and suggested outreach sites.\r\n\r\nThe population heatmap is read in **real people**, not an abstract\r\ndensity figure. Each coloured cell shows the estimated number of people\r\nliving in that small grid cell (about 100 m × 100 m, roughly one\r\nhectare), and the legend is labelled in people. When you **click any\r\npoint on the map**, the popup gives you a real headcount — the estimated\r\nnumber of people living within 1 km of that point, worked out by adding\r\nup the people in every nearby grid cell — so you can plan an outreach\r\nsession straight from the number without converting density yourself.\r\n\r\nThe **Zero-dose map** uses this data to highlight settlements with no\r\nrecorded vaccinations. Click a hotspot to:\r\n\r\n- See the settlement's estimated population.\r\n- See the nearest facility and travel time.\r\n- Create an outreach session targeting the hotspot.\r\n\r\n**Geospatial Insights (real travel time and nearby assets).** On any\r\nzero-dose cluster card or settlement record, click the **Insights**\r\n(compass) button to open the Geospatial Insights panel. It shows:\r\n\r\n- **Travel time to the nearest facility and the nearest outreach\r\n  site**, calculated on the real road network (OpenStreetMap routing) —\r\n  each with both a **driving** and a **walking** estimate, the road\r\n  distance, and a badge noting whether it's a true road route or a\r\n  straight-line estimate (used automatically if routing is briefly\r\n  unavailable, so the panel always answers). Existing outreach sites are\r\n  often closer to a remote cluster than a fixed facility, so the panel\r\n  shows whichever is relevant — or both, clearly labelled.\r\n- **The route drawn on the map.** While the Insights panel is open, the\r\n  map highlights the inspected point and draws a line to each\r\n  destination — the actual road geometry when a route is available\r\n  (or a dashed straight line when it falls back to an estimate) — and\r\n  marks the nearest facility and outreach site, so you can judge terrain\r\n  and direction at a glance. The map fits the view around the route\r\n  automatically.\r\n- **Community assets within 3 km** — schools, places of worship,\r\n  markets, water points, transport nodes, pharmacies / drug stores,\r\n  universities and colleges, government offices, transport &\r\n  logistics features (airstrips, helipads, ferry terminals, river\r\n  crossings, bridges, fuel stations, taxi ranks), and\r\n  vulnerable-population sites (refugee/IDP camps and mining sites)\r\n  pulled live from OpenStreetMap, each with\r\n  its distance and a clearly coloured icon. These show what services\r\n  already exist near a cluster, which helps you pick an outreach venue.\r\n  If a remote cluster has nothing mapped nearby, the panel says so.\r\n\r\n**Outreach Site Suitability Score (0–100).** Every unserved cluster gets\r\na single, easy-to-read score that answers one question: *how good a\r\ncandidate is this place for a new outreach session?* A higher score means\r\na stronger case. The score combines six things, each shown as its own\r\nbar so you can see exactly why a cluster scored the way it did:\r\n\r\n- **Population size** — more unserved people means more impact.\r\n- **Likely zero-dose children** — the core equity target; clusters with\r\n  more estimated never-vaccinated children score higher.\r\n- **Distance from the nearest facility** — the farther, the bigger the\r\n  access gap a new site would fill.\r\n- **Existing-outreach gap** — how far the cluster is from any outreach\r\n  site you already run (so you don't double up).\r\n- **Road access / travel time** — a site a team can actually reach scores\r\n  higher.\r\n- **Nearby landmark / venue** — a school, place of worship or market\r\n  makes a natural place to hold the session.\r\n\r\nThe list view scores every cluster quickly using the data already on\r\nhand (so anything still being measured is clearly marked **est.**). When\r\nyou open **Insights** on a cluster, the score is **refined live** using\r\nthe real road-network travel time and the landmarks actually found\r\nnearby, and the panel also shows the estimated number of under-5 children\r\nand likely zero-dose children there.\r\n\r\n**Ranked \"Unserved Population Clusters\" list.** The left panel lists\r\nevery pending unserved cluster, ranked by suitability score by default.\r\nUse the **Sort** dropdown to re-order by suitability, population,\r\nzero-dose children, distance to facility, outreach gap or travel time —\r\nwhatever matters most for your plan. Each row shows the score, the factor\r\nbreakdown and the key numbers, with three actions: **Locate** (centre the\r\nmap on it), **Insights** (open the refined breakdown and routes) and —\r\nfor facility staff who can author plans — **Plan session** (jump straight\r\nto Session Planning, pre-filled for that cluster). This is a planning view\r\nonly: it never changes any data and only shows clusters for your country.\r\n\r\n**Ranked clusters on the map.** Turn on the **Ranked Clusters** layer in\r\nthe Map Layers Control panel to plot the same scored clusters from the\r\nleft panel directly on the map. Each pin is colour-graded by suitability\r\nband — **green** for high, **amber** for medium, **grey** for low — so you\r\ncan judge geography and clustering at a glance alongside the facility and\r\nzero-dose layers. Click a pin to see its score, population, likely\r\nzero-dose children, distance to the nearest facility and outreach gap,\r\nwith the same **Locate**, **Insights** and (for facility staff)\r\n**Plan session** actions as the list. Like the list, it's a planning view\r\nonly and shows clusters for your country.\r\n\r\n**More map layers** (toggle them in the **Map Layers Control**\r\npanel, top-right of the map):\r\n\r\n- **Travel-time zones** — travel-time zones around every health\r\n  facility **and every active outreach site** (outreach posts are often\r\n  closer to a remote cluster than a fixed facility, so they give a fuller\r\n  picture of real-world access), with a **Walking / Driving / Cycling**\r\n  toggle in the Map Layers Control panel. Walking shows about 1, 2, and 3\r\n  hours on foot; Driving shows about 30, 60, and 90 minutes by vehicle\r\n  (useful for planning vehicle-based outreach and supply runs); Cycling\r\n  shows about 30, 60, and 90 minutes by bicycle or motorbike (useful for\r\n  outreach teams that travel by two-wheeler). When road routing is available\r\n  these follow the real road and path network (so a settlement across a\r\n  river or behind a ridge correctly shows as far), giving a far more\r\n  trustworthy picture than plain circles. If routing is briefly\r\n  unavailable, the layer falls back to simple dashed rings so you always\r\n  see something — see at a glance which clusters fall outside a\r\n  reasonable walking, driving, or cycling distance. On a busy map the\r\n  zones can overlap a lot, so a second toggle lets you show only\r\n  **Facilities**, only **Outreach** sites, or **Both** — focus on one\r\n  access question at a time. (Both the road-network zones and the\r\n  fallback rings respect the choice.)\r\n- **Community assets** — plots schools, water points, pharmacies,\r\n  universities and colleges, government offices, transport & logistics\r\n  features, vulnerable-population sites, and other assets found within 5 km of\r\n  the current map centre, each with its own coloured icon. Pan or click\r\n  **Locate** on a cluster, then turn this layer on to scan what's\r\n  around it.\r\n\r\n> Travel times and community assets come from open data and are a\r\n> planning aid, not a survey. Always confirm on the ground.\r\n\r\nThis module is most useful for the **district manager**,\r\n**provincial coordinator**, and **national admin** roles when planning\r\nquarterly microplanning calendars.\r\n\r\n---\r\n\r\n","renderedHtml":"\r\n<p>For countries where village-level registration is patchy (parts of</p>\r\n<p>South Sudan, PNG highlands, Sahel), VaxPlan offers a **settlement</p>\r\n<p>intelligence** layer. It overlays:</p>\r\n\r\n<ul><li>WorldPop-derived populated cells (250m or 1km).</li></ul>\r\n<ul><li>Building footprints (GRID3) and detected zero-dose clusters.</li></ul>\r\n<ul><li>5 km service-coverage gaps and suggested outreach sites.</li></ul>\r\n\r\n<p>The population heatmap is read in <strong>real people</strong>, not an abstract</p>\r\n<p>density figure. Each coloured cell shows the estimated number of people</p>\r\n<p>living in that small grid cell (about 100 m × 100 m, roughly one</p>\r\n<p>hectare), and the legend is labelled in people. When you **click any</p>\r\n<p>point on the map**, the popup gives you a real headcount — the estimated</p>\r\n<p>number of people living within 1 km of that point, worked out by adding</p>\r\n<p>up the people in every nearby grid cell — so you can plan an outreach</p>\r\n<p>session straight from the number without converting density yourself.</p>\r\n\r\n<p>The <strong>Zero-dose map</strong> uses this data to highlight settlements with no</p>\r\n<p>recorded vaccinations. Click a hotspot to:</p>\r\n\r\n<ul><li>See the settlement's estimated population.</li></ul>\r\n<ul><li>See the nearest facility and travel time.</li></ul>\r\n<ul><li>Create an outreach session targeting the hotspot.</li></ul>\r\n\r\n<p><strong>Geospatial Insights (real travel time and nearby assets).</strong> On any</p>\r\n<p>zero-dose cluster card or settlement record, click the <strong>Insights</strong></p>\r\n<p>(compass) button to open the Geospatial Insights panel. It shows:</p>\r\n\r\n<ul><li>**Travel time to the nearest facility and the nearest outreach</li></ul>\r\n<p>  site**, calculated on the real road network (OpenStreetMap routing) —</p>\r\n<p>  each with both a <strong>driving</strong> and a <strong>walking</strong> estimate, the road</p>\r\n<p>  distance, and a badge noting whether it's a true road route or a</p>\r\n<p>  straight-line estimate (used automatically if routing is briefly</p>\r\n<p>  unavailable, so the panel always answers). Existing outreach sites are</p>\r\n<p>  often closer to a remote cluster than a fixed facility, so the panel</p>\r\n<p>  shows whichever is relevant — or both, clearly labelled.</p>\r\n<ul><li><strong>The route drawn on the map.</strong> While the Insights panel is open, the</li></ul>\r\n<p>  map highlights the inspected point and draws a line to each</p>\r\n<p>  destination — the actual road geometry when a route is available</p>\r\n<p>  (or a dashed straight line when it falls back to an estimate) — and</p>\r\n<p>  marks the nearest facility and outreach site, so you can judge terrain</p>\r\n<p>  and direction at a glance. The map fits the view around the route</p>\r\n<p>  automatically.</p>\r\n<ul><li><strong>Community assets within 3 km</strong> — schools, places of worship,</li></ul>\r\n<p>  markets, water points, transport nodes, pharmacies / drug stores,</p>\r\n<p>  universities and colleges, government offices, transport &</p>\r\n<p>  logistics features (airstrips, helipads, ferry terminals, river</p>\r\n<p>  crossings, bridges, fuel stations, taxi ranks), and</p>\r\n<p>  vulnerable-population sites (refugee/IDP camps and mining sites)</p>\r\n<p>  pulled live from OpenStreetMap, each with</p>\r\n<p>  its distance and a clearly coloured icon. These show what services</p>\r\n<p>  already exist near a cluster, which helps you pick an outreach venue.</p>\r\n<p>  If a remote cluster has nothing mapped nearby, the panel says so.</p>\r\n\r\n<p><strong>Outreach Site Suitability Score (0–100).</strong> Every unserved cluster gets</p>\r\n<p>a single, easy-to-read score that answers one question: *how good a</p>\r\n<p>candidate is this place for a new outreach session?* A higher score means</p>\r\n<p>a stronger case. The score combines six things, each shown as its own</p>\r\n<p>bar so you can see exactly why a cluster scored the way it did:</p>\r\n\r\n<ul><li><strong>Population size</strong> — more unserved people means more impact.</li></ul>\r\n<ul><li><strong>Likely zero-dose children</strong> — the core equity target; clusters with</li></ul>\r\n<p>  more estimated never-vaccinated children score higher.</p>\r\n<ul><li><strong>Distance from the nearest facility</strong> — the farther, the bigger the</li></ul>\r\n<p>  access gap a new site would fill.</p>\r\n<ul><li><strong>Existing-outreach gap</strong> — how far the cluster is from any outreach</li></ul>\r\n<p>  site you already run (so you don't double up).</p>\r\n<ul><li><strong>Road access / travel time</strong> — a site a team can actually reach scores</li></ul>\r\n<p>  higher.</p>\r\n<ul><li><strong>Nearby landmark / venue</strong> — a school, place of worship or market</li></ul>\r\n<p>  makes a natural place to hold the session.</p>\r\n\r\n<p>The list view scores every cluster quickly using the data already on</p>\r\n<p>hand (so anything still being measured is clearly marked <strong>est.</strong>). When</p>\r\n<p>you open <strong>Insights</strong> on a cluster, the score is <strong>refined live</strong> using</p>\r\n<p>the real road-network travel time and the landmarks actually found</p>\r\n<p>nearby, and the panel also shows the estimated number of under-5 children</p>\r\n<p>and likely zero-dose children there.</p>\r\n\r\n<p><strong>Ranked \"Unserved Population Clusters\" list.</strong> The left panel lists</p>\r\n<p>every pending unserved cluster, ranked by suitability score by default.</p>\r\n<p>Use the <strong>Sort</strong> dropdown to re-order by suitability, population,</p>\r\n<p>zero-dose children, distance to facility, outreach gap or travel time —</p>\r\n<p>whatever matters most for your plan. Each row shows the score, the factor</p>\r\n<p>breakdown and the key numbers, with three actions: <strong>Locate</strong> (centre the</p>\r\n<p>map on it), <strong>Insights</strong> (open the refined breakdown and routes) and —</p>\r\n<p>for facility staff who can author plans — <strong>Plan session</strong> (jump straight</p>\r\n<p>to Session Planning, pre-filled for that cluster). This is a planning view</p>\r\n<p>only: it never changes any data and only shows clusters for your country.</p>\r\n\r\n<p><strong>Ranked clusters on the map.</strong> Turn on the <strong>Ranked Clusters</strong> layer in</p>\r\n<p>the Map Layers Control panel to plot the same scored clusters from the</p>\r\n<p>left panel directly on the map. Each pin is colour-graded by suitability</p>\r\n<p>band — <strong>green</strong> for high, <strong>amber</strong> for medium, <strong>grey</strong> for low — so you</p>\r\n<p>can judge geography and clustering at a glance alongside the facility and</p>\r\n<p>zero-dose layers. Click a pin to see its score, population, likely</p>\r\n<p>zero-dose children, distance to the nearest facility and outreach gap,</p>\r\n<p>with the same <strong>Locate</strong>, <strong>Insights</strong> and (for facility staff)</p>\r\n<p><strong>Plan session</strong> actions as the list. Like the list, it's a planning view</p>\r\n<p>only and shows clusters for your country.</p>\r\n\r\n<p><strong>More map layers</strong> (toggle them in the <strong>Map Layers Control</strong></p>\r\n<p>panel, top-right of the map):</p>\r\n\r\n<ul><li><strong>Travel-time zones</strong> — travel-time zones around every health</li></ul>\r\n<p>  facility <strong>and every active outreach site</strong> (outreach posts are often</p>\r\n<p>  closer to a remote cluster than a fixed facility, so they give a fuller</p>\r\n<p>  picture of real-world access), with a <strong>Walking / Driving / Cycling</strong></p>\r\n<p>  toggle in the Map Layers Control panel. Walking shows about 1, 2, and 3</p>\r\n<p>  hours on foot; Driving shows about 30, 60, and 90 minutes by vehicle</p>\r\n<p>  (useful for planning vehicle-based outreach and supply runs); Cycling</p>\r\n<p>  shows about 30, 60, and 90 minutes by bicycle or motorbike (useful for</p>\r\n<p>  outreach teams that travel by two-wheeler). When road routing is available</p>\r\n<p>  these follow the real road and path network (so a settlement across a</p>\r\n<p>  river or behind a ridge correctly shows as far), giving a far more</p>\r\n<p>  trustworthy picture than plain circles. If routing is briefly</p>\r\n<p>  unavailable, the layer falls back to simple dashed rings so you always</p>\r\n<p>  see something — see at a glance which clusters fall outside a</p>\r\n<p>  reasonable walking, driving, or cycling distance. On a busy map the</p>\r\n<p>  zones can overlap a lot, so a second toggle lets you show only</p>\r\n<p>  <strong>Facilities</strong>, only <strong>Outreach</strong> sites, or <strong>Both</strong> — focus on one</p>\r\n<p>  access question at a time. (Both the road-network zones and the</p>\r\n<p>  fallback rings respect the choice.)</p>\r\n<ul><li><strong>Community assets</strong> — plots schools, water points, pharmacies,</li></ul>\r\n<p>  universities and colleges, government offices, transport & logistics</p>\r\n<p>  features, vulnerable-population sites, and other assets found within 5 km of</p>\r\n<p>  the current map centre, each with its own coloured icon. Pan or click</p>\r\n<p>  <strong>Locate</strong> on a cluster, then turn this layer on to scan what's</p>\r\n<p>  around it.</p>\r\n\r\n<blockquote>Travel times and community assets come from open data and are a</blockquote>\r\n<blockquote>planning aid, not a survey. Always confirm on the ground.</blockquote>\r\n\r\n<p>This module is most useful for the <strong>district manager</strong>,</p>\r\n<p><strong>provincial coordinator</strong>, and <strong>national admin</strong> roles when planning</p>\r\n<p>quarterly microplanning calendars.</p>\r\n\r\n<hr>\r\n\r\n"},"12-settings-customisation-and-labels":{"slug":"12-settings-customisation-and-labels","title":"12. Settings, customisation, and labels","body":"\r\nNational admins can adjust the look and feel of the app for their\r\ncountry:\r\n\r\n- **Admin level labels.** Each tenant can rename the four hierarchy\r\n  levels. The default is Country / Province / District / Facility.\r\n  Common alternatives:\r\n  - South Sudan: Country / State / County / Payam.\r\n  - PNG: Country / Province / District / Local-Level Government.\r\n  - Zambia: Country / Province / District / Constituency.\r\n- **Branding.** Upload your ministry logo; it appears on the header\r\n  and on all PDF exports.\r\n- **Languages.** Choose the default language for users in your\r\n  tenant. English, French, and Portuguese are bundled; ask the\r\n  VaxPlan team for additions.\r\n- **Vaccine schedule.** Add antigens and doses; mark which are\r\n  routine vs. campaign.\r\n- **Wastage thresholds.** Per antigen, what percentage of doses\r\n  wasted triggers an alert.\r\n\r\n---\r\n\r\n","renderedHtml":"\r\n<p>National admins can adjust the look and feel of the app for their</p>\r\n<p>country:</p>\r\n\r\n<ul><li><strong>Admin level labels.</strong> Each tenant can rename the four hierarchy</li></ul>\r\n<p>  levels. The default is Country / Province / District / Facility.</p>\r\n<p>  Common alternatives:</p>\r\n<p>  - South Sudan: Country / State / County / Payam.</p>\r\n<p>  - PNG: Country / Province / District / Local-Level Government.</p>\r\n<p>  - Zambia: Country / Province / District / Constituency.</p>\r\n<ul><li><strong>Branding.</strong> Upload your ministry logo; it appears on the header</li></ul>\r\n<p>  and on all PDF exports.</p>\r\n<ul><li><strong>Languages.</strong> Choose the default language for users in your</li></ul>\r\n<p>  tenant. English, French, and Portuguese are bundled; ask the</p>\r\n<p>  VaxPlan team for additions.</p>\r\n<ul><li><strong>Vaccine schedule.</strong> Add antigens and doses; mark which are</li></ul>\r\n<p>  routine vs. campaign.</p>\r\n<ul><li><strong>Wastage thresholds.</strong> Per antigen, what percentage of doses</li></ul>\r\n<p>  wasted triggers an alert.</p>\r\n\r\n<hr>\r\n\r\n"},"13-supervision-visits":{"slug":"13-supervision-visits","title":"13. Supervision visits","body":"\r\nSupervision is a first-class workflow:\r\n\r\n1. **Schedule visits.** Open **Supervision → Schedule Visit**, pick a\r\n   facility, a date, and a supervisor. You can also choose which\r\n   **checklist** to use — the built-in WHO checklist, or any custom\r\n   checklist your national admin has built (see below).\r\n2. **Visit checklist.** When the supervisor arrives, they open the\r\n   visit on their phone. A **progress bar** at the top shows how many\r\n   questions are answered and the **live score** updates as they go. A\r\n   **Visit location** card confirms where the visit happened using a\r\n   smart **Province → District → Health Facility** picker plus an\r\n   **interactive map** — tap the map to drop a pin, drag it to\r\n   fine-tune, or tap **Use my location** to place it from the device's\r\n   GPS. They then answer the checklist questions. Questions\r\n   can be Yes/No, True/False, short text, a number, single- or\r\n   multiple-choice, a 1–5 rating, a date, a **GPS location** (picked\r\n   the same way, on a map), or a **photo** taken on the device.\r\n   Some questions are **follow-ups** that only appear after a\r\n   particular answer (for example, an \"If No, why?\" box that shows up\r\n   only when the previous question is answered \"No\"). Other questions\r\n   are **repeatable** — tap **Add another** to record one entry per\r\n   vaccinator, session, or child, and remove an entry you don't need.\r\n3. **Findings and actions.** Record findings and follow-up actions,\r\n   and set the next visit date.\r\n4. **Score.** The visit score is the average of the scored questions —\r\n   Yes/No and True/False answers, plus any ratings the checklist author\r\n   chose to count. Every repeated entry counts, so the entries are\r\n   averaged together automatically. N/A and hidden follow-ups are\r\n   ignored.\r\n\r\nThe **Supervision digest** (a weekly summary) rolls up overdue\r\nvisits to the district and provincial dashboards.\r\n\r\n### Custom supervision checklists (national admins)\r\n\r\nNational admins can build their own checklists so every facility in\r\nthe country uses the same questions:\r\n\r\n1. Open **Supervision → Manage Checklists**.\r\n2. Click **New checklist**, give it a name, and add questions. For\r\n   each question pick a type (Yes/No, True/False, short text, number,\r\n   single choice, multiple choice, rating, date, GPS location, or\r\n   photo), and add options for choice questions.\r\n3. Make any question highly configurable:\r\n   - **Follow-up:** under any question, click **Add a follow-up\r\n     question**. The new question appears indented beneath it, and you\r\n     choose which answer reveals it (e.g. show it only when the question\r\n     is answered \"No\", or whenever it has any answer). Any question can\r\n     have follow-ups — including the first one — and you can **Detach** a\r\n     follow-up to make it a normal question again.\r\n   - **Repeat:** turn on \"Allow multiple entries\" so supervisors can\r\n     add as many entries as needed during a visit. You can name each\r\n     entry (e.g. \"Vaccinator\") and cap how many are allowed.\r\n   - **Scoring:** choose whether each Yes/No or True/False question\r\n     counts toward the score, and opt a rating in so it counts too.\r\n4. Mark a checklist **Active** to make it available when scheduling\r\n   visits. Anyone in the country can then pick it; only national\r\n   admins can create, edit, or delete the checklists themselves.\r\n\r\n---\r\n\r\n","renderedHtml":"\r\n<p>Supervision is a first-class workflow:</p>\r\n\r\n<ul><li><strong>Schedule visits.</strong> Open <strong>Supervision → Schedule Visit</strong>, pick a</li></ul>\r\n<p>   facility, a date, and a supervisor. You can also choose which</p>\r\n<p>   <strong>checklist</strong> to use — the built-in WHO checklist, or any custom</p>\r\n<p>   checklist your national admin has built (see below).</p>\r\n<ul><li><strong>Visit checklist.</strong> When the supervisor arrives, they open the</li></ul>\r\n<p>   visit on their phone. A <strong>progress bar</strong> at the top shows how many</p>\r\n<p>   questions are answered and the <strong>live score</strong> updates as they go. A</p>\r\n<p>   <strong>Visit location</strong> card confirms where the visit happened using a</p>\r\n<p>   smart <strong>Province → District → Health Facility</strong> picker plus an</p>\r\n<p>   <strong>interactive map</strong> — tap the map to drop a pin, drag it to</p>\r\n<p>   fine-tune, or tap <strong>Use my location</strong> to place it from the device's</p>\r\n<p>   GPS. They then answer the checklist questions. Questions</p>\r\n<p>   can be Yes/No, True/False, short text, a number, single- or</p>\r\n<p>   multiple-choice, a 1–5 rating, a date, a <strong>GPS location</strong> (picked</p>\r\n<p>   the same way, on a map), or a <strong>photo</strong> taken on the device.</p>\r\n<p>   Some questions are <strong>follow-ups</strong> that only appear after a</p>\r\n<p>   particular answer (for example, an \"If No, why?\" box that shows up</p>\r\n<p>   only when the previous question is answered \"No\"). Other questions</p>\r\n<p>   are <strong>repeatable</strong> — tap <strong>Add another</strong> to record one entry per</p>\r\n<p>   vaccinator, session, or child, and remove an entry you don't need.</p>\r\n<ul><li><strong>Findings and actions.</strong> Record findings and follow-up actions,</li></ul>\r\n<p>   and set the next visit date.</p>\r\n<ul><li><strong>Score.</strong> The visit score is the average of the scored questions —</li></ul>\r\n<p>   Yes/No and True/False answers, plus any ratings the checklist author</p>\r\n<p>   chose to count. Every repeated entry counts, so the entries are</p>\r\n<p>   averaged together automatically. N/A and hidden follow-ups are</p>\r\n<p>   ignored.</p>\r\n\r\n<p>The <strong>Supervision digest</strong> (a weekly summary) rolls up overdue</p>\r\n<p>visits to the district and provincial dashboards.</p>\r\n\r\n<h3 id=\"custom-supervision-checklists-national-admins\">Custom supervision checklists (national admins)</h3>\r\n\r\n<p>National admins can build their own checklists so every facility in</p>\r\n<p>the country uses the same questions:</p>\r\n\r\n<ul><li>Open <strong>Supervision → Manage Checklists</strong>.</li></ul>\r\n<ul><li>Click <strong>New checklist</strong>, give it a name, and add questions. For</li></ul>\r\n<p>   each question pick a type (Yes/No, True/False, short text, number,</p>\r\n<p>   single choice, multiple choice, rating, date, GPS location, or</p>\r\n<p>   photo), and add options for choice questions.</p>\r\n<ul><li>Make any question highly configurable:</li></ul>\r\n<p>   - <strong>Follow-up:</strong> under any question, click **Add a follow-up</p>\r\n<p>     question**. The new question appears indented beneath it, and you</p>\r\n<p>     choose which answer reveals it (e.g. show it only when the question</p>\r\n<p>     is answered \"No\", or whenever it has any answer). Any question can</p>\r\n<p>     have follow-ups — including the first one — and you can <strong>Detach</strong> a</p>\r\n<p>     follow-up to make it a normal question again.</p>\r\n<p>   - <strong>Repeat:</strong> turn on \"Allow multiple entries\" so supervisors can</p>\r\n<p>     add as many entries as needed during a visit. You can name each</p>\r\n<p>     entry (e.g. \"Vaccinator\") and cap how many are allowed.</p>\r\n<p>   - <strong>Scoring:</strong> choose whether each Yes/No or True/False question</p>\r\n<p>     counts toward the score, and opt a rating in so it counts too.</p>\r\n<ul><li>Mark a checklist <strong>Active</strong> to make it available when scheduling</li></ul>\r\n<p>   visits. Anyone in the country can then pick it; only national</p>\r\n<p>   admins can create, edit, or delete the checklists themselves.</p>\r\n\r\n<hr>\r\n\r\n"},"14-reports-and-exports":{"slug":"14-reports-and-exports","title":"14. Reports and exports","body":"\r\nMost tables in VaxPlan have an **Export** button that produces an\r\nExcel workbook with the currently filtered rows.\r\n\r\nFor more formal outputs, use **Reports → Generate**:\r\n\r\n- **Quarterly microplan return** (PDF, per facility).\r\n- **District coverage report** (PDF, per district per month).\r\n- **Stock and wastage report** (Excel, per facility per month).\r\n- **Supervision report** (PDF, per visit).\r\n\r\nAll reports honour the geo filters you've selected on the page.\r\n\r\n---\r\n\r\n","renderedHtml":"\r\n<p>Most tables in VaxPlan have an <strong>Export</strong> button that produces an</p>\r\n<p>Excel workbook with the currently filtered rows.</p>\r\n\r\n<p>For more formal outputs, use <strong>Reports → Generate</strong>:</p>\r\n\r\n<ul><li><strong>Quarterly microplan return</strong> (PDF, per facility).</li></ul>\r\n<ul><li><strong>District coverage report</strong> (PDF, per district per month).</li></ul>\r\n<ul><li><strong>Stock and wastage report</strong> (Excel, per facility per month).</li></ul>\r\n<ul><li><strong>Supervision report</strong> (PDF, per visit).</li></ul>\r\n\r\n<p>All reports honour the geo filters you've selected on the page.</p>\r\n\r\n<hr>\r\n\r\n"},"14b-indicator-reference-manual-knowledge-mastery":{"slug":"14b-indicator-reference-manual-knowledge-mastery","title":"14b. Indicator reference manual & Knowledge Mastery","body":"\r\nTo support health planners and managers in interpreting vaccination progress correctly, VaxPlan includes an interactive, tenant-specific **Indicator Reference Manual** accessible from the Analytics sidebar group.\r\n\r\n### Structure of the Manual\r\nThe manual organizes standard indicators (including WHO, Gavi, and UNICEF reporting metrics) by category and subcategory:\r\n- **Core Metrics**: Numerators, Denominators, and detailed formulas (e.g. `Coverage Rate (%) = (Vaccinated Count / Target Population) * 100`).\r\n- **Granular Data Sources**: Data sources are explicitly split into separate fields for the Numerator (e.g., client logbooks) and Denominator (e.g., WorldPop or census estimates).\r\n- **Calculation Examples**: Every metric includes a concrete, plain-language example showing how values are calculated (e.g., Penta1-Penta3 dropout calculations).\r\n- **Clickable Guidelines**: Reference guidelines are clickable pills that open the official WHO or Gavi documentation directly in a new tab.\r\n\r\n### Knowledge Mastery Gamification\r\nPlanners can build their expertise using the built-in **Mastery Tracker**:\r\n- Toggling **Mark as Mastered 🎯** on any indicator adds it to your personal learning register (saved locally on your device).\r\n- Progresses through four mastery ranks in the dashboard header:\r\n  - **EPI Novice 🌱** (0-3 metrics mastered)\r\n  - **EPI Practitioner 📘** (4-7 metrics mastered)\r\n  - **EPI Specialist 🎯** (8-10 metrics mastered)\r\n  - **EPI Mastery Legend 🏆** (All 11 metrics mastered)\r\n\r\n---\r\n\r\n","renderedHtml":"\r\n<p>To support health planners and managers in interpreting vaccination progress correctly, VaxPlan includes an interactive, tenant-specific <strong>Indicator Reference Manual</strong> accessible from the Analytics sidebar group.</p>\r\n\r\n<h3 id=\"structure-of-the-manual\">Structure of the Manual</h3>\r\n<p>The manual organizes standard indicators (including WHO, Gavi, and UNICEF reporting metrics) by category and subcategory:</p>\r\n<ul><li><strong>Core Metrics</strong>: Numerators, Denominators, and detailed formulas (e.g. <code>Coverage Rate (%) = (Vaccinated Count / Target Population) * 100</code>).</li></ul>\r\n<ul><li><strong>Granular Data Sources</strong>: Data sources are explicitly split into separate fields for the Numerator (e.g., client logbooks) and Denominator (e.g., WorldPop or census estimates).</li></ul>\r\n<ul><li><strong>Calculation Examples</strong>: Every metric includes a concrete, plain-language example showing how values are calculated (e.g., Penta1-Penta3 dropout calculations).</li></ul>\r\n<ul><li><strong>Clickable Guidelines</strong>: Reference guidelines are clickable pills that open the official WHO or Gavi documentation directly in a new tab.</li></ul>\r\n\r\n<h3 id=\"knowledge-mastery-gamification\">Knowledge Mastery Gamification</h3>\r\n<p>Planners can build their expertise using the built-in <strong>Mastery Tracker</strong>:</p>\r\n<ul><li>Toggling <strong>Mark as Mastered 🎯</strong> on any indicator adds it to your personal learning register (saved locally on your device).</li></ul>\r\n<ul><li>Progresses through four mastery ranks in the dashboard header:</li></ul>\r\n<p>  - <strong>EPI Novice 🌱</strong> (0-3 metrics mastered)</p>\r\n<p>  - <strong>EPI Practitioner 📘</strong> (4-7 metrics mastered)</p>\r\n<p>  - <strong>EPI Specialist 🎯</strong> (8-10 metrics mastered)</p>\r\n<p>  - <strong>EPI Mastery Legend 🏆</strong> (All 11 metrics mastered)</p>\r\n\r\n<hr>\r\n\r\n"},"15-troubleshooting":{"slug":"15-troubleshooting","title":"15. Troubleshooting","body":"\r\n**I can't see my facility's sessions on the Sessions page.**\r\nCheck the Province / District / Facility filter at the top of the\r\npage — if any are set, only matching sessions are shown. Clear them\r\nto see everything you're allowed to see.\r\n\r\n**The map is blank.**\r\nEither you don't have boundaries loaded for the level you're viewing\r\n(ask a national admin), or your browser blocked location/tile\r\nfetches. Try a different browser or hard-refresh.\r\n\r\n**\"413 Request Entity Too Large\" when uploading a boundary.**\r\nThat used to happen for files over 100 KB. Files up to 50 MB are now\r\naccepted. If you see this on a smaller file, the file may not be\r\nvalid GeoJSON; try opening it in [geojson.io](https://geojson.io) to\r\nvalidate.\r\n\r\n**\"GeoBoundaries has no ADM3 boundary\" error.**\r\nGeoBoundaries doesn't publish every admin level for every country.\r\nFor South Sudan, only ADM0-ADM2 are upstream — for Payam you need to\r\nupload a custom GeoJSON (OCHA HDX is a good source).\r\n\r\n**My country code is rejected with \"must contain exactly 3\r\ncharacters\".** Use the ISO 3166-1 alpha-3 code (e.g. `SSD` for South\r\nSudan, `ZMB` for Zambia, `PNG` for Papua New Guinea, `KEN` for\r\nKenya). The 2-letter alpha-2 codes (`SS`, `ZM`) are not accepted.\r\n\r\n**I marked a session done but it shows zero coverage.**\r\nThe per-antigen counts may use unknown codes (older offline outbox\r\nentries). Open the session, check the \"unmapped antigens\" warning,\r\nand ask your national admin to standardise the codes via the audit\r\nlog workflow.\r\n\r\n**Sync failed for some outbox entries.**\r\nTap the cloud icon to see which ones. Most failures are because the\r\nunderlying session was closed or deleted on the server. Reopen the\r\nentry, resolve the conflict, and retry.\r\n\r\n**I'm logged in but I see \"pending approval\".**\r\nA national or district admin needs to confirm your role. Contact\r\nyour administrator; they will see the request in their inbox.\r\n\r\n---\r\n\r\n","renderedHtml":"\r\n<p><strong>I can't see my facility's sessions on the Sessions page.</strong></p>\r\n<p>Check the Province / District / Facility filter at the top of the</p>\r\n<p>page — if any are set, only matching sessions are shown. Clear them</p>\r\n<p>to see everything you're allowed to see.</p>\r\n\r\n<p><strong>The map is blank.</strong></p>\r\n<p>Either you don't have boundaries loaded for the level you're viewing</p>\r\n<p>(ask a national admin), or your browser blocked location/tile</p>\r\n<p>fetches. Try a different browser or hard-refresh.</p>\r\n\r\n<p><strong>\"413 Request Entity Too Large\" when uploading a boundary.</strong></p>\r\n<p>That used to happen for files over 100 KB. Files up to 50 MB are now</p>\r\n<p>accepted. If you see this on a smaller file, the file may not be</p>\r\n<p>valid GeoJSON; try opening it in <a href=\"https://geojson.io\" target=\"_blank\" rel=\"noopener\">geojson.io</a> to</p>\r\n<p>validate.</p>\r\n\r\n<p><strong>\"GeoBoundaries has no ADM3 boundary\" error.</strong></p>\r\n<p>GeoBoundaries doesn't publish every admin level for every country.</p>\r\n<p>For South Sudan, only ADM0-ADM2 are upstream — for Payam you need to</p>\r\n<p>upload a custom GeoJSON (OCHA HDX is a good source).</p>\r\n\r\n<p>**My country code is rejected with \"must contain exactly 3</p>\r\n<p>characters\".** Use the ISO 3166-1 alpha-3 code (e.g. <code>SSD</code> for South</p>\r\n<p>Sudan, <code>ZMB</code> for Zambia, <code>PNG</code> for Papua New Guinea, <code>KEN</code> for</p>\r\n<p>Kenya). The 2-letter alpha-2 codes (<code>SS</code>, <code>ZM</code>) are not accepted.</p>\r\n\r\n<p><strong>I marked a session done but it shows zero coverage.</strong></p>\r\n<p>The per-antigen counts may use unknown codes (older offline outbox</p>\r\n<p>entries). Open the session, check the \"unmapped antigens\" warning,</p>\r\n<p>and ask your national admin to standardise the codes via the audit</p>\r\n<p>log workflow.</p>\r\n\r\n<p><strong>Sync failed for some outbox entries.</strong></p>\r\n<p>Tap the cloud icon to see which ones. Most failures are because the</p>\r\n<p>underlying session was closed or deleted on the server. Reopen the</p>\r\n<p>entry, resolve the conflict, and retry.</p>\r\n\r\n<p><strong>I'm logged in but I see \"pending approval\".</strong></p>\r\n<p>A national or district admin needs to confirm your role. Contact</p>\r\n<p>your administrator; they will see the request in their inbox.</p>\r\n\r\n<hr>\r\n\r\n"},"16-data-sources-and-acknowledgements":{"slug":"16-data-sources-and-acknowledgements","title":"16. Data sources and acknowledgements","body":"\r\nVaxPlan has a built-in **Data Sources** page that lists where the\r\nplatform's maps, administrative boundaries, population figures, and\r\nfacility data come from, along with the open-source projects it is built\r\non.\r\n\r\n- Open it from the sidebar (**Data Sources**, near Settings and Help),\r\n  from the **External Resources** card on the Help page, or by tapping the\r\n  small **Data sources** link in the credit at the bottom-right corner of\r\n  any map.\r\n- The page is also **public**: anyone can view it at `/data-sources`\r\n  without signing in, and there is a link to it in the footer of the\r\n  public landing page. The per-country population sources block is only\r\n  shown to signed-in users; signed-out visitors see the general source\r\n  list and acknowledgements.\r\n- Sources are grouped by category: Maps & Basemaps, Administrative\r\n  Boundaries, Population & Demographics, Health Facilities & Health\r\n  Information Systems, Immunization Guidance & Standards, and Software /\r\n  Fonts / Icons. Each entry shows a short description, its licence where\r\n  relevant, and a link to the original source.\r\n- If your country has population sources configured, they appear at the\r\n  top of the page so you can see exactly which datasets feed your\r\n  catchment and vaccine-needs calculations.\r\n- The **Acknowledgements** section credits the data providers and open\r\n  projects, and is a reminder that each dataset remains the property of\r\n  its original owner and should be cited accordingly.\r\n- The Acknowledgements also carry the **map boundary disclaimer** and a\r\n  note on **disputed regions**: boundaries shown are for reference only\r\n  and do not imply endorsement, and disputed or contested areas are not\r\n  authoritatively depicted. The same short notice appears in the credit\r\n  on every map.\r\n\r\n---\r\n\r\n","renderedHtml":"\r\n<p>VaxPlan has a built-in <strong>Data Sources</strong> page that lists where the</p>\r\n<p>platform's maps, administrative boundaries, population figures, and</p>\r\n<p>facility data come from, along with the open-source projects it is built</p>\r\n<p>on.</p>\r\n\r\n<ul><li>Open it from the sidebar (<strong>Data Sources</strong>, near Settings and Help),</li></ul>\r\n<p>  from the <strong>External Resources</strong> card on the Help page, or by tapping the</p>\r\n<p>  small <strong>Data sources</strong> link in the credit at the bottom-right corner of</p>\r\n<p>  any map.</p>\r\n<ul><li>The page is also <strong>public</strong>: anyone can view it at <code>/data-sources</code></li></ul>\r\n<p>  without signing in, and there is a link to it in the footer of the</p>\r\n<p>  public landing page. The per-country population sources block is only</p>\r\n<p>  shown to signed-in users; signed-out visitors see the general source</p>\r\n<p>  list and acknowledgements.</p>\r\n<ul><li>Sources are grouped by category: Maps & Basemaps, Administrative</li></ul>\r\n<p>  Boundaries, Population & Demographics, Health Facilities & Health</p>\r\n<p>  Information Systems, Immunization Guidance & Standards, and Software /</p>\r\n<p>  Fonts / Icons. Each entry shows a short description, its licence where</p>\r\n<p>  relevant, and a link to the original source.</p>\r\n<ul><li>If your country has population sources configured, they appear at the</li></ul>\r\n<p>  top of the page so you can see exactly which datasets feed your</p>\r\n<p>  catchment and vaccine-needs calculations.</p>\r\n<ul><li>The <strong>Acknowledgements</strong> section credits the data providers and open</li></ul>\r\n<p>  projects, and is a reminder that each dataset remains the property of</p>\r\n<p>  its original owner and should be cited accordingly.</p>\r\n<ul><li>The Acknowledgements also carry the <strong>map boundary disclaimer</strong> and a</li></ul>\r\n<p>  note on <strong>disputed regions</strong>: boundaries shown are for reference only</p>\r\n<p>  and do not imply endorsement, and disputed or contested areas are not</p>\r\n<p>  authoritatively depicted. The same short notice appears in the credit</p>\r\n<p>  on every map.</p>\r\n\r\n<hr>\r\n\r\n"},"17-glossary":{"slug":"17-glossary","title":"17. Glossary","body":"\r\n- **Antigen** — A vaccine type (BCG, OPV, Penta, MCV1, etc.).\r\n- **Catchment** — The set of villages a facility serves.\r\n- **Coverage** — Percentage of the target population that received\r\n  a given dose, in a given period.\r\n- **Defaulter** — A child who started but did not complete a vaccine\r\n  series on time.\r\n- **Denominator** — The target population used to calculate coverage.\r\n- **Dropout** — The percentage of children who received an earlier\r\n  dose but did not receive a later one (e.g. Penta1 → Penta3).\r\n- **Fixed-site session** — A vaccination session held at the\r\n  facility.\r\n- **Microplan** — A facility's quarterly plan combining catchment,\r\n  denominator, schedule, and intended outreach.\r\n- **Outreach session** — A session held away from the facility,\r\n  usually in a village.\r\n- **SIA** — Supplementary Immunisation Activity (a campaign — for\r\n  example a measles SIA).\r\n- **Tenant** — A Ministry of Health (one country) on the VaxPlan\r\n  platform. Each tenant has isolated data.\r\n- **WorldPop** — An open population dataset providing population\r\n  estimates on a 100m or 1km grid.\r\n- **Zero-dose child** — A child of vaccination age who has received\r\n  no doses of any vaccine.\r\n\r\n---\r\n\r\n*If you spot an error in this guide or want a topic added, ask your\r\nnational admin to file an issue with the VaxPlan team. The guide is\r\nversioned alongside the application code.*\r\n\n","renderedHtml":"\r\n<ul><li><strong>Antigen</strong> — A vaccine type (BCG, OPV, Penta, MCV1, etc.).</li></ul>\r\n<ul><li><strong>Catchment</strong> — The set of villages a facility serves.</li></ul>\r\n<ul><li><strong>Coverage</strong> — Percentage of the target population that received</li></ul>\r\n<p>  a given dose, in a given period.</p>\r\n<ul><li><strong>Defaulter</strong> — A child who started but did not complete a vaccine</li></ul>\r\n<p>  series on time.</p>\r\n<ul><li><strong>Denominator</strong> — The target population used to calculate coverage.</li></ul>\r\n<ul><li><strong>Dropout</strong> — The percentage of children who received an earlier</li></ul>\r\n<p>  dose but did not receive a later one (e.g. Penta1 → Penta3).</p>\r\n<ul><li><strong>Fixed-site session</strong> — A vaccination session held at the</li></ul>\r\n<p>  facility.</p>\r\n<ul><li><strong>Microplan</strong> — A facility's quarterly plan combining catchment,</li></ul>\r\n<p>  denominator, schedule, and intended outreach.</p>\r\n<ul><li><strong>Outreach session</strong> — A session held away from the facility,</li></ul>\r\n<p>  usually in a village.</p>\r\n<ul><li><strong>SIA</strong> — Supplementary Immunisation Activity (a campaign — for</li></ul>\r\n<p>  example a measles SIA).</p>\r\n<ul><li><strong>Tenant</strong> — A Ministry of Health (one country) on the VaxPlan</li></ul>\r\n<p>  platform. Each tenant has isolated data.</p>\r\n<ul><li><strong>WorldPop</strong> — An open population dataset providing population</li></ul>\r\n<p>  estimates on a 100m or 1km grid.</p>\r\n<ul><li><strong>Zero-dose child</strong> — A child of vaccination age who has received</li></ul>\r\n<p>  no doses of any vaccine.</p>\r\n\r\n<hr>\r\n\r\n<p>*If you spot an error in this guide or want a topic added, ask your</p>\r\n<p>national admin to file an issue with the VaxPlan team. The guide is</p>\r\n<p>versioned alongside the application code.*</p>\r\n\n"}}}
+</script>
+
 <script>
   // ── API base ──────────────────────────────────────────────────────────────
-  // Docs site is served from a different origin (docs.vaxplan.org) but
-  // the API lives on vaxplan.org. In dev, both are same-origin localhost.
-  const API_BASE = location.hostname === 'localhost' || location.hostname === '127.0.0.1'
-    ? ''
-    : 'https://vaxplan.org';
+  const API_BASE = '';
 
-  // ── State ─────────────────────────────────────────────────────────────────
+  // ── State variables ───────────────────────────────────────────────────────
   let PAGES = [];          // [{ id, slug, title, sort_order, updated_at }]
-  let PAGE_CACHE = {};     // slug → { title, body (markdown), renderedHtml }
-  let activeSlug = null;
+  let PAGE_CACHE = {};     // slug → { slug, title, body, renderedHtml }
+  let readSections = [];
+  let completedQuizzes = [];
+  let quizSelectedAnswers = {};
+
+  const BADGES = [
+    { id: "quickstart", name: "Quick-Start Pro", description: "Read the Facility Quick-Start guide.", icon: "⚡" },
+    { id: "gis_intel", name: "GIS Navigator", description: "Complete the Settlement Intelligence section and pass the quiz.", icon: "🛰️" },
+    { id: "routine_plan", name: "Field Commander", description: "Complete the Routine Microplanning section and pass the quiz.", icon: "🗺️" },
+    { id: "scholar", name: "Wiki Scholar", description: "Mark all available wiki user guide sections as read.", icon: "🎓" },
+  ];
+
+  const QUIZZES = {
+    "11-settlement-intelligence-and-zero-dose-targeting": {
+      id: "gis_intel",
+      title: "Settlement Intelligence & Zero-Dose Quiz",
+      questions: [
+        {
+          question: "What does the Outreach Site Suitability Score represent?",
+          options: [
+            "The percentage of completed supervision visits.",
+            "An abstract population density indicator.",
+            "A 0-100 score prioritizing unserved building clusters based on size, zero-dose risk, distance, and road travel time."
+          ],
+          correctAnswer: 2,
+          explanation: "The Outreach Site Suitability Score aggregates multiple factors (unserved size, zero-dose children, distance, accessibility) to help planners choose the optimal location for new outreach sessions."
+        },
+        {
+          question: "What is the spatial resolution of the WorldPop gridded population data in VaxPlan?",
+          options: [
+            "100 meters × 100 meters (approx. 1 hectare)",
+            "1 kilometer × 1 kilometer",
+            "5 kilometers × 5 kilometers"
+          ],
+          correctAnswer: 0,
+          explanation: "VaxPlan fuses high-resolution WorldPop raster data, which maps population density at 100m grid cells, letting planners click the map and get a precise headcount of people."
+        }
+      ]
+    },
+    "5-facility-staff--your-daily-workflow": {
+      id: "routine_plan",
+      title: "Routine Microplanning Quiz",
+      questions: [
+        {
+          question: "How far in advance must a vaccination session date be scheduled?",
+          options: [
+            "At least 24 hours in advance",
+            "At least 7 days in advance",
+            "No advance scheduling is required"
+          ],
+          correctAnswer: 1,
+          explanation: "To allow for logistics and cold chain planning, all itinerary days must be scheduled at least 7 days in the future."
+        },
+        {
+          question: "Which role is responsible for reviewing and approving microplans?",
+          options: [
+            "Facility Clerks",
+            "WHO external monitors only",
+            "District Managers and Provincial Coordinators"
+          ],
+          correctAnswer: 2,
+          explanation: "Authoring is done at the facility level, while review and approvals are routed hierarchically to District Managers and Provincial Coordinators."
+        }
+      ]
+    }
+  };
+
+  const FALLBACK_DATA = JSON.parse(document.getElementById('fallback-data').textContent);
+
+  // ── Load state ────────────────────────────────────────────────────────────
+  function loadState() {
+    try {
+      const rs = localStorage.getItem('vaxplan.docs.readSections');
+      if (rs) readSections = JSON.parse(rs);
+      
+      const cq = localStorage.getItem('vaxplan.quizzes.completed');
+      if (cq) completedQuizzes = JSON.parse(cq);
+    } catch(e) {}
+  }
+
+  function saveState() {
+    try {
+      localStorage.setItem('vaxplan.docs.readSections', JSON.stringify(readSections));
+      localStorage.setItem('vaxplan.quizzes.completed', JSON.stringify(completedQuizzes));
+    } catch(e) {}
+  }
 
   // ── Boot ──────────────────────────────────────────────────────────────────
   async function boot() {
+    loadState();
+
+    let localPages = [];
+    let localCache = {};
     try {
-      const res = await fetch(`${API_BASE}/api/wiki/pages`);
-      if (!res.ok) throw new Error(`API ${res.status}`);
-      const json = await res.json();
-      PAGES = json.data || [];
+      const sp = localStorage.getItem('vaxplan.docs.pages');
+      if (sp) localPages = JSON.parse(sp);
+      
+      const sc = localStorage.getItem('vaxplan.docs.cache');
+      if (sc) localCache = JSON.parse(sc);
+    } catch(e){}
+
+    try {
+      const res = await fetch(API_BASE + '/api/wiki/pages');
+      if (res.ok) {
+        const json = await res.json();
+        PAGES = json.data || [];
+        try {
+          localStorage.setItem('vaxplan.docs.pages', JSON.stringify(PAGES));
+        } catch(e){}
+      } else {
+        throw new Error('API status ' + res.status);
+      }
     } catch (e) {
-      console.warn('[wiki] Could not load pages from API, showing empty state.', e);
-      PAGES = [];
+      console.warn('[wiki] Could not load pages from API, using offline fallback.', e);
+      PAGES = localPages.length ? localPages : FALLBACK_DATA.pages;
     }
+
     renderSidebar();
-    renderAllContent();
-    document.getElementById('buildDate').textContent = `Updated ${new Date().toISOString().slice(0,10)}`;
+    await renderAllContent(localCache);
+    renderAchievements();
+    updateProgressBar();
+    updateReadButtonStates();
+
+    document.getElementById('buildDate').textContent = 'Updated ' + new Date().toISOString().slice(0,10);
     document.getElementById('siteFooter').style.display = '';
 
-    // Navigate to hash on load
-    if (location.hash) navigate(location.hash.slice(1));
+    // Scroll to hash on load
+    if (location.hash) {
+      setTimeout(() => navigate(location.hash.slice(1)), 250);
+    }
   }
 
   // ── Sidebar ───────────────────────────────────────────────────────────────
@@ -465,52 +748,257 @@
       nav.innerHTML = '<li style="padding:0.5rem 1rem;font-size:0.8rem;color:var(--text-muted)">No pages yet.</li>';
       return;
     }
-    nav.innerHTML = PAGES.map(p =>
-      `<li><a href="#${p.slug}" class="nav-link" onclick="navigate('${p.slug}')" id="nav-${p.slug}">${p.title}</a></li>`
-    ).join('');
+    let navHtml = '';
+    for (let i = 0; i < PAGES.length; i++) {
+      const p = PAGES[i];
+      navHtml += '<li><a href="#' + p.slug + '" class="nav-link" onclick="navigate('' + p.slug + '')" id="nav-' + p.slug + '">' + escHtml(p.title) + '</a></li>';
+    }
+    nav.innerHTML = navHtml;
   }
 
-  // ── Render all content sections ───────────────────────────────────────────
-  async function renderAllContent() {
+  // ── Render Content ────────────────────────────────────────────────────────
+  async function renderAllContent(localCache) {
     if (!PAGES.length) {
       document.getElementById('wikiContent').innerHTML =
-        '<div class="doc-section"><h2>Welcome to VaxPlan Docs</h2><p>No pages have been published yet. National admins can add content via <strong>Admin → Wiki</strong> in the VaxPlan app.</p></div>';
+        '<div class="doc-section"><h2>Welcome to VaxPlan Docs</h2><p>No pages have been published yet. National admins can add content via VaxPlan application.</p></div>';
       return;
     }
-    // Fetch all pages in parallel
-    const fetched = await Promise.all(PAGES.map(p => fetchPage(p.slug)));
-    const html = fetched.map(p => p ? sectionHtml(p) : '').join('\n');
+
+    const fetched = await Promise.all(PAGES.map(p => fetchPage(p.slug, localCache)));
+    const html = fetched.map(p => p ? sectionHtml(p) : '').join('
+');
     document.getElementById('wikiContent').innerHTML = html;
 
     // Attach scroll spy
     attachScrollSpy();
   }
 
-  async function fetchPage(slug) {
+  async function fetchPage(slug, localCache) {
     if (PAGE_CACHE[slug]) return PAGE_CACHE[slug];
-    try {
-      const res = await fetch(`${API_BASE}/api/wiki/pages/${encodeURIComponent(slug)}`);
-      if (!res.ok) return null;
-      const json = await res.json();
-      const page = json.data;
-      page.renderedHtml = marked.parse(page.body || '');
-      PAGE_CACHE[slug] = page;
-      return page;
-    } catch(e) {
-      console.warn(`[wiki] Failed to fetch page ${slug}:`, e);
-      return null;
+    if (localCache && localCache[slug]) {
+      PAGE_CACHE[slug] = localCache[slug];
+      return localCache[slug];
     }
-  }
-
-  function sectionHtml(p) {
-    return `<section id="${p.slug}" class="doc-section">
-      <h1>${escHtml(p.title)}</h1>
-      <div class="doc-body">${p.renderedHtml}</div>
-    </section>`;
+    try {
+      const res = await fetch(API_BASE + '/api/wiki/pages/' + encodeURIComponent(slug));
+      if (res.ok) {
+        const json = await res.json();
+        const page = json.data;
+        page.renderedHtml = marked.parse(page.body || '');
+        PAGE_CACHE[slug] = page;
+        
+        // Save to localCache
+        try {
+          const freshCache = { ...localCache, [slug]: page };
+          localStorage.setItem('vaxplan.docs.cache', JSON.stringify(freshCache));
+        } catch(e){}
+        return page;
+      }
+    } catch(e) {
+      console.warn('[wiki] Failed to fetch page ' + slug + ' online, checking fallback:', e);
+    }
+    if (FALLBACK_DATA.cache[slug]) {
+      PAGE_CACHE[slug] = FALLBACK_DATA.cache[slug];
+      return FALLBACK_DATA.cache[slug];
+    }
+    return null;
   }
 
   function escHtml(s) {
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function sectionHtml(p) {
+    const isRead = readSections.includes(p.slug);
+    const quiz = QUIZZES[p.slug];
+    const isQuizPassed = quiz && completedQuizzes.includes(quiz.id);
+
+    let quizHtml = '';
+    if (quiz) {
+      let questionsHtml = '';
+      for (let qIdx = 0; qIdx < quiz.questions.length; qIdx++) {
+        const q = quiz.questions[qIdx];
+        let optionsHtml = '';
+        for (let optIdx = 0; optIdx < q.options.length; optIdx++) {
+          const opt = q.options[optIdx];
+          optionsHtml += '<button type="button" onclick="selectQuizOption('' + p.slug + '', ' + qIdx + ', ' + optIdx + ')" id="btn-' + p.slug + '-' + qIdx + '-' + optIdx + '" class="quiz-option-btn" ' + (isQuizPassed ? 'disabled' : '') + ' style="text-align:left; font-size:0.8rem; padding:0.6rem 0.85rem; border:1px solid var(--border); border-radius:6px; background:var(--bg-card); color:var(--text); cursor:' + (isQuizPassed ? 'default' : 'pointer') + '; transition:all 0.2s; width:100%; margin-bottom:0.25rem;">' + escHtml(opt) + '</button>';
+        }
+        questionsHtml += '<div id="q-' + p.slug + '-' + qIdx + '" style="display:flex; flex-direction:column; gap:0.5rem; margin-top:1rem;"><p style="font-weight:600; font-size:0.88rem; margin-bottom:0.25rem; color:var(--text);">' + (qIdx + 1) + '. ' + escHtml(q.question) + '</p><div style="display:flex; flex-direction:column; gap:0.25rem;">' + optionsHtml + '</div><div id="feedback-' + p.slug + '-' + qIdx + '" style="display:none; font-size:0.75rem; padding:0.5rem 0.75rem; border-radius:6px; margin-top:0.25rem;"></div></div>';
+      }
+
+      quizHtml = '<div class="quiz-container" id="quiz-' + p.slug + '" style="margin-top:2rem; padding:1.5rem; background:rgba(59,130,246,0.05); border:1px solid var(--border); border-radius:12px;"><h4 style="margin-top:0; margin-bottom:1rem; display:flex; align-items:center; gap:0.5rem; font-weight:700; color:var(--text);">📝 ' + quiz.title + '</h4><div style="display:flex; flex-direction:column; gap:1rem;">' + questionsHtml + '</div><div style="margin-top:1.25rem; display:flex; flex-direction:column; align-items:center; gap:0.5rem;">' + (isQuizPassed ? '<div style="color:var(--green); font-size:0.8rem; font-weight:700; display:flex; align-items:center; gap:0.25rem; margin-top:0.5rem;">🏆 Quiz Passed Successfully!</div>' : '<button class="btn-primary" onclick="submitQuiz('' + p.slug + '')" style="width:100%; justify-content:center; padding:0.5rem 1rem; font-size:0.8rem;">Submit Quiz Answers</button>') + '</div></div>';
+    }
+
+    return '<section id="' + p.slug + '" class="doc-section"><div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; flex-wrap:wrap; gap:0.5rem;"><h2 style="margin:0; background:none; -webkit-text-fill-color:var(--text); font-size:1.5rem; font-weight:700;">' + escHtml(p.title) + '</h2><div style="display:flex; align-items:center; gap:0.5rem;"><button class="btn-secondary" id="read-btn-' + p.slug + '" onclick="toggleRead('' + p.slug + '')" style="padding:0.3rem 0.75rem; font-size:0.75rem;">' + (isRead ? '✅ Read' : '📖 Mark as Read') + '</button></div></div><div class="doc-body">' + p.renderedHtml + '</div>' + quizHtml + '</section>';
+  }
+
+  // ── Progress & Badges ─────────────────────────────────────────────────────
+  function toggleRead(slug) {
+    const idx = readSections.indexOf(slug);
+    if (idx >= 0) {
+      readSections.splice(idx, 1);
+    } else {
+      readSections.push(slug);
+    }
+    saveState();
+    updateReadButtonStates();
+    updateProgressBar();
+    renderAchievements();
+  }
+
+  function updateReadButtonStates() {
+    const qsBtn = document.getElementById('read-btn-quickstart');
+    if (qsBtn) {
+      qsBtn.textContent = readSections.includes('quickstart') ? '✅ Read' : '📖 Mark as Read';
+    }
+    PAGES.forEach(p => {
+      const btn = document.getElementById('read-btn-' + p.slug);
+      if (btn) {
+        btn.textContent = readSections.includes(p.slug) ? '✅ Read' : '📖 Mark as Read';
+      }
+    });
+  }
+
+  function updateProgressBar() {
+    const total = PAGES.length + 1; // pages + quickstart
+    const readCount = readSections.filter(slug => slug === 'quickstart' || PAGES.some(p => p.slug === slug)).length;
+    const pct = total > 0 ? Math.round((readCount / total) * 100) : 0;
+    
+    document.getElementById('progressText').textContent = pct + '%';
+    document.getElementById('sidebarProgressBar').style.width = pct + '%';
+    document.getElementById('topProgressBar').style.width = pct + '%';
+  }
+
+  function renderAchievements() {
+    const container = document.getElementById('sidebarBadges');
+    if (!container) return;
+    
+    const unlocked = [];
+    if (readSections.includes('quickstart')) unlocked.push('quickstart');
+    if (completedQuizzes.includes('gis_intel')) unlocked.push('gis_intel');
+    if (completedQuizzes.includes('routine_plan')) unlocked.push('routine_plan');
+    
+    const allPagesRead = PAGES.length > 0 && PAGES.every(p => readSections.includes(p.slug));
+    if (allPagesRead) unlocked.push('scholar');
+    
+    let badgesHtml = '';
+    for (let i = 0; i < BADGES.length; i++) {
+      const badge = BADGES[i];
+      const isUnlocked = unlocked.includes(badge.id);
+      badgesHtml += '<div title="' + escHtml(badge.name) + ': ' + escHtml(badge.description) + ' (' + (isUnlocked ? 'Unlocked' : 'Locked') + ')" style="display:flex; align-items:center; gap:0.5rem; padding:0.4rem 0.6rem; border-radius:20px; font-size:0.75rem; font-weight:600; border:1px solid ' + (isUnlocked ? 'transparent' : 'var(--border)') + '; background:' + (isUnlocked ? 'linear-gradient(135deg, var(--primary), var(--accent))' : 'rgba(255,255,255,0.02)') + '; color:' + (isUnlocked ? 'white' : 'var(--text-muted)') + '; opacity:' + (isUnlocked ? '1' : '0.5') + '; transition:all 0.3s; select-none;"><span style="font-size:0.9rem;">' + badge.icon + '</span><span style="flex:1;">' + escHtml(badge.name) + '</span><span>' + (isUnlocked ? '🔓' : '🔒') + '</span></div>';
+    }
+    container.innerHTML = badgesHtml;
+  }
+
+  // ── Quiz Interactions ─────────────────────────────────────────────────────
+  function selectQuizOption(slug, qIdx, optIdx) {
+    quizSelectedAnswers[slug + '_' + qIdx] = optIdx;
+    const quiz = QUIZZES[slug];
+    if (!quiz) return;
+    
+    quiz.questions[qIdx].options.forEach((_, oIdx) => {
+      const btn = document.getElementById('btn-' + slug + '-' + qIdx + '-' + oIdx);
+      if (btn) {
+        if (oIdx === optIdx) {
+          btn.style.borderColor = 'var(--primary)';
+          btn.style.background = 'rgba(59,130,246,0.15)';
+          btn.style.fontWeight = '600';
+        } else {
+          btn.style.borderColor = 'var(--border)';
+          btn.style.background = 'var(--bg-card)';
+          btn.style.fontWeight = 'normal';
+        }
+      }
+    });
+  }
+
+  function submitQuiz(slug) {
+    const quiz = QUIZZES[slug];
+    if (!quiz) return;
+    
+    let allCorrect = true;
+    quiz.questions.forEach((q, qIdx) => {
+      const selected = quizSelectedAnswers[slug + '_' + qIdx];
+      const feedback = document.getElementById('feedback-' + slug + '-' + qIdx);
+      
+      if (selected === undefined) {
+        allCorrect = false;
+        if (feedback) {
+          feedback.style.display = 'block';
+          feedback.style.background = 'rgba(239,68,68,0.1)';
+          feedback.style.color = 'var(--text)';
+          feedback.innerHTML = '⚠️ Please select an answer.';
+        }
+        return;
+      }
+      
+      const isCorrect = selected === q.correctAnswer;
+      if (!isCorrect) allCorrect = false;
+      
+      if (feedback) {
+        feedback.style.display = 'block';
+        if (isCorrect) {
+          feedback.style.background = 'rgba(34,197,94,0.1)';
+          feedback.style.color = 'var(--green)';
+          feedback.innerHTML = '<strong>Correct!</strong> ' + escHtml(q.explanation);
+        } else {
+          feedback.style.background = 'rgba(239,68,68,0.1)';
+          feedback.style.color = '#f87171';
+          feedback.innerHTML = '<strong>Incorrect.</strong> ' + escHtml(q.explanation);
+        }
+      }
+      
+      q.options.forEach((_, oIdx) => {
+        const btn = document.getElementById('btn-' + slug + '-' + qIdx + '-' + oIdx);
+        if (btn) {
+          btn.disabled = true;
+          if (oIdx === q.correctAnswer) {
+            btn.style.borderColor = 'var(--green)';
+            btn.style.background = 'rgba(34,197,94,0.15)';
+          } else if (oIdx === selected) {
+            btn.style.borderColor = '#ef4444';
+            btn.style.background = 'rgba(239,68,68,0.15)';
+          }
+        }
+      });
+    });
+    
+    if (allCorrect) {
+      if (!completedQuizzes.includes(quiz.id)) {
+        completedQuizzes.push(quiz.id);
+        saveState();
+      }
+      if (!readSections.includes(slug)) {
+        toggleRead(slug);
+      }
+      renderAchievements();
+      
+      const quizContainer = document.getElementById('quiz-' + slug);
+      if (quizContainer) {
+        const footer = quizContainer.querySelector('div:last-child');
+        if (footer) {
+          footer.innerHTML = '<div style="color:var(--green); font-size:0.8rem; font-weight:700; display:flex; align-items:center; gap:0.25rem; margin-top:0.5rem;">🏆 Quiz Passed Successfully!</div>';
+        }
+      }
+    }
+  }
+
+  // ── Lightbox screenshot zoom ──────────────────────────────────────────────
+  document.addEventListener('click', e => {
+    if (e.target.tagName === 'IMG' && e.target.closest('.doc-body, #quickstart')) {
+      openLightbox(e.target.src);
+    }
+  });
+
+  function openLightbox(src) {
+    const lb = document.getElementById('lightbox');
+    const img = document.getElementById('lightboxImg');
+    img.src = src;
+    lb.style.display = 'flex';
+  }
+  
+  function closeLightbox() {
+    document.getElementById('lightbox').style.display = 'none';
   }
 
   // ── Navigation ────────────────────────────────────────────────────────────
@@ -537,6 +1025,10 @@
 
   function navigateByTitle(keyword) {
     const kw = keyword.toLowerCase();
+    if (kw === 'quickstart') {
+      navigate('quickstart');
+      return;
+    }
     const match = PAGES.find(p => p.title.toLowerCase().includes(kw));
     if (match) navigate(match.slug);
   }
@@ -553,7 +1045,7 @@
     const observer = new IntersectionObserver(entries => {
       entries.forEach(e => { if (e.isIntersecting) updateActiveNav(e.target.id); });
     }, { rootMargin: '-60px 0px -70% 0px' });
-    document.querySelectorAll('.doc-section, #top').forEach(s => observer.observe(s));
+    document.querySelectorAll('.doc-section, #top, #quickstart').forEach(s => observer.observe(s));
   }
 
   // ── Search ────────────────────────────────────────────────────────────────
@@ -561,6 +1053,7 @@
     document.getElementById('searchOverlay').classList.add('open');
     setTimeout(() => document.getElementById('searchInput').focus(), 50);
   }
+  
   function closeSearch(event) {
     if (!event || event.target === document.getElementById('searchOverlay')) {
       document.getElementById('searchOverlay').classList.remove('open');
@@ -568,22 +1061,36 @@
       document.getElementById('searchResults').innerHTML = '<p class="search-empty">Start typing to search…</p>';
     }
   }
+  
   function doSearch() {
     const q = document.getElementById('searchInput').value.trim().toLowerCase();
     const container = document.getElementById('searchResults');
     if (!q) { container.innerHTML = '<p class="search-empty">Start typing to search…</p>'; return; }
-    const results = PAGES.filter(p => {
+    
+    const results = [];
+    if ('facility quick-start'.includes(q)) {
+      results.push({ slug: 'quickstart', title: '⚡ Facility Quick-Start', preview: 'Facility Quick-Start covers the essential steps for facility staff to get up and running.' });
+    }
+    
+    PAGES.forEach(p => {
       const cached = PAGE_CACHE[p.slug];
-      return p.title.toLowerCase().includes(q) || (cached && cached.body.toLowerCase().includes(q));
-    }).slice(0, 10);
-    if (!results.length) { container.innerHTML = `<p class="search-empty">No results for "${q}"</p>`; return; }
-    container.innerHTML = results.map(r => {
-      const titleHl = r.title.replace(new RegExp(q, 'gi'), m => `<mark style="background:rgba(59,130,246,0.3);color:var(--primary-light);border-radius:2px;">${m}</mark>`);
-      const cached = PAGE_CACHE[r.slug];
-      const preview = cached ? cached.body.replace(/[#*`\[\]]/g,'').trim() : '';
-      const idx = preview.toLowerCase().indexOf(q);
-      const snippet = idx >= 0 ? '…' + preview.slice(Math.max(0,idx-40), idx+120) + '…' : preview.slice(0,120) + '…';
-      return `<div class="search-result" onclick="navigate('${r.slug}')"><div class="search-result-title">${titleHl}</div><div class="search-result-snippet">${snippet}</div></div>`;
+      if (p.title.toLowerCase().includes(q) || (cached && cached.body.toLowerCase().includes(q))) {
+        results.push({
+          slug: p.slug,
+          title: p.title,
+          preview: cached ? cached.body.split('#').join('').split('*').join('').split('[').join('').split(']').join('').split(String.fromCharCode(96)).join('').trim() : ''
+        });
+      }
+    });
+
+    const sliced = results.slice(0, 10);
+    if (!sliced.length) { container.innerHTML = '<p class="search-empty">No results for "' + escHtml(q) + '"</p>'; return; }
+    
+    container.innerHTML = sliced.map(r => {
+      const titleHl = r.title.replace(new RegExp(q, 'gi'), m => '<mark style="background:rgba(59,130,246,0.3);color:var(--primary-light);border-radius:2px;">' + m + '</mark>');
+      const idx = r.preview.toLowerCase().indexOf(q);
+      const snippet = idx >= 0 ? '…' + r.preview.slice(Math.max(0,idx-40), idx+120) + '…' : r.preview.slice(0, 120) + '…';
+      return '<div class="search-result" onclick="navigate('' + r.slug + '')"><div class="search-result-title">' + titleHl + '</div><div class="search-result-snippet">' + snippet + '</div></div>';
     }).join('');
   }
 
@@ -596,13 +1103,14 @@
   // ── Theme ─────────────────────────────────────────────────────────────────
   const stored = localStorage.getItem('vaxplan-docs-theme');
   if (stored === 'light') { document.body.classList.add('light'); document.getElementById('themeBtn').textContent = '☀️'; }
+  
   function toggleTheme() {
     const isLight = document.body.classList.toggle('light');
     document.getElementById('themeBtn').textContent = isLight ? '☀️' : '🌙';
     localStorage.setItem('vaxplan-docs-theme', isLight ? 'light' : 'dark');
   }
 
-  // ── Sidebar ───────────────────────────────────────────────────────────────
+  // ── Sidebar toggling ──────────────────────────────────────────────────────
   function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); }
   function closeSidebar() { document.getElementById('sidebar').classList.remove('open'); }
 
