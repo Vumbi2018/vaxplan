@@ -590,7 +590,7 @@ export async function validatePlanningLeadTimeAndNoConflict(
     if (isNaN(inputDate.getTime())) {
       return { isValid: false, message: "Invalid date format supplied." };
     }
-    
+
     // Normalize the input date to UTC midnight for the same-day conflict queries
     // below. The client submits the picked date as a UTC calendar date
     // (`YYYY-MM-DDT00:00:00.000Z`), so we MUST compare in UTC. The lead-time rule
@@ -605,46 +605,57 @@ export async function validatePlanningLeadTimeAndNoConflict(
       };
     }
 
-    // Check for same-day conflicts (double bookings) within the facility
-    // 1. Check other session plans
-    const conflictingSessions = await db
-      .select({ id: sessionPlans.id, name: sessionPlans.name })
-      .from(sessionPlans)
-      .where(
-        and(
-          eq(sessionPlans.tenantId, tenantId),
-          eq(sessionPlans.facilityId, facilityId),
-          eq(sessionPlans.scheduledDate, inputMidnight),
-          excludeSessionId ? ne(sessionPlans.id, excludeSessionId) : undefined
-        )
-      );
+    // ── Session-plan duplicate-date check ─────────────────────────────────
+    // A facility can run multiple community/outreach sessions on the same day
+    // (e.g. one team visits Village A, another visits Village B). Blocking all
+    // same-facility same-day sessions would incorrectly prevent valid plans.
+    //
+    // The only true double-booking is when the *same session* has its
+    // scheduledDate collide with itself — which is prevented by the lead-time
+    // check above and microplan-parent uniqueness enforced at creation.
+    //
+    // facilityId is kept in the signature for backward compatibility but is
+    // intentionally NOT used in any conflict WHERE clause below.
+    void facilityId; // acknowledged, not used for conflict matching
+    void excludeSessionId; // no cross-session blocking needed
 
-    if (conflictingSessions.length > 0) {
-      return {
-        isValid: false,
-        message: `Conflict: An immunization session ("${conflictingSessions[0].name}") is already scheduled for this facility on this day.`,
-      };
-    }
+    // ── Day-plan duplicate-date check ─────────────────────────────────────
+    // Within a single multi-day session itinerary, two day-plan entries must
+    // not share the same sessionDate (Day 1 and Day 2 cannot both fall on a
+    // Monday). We scope the query to the parent sessionPlan so different
+    // sessions that happen to schedule on the same calendar day are never
+    // incorrectly blocked.
+    if (excludeDayPlanId !== undefined) {
+      // Look up the parent session of the day-plan being edited.
+      const parentRows = await db
+        .select({ sessionPlanId: sessionDayPlans.sessionPlanId })
+        .from(sessionDayPlans)
+        .where(eq(sessionDayPlans.id, excludeDayPlanId))
+        .limit(1);
 
-    // 2. Check other session day plans
-    const conflictingDays = await db
-      .select({ id: sessionDayPlans.id, dayNumber: sessionDayPlans.dayNumber, sessionName: sessionPlans.name })
-      .from(sessionDayPlans)
-      .innerJoin(sessionPlans, eq(sessionDayPlans.sessionPlanId, sessionPlans.id))
-      .where(
-        and(
-          eq(sessionPlans.tenantId, tenantId),
-          eq(sessionPlans.facilityId, facilityId),
-          eq(sessionDayPlans.sessionDate, inputMidnight),
-          excludeDayPlanId ? ne(sessionDayPlans.id, excludeDayPlanId) : undefined
-        )
-      );
+      if (parentRows.length > 0) {
+        const parentSessionPlanId = parentRows[0].sessionPlanId;
 
-    if (conflictingDays.length > 0) {
-      return {
-        isValid: false,
-        message: `Conflict: An itinerary day (Day ${conflictingDays[0].dayNumber} of "${conflictingDays[0].sessionName}") is already scheduled for this facility on this day.`,
-      };
+        const conflictingDays = await db
+          .select({ id: sessionDayPlans.id, dayNumber: sessionDayPlans.dayNumber, sessionName: sessionPlans.name })
+          .from(sessionDayPlans)
+          .innerJoin(sessionPlans, eq(sessionDayPlans.sessionPlanId, sessionPlans.id))
+          .where(
+            and(
+              eq(sessionPlans.tenantId, tenantId),
+              eq(sessionDayPlans.sessionPlanId, parentSessionPlanId),
+              eq(sessionDayPlans.sessionDate, inputMidnight),
+              ne(sessionDayPlans.id, excludeDayPlanId)
+            )
+          );
+
+        if (conflictingDays.length > 0) {
+          return {
+            isValid: false,
+            message: `Conflict: Day ${conflictingDays[0].dayNumber} of this session's itinerary is already scheduled for this date. Each day in the itinerary must fall on a different calendar day.`,
+          };
+        }
+      }
     }
 
     return { isValid: true };

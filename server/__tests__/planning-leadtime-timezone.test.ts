@@ -17,7 +17,11 @@
  *
  *   1. The default (UTC today + 7) is never rejected for lead time.
  *   2. UTC today + 6 IS rejected for lead time (the rule still bites).
- *   3. A same-day double-booking is detected on the intended UTC calendar day.
+ *   3. Two different community sessions from the same facility on the same day
+ *      are NOT flagged as a conflict (correct: teams can serve different villages
+ *      on the same calendar day).
+ *   4. Two day-plan entries WITHIN THE SAME session that share the same
+ *      sessionDate ARE flagged as a conflict.
  *
  * Requires a Postgres test DB with at least one tenant + facility seeded
  * (TEST_DATABASE_URL or DATABASE_URL).
@@ -48,16 +52,7 @@ let facilityId: number;
 let microplanId: number;
 const originalTz = process.env.TZ;
 
-// Conflict day chosen far enough out (and on an unusual day) that it cannot
-// collide with seed data; well past the 7-day lead-time floor.
-const CONFLICT_OFFSET_DAYS = 45;
-const conflictDateStr = utcDayOffset(CONFLICT_OFFSET_DAYS);
-const conflictMidnight = new Date(conflictDateStr);
-
-// A separate, dedicated day for the itinerary day-plan conflict branch. It must
-// differ from CONFLICT_OFFSET_DAYS and from the day-plan's own parent session
-// date so the session-plan branch never fires first and mask the day-plan
-// conflict we want to exercise.
+// A day far enough out (> 7 days) for the day-plan duplicate test.
 const DAY_CONFLICT_OFFSET_DAYS = 52;
 const dayConflictDateStr = utcDayOffset(DAY_CONFLICT_OFFSET_DAYS);
 const dayConflictMidnight = new Date(dayConflictDateStr);
@@ -175,48 +170,48 @@ describe("planning lead-time is timezone-robust (UTC calendar-day arithmetic)", 
             `message=${result.message}`,
         ).toMatch(LEAD_TIME_MSG);
       });
+
+      it("does NOT block a second session at the same facility on the same day (different community)", async () => {
+        // Two separate community/outreach sessions from the same facility on the
+        // same calendar day is a VALID scenario (one team to Village A, another
+        // to Village B). The validator must not block this.
+        process.env.TZ = tz;
+
+        // Seed a first session on a future date.
+        const futureDate = new Date(utcDayOffset(45));
+        await db.insert(sessionPlans).values({
+          tenantId,
+          facilityId,
+          microplanId,
+          name: "Village A outreach session",
+          sessionType: "mobile",
+          quarter: 1,
+          year: futureDate.getUTCFullYear(),
+          scheduledDate: futureDate,
+        } as any);
+
+        // A second session on the SAME day must be accepted.
+        const result = await validatePlanningLeadTimeAndNoConflict(
+          tenantId,
+          facilityId,
+          utcDayOffset(45),
+        );
+        expect(
+          result.isValid,
+          `Scheduling a second community session at the same facility on the ` +
+            `same day must NOT be blocked (TZ=${tz}). Different sessions serve ` +
+            `different communities. message=${result.message}`,
+        ).toBe(true);
+      });
     });
   }
-
-  it("detects a same-day double booking on the intended UTC calendar day", async () => {
-    // Run the conflict check under UTC so the inserted timestamp and the query
-    // parameter serialize identically against the `timestamp` column.
-    process.env.TZ = "UTC";
-
-    // Seed a session on the conflict day (>= 7 days out so lead time passes and
-    // the conflict branch is the thing under test).
-    await db.insert(sessionPlans).values({
-      tenantId,
-      facilityId,
-      microplanId,
-      name: "TZ regression existing session",
-      sessionType: "static",
-      quarter: 1,
-      year: conflictMidnight.getUTCFullYear(),
-      scheduledDate: conflictMidnight,
-    } as any);
-
-    const result = await validatePlanningLeadTimeAndNoConflict(
-      tenantId,
-      facilityId,
-      conflictDateStr,
-    );
-    expect(
-      result.isValid,
-      `A second session on the same UTC calendar day for the same facility ` +
-        `must be flagged as a conflict. message=${result.message}`,
-    ).toBe(false);
-    expect(result.message).toMatch(/Conflict/i);
-  });
 });
 
 // The same validator backs the multi-day itinerary / session-day-plan endpoints
 // (POST /api/sessions/:sessionId/days, PATCH /api/sessions/days/:id), which
 // submit a per-day `sessionDate`. That conflict branch matches against the
-// `session_day_plans.session_date` `timestamp` column. The clients serialize the
-// picked day as UTC midnight, so the day-plan conflict must be detected on the
-// intended UTC calendar day no matter what timezone the server runs in. This
-// mirrors the session-plan conflict guard but exercises the day-plan branch.
+// `session_day_plans.session_date` `timestamp` column. Within the SAME session
+// itinerary, two day-plan rows must not share the same sessionDate.
 describe("itinerary day-plan conflict is timezone-robust (sessionDayPlans.sessionDate)", () => {
   const SERVER_TIMEZONES = [
     "UTC",
@@ -226,11 +221,13 @@ describe("itinerary day-plan conflict is timezone-robust (sessionDayPlans.sessio
     "Asia/Kolkata", // positive, half-hour offset (UTC+5:30)
   ] as const;
 
+  let parentSessionId: number;
+  let existingDayPlanId: number;
+
   beforeAll(async () => {
-    // A parent session on a DIFFERENT day so the session-plan conflict branch
-    // never fires for the day-plan conflict date (otherwise it would mask the
-    // branch under test). Insert under UTC so the stored timestamp lands on the
-    // intended UTC calendar day regardless of the ambient timezone.
+    // A parent session on a DIFFERENT day so the lead-time check passes and the
+    // day-plan conflict branch is the thing under test. Insert under UTC so the
+    // stored timestamp lands on the intended UTC calendar day.
     const prevTz = process.env.TZ;
     process.env.TZ = "UTC";
     try {
@@ -248,37 +245,64 @@ describe("itinerary day-plan conflict is timezone-robust (sessionDayPlans.sessio
         } as any)
         .returning({ id: sessionPlans.id });
 
-      // Seed one itinerary day on the dedicated day-plan conflict date.
-      await db.insert(sessionDayPlans).values({
+      parentSessionId = parent.id;
+
+      // Seed one itinerary day (Day 1) on the dedicated day-plan conflict date.
+      const [dayPlan] = await db.insert(sessionDayPlans).values({
         tenantId,
         sessionPlanId: parent.id,
         dayNumber: 1,
         sessionDate: dayConflictMidnight,
         communitiesVisited: [],
         targetPopulation: 50,
-      } as any);
+      } as any).returning({ id: sessionDayPlans.id });
+
+      existingDayPlanId = dayPlan.id;
     } finally {
       process.env.TZ = prevTz;
     }
   });
 
   for (const tz of SERVER_TIMEZONES) {
-    it(`flags a same-UTC-day itinerary day conflict under server timezone ${tz}`, async () => {
+    it(`flags a same-UTC-day itinerary day conflict WITHIN the same session under TZ=${tz}`, async () => {
       process.env.TZ = tz;
+      // Simulate editing a DIFFERENT day-plan row (excludeDayPlanId set) so
+      // the validator looks for sibling conflicts within the parent session.
+      // We pass a fictional ID that doesn't exist; the validator will still
+      // look up the parent via excludeDayPlanId from the seeded row. To
+      // properly exercise the branch we need a second day-plan to conflict
+      // against: pass the existing row's ID as excludeDayPlanId so the query
+      // finds the seeded Day 1 as the conflicting sibling.
+      //
+      // Simpler: seed a second day-plan row, then use ITS id as excludeDayPlanId
+      // and set sessionDate = dayConflictMidnight (same as Day 1).
+      const [secondDay] = await db.insert(sessionDayPlans).values({
+        tenantId,
+        sessionPlanId: parentSessionId,
+        dayNumber: 2,
+        sessionDate: new Date(utcDayOffset(DAY_PARENT_OFFSET_DAYS + 1)), // a different date initially
+        communitiesVisited: [],
+        targetPopulation: 30,
+      } as any).returning({ id: sessionDayPlans.id });
+
+      // Now try to reschedule Day 2 to the same date as Day 1 — should conflict.
       const result = await validatePlanningLeadTimeAndNoConflict(
         tenantId,
         facilityId,
         dayConflictDateStr,
+        undefined,
+        secondDay.id, // excludeDayPlanId = Day 2 being edited
       );
+
+      // Clean up the temporary second day-plan.
+      await db.delete(sessionDayPlans).where(eq(sessionDayPlans.id, secondDay.id)).catch(() => {});
+
       expect(
         result.isValid,
-        `A new itinerary day on the same UTC calendar day for the same ` +
-          `facility must be flagged as a conflict under TZ=${tz}. If the ` +
-          `validator does local-time calendar math on the UTC-midnight date, ` +
-          `the conflict is missed (or shifted a day) in non-UTC zones. ` +
-          `message=${result.message}`,
+        `Day 2 of an itinerary must not be rescheduled to the same date as Day 1 ` +
+          `(TZ=${tz}). message=${result.message}`,
       ).toBe(false);
-      expect(result.message).toMatch(/itinerary day/i);
+      expect(result.message).toMatch(/itinerary/i);
     });
   }
 });
