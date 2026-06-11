@@ -60,6 +60,23 @@ server {
         if ($request_method = OPTIONS) { return 204; }
     }
 
+    # ── Uploads proxy — forward /uploads/* to the VaxPlan Express app ─
+    # This allows pictures/media uploaded in the wiki to show correctly on the docs site.
+    location /uploads/ {
+        proxy_pass         http://127.0.0.1:5000;
+        proxy_http_version 1.1;
+        proxy_set_header   Host              vaxplan.org;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_set_header   Connection        "";
+        proxy_cache_bypass 1;
+        # CORS headers for uploads
+        add_header Access-Control-Allow-Origin "*" always;
+        add_header Access-Control-Allow-Methods "GET, OPTIONS" always;
+        if ($request_method = OPTIONS) { return 204; }
+    }
+
     # ── Static assets — aggressive caching ──────────────────
     location ~* \.(css|js|woff2?|ttf|eot|svg|ico|png|jpg|jpeg|webp)$ {
         expires 30d;
