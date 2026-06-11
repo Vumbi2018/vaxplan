@@ -30,6 +30,7 @@ import { applyVillageColumns } from "./migrations/013-village-route-columns";
 import { applyOutreachColumns } from "./migrations/014-outreach-columns";import { applyMicroplanApprovalColumns } from "./migrations/015-microplan-approval-columns";
 import { applySessionsTable } from "./migrations/016-sessions-table";
 import { applyWikiPages } from "./migrations/017-wiki-pages";
+import { promoteAdminUser } from "./migrations/018-promote-admin";
 
 
 const app = express();
@@ -312,6 +313,12 @@ async function backfillClientIds() {
   applyWikiPages()
     .then(() => log("wiki pages table ensured", "db"))
     .catch((err) => log(`wiki pages warning: ${err?.message ?? err}`, "db"));
+
+  // Self-healing: ensure the primary platform administrator has the correct
+  // role and flags on every startup. Idempotent — no-op if already correct.
+  promoteAdminUser()
+    .then(() => log("admin user promotion check complete", "db"))
+    .catch((err) => log(`admin promotion warning: ${err?.message ?? err}`, "db"));
 
   setupRealtime(httpServer, getSession());
   startPopulationRefreshScheduler();

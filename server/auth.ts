@@ -85,6 +85,26 @@ export async function setupAuth(app: Express) {
   passport.serializeUser((user: Express.User, cb) => cb(null, user));
   passport.deserializeUser((user: Express.User, cb) => cb(null, user));
 
+  // /api/logout must be registered in ALL environments (production + dev).
+  // It must live ABOVE the IS_LOCAL_DEV early-return below so it is never
+  // blocked by that guard. The route destroys the server-side session and
+  // redirects to '/' (the login / landing page).
+  app.get("/api/logout", (req: any, res) => {
+    // Destroy the server-side session (connect-pg-simple / memorystore).
+    if (typeof req.session?.destroy === "function") {
+      req.session.destroy(() => {
+        res.clearCookie("connect.sid", { path: "/" });
+        res.redirect("/");
+      });
+    } else {
+      // Fallback: passport logout + redirect.
+      req.logout?.(() => {
+        res.clearCookie("connect.sid", { path: "/" });
+        res.redirect("/");
+      });
+    }
+  });
+
   // Only register dev-only mock login routes in local dev.
   if (!IS_LOCAL_DEV) {
     console.log("[auth] Production mode — mock login routes disabled.");
@@ -184,9 +204,9 @@ export async function setupAuth(app: Express) {
 
   app.get("/api/callback", (_req, res) => res.redirect("/"));
 
-  app.get("/api/logout", (req, res) => {
-    req.logout(() => res.redirect("/"));
-  });
+  // Note: /api/logout is registered once above (before the IS_LOCAL_DEV
+  // guard) and is intentionally not duplicated here for local dev.
+  // The route above handles both production and dev environments correctly.
 }
 
 // ── isAuthenticated middleware ────────────────────────────────────────────────

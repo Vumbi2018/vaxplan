@@ -85,11 +85,15 @@ export function UserMenu({ user }: UserMenuProps) {
           Change password
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem asChild data-testid="menu-item-logout">
-          <a href="/api/logout" className="flex items-center cursor-pointer">
-            <LogOut className="mr-2 h-4 w-4" />
-            Log out
-          </a>
+        <DropdownMenuItem
+          onSelect={() => {
+            window.location.href = "/api/logout";
+          }}
+          className="cursor-pointer"
+          data-testid="menu-item-logout"
+        >
+          <LogOut className="mr-2 h-4 w-4" />
+          Log out
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
