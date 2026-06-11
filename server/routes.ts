@@ -3463,6 +3463,71 @@ export async function registerRoutes(
   });
 
   // ─── Facility Staff Roster ───────────────────────────────────────────
+
+  // GET /api/staff — tenant-wide staff list (national_admin / platformAdmin see
+  // all; scoped roles see only the facilities in their geo scope).
+  // Query params: facilityId?, search?, role?, isActive?
+  app.get("/api/staff", ...auth, async (req: any, res) => {
+    try {
+      const dbUser = req.dbUser!;
+      const scope = await getGeoScope(dbUser, req.tenantId);
+
+      // Build where conditions
+      const conditions: any[] = [eq(facilityStaff.tenantId, req.tenantId)];
+
+      // Facility filter from query string (optional drill-down)
+      const facilityIdParam = req.query.facilityId ? parseInt(req.query.facilityId as string) : undefined;
+      if (facilityIdParam && !isNaN(facilityIdParam)) {
+        // Also enforce that this facility is within the user's scope
+        if (!scope.all && !scope.facilityIds.has(facilityIdParam)) {
+          return res.status(403).json({ message: "Access denied to that facility" });
+        }
+        conditions.push(eq(facilityStaff.facilityId, facilityIdParam));
+      } else if (!scope.all) {
+        // Scope-restrict to the user's accessible facilities
+        if (scope.facilityIds.size === 0) {
+          return res.json([]); // no accessible facilities → empty
+        }
+        conditions.push(inArray(facilityStaff.facilityId, Array.from(scope.facilityIds)));
+      }
+
+      // Optional text search across name, position, phone, village
+      const search = (req.query.search as string || "").trim();
+      if (search) {
+        conditions.push(
+          or(
+            ilike(facilityStaff.fullName, `%${search}%`),
+            ilike(facilityStaff.position, `%${search}%`),
+            ilike(facilityStaff.contactPhone, `%${search}%`),
+            ilike(facilityStaff.residenceVillage, `%${search}%`),
+          )
+        );
+      }
+
+      // Optional role filter
+      const roleParam = (req.query.role as string || "").trim();
+      if (roleParam && roleParam !== "all") {
+        conditions.push(eq(facilityStaff.role, roleParam));
+      }
+
+      // Optional isActive filter
+      if (req.query.isActive !== undefined) {
+        conditions.push(eq(facilityStaff.isActive, req.query.isActive === "true"));
+      }
+
+      const staffList = await db
+        .select()
+        .from(facilityStaff)
+        .where(and(...conditions))
+        .orderBy(facilityStaff.fullName);
+
+      res.json(staffList);
+    } catch (error: any) {
+      console.error("Error listing all staff:", error);
+      res.status(500).json({ message: "Failed to list staff: " + error.message });
+    }
+  });
+
   app.get("/api/facilities/:facilityId/staff", ...auth, async (req: any, res) => {
     try {
       const facilityId = parseInt(req.params.facilityId);
@@ -6456,7 +6521,10 @@ export async function registerRoutes(
     try {
       const facilityId = req.query.facilityId ? parseInt(req.query.facilityId as string) : null;
       const microplanId = req.query.microplanId ? parseInt(req.query.microplanId as string) : null;
-      const radiusKm = parseFloat((req.query.radiusKm as string) || "15");
+      // Original default catchment radius was 15km
+      // const radiusKm = parseFloat((req.query.radiusKm as string) || "15");
+      // Updated default catchment radius to 25km per user request
+      const radiusKm = parseFloat((req.query.radiusKm as string) || "25");
 
       if (!facilityId) return res.status(400).json({ message: "facilityId required" });
 

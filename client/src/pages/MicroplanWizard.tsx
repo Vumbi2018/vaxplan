@@ -4082,7 +4082,10 @@ function Step2({
     queryKey: ["/api/spatial/uncovered-communities", facility?.id, communities.length],
     enabled: !!facility?.id,
     queryFn: async () => {
-      const params = new URLSearchParams({ facilityId: String(facility?.id), radiusKm: "15" });
+      // Original search radius was 15km
+      // const params = new URLSearchParams({ facilityId: String(facility?.id), radiusKm: "15" });
+      // Updated search radius to 25km per user request
+      const params = new URLSearchParams({ facilityId: String(facility?.id), radiusKm: "25" });
       if (microplan?.id) params.set("microplanId", String(microplan.id));
       const res = await fetch(`/api/spatial/uncovered-communities?${params}`, { credentials: "include" });
       if (!res.ok) return null;
@@ -4941,7 +4944,7 @@ function Step2({
                           <span className="flex items-center justify-center gap-1.5">
                             <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading catchment communities…
                           </span>
-                        ) : "No communities found within 15 km of this facility."}
+                        ) : "No communities found within 25 km of this facility."}
                       </td>
                     </tr>
                   )}
@@ -6771,6 +6774,125 @@ function Step4({
   );
 }
 
+// Reusable inline AddStaffDialog component inside the wizard to easily register staff on the fly
+function AddStaffDialog({ facilityId }: { facilityId: number | null }) {
+  const [open, setOpen] = useState(false);
+  const [fullName, setFullName] = useState("");
+  const [role, setRole] = useState("vaccinator");
+  const [phone, setPhone] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const { toast } = useToast();
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!facilityId) return;
+    if (!fullName.trim()) {
+      toast({ title: "Name is required", variant: "destructive" });
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      await apiRequest("POST", `/api/facilities/${facilityId}/staff`, {
+        fullName: fullName.trim(),
+        role,
+        contactPhone: phone.trim(),
+        isActive: true,
+      });
+
+      // Refetch the staff roster so dropdowns update immediately
+      await queryClient.invalidateQueries({ queryKey: ["/api/facilities", facilityId, "staff"] });
+
+      toast({
+        title: "Staff Added",
+        description: `Successfully added ${fullName} to the roster.`,
+      });
+      setOpen(false);
+      setFullName("");
+      setPhone("");
+    } catch (error: any) {
+      toast({
+        title: "Failed to add staff",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (!facilityId) return null;
+
+  return (
+    <>
+      <Button size="sm" variant="outline" onClick={() => setOpen(true)} type="button">
+        <Plus className="mr-1 h-4 w-4" /> Add Staff Member
+      </Button>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-[425px]" data-testid="dialog-add-staff-inline">
+          <form onSubmit={handleSave} className="space-y-4">
+            <DialogHeader>
+              <DialogTitle>Add Staff Member</DialogTitle>
+              <DialogDescription>
+                Register a new vaccinator, recorder, or supervisor for this facility.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <Label htmlFor="staff-name">Full Name</Label>
+                <Input
+                  id="staff-name"
+                  placeholder="e.g. Mary Tembo"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  disabled={submitting}
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label htmlFor="staff-role">Role / Position</Label>
+                <Select value={role} onValueChange={setRole} disabled={submitting}>
+                  <SelectTrigger id="staff-role">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="vaccinator">Vaccinator</SelectItem>
+                    <SelectItem value="recorder">Recorder</SelectItem>
+                    <SelectItem value="supervisor">Supervisor</SelectItem>
+                    <SelectItem value="facility_in_charge">Facility In-Charge</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1">
+                <Label htmlFor="staff-phone">Phone Number</Label>
+                <Input
+                  id="staff-phone"
+                  placeholder="e.g. +260977000000"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  disabled={submitting}
+                />
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={submitting}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={submitting}>
+                {submitting ? "Saving..." : "Save Staff"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 function Step5({ staffing, setStaffing, facilityId }: { staffing: any[]; setStaffing: (v: any[]) => void; facilityId: number | null }) {
   const upd = (i: number, patch: any) => {
     const next = [...staffing];
@@ -6791,8 +6913,13 @@ function Step5({ staffing, setStaffing, facilityId }: { staffing: any[]; setStaf
   const staffOptions = roster || [];
 
   return (
-    <div className="max-h-[420px] overflow-x-auto">
-      <table className="w-full text-sm">
+    <div className="space-y-3">
+      <div className="flex justify-between items-center bg-muted/20 p-2 rounded-md border border-border/60">
+        <span className="text-xs text-muted-foreground">Assign a vaccinator, recorder, and supervisor for each session day.</span>
+        <AddStaffDialog facilityId={facilityId} />
+      </div>
+      <div className="max-h-[420px] overflow-x-auto">
+        <table className="w-full text-sm">
         <thead className="border-b text-left text-xs uppercase text-muted-foreground">
           <tr>
             <th className="p-2">Session day</th>
@@ -6878,6 +7005,7 @@ function Step5({ staffing, setStaffing, facilityId }: { staffing: any[]; setStaf
           )}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }
@@ -6922,10 +7050,35 @@ function Step6({
     if (errorRowId && `vr-${i}` === errorRowId) onClearError?.();
   };
 
+  // Original query block for facility
+  // const { data: facility } = useQuery<any>({
+  //   queryKey: ["/api/facilities", facilityId],
+  //   enabled: !!facilityId,
+  // });
+  // Updated code to fetch facility, tenant, province, and district metadata
   const { data: facility } = useQuery<any>({
     queryKey: ["/api/facilities", facilityId],
     enabled: !!facilityId,
   });
+
+  const { data: tenant } = useQuery<any>({
+    queryKey: ["/api/me/tenant"],
+  });
+
+  const { data: allProvinces } = useQuery<any[]>({
+    queryKey: ["/api/provinces"],
+  });
+
+  const { data: allDistricts } = useQuery<any[]>({
+    queryKey: ["/api/districts"],
+  });
+
+  const facilityDistrict = allDistricts?.find((d) => d.id === facility?.districtId);
+  const facilityProvince = allProvinces?.find((p) => p.id === facilityDistrict?.provinceId);
+
+  const districtName = facilityDistrict?.name || "—";
+  const provinceName = facilityProvince?.name || "—";
+  const countryName = tenant?.name || "—";
 
   const { data: stockBalance } = useQuery<any>({
     queryKey: ["/api/facilities", facilityId, "stock-balance"],
@@ -7094,15 +7247,37 @@ function Step6({
               <p className="text-xs text-muted-foreground">National Immunization Programme · Microplanning Logistics</p>
             </div>
 
-            {/* Info Grid */}
-            <div className="grid grid-cols-2 gap-4 text-xs py-4">
-              <div>
-                <span className="font-semibold text-muted-foreground block uppercase text-[10px]">Health Facility</span>
-                <span className="font-medium text-foreground text-sm">{facility?.name || "—"}</span>
+            {/* Original Info Grid */}
+            {/* <div className="grid grid-cols-2 gap-4 text-xs py-4">...</div> */}
+            {/* Added geographical metadata (Country, Province, District, HF) & preparer details */}
+            <div className="grid grid-cols-2 gap-4 text-xs py-4 border-b">
+              <div className="space-y-2">
+                <div>
+                  <span className="font-semibold text-muted-foreground block uppercase text-[10px]">Country</span>
+                  <span className="font-medium text-foreground text-sm">{countryName}</span>
+                </div>
+                <div>
+                  <span className="font-semibold text-muted-foreground block uppercase text-[10px]">Province / State</span>
+                  <span className="font-medium text-foreground text-sm">{provinceName}</span>
+                </div>
+                <div>
+                  <span className="font-semibold text-muted-foreground block uppercase text-[10px]">District / County</span>
+                  <span className="font-medium text-foreground text-sm">{districtName}</span>
+                </div>
               </div>
-              <div className="text-right">
-                <span className="font-semibold text-muted-foreground block uppercase text-[10px]">Requisition Date</span>
-                <span className="font-medium text-foreground text-sm">{new Date().toLocaleDateString()}</span>
+              <div className="space-y-2 text-right">
+                <div>
+                  <span className="font-semibold text-muted-foreground block uppercase text-[10px]">Health Facility</span>
+                  <span className="font-medium text-foreground text-sm">{facility?.name || "—"}</span>
+                </div>
+                <div>
+                  <span className="font-semibold text-muted-foreground block uppercase text-[10px]">Prepared By</span>
+                  <span className="font-medium text-foreground text-sm">{user?.firstName && user?.lastName ? `${user.firstName} ${user.lastName}` : "—"}</span>
+                </div>
+                <div>
+                  <span className="font-semibold text-muted-foreground block uppercase text-[10px]">Requisition Date</span>
+                  <span className="font-medium text-foreground text-sm">{new Date().toLocaleDateString()}</span>
+                </div>
               </div>
             </div>
 
@@ -7130,11 +7305,13 @@ function Step6({
 
             {/* Signatures */}
             <div className="grid grid-cols-2 gap-8 pt-12 text-center text-xs mt-8 border-t border-dashed">
-              <div className="space-y-4">
-                <div className="border-b border-black h-8 w-48 mx-auto" />
-                <span className="font-medium text-muted-foreground uppercase text-[10px]">Prepared By (Facility In-Charge)</span>
+              <div className="space-y-2">
+                <div className="border-b border-black h-8 w-48 mx-auto flex items-end justify-center pb-1 font-medium text-foreground">
+                  {user?.firstName && user?.lastName ? `${user.firstName} ${user.lastName}` : "—"}
+                </div>
+                <span className="font-medium text-muted-foreground uppercase text-[10px]">Prepared By (Logged In User)</span>
               </div>
-              <div className="space-y-4">
+              <div className="space-y-2">
                 <div className="border-b border-black h-8 w-48 mx-auto" />
                 <span className="font-medium text-muted-foreground uppercase text-[10px]">Approved By (District Logistics Officer)</span>
               </div>
@@ -7174,10 +7351,15 @@ function Step6({
                             .text-sm { font-size: 14px; }
                             .font-mono { font-family: monospace; }
                             .font-bold { font-weight: bold; }
+                            .space-y-2 > * + * { margin-top: 8px; }
+                            .text-muted-foreground { color: #666; }
+                            .font-semibold { font-weight: 600; }
+                            .font-medium { font-weight: 500; }
+                            .block { display: block; }
                           </style>
                         </head>
                         <body>
-                          \${printContent}
+                          ${printContent}
                           <script>
                             window.onload = function() { window.print(); window.close(); }
                           </script>
@@ -7907,7 +8089,8 @@ function Step10({
   const remove = (i: number) => onDelete(i);
   return (
     <div className="space-y-3">
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-2">
+        <AddStaffDialog facilityId={facilityId} />
         <Button size="sm" variant="outline" onClick={add} data-testid="button-add-supervision">
           <Plus className="mr-1 h-4 w-4" /> Add visit
         </Button>

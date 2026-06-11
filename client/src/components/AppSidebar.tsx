@@ -114,6 +114,7 @@ const workflowNavItems = [
 const adminNavItems = [
   { title: "User Management", path: "/admin/users", icon: Users },
   { title: "Access Requests", path: "/admin/signups", icon: UserPlus },
+  { title: "Manage Staff", path: "/admin/staff", icon: Users },
   { title: "Country Onboarding", path: "/admin/countries", icon: Globe, superAdminOnly: true },
   { title: "Boundary Manager", path: "/admin/boundaries", icon: Map },
   { title: "Custom Layers", path: "/admin/custom-layers", icon: Layers },
@@ -450,10 +451,10 @@ export function AppSidebar({ user }: AppSidebarProps) {
                   if ((item as any).wikiAdminOnly) {
                     return canEditWiki;
                   }
-                  // User Management + Access Requests are visible to any admin
+                  // User Management, Access Requests + Manage Staff are visible to any admin
                   // (national_admin or provincial_coordinator). The deeper
                   // tenant/boundary configuration tools stay national-only.
-                  if (item.path === "/admin/users" || item.path === "/admin/signups") {
+                  if (item.path === "/admin/users" || item.path === "/admin/signups" || item.path === "/admin/staff") {
                     return true;
                   }
                   return isNationalAdmin;

@@ -56,7 +56,11 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+// Original input import
+// import { Input } from "@/components/ui/input";
+// Added input and label imports for staff roster management dialog
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -239,9 +243,26 @@ export default function Facilities() {
     enabled: !!editingFacility?.id,
   });
 
+  // Original catchment query block
+  // const { data: selectedFacilityCatchments } = useQuery<any[]>({
+  //   queryKey: [`/api/facilities/${selectedFacilityId}/catchments`],
+  //   enabled: !!selectedFacilityId,
+  // });
+  // Fetch catchment polygon for currently selected facility in communities registry
   const { data: selectedFacilityCatchments } = useQuery<any[]>({
     queryKey: [`/api/facilities/${selectedFacilityId}/catchments`],
     enabled: !!selectedFacilityId,
+  });
+
+  // Query facility staff roster list when editing a facility
+  const { data: facilityStaffList, refetch: refetchFacilityStaff } = useQuery<any[]>({
+    queryKey: ["/api/facilities", editingFacility?.id, "staff"],
+    enabled: !!editingFacility?.id,
+    queryFn: async () => {
+      const res = await fetch(`/api/facilities/${editingFacility?.id}/staff`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    }
   });
 
   // Original community-routes query keys commented out for safety:
@@ -1797,8 +1818,14 @@ export default function Facilities() {
                         <TabsTrigger value="communities" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent h-full px-4" disabled={!editingFacility}>
                           Communities Served (CRUD)
                         </TabsTrigger>
+                        {/* Original Polygon Drawing Tab trigger */}
+                        {/* <TabsTrigger value="gis" ...>Polygon Drawing</TabsTrigger> */}
+                        {/* Added Staff Roster Tab trigger for user-requested staff management capability */}
                         <TabsTrigger value="gis" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent h-full px-4" disabled={!editingFacility}>
                           Polygon Drawing
+                        </TabsTrigger>
+                        <TabsTrigger value="staff" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent h-full px-4" disabled={!editingFacility}>
+                          Staff Roster
                         </TabsTrigger>
                       </TabsList>
                       {editingFacility && (
@@ -2507,7 +2534,7 @@ export default function Facilities() {
                               id: v.id,
                               villageId: v.id,
                               name: v.name,
-                              targetPopulation: v.targetPopulation?.toString(),
+                              targetPopulation: (v as any).targetPopulation?.toString(),
                             }))}
                             onCommunityPopUpdate={(name, population) => {
                               const village = villages?.find(v => v.name === name && v.assignedFacilityId === editingFacility.id);
@@ -2519,6 +2546,16 @@ export default function Facilities() {
                             }}
                           />
                         )}
+                      </div>
+                    </TabsContent>
+                    {/* Added Staff Roster TabContent pane next to general/communities/gis */}
+                    <TabsContent value="staff" className="m-0">
+                      <div className="p-6 h-[65vh] overflow-y-auto space-y-4 custom-scrollbar">
+                        <FacilityStaffRosterManager
+                          facilityId={editingFacility?.id || null}
+                          staff={facilityStaffList || []}
+                          refetch={refetchFacilityStaff}
+                        />
                       </div>
                     </TabsContent>
                   </Tabs>
@@ -3327,6 +3364,203 @@ export default function Facilities() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+    </div>
+  );
+}
+
+// Added FacilityStaffRosterManager component at the end of the file for managing facility staff
+function FacilityStaffRosterManager({
+  facilityId,
+  staff,
+  refetch,
+}: {
+  facilityId: number | null;
+  staff: any[];
+  refetch: () => void;
+}) {
+  const [editingStaff, setEditingStaff] = useState<any | null>(null);
+  const [fullName, setFullName] = useState("");
+  const [role, setRole] = useState("vaccinator");
+  const [phone, setPhone] = useState("");
+  const [isAdding, setIsAdding] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const { toast } = useToast();
+
+  const resetForm = () => {
+    setFullName("");
+    setRole("vaccinator");
+    setPhone("");
+    setEditingStaff(null);
+    setIsAdding(false);
+  };
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!facilityId) return;
+    if (!fullName.trim()) {
+      toast({ title: "Name is required", variant: "destructive" });
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      const payload = {
+        fullName: fullName.trim(),
+        role,
+        contactPhone: phone.trim(),
+        isActive: true,
+      };
+
+      if (editingStaff) {
+        await apiRequest("PATCH", `/api/facilities/${facilityId}/staff/${editingStaff.id}`, payload);
+        toast({ title: "Staff member updated successfully." });
+      } else {
+        await apiRequest("POST", `/api/facilities/${facilityId}/staff`, payload);
+        toast({ title: "Staff member added successfully." });
+      }
+
+      refetch();
+      resetForm();
+    } catch (error: any) {
+      toast({
+        title: "Operation failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleEdit = (member: any) => {
+    setEditingStaff(member);
+    setFullName(member.fullName || member.name || "");
+    setRole(member.role || "vaccinator");
+    setPhone(member.contactPhone || member.phone || "");
+    setIsAdding(true);
+  };
+
+  const handleDelete = async (memberId: number) => {
+    if (!facilityId) return;
+    if (!confirm("Are you sure you want to delete this staff member?")) return;
+
+    try {
+      await apiRequest("DELETE", `/api/facilities/${facilityId}/staff/${memberId}`);
+      toast({ title: "Staff member deleted successfully." });
+      refetch();
+    } catch (error: any) {
+      toast({
+        title: "Delete failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  };
+
+  if (!facilityId) return null;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="font-semibold text-lg text-foreground">Staff Roster</h3>
+        {!isAdding && (
+          <Button size="sm" onClick={() => setIsAdding(true)}>
+            <Plus className="mr-1 h-4 w-4" /> Add Staff Member
+          </Button>
+        )}
+      </div>
+
+      {isAdding && (
+        <Card className="border border-border p-4 bg-muted/20">
+          <form onSubmit={handleSave} className="space-y-4">
+            <h4 className="font-medium text-sm text-foreground">{editingStaff ? "Edit Staff Details" : "New Staff Member"}</h4>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-1">
+                <Label htmlFor="roster-name">Full Name *</Label>
+                <Input
+                  id="roster-name"
+                  placeholder="e.g. John Phiri"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  disabled={submitting}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="roster-role">Role / Position</Label>
+                <Select value={role} onValueChange={setRole} disabled={submitting}>
+                  <SelectTrigger id="roster-role">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="vaccinator">Vaccinator</SelectItem>
+                    <SelectItem value="recorder">Recorder</SelectItem>
+                    <SelectItem value="supervisor">Supervisor</SelectItem>
+                    <SelectItem value="facility_in_charge">Facility In-Charge</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="roster-phone">Phone Number</Label>
+                <Input
+                  id="roster-phone"
+                  placeholder="e.g. +260955112233"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  disabled={submitting}
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={resetForm} disabled={submitting}>
+                Cancel
+              </Button>
+              <Button type="submit" size="sm" disabled={submitting}>
+                {submitting ? "Saving..." : "Save Member"}
+              </Button>
+            </div>
+          </form>
+        </Card>
+      )}
+
+      <div className="border rounded-md overflow-hidden bg-card">
+        <table className="w-full text-sm">
+          <thead className="bg-muted text-xs uppercase text-muted-foreground border-b border-border">
+            <tr>
+              <th className="p-3 text-left font-semibold">Name</th>
+              <th className="p-3 text-left font-semibold">Role</th>
+              <th className="p-3 text-left font-semibold">Phone</th>
+              <th className="p-3 text-right font-semibold">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {staff.length > 0 ? (
+              staff.map((member) => (
+                <tr key={member.id} className="border-b last:border-0 hover:bg-muted/5">
+                  <td className="p-3 font-medium text-foreground">{member.fullName || member.name}</td>
+                  <td className="p-3 capitalize text-foreground">{member.role || "Staff"}</td>
+                  <td className="p-3 font-mono text-xs text-foreground">{member.contactPhone || member.phone || "—"}</td>
+                  <td className="p-3 text-right">
+                    <div className="flex justify-end gap-1">
+                      <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => handleEdit(member)}>
+                        <Pencil className="h-4 w-4 text-muted-foreground" />
+                      </Button>
+                      <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => handleDelete(member.id)}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={4} className="p-8 text-center text-muted-foreground italic">
+                  No staff members registered. Click "Add Staff Member" to populate the roster.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

@@ -186,6 +186,10 @@ export default defineConfig({
   },
   optimizeDeps: {
     include: ["react-leaflet", "@react-leaflet/core", "leaflet", "@e965/xlsx"],
+    exclude: ["nodemailer", "twilio"],
+    esbuildOptions: {
+      external: ["https", "http", "fs", "path", "crypto", "stream", "zlib"]
+    }
   },
   root: path.resolve(import.meta.dirname, "client"),
   build: {

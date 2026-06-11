@@ -50,6 +50,7 @@ const Settings = lazy(() => import("@/pages/Settings"));
 const Help = lazy(() => import("@/pages/Help"));
 const Signup = lazy(() => import("@/pages/Signup"));
 const UserManagement = lazy(() => import("@/pages/UserManagement"));
+const StaffManagement = lazy(() => import("@/pages/StaffManagement"));
 const SignupRequests = lazy(() => import("@/pages/SignupRequests"));
 const CountryOnboarding = lazy(() => import("@/pages/CountryOnboarding"));
 const BoundaryManager = lazy(() => import("@/pages/BoundaryManager"));
@@ -341,6 +342,7 @@ function AuthenticatedRouter() {
       </Route>
       <Route path="/admin/signups" component={SignupRequests} />
       <Route path="/admin/users" component={UserManagement} />
+      <Route path="/admin/staff" component={StaffManagement} />
       <Route path="/admin/countries" component={CountryOnboarding} />
       <Route path="/admin/boundaries" component={BoundaryManager} />
       <Route path="/admin/custom-layers" component={CustomLayers} />
