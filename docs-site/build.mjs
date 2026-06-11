@@ -761,7 +761,7 @@ const html = `<!DOCTYPE html>
     let navHtml = '';
     for (let i = 0; i < PAGES.length; i++) {
       const p = PAGES[i];
-      navHtml += '<li><a href="#' + p.slug + '" class="nav-link" onclick="navigate(\'' + p.slug + '\')" id="nav-' + p.slug + '">' + escHtml(p.title) + '</a></li>';
+      navHtml += '<li><a href="#' + p.slug + '" class="nav-link" onclick="navigate(' + String.fromCharCode(39) + p.slug + String.fromCharCode(39) + ')" id="nav-' + p.slug + '">' + escHtml(p.title) + '</a></li>';
     }
     nav.innerHTML = navHtml;
   }
@@ -775,7 +775,7 @@ const html = `<!DOCTYPE html>
     }
 
     const fetched = await Promise.all(PAGES.map(p => fetchPage(p.slug, localCache)));
-    const html = fetched.map(p => p ? sectionHtml(p) : '').join('\n');
+    const html = fetched.map(p => p ? sectionHtml(p) : '').join('\\n');
     document.getElementById('wikiContent').innerHTML = html;
 
     // Attach scroll spy
@@ -830,15 +830,15 @@ const html = `<!DOCTYPE html>
         let optionsHtml = '';
         for (let optIdx = 0; optIdx < q.options.length; optIdx++) {
           const opt = q.options[optIdx];
-          optionsHtml += '<button type="button" onclick="selectQuizOption(\'' + p.slug + '\', ' + qIdx + ', ' + optIdx + ')" id="btn-' + p.slug + '-' + qIdx + '-' + optIdx + '" class="quiz-option-btn" ' + (isQuizPassed ? 'disabled' : '') + ' style="text-align:left; font-size:0.8rem; padding:0.6rem 0.85rem; border:1px solid var(--border); border-radius:6px; background:var(--bg-card); color:var(--text); cursor:' + (isQuizPassed ? 'default' : 'pointer') + '; transition:all 0.2s; width:100%; margin-bottom:0.25rem;">' + escHtml(opt) + '</button>';
+          optionsHtml += '<button type="button" onclick="selectQuizOption(' + String.fromCharCode(39) + p.slug + String.fromCharCode(39) + ', ' + qIdx + ', ' + optIdx + ')" id="btn-' + p.slug + '-' + qIdx + '-' + optIdx + '" class="quiz-option-btn" ' + (isQuizPassed ? 'disabled' : '') + ' style="text-align:left; font-size:0.8rem; padding:0.6rem 0.85rem; border:1px solid var(--border); border-radius:6px; background:var(--bg-card); color:var(--text); cursor:' + (isQuizPassed ? 'default' : 'pointer') + '; transition:all 0.2s; width:100%; margin-bottom:0.25rem;">' + escHtml(opt) + '</button>';
         }
         questionsHtml += '<div id="q-' + p.slug + '-' + qIdx + '" style="display:flex; flex-direction:column; gap:0.5rem; margin-top:1rem;"><p style="font-weight:600; font-size:0.88rem; margin-bottom:0.25rem; color:var(--text);">' + (qIdx + 1) + '. ' + escHtml(q.question) + '</p><div style="display:flex; flex-direction:column; gap:0.25rem;">' + optionsHtml + '</div><div id="feedback-' + p.slug + '-' + qIdx + '" style="display:none; font-size:0.75rem; padding:0.5rem 0.75rem; border-radius:6px; margin-top:0.25rem;"></div></div>';
       }
 
-      quizHtml = '<div class="quiz-container" id="quiz-' + p.slug + '" style="margin-top:2rem; padding:1.5rem; background:rgba(59,130,246,0.05); border:1px solid var(--border); border-radius:12px;"><h4 style="margin-top:0; margin-bottom:1rem; display:flex; align-items:center; gap:0.5rem; font-weight:700; color:var(--text);">📝 ' + quiz.title + '</h4><div style="display:flex; flex-direction:column; gap:1rem;">' + questionsHtml + '</div><div style="margin-top:1.25rem; display:flex; flex-direction:column; align-items:center; gap:0.5rem;">' + (isQuizPassed ? '<div style="color:var(--green); font-size:0.8rem; font-weight:700; display:flex; align-items:center; gap:0.25rem; margin-top:0.5rem;">🏆 Quiz Passed Successfully!</div>' : '<button class="btn-primary" onclick="submitQuiz(\'' + p.slug + '\')" style="width:100%; justify-content:center; padding:0.5rem 1rem; font-size:0.8rem;">Submit Quiz Answers</button>') + '</div></div>';
+      quizHtml = '<div class="quiz-container" id="quiz-' + p.slug + '" style="margin-top:2rem; padding:1.5rem; background:rgba(59,130,246,0.05); border:1px solid var(--border); border-radius:12px;"><h4 style="margin-top:0; margin-bottom:1rem; display:flex; align-items:center; gap:0.5rem; font-weight:700; color:var(--text);">📝 ' + quiz.title + '</h4><div style="display:flex; flex-direction:column; gap:1rem;">' + questionsHtml + '</div><div style="margin-top:1.25rem; display:flex; flex-direction:column; align-items:center; gap:0.5rem;">' + (isQuizPassed ? '<div style="color:var(--green); font-size:0.8rem; font-weight:700; display:flex; align-items:center; gap:0.25rem; margin-top:0.5rem;">🏆 Quiz Passed Successfully!</div>' : '<button class="btn-primary" onclick="submitQuiz(' + String.fromCharCode(39) + p.slug + String.fromCharCode(39) + ')" style="width:100%; justify-content:center; padding:0.5rem 1rem; font-size:0.8rem;">Submit Quiz Answers</button>') + '</div></div>';
     }
 
-    return '<section id="' + p.slug + '" class="doc-section"><div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; flex-wrap:wrap; gap:0.5rem;"><h2 style="margin:0; background:none; -webkit-text-fill-color:var(--text); font-size:1.5rem; font-weight:700;">' + escHtml(p.title) + '</h2><div style="display:flex; align-items:center; gap:0.5rem;"><button class="btn-secondary" id="read-btn-' + p.slug + '" onclick="toggleRead(\'' + p.slug + '\')" style="padding:0.3rem 0.75rem; font-size:0.75rem;">' + (isRead ? '✅ Read' : '📖 Mark as Read') + '</button></div></div><div class="doc-body">' + p.renderedHtml + '</div>' + quizHtml + '</section>';
+    return '<section id="' + p.slug + '" class="doc-section"><div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; flex-wrap:wrap; gap:0.5rem;"><h2 style="margin:0; background:none; -webkit-text-fill-color:var(--text); font-size:1.5rem; font-weight:700;">' + escHtml(p.title) + '</h2><div style="display:flex; align-items:center; gap:0.5rem;"><button class="btn-secondary" id="read-btn-' + p.slug + '" onclick="toggleRead(' + String.fromCharCode(39) + p.slug + String.fromCharCode(39) + ')" style="padding:0.3rem 0.75rem; font-size:0.75rem;">' + (isRead ? '✅ Read' : '📖 Mark as Read') + '</button></div></div><div class="doc-body">' + p.renderedHtml + '</div>' + quizHtml + '</section>';
   }
 
   // ── Progress & Badges ─────────────────────────────────────────────────────
@@ -1099,7 +1099,7 @@ const html = `<!DOCTYPE html>
       const titleHl = r.title.replace(new RegExp(q, 'gi'), m => '<mark style="background:rgba(59,130,246,0.3);color:var(--primary-light);border-radius:2px;">' + m + '</mark>');
       const idx = r.preview.toLowerCase().indexOf(q);
       const snippet = idx >= 0 ? '…' + r.preview.slice(Math.max(0,idx-40), idx+120) + '…' : r.preview.slice(0, 120) + '…';
-      return '<div class="search-result" onclick="navigate(\'' + r.slug + '\')"><div class="search-result-title">' + titleHl + '</div><div class="search-result-snippet">' + snippet + '</div></div>';
+      return '<div class="search-result" onclick="navigate(' + String.fromCharCode(39) + r.slug + String.fromCharCode(39) + ')"><div class="search-result-title">' + titleHl + '</div><div class="search-result-snippet">' + snippet + '</div></div>';
     }).join('');
   }
 
