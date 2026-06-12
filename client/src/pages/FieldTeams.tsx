@@ -38,6 +38,11 @@ const ROLE_LABELS: Record<string, string> = {
   provincial_coordinator: "Provincial Coordinator",
   national_admin: "National Admin",
   gis_specialist: "GIS Specialist",
+  facility_partner: "Implementing Partner (Facility)",
+  district_partner: "Implementing Partner (District)",
+  provincial_partner: "Implementing Partner (Province)",
+  national_partner: "Implementing Partner (National)",
+  national_manager: "National Manager",
 };
 
 const ROLE_COLORS: Record<string, string> = {
@@ -47,6 +52,11 @@ const ROLE_COLORS: Record<string, string> = {
   provincial_coordinator: "bg-violet-500/15 text-violet-700 dark:text-violet-300 border-violet-500/30",
   national_admin: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30",
   gis_specialist: "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30",
+  facility_partner: "bg-teal-500/15 text-teal-700 dark:text-teal-300 border-teal-500/30",
+  district_partner: "bg-cyan-500/15 text-cyan-700 dark:text-cyan-300 border-cyan-500/30",
+  provincial_partner: "bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/30",
+  national_partner: "bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/30",
+  national_manager: "bg-orange-500/15 text-orange-700 dark:text-orange-300 border-orange-500/30",
 };
 
 const PATH_LABELS: Record<string, string> = {
@@ -215,7 +225,7 @@ export default function FieldTeams() {
 
   if (!user) return null;
 
-  const ALLOWED = ["district_manager", "provincial_coordinator", "national_admin", "gis_specialist"];
+  const ALLOWED = ["district_manager", "provincial_coordinator", "national_admin", "gis_specialist", "national_manager", "national_partner", "provincial_partner", "district_partner"];
   const userRole = (user as any).role ?? "";
   if (!ALLOWED.includes(userRole)) {
     return (

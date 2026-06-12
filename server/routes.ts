@@ -2209,7 +2209,7 @@ export async function registerRoutes(
   //   - national_admin / gis_specialist / platform_admin → all online users
   // Fields exposed are privacy-safe: no IP, no email, coarse GPS (±11 km).
   app.get("/api/field-teams", isAuthenticated, requireTenant, loadRole, async (req: any, res) => {
-    const ALLOWED_ROLES = ["district_manager", "provincial_coordinator", "national_admin", "gis_specialist"];
+    const ALLOWED_ROLES = ["district_manager", "provincial_coordinator", "national_admin", "gis_specialist", "national_manager", "national_partner", "provincial_partner", "district_partner"];
     const dbUser = req.dbUser;
     if (!dbUser || !ALLOWED_ROLES.includes(dbUser.role)) {
       return res.status(403).json({ message: "Access denied" });
@@ -2218,8 +2218,20 @@ export async function registerRoutes(
       const analytics = await storage.getTrafficAnalytics(req.tenantId);
       const roundCoarse = (n: number | null) =>
         n == null ? null : Math.round(n * 10) / 10; // ~11 km city-area
-      // Map online users to the safe field-team shape
-      let teams = analytics.online.map((u: any) => ({
+      // Only surface users who are actually working in the field — i.e. staff
+      // that operate at the facility/community level. Managers, coordinators,
+      // and admins who are online in the system (often at a desk) should not
+      // appear on the "Field Teams — Live" map.
+      const FIELD_ROLES = new Set([
+        "facility_clerk",
+        "facility_in_charge",
+        "gis_specialist",
+        // Implementing partners based at facility level
+        "facility_partner",
+      ]);
+      let teams = analytics.online
+        .filter((u: any) => FIELD_ROLES.has(u.role ?? ""))
+        .map((u: any) => ({
         userId: u.userId,
         name: u.name,
         role: u.role,
@@ -3106,6 +3118,32 @@ export async function registerRoutes(
       const scope = await getGeoScope(dbUser, req.tenantId);
       const all = await storage.getFacilities(req.tenantId, districtId);
       const result = scope.all ? all : all.filter((f) => scope.facilityIds.has(f.id));
+
+      // Augment with live staff count from facility_staff table so the Facilities
+      // module shows real headcounts instead of the rarely-updated staffCount field.
+      try {
+        const staffCounts = await db
+          .select({
+            facilityId: facilityStaff.facilityId,
+            count: dsql`count(*)::int`,
+          })
+          .from(facilityStaff)
+          .where(eq(facilityStaff.tenantId, req.tenantId))
+          .groupBy(facilityStaff.facilityId);
+        const countMap = new Map();
+        for (const row of staffCounts) {
+          if (row.facilityId) countMap.set(row.facilityId, Number(row.count));
+        }
+        const withCounts = result.map((f) => ({
+          ...f,
+          liveStaffCount: countMap.get(f.id) ?? 0,
+        }));
+        setCacheHeaders(res, 600);
+        return res.json(withCounts);
+      } catch (countErr) {
+        console.warn("[facilities] Could not compute live staff counts:", countErr);
+      }
+
       setCacheHeaders(res, 600); // 10 min — facility list changes rarely
       res.json(result);
     } catch (error) {
@@ -3573,6 +3611,21 @@ export async function registerRoutes(
         ...body,
         facilityId,
       });
+
+      // NRC uniqueness: reject if another staff member in this tenant already has this NRC
+      if (parsed.nrc) {
+        const [existingNrc] = await db
+          .select({ id: facilityStaff.id, fullName: facilityStaff.fullName })
+          .from(facilityStaff)
+          .where(and(eq(facilityStaff.tenantId, req.tenantId), eq(facilityStaff.nrc, parsed.nrc)))
+          .limit(1);
+        if (existingNrc) {
+          return res.status(409).json({
+            message: `NRC ${parsed.nrc} is already registered to ${existingNrc.fullName}. NRC must be unique per staff member.`,
+          });
+        }
+      }
+
       const [inserted] = await db
         .insert(facilityStaff)
         .values({ ...parsed, tenantId: req.tenantId } as any)
@@ -3620,15 +3673,38 @@ export async function registerRoutes(
       if (body.isActive !== undefined && body.active === undefined) body.active = body.isActive;
 
       const allowed: any = {};
+      /* Original fields:
       for (const k of [
         "fullName", "name", "gender", "position", "contactPhone", "phone",
         "yearsOfProfessionalExperience", "yearsExperience", "yearsAtFacility",
         "role", "campaignRole", "isActive", "active", "educationLevel",
         "trainingStatus", "residenceVillage", "isVolunteer", "userId"
       ]) {
+      */
+      for (const k of [
+        "fullName", "name", "gender", "position", "contactPhone", "phone",
+        "yearsOfProfessionalExperience", "yearsExperience", "yearsAtFacility",
+        "role", "campaignRole", "isActive", "active", "educationLevel",
+        "trainingStatus", "residenceVillage", "isVolunteer", "userId",
+        "employeeId", "nrc", "history"
+      ]) {
         if (body[k] !== undefined) allowed[k] = body[k];
       }
       allowed.updatedAt = new Date();
+
+      // NRC uniqueness: reject if another staff member in this tenant already has this NRC (excluding self)
+      if (allowed.nrc) {
+        const [existingNrc] = await db
+          .select({ id: facilityStaff.id, fullName: facilityStaff.fullName })
+          .from(facilityStaff)
+          .where(and(eq(facilityStaff.tenantId, req.tenantId), eq(facilityStaff.nrc, allowed.nrc)))
+          .limit(1);
+        if (existingNrc && existingNrc.id !== staffId) {
+          return res.status(409).json({
+            message: `NRC ${allowed.nrc} is already registered to ${existingNrc.fullName}. NRC must be unique per staff member.`,
+          });
+        }
+      }
 
       const [updated] = await db
         .update(facilityStaff)
@@ -4075,6 +4151,209 @@ export async function registerRoutes(
       }
     } catch (err: any) {
       res.status(500).json({ message: err?.message || "Bulk save failed" });
+    }
+  });
+
+  // ─── Cold Chain Equipment Inventory ─────────────────────────────────────
+  // GET /api/facilities/:id/cold-chain
+  app.get("/api/facilities/:id/cold-chain", ...auth, async (req: any, res) => {
+    try {
+      const facilityId = parseInt(req.params.id);
+      if (isNaN(facilityId)) return res.status(400).json({ message: "Invalid facility id" });
+      const { coldChainEquipment } = await import("@shared/schema");
+      const rows = await db
+        .select()
+        .from(coldChainEquipment)
+        .where(
+          and(
+            eq(coldChainEquipment.tenantId, req.tenantId),
+            eq(coldChainEquipment.facilityId, facilityId),
+            eq(coldChainEquipment.isActive, true),
+          )
+        )
+        .orderBy(coldChainEquipment.equipmentType, coldChainEquipment.brand);
+      res.json(rows);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to list cold chain equipment: " + err.message });
+    }
+  });
+
+  // POST /api/facilities/:id/cold-chain
+  app.post("/api/facilities/:id/cold-chain", ...auth, async (req: any, res) => {
+    try {
+      const facilityId = parseInt(req.params.id);
+      if (isNaN(facilityId)) return res.status(400).json({ message: "Invalid facility id" });
+      const { coldChainEquipment, insertColdChainEquipmentSchema } = await import("@shared/schema");
+      const parsed = insertColdChainEquipmentSchema.parse({ ...req.body, facilityId });
+      const [inserted] = await db
+        .insert(coldChainEquipment)
+        .values({
+          ...parsed,
+          tenantId: req.tenantId,
+          createdByUserId: req.user?.claims?.sub ?? null,
+          updatedByUserId: req.user?.claims?.sub ?? null,
+        } as any)
+        .returning();
+      await logAudit(req, "create", "cold_chain_equipment", inserted.id, null, inserted);
+      res.status(201).json(inserted);
+    } catch (err: any) {
+      res.status(400).json({ message: "Invalid equipment data: " + err.message });
+    }
+  });
+
+  // PATCH /api/facilities/:id/cold-chain/:equipId
+  app.patch("/api/facilities/:id/cold-chain/:equipId", ...auth, async (req: any, res) => {
+    try {
+      const facilityId = parseInt(req.params.id);
+      const equipId = parseInt(req.params.equipId);
+      if (isNaN(facilityId) || isNaN(equipId)) return res.status(400).json({ message: "Invalid parameters" });
+      const { coldChainEquipment } = await import("@shared/schema");
+      const [existing] = await db.select().from(coldChainEquipment)
+        .where(and(eq(coldChainEquipment.id, equipId), eq(coldChainEquipment.facilityId, facilityId), eq(coldChainEquipment.tenantId, req.tenantId)));
+      if (!existing) return res.status(404).json({ message: "Equipment not found" });
+      const allowed: any = {};
+      for (const k of [
+        "equipmentType", "brand", "model", "serialNumber", "catalogNumber",
+        "capacityLiters", "netStorageCapacityLiters", "temperatureMin", "temperatureMax",
+        "powerSource", "energyConsumptionKwhDay", "manufactureYear", "installationDate",
+        "purchaseCost", "purchaseCurrency", "warrantyExpiry", "supplier", "donorFunded", "fundingSource",
+        "condition", "lastServiceDate", "nextServiceDue", "lastTemperatureCheck", "maintenanceNotes",
+        "isActive", "notes", "externalId",
+      ]) {
+        if (req.body[k] !== undefined) allowed[k] = req.body[k];
+      }
+      allowed.updatedAt = new Date();
+      allowed.updatedByUserId = req.user?.claims?.sub ?? null;
+      const [updated] = await db.update(coldChainEquipment).set(allowed)
+        .where(eq(coldChainEquipment.id, equipId)).returning();
+      await logAudit(req, "update", "cold_chain_equipment", equipId, existing, updated);
+      res.json(updated);
+    } catch (err: any) {
+      res.status(400).json({ message: "Failed to update equipment: " + err.message });
+    }
+  });
+
+  // DELETE /api/facilities/:id/cold-chain/:equipId  (soft-delete via isActive=false)
+  app.delete("/api/facilities/:id/cold-chain/:equipId", ...auth, async (req: any, res) => {
+    try {
+      const facilityId = parseInt(req.params.id);
+      const equipId = parseInt(req.params.equipId);
+      if (isNaN(facilityId) || isNaN(equipId)) return res.status(400).json({ message: "Invalid parameters" });
+      const { coldChainEquipment } = await import("@shared/schema");
+      const [existing] = await db.select().from(coldChainEquipment)
+        .where(and(eq(coldChainEquipment.id, equipId), eq(coldChainEquipment.facilityId, facilityId), eq(coldChainEquipment.tenantId, req.tenantId)));
+      if (!existing) return res.status(404).json({ message: "Equipment not found" });
+      await db.update(coldChainEquipment)
+        .set({ isActive: false, updatedAt: new Date(), updatedByUserId: req.user?.claims?.sub ?? null } as any)
+        .where(eq(coldChainEquipment.id, equipId));
+      await logAudit(req, "delete", "cold_chain_equipment", equipId, existing, null);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to delete equipment: " + err.message });
+    }
+  });
+
+  // POST /api/facilities/:id/cold-chain/import  (CSV / JSON bulk import)
+  app.post("/api/facilities/:id/cold-chain/import", ...auth, async (req: any, res) => {
+    try {
+      const facilityId = parseInt(req.params.id);
+      if (isNaN(facilityId)) return res.status(400).json({ message: "Invalid facility id" });
+      const { coldChainEquipment, insertColdChainEquipmentSchema } = await import("@shared/schema");
+      const items: any[] = Array.isArray(req.body) ? req.body : (req.body?.items ?? []);
+      if (!items.length) return res.status(400).json({ message: "No items provided" });
+      const results: { row: number; ok: boolean; error?: string; id?: number }[] = [];
+      for (let i = 0; i < items.length; i++) {
+        try {
+          const parsed = insertColdChainEquipmentSchema.parse({ ...items[i], facilityId });
+          const [inserted] = await db.insert(coldChainEquipment)
+            .values({ ...parsed, tenantId: req.tenantId, createdByUserId: req.user?.claims?.sub ?? null, updatedByUserId: req.user?.claims?.sub ?? null } as any)
+            .returning();
+          results.push({ row: i + 1, ok: true, id: inserted.id });
+        } catch (e: any) {
+          results.push({ row: i + 1, ok: false, error: e.message });
+        }
+      }
+      const successCount = results.filter((r) => r.ok).length;
+      res.json({ success: true, imported: successCount, failed: items.length - successCount, results });
+    } catch (err: any) {
+      res.status(400).json({ message: "Import failed: " + err.message });
+    }
+  });
+
+  // GET /api/facilities/:id/cold-chain/export  (IGA-format JSON and CSV)
+  app.get("/api/facilities/:id/cold-chain/export", ...auth, async (req: any, res) => {
+    try {
+      const facilityId = parseInt(req.params.id);
+      if (isNaN(facilityId)) return res.status(400).json({ message: "Invalid facility id" });
+      const { coldChainEquipment } = await import("@shared/schema");
+      const format = (req.query.format as string || "json").toLowerCase();
+      const rows = await db.select().from(coldChainEquipment)
+        .where(and(eq(coldChainEquipment.tenantId, req.tenantId), eq(coldChainEquipment.facilityId, facilityId)))
+        .orderBy(coldChainEquipment.equipmentType);
+
+      if (format === "csv") {
+        const headers = [
+          "id","equipmentType","brand","model","serialNumber","catalogNumber",
+          "capacityLiters","netStorageCapacityLiters","temperatureMin","temperatureMax",
+          "powerSource","energyConsumptionKwhDay","manufactureYear","installationDate",
+          "condition","lastServiceDate","nextServiceDue","lastTemperatureCheck",
+          "supplier","donorFunded","fundingSource","purchaseCost","purchaseCurrency",
+          "warrantyExpiry","isActive","externalId","notes",
+        ];
+        const csvLines = [headers.join(",")];
+        for (const r of rows) {
+          csvLines.push(headers.map((h) => {
+            const v = (r as any)[h];
+            if (v === null || v === undefined) return "";
+            const s = String(v).replace(/"/g, '""');
+            return s.includes(",") || s.includes("\n") || s.includes('"') ? `"${s}"` : s;
+          }).join(","));
+        }
+        res.setHeader("Content-Type", "text/csv");
+        res.setHeader("Content-Disposition", `attachment; filename="cold-chain-facility-${facilityId}.csv"`);
+        return res.send(csvLines.join("\n"));
+      }
+
+      // Default: WHO EIR / IGA-compatible JSON
+      const igaExport = {
+        exportFormat: "WHO_EIR_IGA_v1",
+        exportedAt: new Date().toISOString(),
+        facilityId,
+        totalItems: rows.length,
+        equipment: rows.map((r) => ({
+          id: r.id,
+          externalId: r.externalId,
+          type: r.equipmentType,
+          brand: r.brand,
+          model: r.model,
+          serialNumber: r.serialNumber,
+          catalogNumber: r.catalogNumber,
+          capacityL: r.capacityLiters,
+          netCapacityL: r.netStorageCapacityLiters,
+          tempRangeC: { min: r.temperatureMin, max: r.temperatureMax },
+          powerSource: r.powerSource,
+          energyKwhDay: r.energyConsumptionKwhDay,
+          manufactureYear: r.manufactureYear,
+          installationDate: r.installationDate,
+          condition: r.condition,
+          lastServiceDate: r.lastServiceDate,
+          nextServiceDue: r.nextServiceDue,
+          lastTemperatureCheck: r.lastTemperatureCheck,
+          supplier: r.supplier,
+          donorFunded: r.donorFunded,
+          fundingSource: r.fundingSource,
+          purchaseCost: r.purchaseCost,
+          purchaseCurrency: r.purchaseCurrency,
+          warrantyExpiry: r.warrantyExpiry,
+          isActive: r.isActive,
+          notes: r.notes,
+        })),
+      };
+      res.setHeader("Content-Type", "application/json");
+      res.setHeader("Content-Disposition", `attachment; filename="cold-chain-iga-facility-${facilityId}.json"`);
+      return res.json(igaExport);
+    } catch (err: any) {
+      res.status(500).json({ message: "Export failed: " + err.message });
     }
   });
 

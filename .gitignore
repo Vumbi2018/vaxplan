@@ -9,3 +9,14 @@ local_dump.sql
 local_dump.sql.zip
 dump.rdb
 zipFile.zip
+attached_assets/
+Resources/
+data/
+# Capacitor Android generated project (re-generated from npm run cap:sync)
+android/
+# iOS Capacitor project
+ios/
+# Electron forge output
+.webpack/
+# Build scripts output
+script/

@@ -20,6 +20,13 @@ import {
 } from "react-leaflet";
 import L from "leaflet";
 import * as turf from "@turf/turf";
+import type {
+  Feature as GeoJSONFeature,
+  Polygon as GeoJSONPolygon,
+  MultiPolygon as GeoJSONMultiPolygon,
+} from "geojson";
+
+
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import "leaflet/dist/leaflet.css";
@@ -291,7 +298,9 @@ export function CatchmentMapPanel({
         .filter((p) => p.coords.length >= 3)
         .map((p) => turf.polygon([toGeoRing(p.coords)]));
       if (comFeatures.length === 0) return [];
-      let union: turf.Feature<turf.Polygon | turf.MultiPolygon> | null = comFeatures[0];
+      let union: GeoJSONFeature<GeoJSONPolygon | GeoJSONMultiPolygon> | null = comFeatures[0];
+
+
       for (let i = 1; i < comFeatures.length; i++) {
         union = union ? turf.union(turf.featureCollection([union as any, comFeatures[i]])) : comFeatures[i];
       }

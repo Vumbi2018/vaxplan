@@ -53,6 +53,12 @@ vi.mock("@/hooks/useAuth", () => ({
 
 vi.mock("@/lib/tenantCache", () => ({
   loadActiveTenant: () => h.activeTenant,
+  getActiveSyncTenantId: (user: any) => {
+    if (user?.isPlatformAdmin && h.activeTenant?.id) {
+      return h.activeTenant.id;
+    }
+    return user?.tenantId ?? null;
+  },
 }));
 
 vi.mock("@/lib/queryClient", () => ({

@@ -20,6 +20,7 @@ import { useState, useMemo } from "react";
 // XLSX is loaded lazily on-demand (only when the user clicks Export) to keep
 // it out of the main JS bundle — the library is 424 kB raw / 142 kB gzipped.
 import { useToast } from "@/hooks/use-toast";
+import { Checkbox } from "@/components/ui/checkbox";
 
 interface Column<T> {
   key: keyof T | string;
@@ -39,6 +40,11 @@ interface DataTableProps<T> {
   exportFileName?: string;
   emptyMessage?: string;
   searchPlaceholder?: string;
+  // Selection extensions
+  enableSelection?: boolean;
+  selectedIds?: (string | number)[];
+  onSelectionChange?: (ids: (string | number)[]) => void;
+  bulkActions?: React.ReactNode;
 }
 
 export function DataTable<T extends { id?: number | string }>({
@@ -52,6 +58,10 @@ export function DataTable<T extends { id?: number | string }>({
   exportFileName = "export",
   emptyMessage = "No data available",
   searchPlaceholder = "Search...",
+  enableSelection = false,
+  selectedIds = [],
+  onSelectionChange,
+  bulkActions,
 }: DataTableProps<T>) {
   const [search, setSearch] = useState("");
   const [limit, setLimit] = useState(pageSize);
@@ -144,6 +154,31 @@ export function DataTable<T extends { id?: number | string }>({
     currentPage * limit
   );
 
+  const allRowIds = useMemo(() => {
+    return paginatedData.map(item => item.id).filter(id => id !== undefined) as (string | number)[];
+  }, [paginatedData]);
+
+  const isAllPageSelected = useMemo(() => {
+    return allRowIds.length > 0 && allRowIds.every(id => selectedIds?.includes(id));
+  }, [allRowIds, selectedIds]);
+
+  const isSomePageSelected = useMemo(() => {
+    return allRowIds.some(id => selectedIds?.includes(id)) && !isAllPageSelected;
+  }, [allRowIds, selectedIds, isAllPageSelected]);
+
+  const handleToggleSelectPage = () => {
+    if (!onSelectionChange || !selectedIds) return;
+    if (isAllPageSelected) {
+      onSelectionChange(selectedIds.filter(id => !allRowIds.includes(id)));
+    } else {
+      const next = [...selectedIds];
+      allRowIds.forEach(id => {
+        if (!next.includes(id)) next.push(id);
+      });
+      onSelectionChange(next);
+    }
+  };
+
   const handleSort = (key: string) => {
     setSortConfig((prev) => {
       if (prev?.key === key) {
@@ -174,6 +209,11 @@ export function DataTable<T extends { id?: number | string }>({
           </div>
         )}
         <div className="flex items-center gap-2">
+          {enableSelection && selectedIds && selectedIds.length > 0 && bulkActions && (
+            <div className="flex items-center gap-2 mr-2 animate-in fade-in duration-200">
+              {bulkActions}
+            </div>
+          )}
           {(onExport || data.length > 0) && (
             <Button
               variant="outline"
@@ -192,6 +232,15 @@ export function DataTable<T extends { id?: number | string }>({
         <Table>
           <TableHeader>
             <TableRow>
+              {enableSelection && onSelectionChange && selectedIds && (
+                <TableHead className="w-12 text-center sticky top-0 bg-muted z-20">
+                  <Checkbox
+                    checked={isAllPageSelected ? true : isSomePageSelected ? "indeterminate" : false}
+                    onCheckedChange={handleToggleSelectPage}
+                    aria-label="Select all"
+                  />
+                </TableHead>
+              )}
               {columns.map((col) => {
                 const isSortable = col.sortable !== false;
                 return (
@@ -219,7 +268,7 @@ export function DataTable<T extends { id?: number | string }>({
             {paginatedData.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={columns.length}
+                  colSpan={columns.length + (enableSelection ? 1 : 0)}
                   className="h-24 text-center text-muted-foreground"
                 >
                   {emptyMessage}
@@ -233,6 +282,22 @@ export function DataTable<T extends { id?: number | string }>({
                   onClick={() => onRowClick?.(item)}
                   data-testid={`table-row-${item.id ?? index}`}
                 >
+                  {enableSelection && onSelectionChange && selectedIds && (
+                    <TableCell className="w-12 text-center" onClick={(e) => e.stopPropagation()}>
+                      <Checkbox
+                        checked={selectedIds.includes(item.id ?? "")}
+                        onCheckedChange={(checked) => {
+                          if (item.id === undefined) return;
+                          if (checked) {
+                            onSelectionChange([...selectedIds, item.id]);
+                          } else {
+                            onSelectionChange(selectedIds.filter(id => id !== item.id));
+                          }
+                        }}
+                        aria-label="Select row"
+                      />
+                    </TableCell>
+                  )}
                   {columns.map((col) => (
                     <TableCell key={String(col.key)}>
                       {col.render

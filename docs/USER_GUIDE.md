@@ -205,8 +205,8 @@ A **microplan** is your facility's quarterly plan. It declares:
 
 **Steps:**
 
-1. From the sidebar, open **Microplans → Routine**.
-2. Click **New microplan**. The wizard opens.
+1. From the sidebar, open **Microplans → Routine**. You will see a list of your facility's saved microplans in a sortable and searchable table showing the plan name, period, status, and planned vs. completed session counts. You can sort by columns, filter by plan name, and use the page size selectors and pagination controls.
+2. Click **New microplan** (or click **Open** on an existing plan in the table to resume editing). The wizard opens.
 3. **Step 1 — Scope.** Pick the quarter and year. Your facility is
    pre-filled from your profile and cannot be changed.
 4. **Step 2 — Catchment.** Tick the villages the facility will serve
@@ -353,6 +353,13 @@ The **Stock** page tracks vaccine balances at your facility:
 The **monthly stock summary** is your end-of-month return: review,
 adjust if you find a discrepancy on physical count, and submit.
 
+### 5.6b Cold Chain Equipment Inventory
+
+Every health facility tracks its vaccine storage equipment (refrigerators, freezers, solar direct drive units, vaccine carriers, and generators). 
+* **Viewing and Adding Equipment:** Open **Facilities** from the sidebar, click on your health facility, and switch to the **Cold Chain** tab. You can add new equipment, specify the condition (Functional, Needs Repair, Non-Functional, Condemned, Decommissioned), brand/model, serial number, storage capacity in litres, temperature ranges, and installation details.
+* **Bulk Actions:** You can perform operations concurrently on multiple selected equipment items. Select multiple items in the list to reveal the floating actions toolbar at the bottom of the table to bulk delete, update condition, or make items active/inactive.
+* **Interoperability (CSV & IGA):** To support Inventory and Gap Analysis (IGA), you can export the facility cold-chain assets to a standard CSV file or a specialized IGA-compatible JSON file. You can also import equipment lists from a CSV file directly.
+
 ### 5.7 Offline mode and sync
 
 VaxPlan works without an internet connection. Here's what you need
@@ -415,6 +422,10 @@ you don't need to wait for your national admin.
 > **health facility**. The **Add Facility** button is hidden for staff
 > who aren't allowed to use it.
 
+**Communities Registry & Bulk Actions:** Under the Communities tab, you can manage all assigned villages:
+* **Customize Columns:** Click the **Columns** dropdown next to "Add Community" to show/hide dynamic administrative level columns or metadata like HTR status and coordinates.
+* **Floating Bulk Actions:** Tick checkboxes on individual community rows (or select all) to activate the floating actions bar. You can bulk delete, bulk update Hard-to-Reach status, bulk update transit modes, or reassign communities in batch to another facility. All bulk updates are processed concurrently in batches of 10 requests.
+
 **Catchment overlap and harmonization.** If the boundary you draw
 overlaps another community's catchment, VaxPlan shows a **Catchment
 overlap detected** panel after you save. It lists each overlapping
@@ -473,15 +484,9 @@ cannot edit users or facilities, but you can see them).
 
 National admins are the power users for your country. Your modules:
 
-- **Users.** Invite users, assign roles, suspend or reactivate
-  accounts. You can also bulk-import users from a CSV. When creating a
-  user you can set an **initial password** so they can sign in right
-  away, and you can **reset any user's password** later from the
-  user's edit screen (open a user → **Reset Password**). Passwords must
-  be at least 8 characters — share them with the user securely. (Only
-  national admins and Super Admins see these password controls. A
-  national admin can only manage users in **their own country**; a
-  Super Admin can manage users in whichever country they're working in.)
+- **Users & Staff.** Invite users, assign roles, suspend or reactivate accounts.
+  * **Password Controls:** When creating a user you can set an **initial password** so they can sign in right away, and you can **reset any user's password** later from the user's edit screen (open a user → **Reset Password**). Passwords must be at least 8 characters — share them with the user securely. (Only national admins and Super Admins see these password controls. A national admin can only manage users in **their own country**; a Super Admin can manage users in whichever country they're working in.)
+  * **Staff Management Bulk Actions:** Open the **Staff** management table. You can perform batch updates concurrently on multiple selected staff members by ticking checkboxes on the left side of the rows (or selecting the header box to select all) to reveal the floating actions bar. You can bulk delete, toggle active/inactive status, update routine roles, or update training status in batches of 10.
 - **Facilities.** The registry of all facilities. Import from CSV (a
   template is downloadable), edit GPS coordinates, merge duplicates,
   or retire facilities.

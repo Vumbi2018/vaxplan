@@ -181,7 +181,8 @@ export default function BudgetPlanning() {
     queryFn: async () => {
       if (!navigator.onLine) {
         const _tid = loadActiveTenant()?.id;
-        return (_tid ? offlineDb.budgetItems.where("tenantId").equals(_tid).toArray() : offlineDb.budgetItems.toArray()) as any[];
+        return (_tid ? await offlineDb.budgetItems.where("tenantId").equals(_tid).toArray() : await offlineDb.budgetItems.toArray());
+
       }
       const res = await fetch("/api/budget-items");
       if (!res.ok) throw new Error("Failed to fetch budget items");
@@ -194,7 +195,8 @@ export default function BudgetPlanning() {
     queryFn: async () => {
       if (!navigator.onLine) {
         const _tid = loadActiveTenant()?.id;
-        return (_tid ? offlineDb.facilities.where("tenantId").equals(_tid).toArray() : offlineDb.facilities.toArray()) as any[];
+        return (_tid ? await offlineDb.facilities.where("tenantId").equals(_tid).toArray() : await offlineDb.facilities.toArray());
+
       }
       const res = await fetch("/api/facilities");
       if (!res.ok) throw new Error("Failed to fetch facilities");
@@ -207,7 +209,8 @@ export default function BudgetPlanning() {
     queryFn: async () => {
       if (!navigator.onLine) {
         const _tid = loadActiveTenant()?.id;
-        return (_tid ? offlineDb.sessionPlans.where("tenantId").equals(_tid).toArray() : offlineDb.sessionPlans.toArray()) as any[];
+        return (_tid ? await offlineDb.sessionPlans.where("tenantId").equals(_tid).toArray() : await offlineDb.sessionPlans.toArray());
+
       }
       const res = await fetch("/api/sessions");
       if (!res.ok) throw new Error("Failed to fetch session plans");

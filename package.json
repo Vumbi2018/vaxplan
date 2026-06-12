@@ -1,7 +1,8 @@
 {
-    "name": "rest-express",
+    "name": "vaxplan",
     "version": "1.4.0",
     "type": "module",
+
     "license": "MIT",
     "scripts": {
         "dev": "tsx --env-file=.env server/index.ts",

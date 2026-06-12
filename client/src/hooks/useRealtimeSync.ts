@@ -54,7 +54,10 @@ export function useRealtimeSync(): void {
         // engine now maintains one bucket per viewing tenant so this is always
         // safe regardless of whether the user is visiting their home tenant or
         // a different country as a platform admin.
-        if (activeSyncTenantId) {
+        // Original Code:
+        // if (activeSyncTenantId) {
+        // Updated Code: Ensure activeSyncTenantId matches the active websocket connection's tenantId to prevent wrong-partition sync.
+        if (activeSyncTenantId && activeSyncTenantId === tenantId) {
           try {
             syncEngine.sync(activeSyncTenantId, { silent: true });
           } catch {

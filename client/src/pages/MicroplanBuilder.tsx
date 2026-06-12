@@ -28,6 +28,7 @@ import {
   personnelCostForDay,
 } from "@/lib/personnelCost";
 import { AddCommunityDialog } from "@/components/AddCommunityDialog";
+import { FacilityCascadePicker } from "@/components/FacilityCascadePicker";
 import {
   Sparkles,
   Users,
@@ -301,14 +302,18 @@ export default function MicroplanBuilder({ prePlanType }: MicroplanBuilderProps 
     queryKey: ["/api/microplans"],
   });
 
-  // Automatically bind selected facility to user context
+  // Automatically bind selected facility to user context.
+  // Facility-level roles are always pinned to their own facility.
+  // District/provincial and global roles must choose explicitly via the picker —
+  // we do NOT fall back to facilities[0] as that could silently produce
+  // microplans attributed to the wrong facility.
   useEffect(() => {
     if (user?.facilityId) {
       setSelectedFacilityId(user.facilityId);
-    } else if (facilities && facilities.length > 0 && !selectedFacilityId) {
-      setSelectedFacilityId(facilities[0].id);
     }
-  }, [user, facilities]);
+    // District/provincial/admin roles: leave selectedFacilityId as null until
+    // the user actively selects a facility through the FacilityCascadePicker.
+  }, [user]);
 
   // Load and pre-populate HTR values for selected village catchments
   useEffect(() => {
@@ -403,17 +408,37 @@ export default function MicroplanBuilder({ prePlanType }: MicroplanBuilderProps 
         const adj = localAdjustments[configId] || {};
         
         let antigenTargetPop = pop;
-        if (config.targetGroup === "births") {
-          antigenTargetPop = Math.round(pop * (demographics.births / demographics.under1));
-        } else if (config.targetGroup === "pregnant") {
-          antigenTargetPop = Math.round(pop * (demographics.pregnant / demographics.under1));
-        } else if (config.targetGroup === "schoolEntry") {
-          antigenTargetPop = Math.round(pop * (demographics.schoolEntry / demographics.under1));
+        // Guard against division-by-zero: if under1 is 0 or missing, use raw pop
+        const under1Rate = demographics.under1 || 0;
+        if (under1Rate > 0) {
+          if (config.targetGroup === "births") {
+            const ratio = (demographics.births || 0) / under1Rate;
+            antigenTargetPop = Math.round(pop * (isFinite(ratio) ? ratio : 1));
+          } else if (config.targetGroup === "pregnant") {
+            const ratio = (demographics.pregnant || 0) / under1Rate;
+            antigenTargetPop = Math.round(pop * (isFinite(ratio) ? ratio : 1));
+          } else if (config.targetGroup === "schoolEntry") {
+            const ratio = (demographics.schoolEntry || 0) / under1Rate;
+            antigenTargetPop = Math.round(pop * (isFinite(ratio) ? ratio : 1));
+          }
         }
         
-        const wastage = adj.wastageFactor !== undefined ? adj.wastageFactor : parseFloat(config.wastageFactor);
+        // Guard against NaN/null wastageFactor — default to 1.0 (no extra wastage)
+        const rawWastage = adj.wastageFactor !== undefined
+          ? adj.wastageFactor
+          : parseFloat(String(config.wastageFactor ?? "1"));
+        const wastage = isFinite(rawWastage) && rawWastage > 0 ? rawWastage : 1;
         const doses = Math.ceil(antigenTargetPop * wastage);
-        const vials = adj.vials !== undefined ? adj.vials : Math.ceil(doses / (config.vialsPerDose || 10));
+        
+        // Guard against 0 vialsPerDose
+        const vialsPerDose = Number(config.vialsPerDose) || 10;
+        const vials = adj.vials !== undefined && isFinite(adj.vials)
+          ? adj.vials
+          : Math.ceil(doses / vialsPerDose);
+
+        // Skip rows that couldn't produce a finite, positive result
+        if (!isFinite(doses) || !isFinite(vials)) return;
+
         forecast.push({
           name: config.name,
           doses,
@@ -1479,6 +1504,24 @@ export default function MicroplanBuilder({ prePlanType }: MicroplanBuilderProps 
               </CardDescription>
             </CardHeader>
             <CardContent className="p-4 space-y-4 pt-5">
+              {/* Facility picker — shown for district/provincial/admin roles who do not have a fixed facilityId */}
+              {!user?.facilityId && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-muted-foreground uppercase">Target Facility *</Label>
+                  <FacilityCascadePicker
+                    value={selectedFacilityId}
+                    onChange={(id, _fac) => setSelectedFacilityId(id)}
+                    facilityLabel="Facility for this microplan"
+                    layout="stacked"
+                  />
+                  {!selectedFacilityId && (
+                    <p className="text-[10px] text-amber-600 font-medium mt-0.5">
+                      ⚠ You must select a facility before continuing.
+                    </p>
+                  )}
+                </div>
+              )}
+
               <div className="space-y-1.5">
                 <Label className="text-xs font-semibold text-muted-foreground uppercase">Target Facility</Label>
                 <div className="p-3 bg-muted/40 border rounded-xl text-xs space-y-1">

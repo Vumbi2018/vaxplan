@@ -186,10 +186,10 @@ export default defineConfig({
   },
   optimizeDeps: {
     include: ["react-leaflet", "@react-leaflet/core", "leaflet", "@e965/xlsx"],
+    // Exclude Node.js-only modules so Vite never tries to bundle them for the browser.
+    // Core Node modules (https, http, fs, path, crypto, stream, zlib) are handled
+    // automatically by Vite's browser target; only explicit npm packages need listing here.
     exclude: ["nodemailer", "twilio"],
-    esbuildOptions: {
-      external: ["https", "http", "fs", "path", "crypto", "stream", "zlib"]
-    }
   },
   root: path.resolve(import.meta.dirname, "client"),
   build: {

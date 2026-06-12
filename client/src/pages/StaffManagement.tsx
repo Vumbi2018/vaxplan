@@ -13,6 +13,8 @@ import {
   UserX,
   Loader2,
   ChevronRight,
+  ChevronUp,
+  Settings2,
   ClipboardList,
   Filter,
   Download,
@@ -61,6 +63,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -71,6 +74,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Progress } from "@/components/ui/progress";
 import { apiRequest } from "@/lib/queryClient";
 import type { Facility, Province, District } from "@shared/schema";
 
@@ -92,6 +96,9 @@ interface StaffMember {
   trainingStatus: string | null;
   residenceVillage: string | null;
   createdAt: string | null;
+  employeeId?: string | null;
+  nrc?: string | null;
+  history?: any[] | null;
 }
 
 interface StaffFormData {
@@ -108,6 +115,9 @@ interface StaffFormData {
   educationLevel: string;
   trainingStatus: string;
   residenceVillage: string;
+  employeeId: string;
+  nrc: string;
+  history: any[];
 }
 
 // ─── Import Types ─────────────────────────────────────────────────────────────
@@ -127,6 +137,12 @@ interface ImportRow {
   residenceVillage: string | null;
   isActive: boolean;
   isVolunteer: boolean;
+  employeeId: string | null;
+  nrc: string | null;
+  facilityName: string | null;
+  districtName: string | null;
+  provinceName: string | null;
+  resolvedFacilityId?: number | null;
 }
 
 interface ImportResult {
@@ -150,6 +166,9 @@ const EMPTY_FORM: StaffFormData = {
   educationLevel: "",
   trainingStatus: "trained",
   residenceVillage: "",
+  employeeId: "",
+  nrc: "",
+  history: [],
 };
 
 const ROLE_OPTIONS = [
@@ -260,6 +279,14 @@ export default function StaffManagement() {
 
   // National admin / platform admin can see all facilities without selecting one
   const isGlobalAdmin = !!(user?.isPlatformAdmin || user?.role === "national_admin");
+  // District/provincial roles see all staff in their geo scope without needing a facility filter
+  const isDistrictOrProvincial =
+    user?.role === "district_manager" ||
+    user?.role === "district_partner" ||
+    user?.role === "provincial_coordinator" ||
+    user?.role === "provincial_partner";
+  // Any role that can load staff without first picking a facility
+  const canSeeMultiFacilityStaff = isGlobalAdmin || isDistrictOrProvincial;
   // ─── Cascade Filter State ─────────────────────────────────────────────────
   const [selectedProvinceId, setSelectedProvinceId] = useState<string>("");
   const [selectedDistrictId, setSelectedDistrictId] = useState<string>("");
@@ -269,6 +296,39 @@ export default function StaffManagement() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [activeTab, setActiveTab] = useState("roster");
 
+  // ─── Pagination & Sorting State ──────────────────────────────────────────
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [sortColumn, setSortColumn] = useState<string>("name");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
+
+  // ─── Column Visibility State ──────────────────────────────────────────────
+  const [visibleColumns, setVisibleColumns] = useState<Record<string, boolean>>({
+    staffMember: true,
+    facility: true,
+    role: true,
+    campaignRole: false,
+    training: true,
+    experience: true,
+    contact: true,
+    employeeId: true,
+    nrc: true,
+    active: true,
+  });
+
+  const COLUMN_LABELS: Record<string, string> = {
+    staffMember: "Staff Member",
+    facility: "Facility",
+    role: "Routine Role",
+    campaignRole: "Campaign Role",
+    training: "Training Status",
+    experience: "Experience",
+    contact: "Contact Phone",
+    employeeId: "Employee ID",
+    nrc: "NRC Number",
+    active: "Status",
+  };
+
   // ─── Dialog State ─────────────────────────────────────────────────────────
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingStaff, setEditingStaff] = useState<StaffMember | null>(null);
@@ -276,6 +336,151 @@ export default function StaffManagement() {
   const [formTab, setFormTab] = useState("basic");
   // When national admin adds staff, they must pick a facility
   const [formFacilityId, setFormFacilityId] = useState<string>("");
+
+  // ─── Employment History Add State ─────────────────────────────────────────
+  const [historyFacility, setHistoryFacility] = useState("");
+  const [historyRole, setHistoryRole] = useState("");
+  const [historyYears, setHistoryYears] = useState("");
+  const [selectedStaffForHistory, setSelectedStaffForHistory] = useState<StaffMember | null>(null);
+
+  // ─── Bulk Actions State & Logic ───────────────────────────────────────────
+  const [selectedStaffIds, setSelectedStaffIds] = useState<number[]>([]);
+  const [bulkProcessing, setBulkProcessing] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0, percentage: 0 });
+
+  const runBulkAction = async (
+    actionName: string,
+    actionFn: (staff: StaffMember) => Promise<void>
+  ) => {
+    if (selectedStaffIds.length === 0) return;
+    setBulkProcessing(true);
+    const total = selectedStaffIds.length;
+    setBulkProgress({ current: 0, total, percentage: 0 });
+
+    const selectedStaff = staffList.filter((s) => selectedStaffIds.includes(s.id));
+    const batchSize = 10;
+    let successCount = 0;
+    let failCount = 0;
+
+    for (let i = 0; i < total; i += batchSize) {
+      const batch = selectedStaff.slice(i, i + batchSize);
+      await Promise.all(
+        batch.map(async (staff) => {
+          try {
+            await actionFn(staff);
+            successCount++;
+          } catch (err) {
+            failCount++;
+            console.error(`Failed bulk action ${actionName} on staff ${staff.id}:`, err);
+          }
+        })
+      );
+      const current = Math.min(i + batchSize, total);
+      setBulkProgress({
+        current,
+        total,
+        percentage: Math.round((current / total) * 100),
+      });
+    }
+
+    setBulkProcessing(false);
+    setSelectedStaffIds([]);
+    refetchStaff();
+
+    toast({
+      title: `${actionName} complete`,
+      description: `${successCount} staff successfully processed.${failCount ? ` ${failCount} failed.` : ""}`,
+      variant: failCount > 0 ? "destructive" : "default"
+    });
+  };
+
+  const handleBulkDelete = () => {
+    if (confirm(`Are you sure you want to permanently delete the ${selectedStaffIds.length} selected staff members? This cannot be undone.`)) {
+      void runBulkAction(
+        "Bulk Delete",
+        async (staff) => {
+          await apiRequest("DELETE", `/api/facilities/${staff.facilityId}/staff/${staff.id}`);
+        }
+      );
+    }
+  };
+
+  const handleBulkToggleActive = (isActive: boolean) => {
+    void runBulkAction(
+      `Bulk Set ${isActive ? 'Active' : 'Inactive'}`,
+      async (staff) => {
+        await apiRequest("PATCH", `/api/facilities/${staff.facilityId}/staff/${staff.id}`, { isActive });
+      }
+    );
+  };
+
+  const handleBulkUpdateRole = (role: string) => {
+    void runBulkAction(
+      "Bulk Update Role",
+      async (staff) => {
+        await apiRequest("PATCH", `/api/facilities/${staff.facilityId}/staff/${staff.id}`, { role });
+      }
+    );
+  };
+
+  const handleBulkUpdateTraining = (trainingStatus: string) => {
+    void runBulkAction(
+      "Bulk Update Training",
+      async (staff) => {
+        await apiRequest("PATCH", `/api/facilities/${staff.facilityId}/staff/${staff.id}`, { trainingStatus });
+      }
+    );
+  };
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedStaffIds(paginatedStaff.map((s) => s.id));
+    } else {
+      setSelectedStaffIds([]);
+    }
+  };
+
+  const handleSelectRow = (id: number, checked: boolean) => {
+    if (checked) {
+      setSelectedStaffIds((prev) => [...prev, id]);
+    } else {
+      setSelectedStaffIds((prev) => prev.filter((x) => x !== id));
+    }
+  };
+
+  const handleAddHistoryEntry = () => {
+    if (!historyFacility.trim() || !historyRole.trim()) {
+      toast({ title: "Facility and Role are required for history entry.", variant: "destructive" });
+      return;
+    }
+    const years = historyYears ? parseInt(historyYears) : 1;
+    const newEntry = { facilityName: historyFacility.trim(), role: historyRole.trim(), years };
+    setForm((prev) => ({
+      ...prev,
+      history: [...(prev.history || []), newEntry],
+    }));
+    setHistoryFacility("");
+    setHistoryRole("");
+    setHistoryYears("");
+  };
+
+  const handleRemoveHistoryEntry = (index: number) => {
+    setForm((prev) => ({
+      ...prev,
+      history: (prev.history || []).filter((_: any, i: number) => i !== index),
+    }));
+  };
+
+  // Reset pagination on filter change
+  useEffect(() => {
+    setCurrentPage(1);
+    setSelectedStaffIds([]);
+  }, [searchTerm, roleFilter, statusFilter, pageSize]);
+
+  // Reset selection on pagination page changes
+  useEffect(() => {
+    setSelectedStaffIds([]);
+  }, [currentPage]);
 
   // ─── Cascade Queries ──────────────────────────────────────────────────────
   const { data: provinces = [], isLoading: loadingProvinces } = useQuery<Province[]>({
@@ -340,9 +545,9 @@ export default function StaffManagement() {
   }, [facilities]);
 
   // ─── Staff Query ─────────────────────────────────────────────────────────
-  // National admins use /api/staff (sees all facilities in scope).
-  // Other roles require a facility selection first.
-  const staffQueryEnabled = isGlobalAdmin || !!selectedFacilityId;
+  // Global admins and district/provincial users use /api/staff (sees all facilities in scope).
+  // Facility-level roles require a facility selection first.
+  const staffQueryEnabled = canSeeMultiFacilityStaff || !!selectedFacilityId;
   const {
     data: staffList = [],
     isLoading: isLoadingStaff,
@@ -386,6 +591,8 @@ export default function StaffManagement() {
           (s.position && s.position.toLowerCase().includes(term)) ||
           (s.contactPhone && s.contactPhone.includes(term)) ||
           (s.role && s.role.toLowerCase().includes(term)) ||
+          (s.employeeId && s.employeeId.toLowerCase().includes(term)) ||
+          (s.nrc && s.nrc.toLowerCase().includes(term)) ||
           (s.residenceVillage && s.residenceVillage.toLowerCase().includes(term))
       );
     }
@@ -397,6 +604,58 @@ export default function StaffManagement() {
     if (statusFilter === "volunteer") result = result.filter((s) => s.isVolunteer);
     return result;
   }, [staffList, searchTerm, roleFilter, statusFilter]);
+
+  // ─── Sorting Logic ───────────────────────────────────────────────────────
+  const sortedStaff = useMemo(() => {
+    const result = [...filteredStaff];
+    if (sortColumn) {
+      result.sort((a, b) => {
+        let valA: any = "";
+        let valB: any = "";
+        if (sortColumn === "name") {
+          valA = a.fullName.toLowerCase();
+          valB = b.fullName.toLowerCase();
+        } else if (sortColumn === "role") {
+          valA = (a.role || "").toLowerCase();
+          valB = (b.role || "").toLowerCase();
+        } else if (sortColumn === "experience") {
+          valA = a.yearsExperience || 0;
+          valB = b.yearsExperience || 0;
+        } else if (sortColumn === "employeeId") {
+          valA = (a.employeeId || "").toLowerCase();
+          valB = (b.employeeId || "").toLowerCase();
+        } else if (sortColumn === "nrc") {
+          valA = (a.nrc || "").toLowerCase();
+          valB = (b.nrc || "").toLowerCase();
+        } else if (sortColumn === "facility") {
+          const facA = allFacilities.find((f) => f.id === a.facilityId)?.name || "";
+          const facB = allFacilities.find((f) => f.id === b.facilityId)?.name || "";
+          valA = facA.toLowerCase();
+          valB = facB.toLowerCase();
+        }
+
+        if (valA < valB) return sortDirection === "asc" ? -1 : 1;
+        if (valA > valB) return sortDirection === "asc" ? 1 : -1;
+        return 0;
+      });
+    }
+    return result;
+  }, [filteredStaff, sortColumn, sortDirection, allFacilities]);
+
+  // ─── Paginated Staff ─────────────────────────────────────────────────────
+  const paginatedStaff = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return sortedStaff.slice(start, start + pageSize);
+  }, [sortedStaff, currentPage, pageSize]);
+
+  const handleSort = (column: string) => {
+    if (sortColumn === column) {
+      setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortColumn(column);
+      setSortDirection("asc");
+    }
+  };
 
   // ─── Stats ───────────────────────────────────────────────────────────────
   const stats = useMemo(() => {
@@ -447,6 +706,9 @@ export default function StaffManagement() {
       educationLevel: staff.educationLevel || "",
       trainingStatus: staff.trainingStatus || "trained",
       residenceVillage: staff.residenceVillage || "",
+      employeeId: staff.employeeId || "",
+      nrc: staff.nrc || "",
+      history: staff.history || [],
     });
     setFormTab("basic");
     setIsDialogOpen(true);
@@ -473,6 +735,9 @@ export default function StaffManagement() {
         educationLevel: form.educationLevel || null,
         trainingStatus: form.trainingStatus || null,
         residenceVillage: form.residenceVillage.trim() || null,
+        employeeId: form.employeeId.trim() || null,
+        nrc: form.nrc.trim() || null,
+        history: form.history || [],
       };
       if (editingStaff) {
         // Use the staff's own facilityId for edits (critical for national view)
@@ -547,6 +812,24 @@ export default function StaffManagement() {
       toast({ title: "Full name is required", variant: "destructive" });
       return;
     }
+    // NRC is mandatory
+    if (!form.nrc.trim()) {
+      toast({ title: "NRC Number is required", description: "Every staff member must have a unique NRC number.", variant: "destructive" });
+      return;
+    }
+    // NRC uniqueness check (exclude self when editing)
+    const nrcLower = form.nrc.trim().toLowerCase();
+    const duplicate = staffList.find(
+      (s) => s.nrc && s.nrc.toLowerCase() === nrcLower && s.id !== editingStaff?.id
+    );
+    if (duplicate) {
+      toast({
+        title: "Duplicate NRC",
+        description: `NRC ${form.nrc.trim()} is already registered to ${duplicate.fullName}. Each staff member must have a unique NRC.`,
+        variant: "destructive",
+      });
+      return;
+    }
     saveMutation.mutate();
   };
 
@@ -559,17 +842,22 @@ export default function StaffManagement() {
   const [importResults, setImportResults] = useState<ImportResult[]>([]);
   // Facility choice when importing from the global/national view
   const [importTargetFacilityId, setImportTargetFacilityId] = useState<string>("");
+  const [importProgress, setImportProgress] = useState<{ current: number; total: number; percentage: number }>({
+    current: 0,
+    total: 0,
+    percentage: 0,
+  });
 
   // Export to CSV
   const handleExport = () => {
     if (!staffList.length) return;
     const headers = [
-      "ID", "Full Name", "Gender", "Role", "Campaign Role", "Position",
+      "ID", "Employee ID", "NRC", "Full Name", "Gender", "Role", "Campaign Role", "Position",
       "Phone", "Education", "Training Status", "Experience (yrs)", "Yrs at Facility",
       "Village", "Active", "Volunteer",
     ];
     const rows = staffList.map((s) => [
-      s.id, s.fullName, s.gender, s.role, s.campaignRole, s.position,
+      s.id, s.employeeId || "", s.nrc || "", s.fullName, s.gender, s.role, s.campaignRole, s.position,
       s.contactPhone, s.educationLevel, s.trainingStatus, s.yearsExperience,
       s.yearsAtFacility, s.residenceVillage, s.isActive ? "Yes" : "No",
       s.isVolunteer ? "Yes" : "No",
@@ -589,6 +877,8 @@ export default function StaffManagement() {
   const handleDownloadTemplate = () => {
     const headers = [
       "full_name",
+      "employee_id",
+      "nrc",
       "gender",
       "role",
       "campaign_role",
@@ -601,6 +891,9 @@ export default function StaffManagement() {
       "residence_village",
       "is_active",
       "is_volunteer",
+      "facility_name",
+      "district_name",
+      "province_name",
     ];
     const notes = [
       "# gender: female | male | other",
@@ -610,11 +903,15 @@ export default function StaffManagement() {
       "# training_status: trained | not_trained | refresher_needed | in_training",
       "# is_active: Yes | No  (default Yes)",
       "# is_volunteer: Yes | No  (default No)",
+      "# facility_name, district_name, province_name are optional but recommended for bulk uploading across facilities",
     ];
     const sampleRow = [
-      "Mary Phiri", "female", "vaccinator", "vaccinator",
+      "Mary Phiri", "EMP-0042", "123456/10/1", "female", "vaccinator", "vaccinator",
       "Clinical Officer", "+260977123456", "certificate",
       "trained", "5", "2", "Kalingalinga", "Yes", "No",
+      selectedFacility?.name || "Mushitala Urban Health Centre",
+      selectedDistrict?.name || "Solwezi",
+      selectedProvince?.name || "North-Western",
     ];
     const csvContent = [
       notes.join("\n"),
@@ -630,125 +927,6 @@ export default function StaffManagement() {
     URL.revokeObjectURL(url);
     toast({ title: "Template downloaded", description: "Fill in the CSV and use Import to upload." });
   };
-
-  /* ORIGINAL CODE (Overwritten for national admin support to allow target facility selection on imports):
-  // Parse CSV file chosen by user
-  const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setImportFileName(file.name);
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      const text = (evt.target?.result as string) || "";
-      // Strip comment lines (start with #) and blank lines
-      const lines = text
-        .split(/\r?\n/)
-        .filter((l) => l.trim() && !l.trim().startsWith("#"));
-      if (lines.length < 2) {
-        toast({ title: "Empty file", description: "The CSV must have a header row and at least one data row.", variant: "destructive" });
-        return;
-      }
-      const rawHeaders = lines[0].split(",").map((h) => h.trim().toLowerCase().replace(/\s+/g, "_"));
-      const col = (name: string) => rawHeaders.indexOf(name);
-
-      const parsed: ImportRow[] = lines.slice(1).map((line, idx) => {
-        // Handle quoted fields
-        const cells: string[] = [];
-        let cur = "", inQ = false;
-        for (const ch of line) {
-          if (ch === '"') { inQ = !inQ; }
-          else if (ch === ',' && !inQ) { cells.push(cur.trim()); cur = ""; }
-          else { cur += ch; }
-        }
-        cells.push(cur.trim());
-
-        const get = (name: string) => (cells[col(name)] || "").trim();
-        const fullName = get("full_name") || get("fullname") || get("name") || get("full name");
-        const errors: string[] = [];
-
-        if (!fullName) errors.push("full_name is required");
-        const gender = get("gender") || "female";
-        if (gender && !["female", "male", "other"].includes(gender.toLowerCase())) {
-          errors.push(`Invalid gender "${gender}"`);
-        }
-        const role = get("role") || "vaccinator";
-        const validRoles = ["vaccinator","recorder","supervisor","facility_in_charge","nurse","midwife","chw","driver","cold_chain_officer"];
-        if (!validRoles.includes(role.toLowerCase())) {
-          errors.push(`Invalid role "${role}"`);
-        }
-        const exp = get("years_experience") || get("experience_yrs") || get("experience (yrs)");
-        const atFac = get("years_at_facility") || get("yrs_at_facility") || get("yrs at facility");
-        if (exp && isNaN(Number(exp))) errors.push(`years_experience must be a number`);
-        if (atFac && isNaN(Number(atFac))) errors.push(`years_at_facility must be a number`);
-
-        const isActiveRaw = get("is_active") || get("active");
-        const isVolRaw = get("is_volunteer") || get("volunteer");
-
-        return {
-          _rowNum: idx + 2,
-          _errors: errors,
-          fullName,
-          gender: gender.toLowerCase() || "female",
-          role: role.toLowerCase() || "vaccinator",
-          campaignRole: (get("campaign_role") || get("campaignrole") || "vaccinator").toLowerCase(),
-          position: get("position") || null,
-          contactPhone: get("contact_phone") || get("phone") || null,
-          educationLevel: get("education_level") || null,
-          trainingStatus: get("training_status") || "trained",
-          yearsExperience: exp ? parseInt(exp) : null,
-          yearsAtFacility: atFac ? parseInt(atFac) : null,
-          residenceVillage: get("residence_village") || null,
-          isActive: isActiveRaw ? isActiveRaw.toLowerCase() !== "no" : true,
-          isVolunteer: isVolRaw ? isVolRaw.toLowerCase() === "yes" : false,
-        } as ImportRow;
-      });
-
-      setImportRows(parsed);
-      setImportStep("preview");
-      setImportResults([]);
-      setIsImportDialogOpen(true);
-    };
-    reader.readAsText(file);
-    // Reset so the same file can be re-selected
-    e.target.value = "";
-  };
-
-  // Bulk POST each valid row
-  const importMutation = useMutation({
-    mutationFn: async () => {
-      if (!selectedFacilityId) throw new Error("No facility selected");
-      setImportStep("uploading");
-      const validRows = importRows.filter((r) => r._errors.length === 0);
-      const results: ImportResult[] = [];
-      for (const row of validRows) {
-        const { _rowNum, _errors, ...payload } = row;
-        try {
-          await apiRequest("POST", `/api/facilities/${selectedFacilityId}/staff`, payload);
-          results.push({ rowNum: _rowNum, name: row.fullName, ok: true });
-        } catch (err: any) {
-          results.push({ rowNum: _rowNum, name: row.fullName, ok: false, error: err.message });
-        }
-      }
-      setImportResults(results);
-      setImportStep("done");
-      return results;
-    },
-    onSuccess: (results) => {
-      const ok = results.filter((r) => r.ok).length;
-      const fail = results.filter((r) => !r.ok).length;
-      toast({
-        title: `Import complete — ${ok} added${fail ? `, ${fail} failed` : ""}`,
-        description: fail ? "Review failed rows in the dialog." : "All staff members have been added to the roster.",
-        variant: fail ? "destructive" : "default",
-      });
-      refetchStaff();
-    },
-    onError: (err: any) => {
-      toast({ title: "Import failed", description: err.message, variant: "destructive" });
-      setImportStep("preview");
-    },
-  });
-  */
 
   // Parse CSV file chosen by user (updated to pre-fill the target facility if selected)
   const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -780,8 +958,12 @@ export default function StaffManagement() {
         }
         cells.push(cur.trim());
 
-        const get = (name: string) => (cells[col(name)] || "").trim();
+        const get = (name: string) => {
+          const index = col(name);
+          return index !== -1 ? (cells[index] || "").trim() : "";
+        };
         const fullName = get("full_name") || get("fullname") || get("name") || get("full name");
+        const nrcVal = (get("nrc") || get("nrc_number") || "").trim();
         const errors: string[] = [];
 
         if (!fullName) errors.push("full_name is required");
@@ -802,6 +984,56 @@ export default function StaffManagement() {
         const isActiveRaw = get("is_active") || get("active");
         const isVolRaw = get("is_volunteer") || get("volunteer");
 
+        // Facility resolver
+        const facilityName = get("facility_name") || get("facility") || get("health_facility");
+        const districtName = get("district_name") || get("district");
+        const provinceName = get("province_name") || get("province");
+        
+        let resolvedFacilityId: number | null = null;
+        if (facilityName) {
+          const fNameLower = facilityName.toLowerCase().trim();
+          const dNameLower = districtName.toLowerCase().trim();
+          const pNameLower = provinceName.toLowerCase().trim();
+          
+          let matches = allFacilities.filter(f => f.name.toLowerCase().trim() === fNameLower);
+          if (matches.length === 0) {
+            matches = allFacilities.filter(f => f.name.toLowerCase().includes(fNameLower));
+          }
+          
+          if (matches.length === 1) {
+            resolvedFacilityId = matches[0].id;
+          } else if (matches.length > 1) {
+            if (dNameLower) {
+              const matchedDist = matches.filter(f => {
+                const d = allDistricts.find(dist => dist.id === f.districtId);
+                return d && d.name.toLowerCase().trim() === dNameLower;
+              });
+              if (matchedDist.length === 1) {
+                resolvedFacilityId = matchedDist[0].id;
+              } else if (matchedDist.length > 1) {
+                matches = matchedDist;
+              }
+            }
+            if (!resolvedFacilityId && pNameLower) {
+              const matchedProv = matches.filter(f => {
+                const d = allDistricts.find(dist => dist.id === f.districtId);
+                if (!d) return false;
+                const p = provinces.find(prov => prov.id === d.provinceId);
+                return p && p.name.toLowerCase().trim() === pNameLower;
+              });
+              if (matchedProv.length === 1) {
+                resolvedFacilityId = matchedProv[0].id;
+              }
+            }
+            if (!resolvedFacilityId && matches.length > 0) {
+              resolvedFacilityId = matches[0].id;
+            }
+          }
+          if (!resolvedFacilityId) {
+            errors.push(`Could not resolve facility "${facilityName}"`);
+          }
+        }
+
         return {
           _rowNum: idx + 2,
           _errors: errors,
@@ -818,6 +1050,12 @@ export default function StaffManagement() {
           residenceVillage: get("residence_village") || null,
           isActive: isActiveRaw ? isActiveRaw.toLowerCase() !== "no" : true,
           isVolunteer: isVolRaw ? isVolRaw.toLowerCase() === "yes" : false,
+          employeeId: get("employee_id") || get("employeeid") || null,
+          nrc: get("nrc") || get("nrc_number") || null,
+          facilityName: facilityName || null,
+          districtName: districtName || null,
+          provinceName: provinceName || null,
+          resolvedFacilityId,
         } as ImportRow;
       });
 
@@ -832,23 +1070,46 @@ export default function StaffManagement() {
     e.target.value = "";
   };
 
-  // Bulk POST each valid row (supports choosing facility at dialog level)
+  // Bulk POST each valid row
   const importMutation = useMutation({
     mutationFn: async () => {
-      const facilityId = selectedFacilityId || importTargetFacilityId;
-      if (!facilityId) throw new Error("No facility selected");
+      // Use the *current* selectedFacilityId at submit time (not a stale capture)
+      const fallbackFacilityId = selectedFacilityId || importTargetFacilityId;
       setImportStep("uploading");
       const validRows = importRows.filter((r) => r._errors.length === 0);
+      const total = validRows.length;
+      setImportProgress({ current: 0, total, percentage: 0 });
       const results: ImportResult[] = [];
-      for (const row of validRows) {
-        const { _rowNum, _errors, ...payload } = row;
-        try {
-          await apiRequest("POST", `/api/facilities/${facilityId}/staff`, payload);
-          results.push({ rowNum: _rowNum, name: row.fullName, ok: true });
-        } catch (err: any) {
-          results.push({ rowNum: _rowNum, name: row.fullName, ok: false, error: err.message });
-        }
+
+      // Process in concurrent batches of 10 to speed it up significantly
+      const batchSize = 10;
+      for (let i = 0; i < total; i += batchSize) {
+        const batch = validRows.slice(i, i + batchSize);
+        await Promise.all(
+          batch.map(async (row) => {
+            const { _rowNum, _errors, facilityName, districtName, provinceName, resolvedFacilityId, ...payload } = row;
+            // Prefer facility resolved from CSV column; fall back to filter selection
+            const targetFacilityId = resolvedFacilityId?.toString() || fallbackFacilityId;
+            if (!targetFacilityId) {
+              results.push({ rowNum: _rowNum, name: row.fullName, ok: false, error: "No facility — add facility_name column to CSV or select a facility in the filter" });
+              return;
+            }
+            try {
+              await apiRequest("POST", `/api/facilities/${targetFacilityId}/staff`, payload);
+              results.push({ rowNum: _rowNum, name: row.fullName, ok: true });
+            } catch (err: any) {
+              results.push({ rowNum: _rowNum, name: row.fullName, ok: false, error: err.message });
+            }
+          })
+        );
+        const current = Math.min(i + batchSize, total);
+        setImportProgress({
+          current,
+          total,
+          percentage: Math.round((current / total) * 100),
+        });
       }
+
       setImportResults(results);
       setImportStep("done");
       return results;
@@ -940,7 +1201,6 @@ export default function StaffManagement() {
                 variant="outline"
                 size="sm"
                 onClick={() => fileInputRef.current?.click()}
-                disabled={!selectedFacilityId && !isGlobalAdmin}
                 className="gap-1.5 border-dashed border-blue-500/50 text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 hover:border-blue-500"
               >
                 <Upload className="h-3.5 w-3.5" />
@@ -957,9 +1217,11 @@ export default function StaffManagement() {
               <Button
                 size="sm"
                 onClick={handleNewStaff}
-                disabled={!selectedFacilityId && !isGlobalAdmin}
-                className="gap-1.5 shadow-sm"
-                title={isGlobalAdmin && !selectedFacilityId ? "Select a facility in the filter first" : undefined}
+                 title={
+                  (isGlobalAdmin || isDistrictOrProvincial) && !selectedFacilityId
+                    ? "Select a facility in the filter to add staff"
+                    : undefined
+                }
               >
                 <Plus className="h-4 w-4" />
                 Add Staff
@@ -1195,12 +1457,12 @@ export default function StaffManagement() {
                   </div>
                 </div>
 
-                {/* Search + Filters */}
+                {/* Search + Filters + Column Toggle */}
                 <div className="flex flex-col sm:flex-row gap-2 mt-3">
                   <div className="relative flex-1">
                     <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
                     <Input
-                      placeholder="Search by name, role, phone, village..."
+                      placeholder="Search by name, role, phone, village, ID, NRC..."
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
                       className="pl-8 h-9 text-sm bg-background/50 border-border"
@@ -1236,6 +1498,45 @@ export default function StaffManagement() {
                       <SelectItem value="volunteer">Volunteers</SelectItem>
                     </SelectContent>
                   </Select>
+                  
+                  {/* Column Visibility Selector */}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm" className="h-9 gap-1.5 text-xs bg-background/50 border-border">
+                        <Settings2 className="h-3.5 w-3.5" />
+                        Columns
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-48 p-2">
+                      <div className="text-xs font-semibold text-muted-foreground px-2 py-1.5 border-b border-border mb-1">
+                        Toggle Columns
+                      </div>
+                      <div className="space-y-1">
+                        {Object.entries(COLUMN_LABELS).map(([col, label]) => {
+                          if (col === "facility" && !isGlobalAdmin) return null;
+                          return (
+                            <label
+                              key={col}
+                              className="flex items-center gap-2 px-2 py-1 text-xs rounded-md hover:bg-muted/50 cursor-pointer select-none"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={visibleColumns[col]}
+                                onChange={(e) =>
+                                  setVisibleColumns((prev) => ({
+                                    ...prev,
+                                    [col]: e.target.checked,
+                                  }))
+                                }
+                                className="rounded border-border text-primary focus:ring-primary h-3.5 w-3.5"
+                              />
+                              {label}
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
               </CardHeader>
 
@@ -1245,7 +1546,7 @@ export default function StaffManagement() {
                     <Loader2 className="h-6 w-6 animate-spin text-primary mr-2" />
                     Loading staff roster...
                   </div>
-                ) : filteredStaff.length === 0 ? (
+                ) : sortedStaff.length === 0 ? (
                   <div className="text-center py-16 px-4">
                     <Users className="h-10 w-10 text-muted-foreground/20 mx-auto mb-3" />
                     <p className="font-medium text-foreground text-sm mb-1">
@@ -1266,233 +1567,506 @@ export default function StaffManagement() {
                     )}
                   </div>
                 ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead className="bg-muted/40 border-b border-border">
-                        <tr>
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                            Staff Member
-                          </th>
-                          {/* Show Facility column when viewing across all facilities */}
-                          {isGlobalAdmin && !selectedFacilityId && (
-                            <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide hidden sm:table-cell">
-                              Facility
-                            </th>
-                          )}
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                            Role
-                          </th>
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide hidden md:table-cell">
-                            SIA Campaign Role
-                          </th>
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide hidden lg:table-cell">
-                            Training
-                          </th>
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide hidden lg:table-cell">
-                            Experience
-                          </th>
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide hidden md:table-cell">
-                            Contact
-                          </th>
-                          <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                            Active
-                          </th>
-                          <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                            Actions
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-border">
-                        {filteredStaff.map((staff) => (
-                          <tr
-                            key={staff.id}
-                            className="hover:bg-muted/30 transition-colors group"
-                          >
-                            {/* Name + Avatar */}
-                            <td className="px-4 py-3">
-                              <div className="flex items-center gap-2.5">
-                                <StaffAvatar name={staff.fullName} gender={staff.gender} />
-                                <div className="min-w-0">
-                                  <div className="font-semibold text-foreground truncate">
-                                    {staff.fullName}
-                                  </div>
-                                  <div className="flex items-center gap-1 mt-0.5">
-                                    {staff.position && (
-                                      <span className="text-[11px] text-muted-foreground truncate">
-                                        {staff.position}
-                                      </span>
-                                    )}
-                                    {staff.isVolunteer && (
-                                      <Badge
-                                        variant="outline"
-                                        className="text-[9px] py-0 px-1 h-4 border-teal-500/30 bg-teal-500/5 text-teal-600 dark:text-teal-400"
-                                      >
-                                        VOL
-                                      </Badge>
-                                    )}
-                                    {staff.residenceVillage && (
-                                      <span className="text-[10px] text-muted-foreground/60 hidden sm:inline">
-                                        · {staff.residenceVillage}
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            </td>
-
-                            {/* Facility column — national view only */}
-                            {isGlobalAdmin && !selectedFacilityId && (
-                              <td className="px-4 py-3 hidden sm:table-cell">
-                                <span className="text-xs font-medium text-foreground">
-                                  {allFacilities.find((f) => f.id === staff.facilityId)?.name || (
-                                    <span className="text-muted-foreground font-mono text-[10px]">HF #{staff.facilityId}</span>
-                                  )}
-                                </span>
-                              </td>
-                            )}
-
-                            {/* Role */}
-                            <td className="px-4 py-3">
-                              {staff.role ? (
-                                <Badge
-                                  variant="outline"
-                                  className={`text-[11px] capitalize px-2 py-0.5 font-medium ${roleColor[staff.role] || "bg-muted text-muted-foreground"}`}
-                                >
-                                  {ROLE_OPTIONS.find((r) => r.value === staff.role)?.label || staff.role}
-                                </Badge>
-                              ) : (
-                                <span className="text-muted-foreground text-xs">—</span>
-                              )}
-                            </td>
-
-                            {/* Campaign Role */}
-                            <td className="px-4 py-3 hidden md:table-cell">
-                              <Badge
-                                variant="secondary"
-                                className="text-[10px] capitalize px-2 py-0.5 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-0"
-                              >
-                                {CAMPAIGN_ROLE_OPTIONS.find((r) => r.value === staff.campaignRole)?.label ||
-                                  staff.campaignRole ||
-                                  "Vaccinator"}
-                              </Badge>
-                            </td>
-
-                            {/* Training */}
-                            <td className="px-4 py-3 hidden lg:table-cell">
-                              {staff.trainingStatus ? (
-                                <span
-                                  className={`text-[11px] font-medium ${
-                                    staff.trainingStatus === "trained"
-                                      ? "text-emerald-600 dark:text-emerald-400"
-                                      : staff.trainingStatus === "in_training"
-                                      ? "text-amber-600 dark:text-amber-400"
-                                      : "text-muted-foreground"
-                                  }`}
-                                >
-                                  {TRAINING_OPTIONS.find((t) => t.value === staff.trainingStatus)?.label ||
-                                    staff.trainingStatus}
-                                </span>
-                              ) : (
-                                <span className="text-muted-foreground text-xs">—</span>
-                              )}
-                            </td>
-
-                            {/* Experience */}
-                            <td className="px-4 py-3 hidden lg:table-cell text-xs text-muted-foreground">
-                              {staff.yearsExperience != null ? (
-                                <div>
-                                  <span className="font-medium text-foreground">{staff.yearsExperience}</span> yrs
-                                  {staff.yearsAtFacility != null && (
-                                    <div className="text-[10px]">({staff.yearsAtFacility} here)</div>
-                                  )}
-                                </div>
-                              ) : (
-                                "—"
-                              )}
-                            </td>
-
-                            {/* Phone */}
-                            <td className="px-4 py-3 hidden md:table-cell font-mono text-xs text-foreground">
-                              {staff.contactPhone || <span className="text-muted-foreground">—</span>}
-                            </td>
-
-                            {/* Active Toggle */}
-                            <td className="px-4 py-3 text-center">
-                              <Switch
-                                checked={staff.isActive}
-                                onCheckedChange={() =>
-                                  toggleActiveMutation.mutate({ staff })
+                  <div>
+                    {/* Sticky Table Scroll Container */}
+                    <div className="overflow-auto max-h-[60vh] relative border-b border-border">
+                      <table className="w-full text-sm">
+                        <thead className="bg-muted/95 border-b border-border sticky top-0 z-10 backdrop-blur-sm shadow-xs">
+                          <tr>
+                            <th className="w-12 px-4 py-3 text-center sticky top-0 bg-muted/95 z-20">
+                              <Checkbox
+                                checked={
+                                  paginatedStaff.length > 0 &&
+                                  paginatedStaff.every((s) => selectedStaffIds.includes(s.id))
                                 }
-                                className="data-[state=checked]:bg-emerald-500"
+                                onCheckedChange={(checked) => handleSelectAll(!!checked)}
+                                aria-label="Select all"
                               />
-                            </td>
+                            </th>
+                            {visibleColumns.staffMember && (
+                              <th
+                                onClick={() => handleSort("name")}
+                                className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide cursor-pointer hover:bg-muted/50 select-none"
+                              >
+                                <div className="flex items-center gap-1">
+                                  Staff Member
+                                  {sortColumn === "name" && (
+                                    sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
+                                  )}
+                                </div>
+                              </th>
+                            )}
+                            {isGlobalAdmin && !selectedFacilityId && visibleColumns.facility && (
+                              <th
+                                onClick={() => handleSort("facility")}
+                                className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide cursor-pointer hover:bg-muted/50 select-none"
+                              >
+                                <div className="flex items-center gap-1">
+                                  Facility
+                                  {sortColumn === "facility" && (
+                                    sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
+                                  )}
+                                </div>
+                              </th>
+                            )}
+                            {visibleColumns.employeeId && (
+                              <th
+                                onClick={() => handleSort("employeeId")}
+                                className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide cursor-pointer hover:bg-muted/50 select-none"
+                              >
+                                <div className="flex items-center gap-1">
+                                  Employee ID
+                                  {sortColumn === "employeeId" && (
+                                    sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
+                                  )}
+                                </div>
+                              </th>
+                            )}
+                            {visibleColumns.nrc && (
+                              <th
+                                onClick={() => handleSort("nrc")}
+                                className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide cursor-pointer hover:bg-muted/50 select-none"
+                              >
+                                <div className="flex items-center gap-1">
+                                  NRC
+                                  {sortColumn === "nrc" && (
+                                    sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
+                                  )}
+                                </div>
+                              </th>
+                            )}
+                            {visibleColumns.role && (
+                              <th
+                                onClick={() => handleSort("role")}
+                                className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide cursor-pointer hover:bg-muted/50 select-none"
+                              >
+                                <div className="flex items-center gap-1">
+                                  Routine Role
+                                  {sortColumn === "role" && (
+                                    sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
+                                  )}
+                                </div>
+                              </th>
+                            )}
+                            {visibleColumns.campaignRole && (
+                              <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                                SIA Campaign Role
+                              </th>
+                            )}
+                            {visibleColumns.training && (
+                              <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                                Training
+                              </th>
+                            )}
+                            {visibleColumns.experience && (
+                              <th
+                                onClick={() => handleSort("experience")}
+                                className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide cursor-pointer hover:bg-muted/50 select-none"
+                              >
+                                <div className="flex items-center gap-1">
+                                  Experience
+                                  {sortColumn === "experience" && (
+                                    sortDirection === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
+                                  )}
+                                </div>
+                              </th>
+                            )}
+                            {visibleColumns.contact && (
+                              <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                                Contact
+                              </th>
+                            )}
+                            {visibleColumns.active && (
+                              <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                                Active
+                              </th>
+                            )}
+                            <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                              Actions
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border">
+                          {paginatedStaff.map((staff) => (
+                            <tr
+                              key={staff.id}
+                              className="hover:bg-muted/30 transition-colors group"
+                            >
+                              <td className="w-12 px-4 py-3 text-center">
+                                <Checkbox
+                                  checked={selectedStaffIds.includes(staff.id)}
+                                  onCheckedChange={(checked) => handleSelectRow(staff.id, !!checked)}
+                                  aria-label="Select staff"
+                                />
+                              </td>
+                              {/* Name + Avatar */}
+                              {visibleColumns.staffMember && (
+                                <td className="px-4 py-3">
+                                  <div className="flex items-center gap-2.5">
+                                    <StaffAvatar name={staff.fullName} gender={staff.gender} />
+                                    <div className="min-w-0">
+                                      <div className="font-semibold text-foreground truncate flex items-center gap-1.5">
+                                        {staff.fullName}
+                                        {staff.history && (staff.history as any[]).length > 0 && (
+                                          <button
+                                            type="button"
+                                            onClick={() => setSelectedStaffForHistory(staff)}
+                                            className="inline-flex items-center gap-1 text-[10px] font-medium text-blue-600 hover:text-blue-700 bg-blue-500/5 hover:bg-blue-500/10 border border-blue-500/20 rounded-md px-1.5 py-0.5 shrink-0"
+                                            title="View Placement History"
+                                          >
+                                            <Activity className="h-3 w-3" />
+                                            {(staff.history as any[]).length} past
+                                          </button>
+                                        )}
+                                      </div>
+                                      <div className="flex items-center gap-1 mt-0.5">
+                                        {staff.position && (
+                                          <span className="text-[11px] text-muted-foreground truncate">
+                                            {staff.position}
+                                          </span>
+                                        )}
+                                        {staff.isVolunteer && (
+                                          <Badge
+                                            variant="outline"
+                                            className="text-[9px] py-0 px-1 h-4 border-teal-500/30 bg-teal-500/5 text-teal-600 dark:text-teal-400"
+                                          >
+                                            VOL
+                                          </Badge>
+                                        )}
+                                        {staff.residenceVillage && (
+                                          <span className="text-[10px] text-muted-foreground/60 hidden sm:inline">
+                                            · {staff.residenceVillage}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </td>
+                              )}
 
-                            {/* Actions */}
-                            <td className="px-4 py-3 text-right">
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+                              {/* Facility column — national view only */}
+                              {isGlobalAdmin && !selectedFacilityId && visibleColumns.facility && (
+                                <td className="px-4 py-3">
+                                  <span className="text-xs font-medium text-foreground">
+                                    {allFacilities.find((f) => f.id === staff.facilityId)?.name || (
+                                      <span className="text-muted-foreground font-mono text-[10px]">HF #{staff.facilityId}</span>
+                                    )}
+                                  </span>
+                                </td>
+                              )}
+
+                              {/* Employee ID */}
+                              {visibleColumns.employeeId && (
+                                <td className="px-4 py-3 font-mono text-xs text-foreground">
+                                  {staff.employeeId || <span className="text-muted-foreground">—</span>}
+                                </td>
+                              )}
+
+                              {/* NRC */}
+                              {visibleColumns.nrc && (
+                                <td className="px-4 py-3 font-mono text-xs text-foreground">
+                                  {staff.nrc || <span className="text-muted-foreground">—</span>}
+                                </td>
+                              )}
+
+                              {/* Role */}
+                              {visibleColumns.role && (
+                                <td className="px-4 py-3">
+                                  {staff.role ? (
+                                    <Badge
+                                      variant="outline"
+                                      className={`text-[11px] capitalize px-2 py-0.5 font-medium ${roleColor[staff.role] || "bg-muted text-muted-foreground"}`}
+                                    >
+                                      {ROLE_OPTIONS.find((r) => r.value === staff.role)?.label || staff.role}
+                                    </Badge>
+                                  ) : (
+                                    <span className="text-muted-foreground text-xs">—</span>
+                                  )}
+                                </td>
+                              )}
+
+                              {/* Campaign Role */}
+                              {visibleColumns.campaignRole && (
+                                <td className="px-4 py-3">
+                                  <Badge
+                                    variant="secondary"
+                                    className="text-[10px] capitalize px-2 py-0.5 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-0"
                                   >
-                                    <MoreVertical className="h-4 w-4" />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end" className="w-40">
-                                  <DropdownMenuItem onClick={() => handleEditStaff(staff)}>
-                                    <Pencil className="h-3.5 w-3.5 mr-2" />
-                                    Edit
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem
-                                    onClick={() =>
+                                    {CAMPAIGN_ROLE_OPTIONS.find((r) => r.value === staff.campaignRole)?.label ||
+                                      staff.campaignRole ||
+                                      "Vaccinator"}
+                                  </Badge>
+                                </td>
+                              )}
+
+                              {/* Training */}
+                              {visibleColumns.training && (
+                                <td className="px-4 py-3">
+                                  {staff.trainingStatus ? (
+                                    <span
+                                      className={`text-[11px] font-medium ${
+                                        staff.trainingStatus === "trained"
+                                          ? "text-emerald-600 dark:text-emerald-400"
+                                          : staff.trainingStatus === "in_training"
+                                          ? "text-amber-600 dark:text-amber-400"
+                                          : "text-muted-foreground"
+                                      }`}
+                                    >
+                                      {TRAINING_OPTIONS.find((t) => t.value === staff.trainingStatus)?.label ||
+                                        staff.trainingStatus}
+                                    </span>
+                                  ) : (
+                                    <span className="text-muted-foreground text-xs">—</span>
+                                  )}
+                                </td>
+                              )}
+
+                              {/* Experience */}
+                              {visibleColumns.experience && (
+                                <td className="px-4 py-3 text-xs text-muted-foreground">
+                                  {staff.yearsExperience != null ? (
+                                    <div>
+                                      <span className="font-medium text-foreground">{staff.yearsExperience}</span> yrs
+                                      {staff.yearsAtFacility != null && (
+                                        <div className="text-[10px]">({staff.yearsAtFacility} here)</div>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    "—"
+                                  )}
+                                </td>
+                              )}
+
+                              {/* Phone */}
+                              {visibleColumns.contact && (
+                                <td className="px-4 py-3 font-mono text-xs text-foreground">
+                                  {staff.contactPhone || <span className="text-muted-foreground">—</span>}
+                                </td>
+                              )}
+
+                              {/* Active Toggle */}
+                              {visibleColumns.active && (
+                                <td className="px-4 py-3 text-center">
+                                  <Switch
+                                    checked={staff.isActive}
+                                    onCheckedChange={() =>
                                       toggleActiveMutation.mutate({ staff })
                                     }
-                                  >
-                                    {staff.isActive ? (
-                                      <>
-                                        <UserX className="h-3.5 w-3.5 mr-2" />
-                                        Mark Inactive
-                                      </>
-                                    ) : (
-                                      <>
-                                        <UserCheck className="h-3.5 w-3.5 mr-2" />
-                                        Mark Active
-                                      </>
-                                    )}
-                                  </DropdownMenuItem>
-                                  <DropdownMenuSeparator />
-                                  <DropdownMenuItem
-                                    className="text-destructive focus:text-destructive"
-                                    onClick={() => handleDelete(staff)}
-                                  >
-                                    <Trash2 className="h-3.5 w-3.5 mr-2" />
-                                    Delete
-                                  </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                                    className="data-[state=checked]:bg-emerald-500"
+                                  />
+                                </td>
+                              )}
 
-                    {/* Footer */}
-                    {filteredStaff.length < staffList.length && (
-                      <div className="px-4 py-2 border-t border-border text-xs text-muted-foreground bg-muted/20">
-                        Showing {filteredStaff.length} of {staffList.length} staff members
-                        <button
-                          className="ml-2 text-primary hover:underline"
-                          onClick={() => {
-                            setSearchTerm("");
-                            setRoleFilter("all");
-                            setStatusFilter("all");
-                          }}
-                        >
-                          Clear filters
-                        </button>
+                              {/* Actions */}
+                              <td className="px-4 py-3 text-right">
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+                                    >
+                                      <MoreVertical className="h-4 w-4" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end" className="w-40">
+                                    <DropdownMenuItem onClick={() => handleEditStaff(staff)}>
+                                      <Pencil className="h-3.5 w-3.5 mr-2" />
+                                      Edit
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      onClick={() =>
+                                        toggleActiveMutation.mutate({ staff })
+                                      }
+                                    >
+                                      {staff.isActive ? (
+                                        <>
+                                          <UserX className="h-3.5 w-3.5 mr-2" />
+                                          Mark Inactive
+                                        </>
+                                      ) : (
+                                        <>
+                                          <UserCheck className="h-3.5 w-3.5 mr-2" />
+                                          Mark Active
+                                        </>
+                                      )}
+                                    </DropdownMenuItem>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem
+                                      className="text-destructive focus:text-destructive"
+                                      onClick={() => handleDelete(staff)}
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5 mr-2" />
+                                      Delete
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Bulk Actions Panel */}
+                    {selectedStaffIds.length > 0 && (
+                      <div className="sticky bottom-0 left-0 right-0 z-50 bg-background/95 border-t border-border p-3 backdrop-blur shadow-lg flex items-center justify-between flex-wrap gap-3 animate-in slide-in-from-bottom duration-300">
+                        <div className="flex items-center gap-2">
+                          <Checkbox
+                            checked={
+                              paginatedStaff.length > 0 &&
+                              paginatedStaff.every((s) => selectedStaffIds.includes(s.id))
+                            }
+                            onCheckedChange={(checked) => handleSelectAll(!!checked)}
+                            aria-label="Select all"
+                          />
+                          <span className="text-sm font-semibold text-foreground">
+                            {selectedStaffIds.length} staff selected
+                          </span>
+                          {bulkProcessing && (
+                            <span className="text-xs text-muted-foreground flex items-center gap-1">
+                              <Loader2 className="h-3 w-3 animate-spin text-primary" />
+                              Processing ({bulkProgress.current}/{bulkProgress.total} - {bulkProgress.percentage}%)
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {/* Change Routine Role */}
+                          <Select onValueChange={(val) => handleBulkUpdateRole(val)}>
+                            <SelectTrigger className="h-8 w-44 text-xs bg-background">
+                              <SelectValue placeholder="Change Routine Role" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {ROLE_OPTIONS.map((opt) => (
+                                <SelectItem key={opt.value} value={opt.value}>
+                                  {opt.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+
+                          {/* Change Training Status */}
+                          <Select onValueChange={(val) => handleBulkUpdateTraining(val)}>
+                            <SelectTrigger className="h-8 w-44 text-xs bg-background">
+                              <SelectValue placeholder="Change Training Status" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {TRAINING_OPTIONS.map((opt) => (
+                                <SelectItem key={opt.value} value={opt.value}>
+                                  {opt.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+
+                          {/* Toggle Active Status */}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 text-xs gap-1"
+                            onClick={() => handleBulkToggleActive(true)}
+                            disabled={bulkProcessing}
+                          >
+                            <UserCheck className="h-3.5 w-3.5" />
+                            Make Active
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 text-xs gap-1"
+                            onClick={() => handleBulkToggleActive(false)}
+                            disabled={bulkProcessing}
+                          >
+                            <UserX className="h-3.5 w-3.5" />
+                            Make Inactive
+                          </Button>
+
+                          <Separator orientation="vertical" className="h-6" />
+
+                          {/* Delete */}
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            className="h-8 text-xs gap-1"
+                            onClick={handleBulkDelete}
+                            disabled={bulkProcessing}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            Delete Selected
+                          </Button>
+                        </div>
                       </div>
                     )}
+
+                    {/* Pagination Bar */}
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-4 py-3 border-t border-border bg-muted/20 text-xs">
+                      <div className="flex items-center gap-2">
+                        <span className="text-muted-foreground">Rows per page:</span>
+                        <Select
+                          value={pageSize.toString()}
+                          onValueChange={(v) => {
+                            setPageSize(parseInt(v));
+                            setCurrentPage(1);
+                          }}
+                        >
+                          <SelectTrigger className="w-16 h-8 text-xs bg-background border-border">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {[10, 25, 50, 100].map((size) => (
+                              <SelectItem key={size} value={size.toString()}>{size}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <span className="text-muted-foreground ml-2">
+                          Showing {sortedStaff.length === 0 ? 0 : (currentPage - 1) * pageSize + 1} to{" "}
+                          {Math.min(currentPage * pageSize, sortedStaff.length)} of {sortedStaff.length} staff members
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 px-2.5"
+                          disabled={currentPage === 1}
+                          onClick={() => setCurrentPage(1)}
+                        >
+                          First
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 px-2.5"
+                          disabled={currentPage === 1}
+                          onClick={() => setCurrentPage((prev) => prev - 1)}
+                        >
+                          Previous
+                        </Button>
+                        <span className="px-3 py-1.5 rounded-md border border-border bg-background font-medium">
+                          Page {currentPage} of {Math.ceil(sortedStaff.length / pageSize) || 1}
+                        </span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 px-2.5"
+                          disabled={currentPage >= Math.ceil(sortedStaff.length / pageSize)}
+                          onClick={() => setCurrentPage((prev) => prev + 1)}
+                        >
+                          Next
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 px-2.5"
+                          disabled={currentPage >= Math.ceil(sortedStaff.length / pageSize)}
+                          onClick={() => setCurrentPage(Math.ceil(sortedStaff.length / pageSize) || 1)}
+                        >
+                          Last
+                        </Button>
+                      </div>
+                    </div>
                   </div>
                 )}
               </CardContent>
@@ -1532,12 +2106,15 @@ export default function StaffManagement() {
             {/* Tab navigation */}
             <Tabs value={formTab} onValueChange={setFormTab} className="flex-1">
               <div className="px-6 pt-4">
-                <TabsList className="w-full grid grid-cols-3 h-8">
+                <TabsList className="w-full grid grid-cols-4 h-8">
                   <TabsTrigger value="basic" className="text-xs gap-1">
                     <Users className="h-3 w-3" />Basic Info
                   </TabsTrigger>
                   <TabsTrigger value="professional" className="text-xs gap-1">
                     <Briefcase className="h-3 w-3" />Professional
+                  </TabsTrigger>
+                  <TabsTrigger value="history" className="text-xs gap-1">
+                    <ClipboardList className="h-3 w-3" />History
                   </TabsTrigger>
                   <TabsTrigger value="status" className="text-xs gap-1">
                     <Activity className="h-3 w-3" />Status
@@ -1564,9 +2141,14 @@ export default function StaffManagement() {
                       </SelectTrigger>
                       <SelectContent className="max-h-[280px]">
                         <SelectItem value="none" disabled>— Select a facility —</SelectItem>
-                        {allFacilities.map((f) => (
-                          <SelectItem key={f.id} value={f.id.toString()}>{f.name}</SelectItem>
-                        ))}
+                        {allFacilities.map((f) => {
+                          const count = staffList.filter((s) => s.facilityId === f.id).length;
+                          return (
+                            <SelectItem key={f.id} value={f.id.toString()}>
+                              {f.name}{count > 0 ? ` (${count} staff)` : ""}
+                            </SelectItem>
+                          );
+                        })}
                       </SelectContent>
                     </Select>
                     {!formFacilityId && (
@@ -1592,6 +2174,38 @@ export default function StaffManagement() {
                     required
                     className="h-9"
                   />
+                </div>
+
+                {/* Unique Identifiers: Employee ID & NRC */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="staff-employee-id" className="text-sm font-medium">Employee ID</Label>
+                    <Input
+                      id="staff-employee-id"
+                      placeholder="e.g. EMP-0042"
+                      value={form.employeeId}
+                      onChange={(e) => setField("employeeId", e.target.value)}
+                      disabled={saveMutation.isPending}
+                      className="h-9 font-mono"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="staff-nrc" className="text-sm font-medium">
+                      NRC Number <span className="text-destructive">*</span>
+                    </Label>
+                    <Input
+                      id="staff-nrc"
+                      placeholder="e.g. 123456/10/1"
+                      value={form.nrc}
+                      onChange={(e) => setField("nrc", e.target.value)}
+                      disabled={saveMutation.isPending}
+                      required
+                      className={`h-9 font-mono ${!form.nrc.trim() ? "border-amber-400 focus:border-amber-500" : ""}`}
+                    />
+                    {!form.nrc.trim() && (
+                      <p className="text-[11px] text-amber-600 dark:text-amber-400">Required — used for identity verification</p>
+                    )}
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
@@ -1779,7 +2393,91 @@ export default function StaffManagement() {
                 </div>
               </TabsContent>
 
-              {/* ── Tab 3: Status ── */}
+              {/* ── Tab 3: History ── */}
+              <TabsContent value="history" className="px-6 pt-4 pb-0 space-y-4 mt-0">
+                <div className="space-y-3">
+                  <div className="text-xs font-semibold text-foreground">Add Past Employment History</div>
+                  <div className="grid grid-cols-3 gap-2 items-end">
+                    <div className="space-y-1">
+                      <Label htmlFor="history-facility" className="text-[10px] text-muted-foreground">Facility Name</Label>
+                      <Input
+                        id="history-facility"
+                        placeholder="e.g. Solwezi General"
+                        value={historyFacility}
+                        onChange={(e) => setHistoryFacility(e.target.value)}
+                        className="h-8 text-xs bg-background"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="history-role" className="text-[10px] text-muted-foreground">Role</Label>
+                      <Input
+                        id="history-role"
+                        placeholder="e.g. Midwife"
+                        value={historyRole}
+                        onChange={(e) => setHistoryRole(e.target.value)}
+                        className="h-8 text-xs bg-background"
+                      />
+                    </div>
+                    <div className="space-y-1 flex gap-1.5 items-center">
+                      <div className="flex-1">
+                        <Label htmlFor="history-years" className="text-[10px] text-muted-foreground">Years</Label>
+                        <Input
+                          id="history-years"
+                          type="number"
+                          min="1"
+                          placeholder="2"
+                          value={historyYears}
+                          onChange={(e) => setHistoryYears(e.target.value)}
+                          className="h-8 text-xs bg-background"
+                        />
+                      </div>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        onClick={handleAddHistoryEntry}
+                        className="h-8 text-xs shrink-0"
+                      >
+                        <Plus className="h-3 w-3 mr-1" /> Add
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+
+                <Separator />
+
+                <div className="space-y-2 max-h-[160px] overflow-y-auto pr-1">
+                  <div className="text-xs font-semibold text-muted-foreground">History Records ({form.history?.length || 0})</div>
+                  {(!form.history || form.history.length === 0) ? (
+                    <div className="text-center py-6 border border-dashed rounded-lg text-xs text-muted-foreground">
+                      No previous facility history added.
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {form.history.map((h: any, index: number) => (
+                        <div key={index} className="flex items-center justify-between p-2 rounded bg-muted/40 border border-border text-xs">
+                          <div>
+                            <span className="font-semibold text-foreground">{h.facilityName}</span>
+                            <span className="text-muted-foreground"> · {h.role} </span>
+                            <Badge variant="secondary" className="text-[9px] py-0 px-1 ml-1 font-mono">{h.years} yrs</Badge>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleRemoveHistoryEntry(index)}
+                            className="h-6 w-6 text-destructive hover:bg-destructive/10"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </TabsContent>
+
+              {/* ── Tab 4: Status ── */}
               <TabsContent value="status" className="px-6 pt-4 pb-0 space-y-3 mt-0">
                 {/* Active Status */}
                 <div className="flex items-center justify-between p-4 rounded-lg border border-border bg-muted/10 hover:bg-muted/20 transition-colors">
@@ -1854,7 +2552,21 @@ export default function StaffManagement() {
             {/* Dialog Footer */}
             <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-border bg-muted/20 mt-4">
               <div className="flex gap-1">
+                {/* Original:
                 {["basic", "professional", "status"].map((tab) => (
+                  <button
+                    key={tab}
+                    type="button"
+                    onClick={() => setFormTab(tab)}
+                    className={`h-1.5 rounded-full transition-all ${
+                      formTab === tab
+                        ? "w-6 bg-primary"
+                        : "w-1.5 bg-muted-foreground/30 hover:bg-muted-foreground/50"
+                    }`}
+                  />
+                ))}
+                */}
+                {["basic", "professional", "history", "status"].map((tab) => (
                   <button
                     key={tab}
                     type="button"
@@ -1883,8 +2595,17 @@ export default function StaffManagement() {
                     variant="secondary"
                     size="sm"
                     onClick={() =>
+                      /* Original:
                       setFormTab(
                         formTab === "basic" ? "professional" : "status"
+                      )
+                      */
+                      setFormTab(
+                        formTab === "basic"
+                          ? "professional"
+                          : formTab === "professional"
+                          ? "history"
+                          : "status"
                       )
                     }
                   >
@@ -2011,6 +2732,7 @@ export default function StaffManagement() {
           {/* Body */}
           <div className="overflow-auto flex-1 min-h-0">
             {importStep === "uploading" ? (
+              /* Original:
               <div className="flex flex-col items-center justify-center py-20 gap-4">
                 <div className="relative">
                   <Loader2 className="h-10 w-10 animate-spin text-primary" />
@@ -2020,6 +2742,21 @@ export default function StaffManagement() {
                 <p className="text-xs text-muted-foreground">
                   Please wait while we add each staff member to the roster.
                 </p>
+              </div>
+              */
+              <div className="flex flex-col items-center justify-center py-20 px-6 gap-4 max-w-md mx-auto w-full">
+                <div className="relative">
+                  <Loader2 className="h-10 w-10 animate-spin text-primary" />
+                  <div className="absolute inset-0 rounded-full border-4 border-primary/20 animate-ping" />
+                </div>
+                <p className="text-sm font-medium text-foreground">Importing staff records…</p>
+                <div className="w-full space-y-1 mt-2">
+                  <Progress value={importProgress.percentage} className="h-2 w-full" />
+                  <div className="flex justify-between text-[11px] text-muted-foreground">
+                    <span>{importProgress.current} of {importProgress.total} records uploaded</span>
+                    <span>{importProgress.percentage}%</span>
+                  </div>
+                </div>
               </div>
             ) : importStep === "done" ? (
               // Results table
@@ -2062,8 +2799,8 @@ export default function StaffManagement() {
                     <th className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Full Name</th>
                     <th className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Gender</th>
                     <th className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Role</th>
-                    <th className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide hidden md:table-cell">Phone</th>
-                    <th className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide hidden md:table-cell">Training</th>
+                    <th className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide hidden md:table-cell">Facility</th>
+                    <th className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide hidden md:table-cell">NRC</th>
                     <th className="px-4 py-2.5 text-center text-xs font-semibold text-muted-foreground uppercase tracking-wide">Valid?</th>
                     <th className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Errors</th>
                   </tr>
@@ -2081,9 +2818,25 @@ export default function StaffManagement() {
                           {hasErrors ? (
                             <span className="text-muted-foreground italic">{row.fullName || "—"}</span>
                           ) : (
+                            /* Original:
                             <div className="flex items-center gap-2">
                               <StaffAvatar name={row.fullName || "?"} gender={row.gender} />
                               <span className="font-medium text-foreground">{row.fullName}</span>
+                            </div>
+                            */
+                            <div className="flex flex-col">
+                              <div className="flex items-center gap-2">
+                                <StaffAvatar name={row.fullName || "?"} gender={row.gender} />
+                                <span className="font-medium text-foreground">{row.fullName}</span>
+                              </div>
+                              {row.resolvedFacilityId && (
+                                <div className="text-[10px] text-muted-foreground mt-1 flex items-center gap-1 pl-1">
+                                  <Building2 className="h-3 w-3 text-blue-500 shrink-0" />
+                                  <span>
+                                    Resolved to: <strong className="text-foreground">{allFacilities.find((f) => f.id === row.resolvedFacilityId)?.name || `HF #${row.resolvedFacilityId}`}</strong>
+                                  </span>
+                                </div>
+                              )}
                             </div>
                           )}
                         </td>
@@ -2098,8 +2851,16 @@ export default function StaffManagement() {
                             </Badge>
                           )}
                         </td>
+                        <td className="px-4 py-2.5 text-xs text-foreground hidden md:table-cell">
+                          {row.resolvedFacilityId
+                            ? allFacilities.find((f) => f.id === row.resolvedFacilityId)?.name || `HF #${row.resolvedFacilityId}`
+                            : selectedFacility?.name || importTargetFacilityId
+                              ? allFacilities.find((f) => f.id.toString() === (selectedFacilityId || importTargetFacilityId))?.name || "—"
+                              : <span className="text-amber-500">No facility</span>
+                          }
+                        </td>
                         <td className="px-4 py-2.5 text-xs font-mono text-foreground hidden md:table-cell">
-                          {row.contactPhone || "—"}
+                          {(row as any).nrc || "—"}
                         </td>
                         <td className="px-4 py-2.5 text-xs hidden md:table-cell">
                           <span
@@ -2201,6 +2962,96 @@ export default function StaffManagement() {
               </>
             )}
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── Employment History Timeline Dialog ─── */}
+      <Dialog
+        open={selectedStaffForHistory !== null}
+        onOpenChange={(open) => {
+          if (!open) setSelectedStaffForHistory(null);
+        }}
+      >
+        <DialogContent className="max-w-md w-[95vw] bg-card border border-border p-6 rounded-lg shadow-xl">
+          <DialogHeader className="pb-4 border-b border-border">
+            <DialogTitle className="text-lg flex items-center gap-2">
+              <ClipboardList className="h-5 w-5 text-blue-600" />
+              Career Placements
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Employment timeline for <span className="font-semibold text-foreground">{selectedStaffForHistory?.fullName}</span>
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-6 overflow-y-auto max-h-[400px] pr-1">
+            <div className="relative border-l border-blue-500/30 ml-4 pl-6 space-y-6">
+              {/* Current Facility Placement */}
+              {selectedStaffForHistory && (
+                <div className="relative">
+                  {/* Timeline Node Icon */}
+                  <span className="absolute -left-[31px] top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-blue-500 text-white ring-8 ring-background">
+                    <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
+                  </span>
+                  <div>
+                    <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 bg-blue-500/10 px-2 py-0.5 rounded-full mb-1">
+                      Current Placement
+                    </span>
+                    <h4 className="text-sm font-bold text-foreground">
+                      {allFacilities.find((f) => f.id === selectedStaffForHistory.facilityId)?.name || "Current Facility"}
+                    </h4>
+                    <p className="text-xs text-muted-foreground font-medium mt-0.5">
+                      {ROLE_OPTIONS.find((r) => r.value === selectedStaffForHistory.role)?.label || selectedStaffForHistory.role || "Staff Member"}
+                    </p>
+                    {selectedStaffForHistory.yearsAtFacility && (
+                      <p className="text-[10px] text-muted-foreground/75 mt-1 font-mono">
+                        Duration: {selectedStaffForHistory.yearsAtFacility} year{selectedStaffForHistory.yearsAtFacility > 1 ? "s" : ""} here
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Past History Timeline Placements */}
+              {selectedStaffForHistory?.history && selectedStaffForHistory.history.length > 0 ? (
+                selectedStaffForHistory.history.map((h: any, index: number) => (
+                  <div key={index} className="relative">
+                    {/* Timeline Node Icon */}
+                    <span className="absolute -left-[31px] top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-muted border border-blue-500/30 text-muted-foreground ring-8 ring-background">
+                      <span className="h-1.5 w-1.5 rounded-full bg-blue-500/60" />
+                    </span>
+                    <div>
+                      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-muted-foreground bg-muted px-2 py-0.5 rounded-full mb-1">
+                        Previous Placement #{index + 1}
+                      </span>
+                      <h4 className="text-sm font-bold text-foreground">{h.facilityName}</h4>
+                      <p className="text-xs text-muted-foreground font-medium mt-0.5">{h.role}</p>
+                      <p className="text-[10px] text-muted-foreground/75 mt-1 font-mono">
+                        Duration: {h.years} year{h.years > 1 ? "s" : ""}
+                      </p>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                selectedStaffForHistory && (
+                  <div className="text-xs text-muted-foreground italic pl-2 py-2">
+                    No prior facility history documented.
+                  </div>
+                )
+              )}
+            </div>
+          </div>
+
+          <DialogFooter className="pt-4 border-t border-border">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setSelectedStaffForHistory(null)}
+              className="w-full"
+            >
+              Close Timeline
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

@@ -64,6 +64,14 @@
 3. **Issues** are auto-recorded when you close a session.
 4. At month-end, review and submit the **Monthly stock summary**.
 
+<!-- Original section ended here. Added section 8 for Cold Chain Equipment below: -->
+
+## 8. Manage Cold Chain Equipment
+1. Sidebar → **Facilities** → select your facility → **Cold Chain** tab.
+2. View, add, or edit your facility's refrigerators, freezers, solar direct drive units, vaccine carriers, or generators.
+3. Select multiple items in the list to trigger the bottom **floating bulk actions** toolbar (e.g. bulk update condition, make active/inactive).
+4. Use **Import CSV** to import equipment lists or **Export** (CSV/IGA JSON) to share with Inventory and Gap Analysis (IGA) systems.
+
 ---
 
 ## Daily checklist

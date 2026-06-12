@@ -140,6 +140,7 @@ export const tenantInterestRequests = pgTable(
 // ============================================================================
 
 // Enums
+/* Original Code:
 export const userRoleEnum = pgEnum("user_role", [
   "facility_clerk",
   "facility_in_charge",
@@ -147,6 +148,20 @@ export const userRoleEnum = pgEnum("user_role", [
   "provincial_coordinator",
   "national_admin",
   "gis_specialist",
+]);
+*/
+export const userRoleEnum = pgEnum("user_role", [
+  "facility_clerk",
+  "facility_in_charge",
+  "district_manager",
+  "provincial_coordinator",
+  "national_admin",
+  "gis_specialist",
+  "facility_partner",
+  "district_partner",
+  "provincial_partner",
+  "national_partner",
+  "national_manager",
 ]);
 
 export const approvalStatusEnum = pgEnum("approval_status", [
@@ -258,6 +273,26 @@ export const userRoles = pgTable(
   (table) => [
     index("idx_user_roles_tenant").on(table.tenantId),
     unique("uq_user_roles_tenant_code").on(table.tenantId, table.code)
+  ]
+);
+
+// Dynamic User Permissions and descriptions
+export const userPermissions = pgTable(
+  "user_permissions",
+  {
+    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+    tenantId: varchar("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    code: varchar("code", { length: 100 }).notNull(),
+    name: varchar("name", { length: 100 }).notNull(),
+    description: text("description"),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => [
+    index("idx_user_permissions_tenant").on(table.tenantId),
+    unique("uq_user_permissions_tenant_code").on(table.tenantId, table.code)
   ]
 );
 
@@ -1048,6 +1083,9 @@ export const facilityStaff = pgTable(
     facilityId: integer("facility_id").notNull().references(() => facilities.id, { onDelete: "cascade" }),
     fullName: varchar("full_name", { length: 255 }).notNull(),
     name: varchar("name", { length: 255 }),
+    employeeId: varchar("employee_id", { length: 100 }),
+    nrc: varchar("nrc", { length: 100 }),
+    history: jsonb("history").default([]),
     gender: varchar("gender", { length: 20 }).default("female"),
     position: varchar("position", { length: 100 }),
     contactPhone: varchar("contact_phone", { length: 50 }),
@@ -1260,6 +1298,14 @@ export const insertUserRoleSchema = createInsertSchema(userRoles).omit({
 });
 export type CustomUserRole = typeof userRoles.$inferSelect;
 export type InsertUserRole = typeof userRoles.$inferInsert;
+
+export const insertUserPermissionSchema = createInsertSchema(userPermissions).omit({
+  tenantId: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type CustomUserPermission = typeof userPermissions.$inferSelect;
+export type InsertUserPermission = typeof userPermissions.$inferInsert;
 
 /*
 // Original Code (failed compile under drizzle-zod v0.7.0 due to generatedAlwaysAsIdentity identity column auto-exclusion)
@@ -2876,3 +2922,104 @@ export const insertUncoveredCommunitySchema = createInsertSchema(uncoveredCommun
 });
 export type InsertUncoveredCommunity = z.infer<typeof insertUncoveredCommunitySchema>;
 export type UncoveredCommunity = typeof uncoveredCommunities.$inferSelect;
+
+// ============================================================================
+// COLD CHAIN EQUIPMENT INVENTORY
+// Documents ALL cold-chain equipment at each facility (WHO EIR-compatible).
+// Can be imported from / exported to external IGA (Inventory & Gap Analysis)
+// systems via the /api/facilities/:id/cold-chain/export endpoint.
+// ============================================================================
+export const coldChainEquipment = pgTable("cold_chain_equipment", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  tenantId: varchar("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  facilityId: integer("facility_id").notNull().references(() => facilities.id, { onDelete: "cascade" }),
+
+  // Equipment classification
+  equipmentType: varchar("equipment_type", { length: 60 }).notNull(),
+  // refrigerator | freezer | icm | cold_box | vaccine_carrier | generator | temperature_logger | other
+
+  brand: varchar("brand", { length: 100 }),
+  model: varchar("model", { length: 100 }),
+  serialNumber: varchar("serial_number", { length: 100 }),
+  catalogNumber: varchar("catalog_number", { length: 100 }), // WHO PIS catalog ref
+
+  // Physical specs
+  capacityLiters: decimal("capacity_liters", { precision: 8, scale: 2 }),
+  netStorageCapacityLiters: decimal("net_storage_capacity_liters", { precision: 8, scale: 2 }),
+  temperatureMin: decimal("temperature_min", { precision: 5, scale: 1 }), // °C
+  temperatureMax: decimal("temperature_max", { precision: 5, scale: 1 }), // °C
+
+  // Power & energy
+  powerSource: varchar("power_source", { length: 40 }),
+  // solar | electric | gas | kerosene | battery | solar_dc | none
+  energyConsumptionKwhDay: decimal("energy_consumption_kwh_day", { precision: 6, scale: 2 }),
+
+  // Provenance & lifecycle
+  manufactureYear: integer("manufacture_year"),
+  installationDate: varchar("installation_date", { length: 20 }), // ISO date string YYYY-MM-DD
+  purchaseCost: decimal("purchase_cost", { precision: 14, scale: 2 }),
+  purchaseCurrency: varchar("purchase_currency", { length: 5 }).default("USD"),
+  warrantyExpiry: varchar("warranty_expiry", { length: 20 }),
+  supplier: varchar("supplier", { length: 255 }),
+  donorFunded: boolean("donor_funded").default(false),
+  fundingSource: varchar("funding_source", { length: 100 }),
+
+  // Maintenance & condition
+  condition: varchar("condition", { length: 30 }).notNull().default("functional"),
+  // functional | needs_repair | non_functional | condemned | decommissioned
+  lastServiceDate: varchar("last_service_date", { length: 20 }),
+  nextServiceDue: varchar("next_service_due", { length: 20 }),
+  lastTemperatureCheck: varchar("last_temperature_check", { length: 20 }),
+  maintenanceNotes: text("maintenance_notes"),
+
+  // Flags & metadata
+  isActive: boolean("is_active").default(true).notNull(),
+  notes: text("notes"),
+  externalId: varchar("external_id", { length: 100 }), // for IGA system round-trip matching
+
+  createdByUserId: varchar("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  updatedByUserId: varchar("updated_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("idx_cce_tenant").on(table.tenantId),
+  index("idx_cce_facility").on(table.facilityId),
+  index("idx_cce_condition").on(table.tenantId, table.condition),
+]);
+
+export const coldChainEquipmentRelations = relations(coldChainEquipment, ({ one }) => ({
+  tenant: one(tenants, { fields: [coldChainEquipment.tenantId], references: [tenants.id] }),
+  facility: one(facilities, { fields: [coldChainEquipment.facilityId], references: [facilities.id] }),
+  createdBy: one(users, { fields: [coldChainEquipment.createdByUserId], references: [users.id] }),
+}));
+
+export const insertColdChainEquipmentSchema = createInsertSchema(coldChainEquipment).omit({
+  tenantId: true,
+  createdByUserId: true,
+  updatedByUserId: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  equipmentType: z.enum([
+    "refrigerator", "freezer", "icm", "cold_box", "vaccine_carrier",
+    "generator", "temperature_logger", "other",
+  ]),
+  condition: z.enum([
+    "functional", "needs_repair", "non_functional", "condemned", "decommissioned",
+  ]).default("functional"),
+  powerSource: z.enum([
+    "solar", "electric", "gas", "kerosene", "battery", "solar_dc", "none",
+  ]).optional().nullable(),
+  capacityLiters: z.coerce.number().positive().optional().nullable(),
+  netStorageCapacityLiters: z.coerce.number().positive().optional().nullable(),
+  temperatureMin: z.coerce.number().optional().nullable(),
+  temperatureMax: z.coerce.number().optional().nullable(),
+  manufactureYear: z.coerce.number().int().min(1950).max(2100).optional().nullable(),
+  purchaseCost: z.coerce.number().nonnegative().optional().nullable(),
+  energyConsumptionKwhDay: z.coerce.number().nonnegative().optional().nullable(),
+  donorFunded: z.boolean().optional(),
+  isActive: z.boolean().optional(),
+});
+
+export type ColdChainEquipment = typeof coldChainEquipment.$inferSelect;
+export type InsertColdChainEquipment = z.infer<typeof insertColdChainEquipmentSchema>;

@@ -32,11 +32,17 @@ export function UserMenu({ user }: UserMenuProps) {
   const roleLabel = {
     facility_clerk: "Facility Clerk",
     facility_in_charge: "Facility In-Charge",
+    facility_partner: "Facility Partner",
     district_manager: "District Manager",
+    district_partner: "District Partner",
     provincial_coordinator: "Provincial Coordinator",
+    provincial_partner: "Provincial Partner",
     national_admin: "National Admin",
+    national_manager: "National Manager",
+    national_partner: "National Partner",
     gis_specialist: "GIS Specialist",
   }[user.role || "facility_clerk"];
+
 
   return (
     <>

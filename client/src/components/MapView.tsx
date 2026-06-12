@@ -2061,7 +2061,8 @@ export function MapView({
     queryFn: async () => {
       if (!navigator.onLine) {
         const _tid = loadActiveTenant()?.id;
-        return (_tid ? offlineDb.sessionPlans.where("tenantId").equals(_tid).toArray() : offlineDb.sessionPlans.toArray()) as any[];
+        return (_tid ? await offlineDb.sessionPlans.where("tenantId").equals(_tid).toArray() : await offlineDb.sessionPlans.toArray());
+
       }
       const res = await fetch("/api/sessions");
       if (!res.ok) throw new Error("Failed to load sessions");

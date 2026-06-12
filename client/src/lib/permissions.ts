@@ -6,11 +6,17 @@ export type UserRole = User["role"];
 const roleHierarchy: Record<UserRole, number> = {
   facility_clerk: 1,
   facility_in_charge: 2,
+  facility_partner: 2,     // partner roles — same level as in-charge
   district_manager: 3,
+  district_partner: 3,     // partner = district level
   provincial_coordinator: 4,
+  provincial_partner: 4,   // partner = provincial level
   national_admin: 5,
+  national_manager: 5,     // manager = national level
+  national_partner: 5,     // partner = national level
   gis_specialist: 5,
 };
+
 
 // Cross-tenant scope decision (mirrors server/auth/authorization.ts → hasPermission)
 // -------------------------------------------------------------------------------
@@ -128,11 +134,22 @@ export function canCreateData(user: User | null | undefined): boolean {
   return roleHierarchy[user.role] >= roleHierarchy.facility_in_charge;
 }
 
-// Microplans / session plans are authored by facility staff only. Everyone
-// at district level and above only reviews & approves them.
+// Microplans can be authored by facility staff AND district/provincial staff.
+// District/provincial users must pick a target facility in the wizard before
+// proceeding. National admins have always been included.
+// The server enforces scope via getGeoScope; the client gate is purely UX.
 export function canCreateSessionPlan(user: User | null | undefined): boolean {
   if (!user) return false;
-  return user.role === "facility_clerk" || user.role === "facility_in_charge" || user.role === "national_admin";
+  return (
+    user.role === "facility_clerk" ||
+    user.role === "facility_in_charge" ||
+    user.role === "facility_partner" ||
+    user.role === "district_manager" ||
+    user.role === "district_partner" ||
+    user.role === "provincial_coordinator" ||
+    user.role === "provincial_partner" ||
+    user.role === "national_admin"
+  );
 }
 
 // Returns true for the roles that act on approval requests for session plans.

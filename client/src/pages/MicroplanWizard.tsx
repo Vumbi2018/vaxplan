@@ -51,6 +51,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
+import { DataTable } from "@/components/DataTable";
 import { usePersistedBasemap } from "@/hooks/usePersistedBasemap";
 import { canApproveSessionPlan } from "@/lib/permissions";
 import { FacilityCascadePicker } from "@/components/FacilityCascadePicker";
@@ -454,7 +455,10 @@ export default function MicroplanWizard({ prePlanType }: MicroplanWizardProps = 
     const id = params.get("id");
     if (id && !Number.isNaN(Number(id))) {
       setMicroplanId(Number(id));
+      return;
     }
+    setMicroplanId(null);
+    setActive(1);
   }, [routeIdRaw]);
 
   // Sync facility from user when it arrives — but never override an explicit
@@ -753,10 +757,10 @@ export default function MicroplanWizard({ prePlanType }: MicroplanWizardProps = 
     if (!villages || !facility) return [] as Village[];
     return villages.filter(
       (v) =>
-        (v.assignedFacilityId === facility.id ||
-          v.districtId === facility.districtId) &&
-        !excludedVillageIds.has(v.id),
+        v.assignedFacilityId === facility.id &&
+        !excludedVillageIds.has(v.id)
     );
+
   }, [villages, facility, excludedVillageIds]);
 
   // Villages the user previously removed from this facility's catchment.
@@ -1250,7 +1254,9 @@ export default function MicroplanWizard({ prePlanType }: MicroplanWizardProps = 
           ...v,
           id: hit.id,
           target: String(hit.targetPopulation ?? 0),
-          wastage: String(hit.wastageRate ?? v.wastage),
+          // Guard: if wastageRate is null/undefined, keep the antigen default.
+          // String(null) = "null" which makes parseFloat("null") = NaN later.
+          wastage: hit.wastageRate != null ? String(hit.wastageRate) : v.wastage,
         };
       }),
     );
@@ -1418,6 +1424,10 @@ export default function MicroplanWizard({ prePlanType }: MicroplanWizardProps = 
       );
       setDayPlanIdMap((prev) => ({ ...prev, ...dayIdMap }));
       hydratedRef.current.dayPlans = true;
+      // Re-baseline step 5 snapshot after hydration finishes so any pre-existing
+      // staffing assignments are treated as "already saved" and not re-triggered.
+      // Without this, the auto-save fires immediately on first render of step 5.
+      setTimeout(() => { savedSnapshots.current[5] = snapshotForStep(5); }, 0);
     } catch (e) {
       console.warn("Could not hydrate session day plans:", e);
     }
@@ -1638,10 +1648,7 @@ export default function MicroplanWizard({ prePlanType }: MicroplanWizardProps = 
           savedSnapshots.current[active] = snap;
           setLastSavedAt(Date.now());
           setSaveStatus("saved");
-          toast({
-            title: "Draft saved",
-            description: "You can leave and come back without losing progress.",
-          });
+          // Auto-save runs silently in the background — no toast interruption.
         } else {
           setSaveStatus("idle");
         }
@@ -2359,6 +2366,59 @@ export default function MicroplanWizard({ prePlanType }: MicroplanWizardProps = 
         await patchMicroplan(mpId, {
           staffing: { ...prevObj, roster, rosterUpdatedAt: new Date().toISOString() },
         });
+
+        // Also persist each row's staff names into session_day_plans so the data
+        // survives a page reload without having to re-visit step 8.
+        const dayItems5: any[] = [];
+        for (let si5 = 0; si5 < staffing.length; si5++) {
+          const s5 = staffing[si5];
+          const sid5 = sessionIdMap[s5.rowId];
+          if (!sid5) continue;
+          const existingId5 = dayPlanIdMap[s5.rowId];
+          const notes5 = [
+            s5.vaccinator && ("vaccinator:" + s5.vaccinator),
+            s5.recorder && ("recorder:" + s5.recorder),
+            s5.supervisor && ("supervisor:" + s5.supervisor),
+            s5.teamType && ("team:" + s5.teamType),
+            s5.perDiem && ("perDiem:" + s5.perDiem),
+          ].filter(Boolean).join("; ");
+          dayItems5.push({
+            clientId: s5.rowId,
+            id: existingId5 ?? null,
+            sessionPlanId: sid5,
+            dayNumber: 1,
+            sessionDate: calendar[si5]?.scheduledDate,
+            communitiesVisited: [calendar[si5]?.name].filter(Boolean),
+            targetPopulation: parseInt(s5.target || "0", 10),
+            vaccinesRequired: {},
+            vaccinatorsCount: s5.vaccinator ? 1 : 0,
+            recordersCount: s5.recorder ? 1 : 0,
+            supervisorsCount: s5.supervisor ? 1 : 0,
+            distanceKm: transport[si5]?.distanceKm ?? "0",
+            transportType: transport[si5]?.mode ?? "road",
+            fuelLiters: transport[si5]?.fuelLitres ?? "0",
+            executionNotes: notes5,
+          });
+        }
+        if (dayItems5.length > 0) {
+          try {
+            type DayBulkResult5 = { clientId?: string; ok: boolean; id?: number; error?: string };
+            const resp5 = await apiRequest<{ results: DayBulkResult5[] }>(
+              "POST",
+              "/api/sessions/days/bulk",
+              { items: dayItems5 },
+            );
+            const nextIdMap5: Record<string, number> = { ...dayPlanIdMap };
+            for (const r5 of resp5.results ?? []) {
+              if (r5.ok && r5.id != null && typeof r5.clientId === "string") {
+                nextIdMap5[r5.clientId] = r5.id;
+              }
+            }
+            setDayPlanIdMap(nextIdMap5);
+          } catch (e5) {
+            console.warn("[Step5] Could not persist staff to day plans:", e5);
+          }
+        }
       } else if (step === 6) {
         // Bulk upsert vaccine requirements in a single request.
         const nextVaccines = [...vaccines];
@@ -2664,7 +2724,7 @@ export default function MicroplanWizard({ prePlanType }: MicroplanWizardProps = 
     if (ok) {
       // Mark the step we just saved as clean so auto-save doesn't re-fire it.
       savedSnapshots.current[active] = snap;
-      if (active < 12) setActive(active + 1);
+      if (active < 13) setActive(active + 1);
     }
   }
 
@@ -2789,14 +2849,21 @@ export default function MicroplanWizard({ prePlanType }: MicroplanWizardProps = 
     }
 
     // 3. Communities (Step 2)
-    if (!communities || communities.length === 0) {
+    // Only validate communities the user has explicitly included in this microplan:
+    // a community is considered "active" if it has been saved to the DB (c.saved === true)
+    // OR if the user has already entered a non-zero population for it.
+    const activeCommunities = communities
+      ? communities.filter((c) => c.saved === true || parseInt(c.targetPopulation || "0", 10) > 0)
+      : [];
+
+    if (activeCommunities.length === 0) {
       errors.push({
         step: 2,
         id: "communities-empty",
-        message: "Communities: No catchment villages/communities added to this microplan.",
+        message: "Communities: No catchment villages/communities have been configured for this microplan. Go to Step 2 and set populations for at least one community.",
       });
     } else {
-      communities.forEach((c, idx) => {
+      activeCommunities.forEach((c, idx) => {
         const name = c.name || `Community ${idx + 1}`;
         const pop = parseInt(c.targetPopulation || "0", 10);
         if (isNaN(pop) || pop <= 0) {
@@ -4078,20 +4145,33 @@ function Step2({
   });
 
   // Fetch all communities in facility catchment (covered + uncovered)
-  const { data: catchmentCommunities, refetch: refetchCatchment } = useQuery<any>({
+  const { data: catchmentCommunities, refetch: refetchCatchment, isLoading: loadingCatchment } = useQuery<any>({
     queryKey: ["/api/spatial/uncovered-communities", facility?.id, communities.length],
     enabled: !!facility?.id,
+    retry: 1,
+    staleTime: 30000,
     queryFn: async () => {
-      // Original search radius was 15km
-      // const params = new URLSearchParams({ facilityId: String(facility?.id), radiusKm: "15" });
-      // Updated search radius to 25km per user request
+      // Updated search radius to 25km per user request (was 15km originally)
       const params = new URLSearchParams({ facilityId: String(facility?.id), radiusKm: "25" });
       if (microplan?.id) params.set("microplanId", String(microplan.id));
-      const res = await fetch(`/api/spatial/uncovered-communities?${params}`, { credentials: "include" });
-      if (!res.ok) return null;
-      return res.json();
+      // Abort after 20 seconds to prevent the panel from spinning forever if
+      // the PostGIS spatial query is slow or the connection is poor.
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 20_000);
+      try {
+        const res = await fetch(`/api/spatial/uncovered-communities?${params}`, {
+          credentials: "include",
+          signal: controller.signal,
+        });
+        if (!res.ok) return null;
+        return res.json();
+      } catch {
+        // Network error or timeout — return null so the UI shows "failed to load"
+        return null;
+      } finally {
+        clearTimeout(timeoutId);
+      }
     },
-    staleTime: 30000,
   });
 
   useEffect(() => {
@@ -4812,7 +4892,7 @@ function Step2({
                 )}
               </span>
               <Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => refetchCatchment()} title="Refresh">
-                <Loader2 className={`h-3.5 w-3.5 ${!catchmentCommunities ? "animate-spin" : ""} text-primary`} />
+                <Loader2 className={`h-3.5 w-3.5 ${loadingCatchment ? "animate-spin" : ""} text-primary`} />
               </Button>
             </CardTitle>
           </CardHeader>
@@ -4940,11 +5020,17 @@ function Step2({
                   ) : (
                     <tr>
                       <td colSpan={6} className="p-4 text-center text-muted-foreground">
-                        {catchmentCommunities === undefined ? (
+                        {loadingCatchment ? (
                           <span className="flex items-center justify-center gap-1.5">
                             <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading catchment communities…
                           </span>
-                        ) : "No communities found within 25 km of this facility."}
+                        ) : catchmentCommunities === null ? (
+                          <span className="flex items-center justify-center gap-1.5 text-destructive/70">
+                            <X className="h-3.5 w-3.5" /> Failed to load — click Refresh to retry.
+                          </span>
+                        ) : (
+                          "No communities found within 25 km of this facility."
+                        )}
                       </td>
                     </tr>
                   )}
@@ -7031,6 +7117,7 @@ function Step6({
 }) {
   const errorRowRef = useRef<HTMLInputElement | null>(null);
   const { toast } = useToast();
+  const { user } = useAuth(); // needed for Requisition Slip "Prepared By" field
   const [requisitionOpen, setRequisitionOpen] = useState(false);
 
   // Scroll the flagged vaccine row into view and focus its target input
@@ -7559,7 +7646,7 @@ function StepHfcBoard({ facilityId }: { facilityId: number | null }) {
 
   return (
     <div className="space-y-5">
-      <WhatToDo bullets={STEPS.find((s) => s.id === 8)!.whatToDo} />
+      {/* WhatToDo is rendered by the outer wizard wrapper (line 3157) for all steps */}
       <div className="rounded-lg border bg-card p-4 space-y-3">
         <p className="text-sm font-semibold text-foreground">{editId ? "Edit HFC Member" : "Add HFC Member"}</p>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -7726,7 +7813,7 @@ function StepChvProfile({ facilityId, villages, planType = "routine" }: { facili
 
   return (
     <div className="space-y-5">
-      <WhatToDo bullets={STEPS.find((s) => s.id === 9)!.whatToDo} />
+      {/* WhatToDo is rendered by the outer wizard wrapper (line 3157) for all steps */}
       <div className="rounded-lg border bg-card p-4 space-y-3">
         <p className="text-sm font-semibold text-foreground">{editId ? "Edit CHV" : "Add Community Health Volunteer"}</p>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -8559,17 +8646,21 @@ function Step11({
                   </thead>
                   <tbody>
                     {vaccines.map((v) => {
-                      const tgt = parseInt(v.target || "0", 10);
-                      const w = parseFloat(v.wastage || "0");
-                      const total = Math.ceil(tgt * v.doses * (1 + w / 100));
+                      const tgt = parseInt(v.target || "0", 10) || 0;
+                      // Sanitize: the string "null" is truthy but parses to NaN
+                      const wastageStr = (v.wastage === "null" || !v.wastage) ? "0" : v.wastage;
+                      const w = parseFloat(wastageStr);
+                      const safeW = isFinite(w) ? w : 0;
+                      const safeDoses = v.doses || 1;
+                      const total = Math.ceil(tgt * safeDoses * (1 + safeW / 100));
                       const vials = Math.ceil(total / 10);
                       return (
                         <tr key={v.name} className="border-b">
                           <td className="p-1 font-medium">{v.name}</td>
                           <td className="p-1">{tgt}</td>
-                          <td className="p-1">{total.toLocaleString()}</td>
-                          <td className="p-1">{v.wastage}%</td>
-                          <td className="p-1">{vials.toLocaleString()}</td>
+                          <td className="p-1">{isFinite(total) ? total.toLocaleString() : "—"}</td>
+                          <td className="p-1">{isFinite(safeW) ? `${safeW}%` : "—"}</td>
+                          <td className="p-1">{isFinite(vials) ? vials.toLocaleString() : "—"}</td>
                         </tr>
                       );
                     })}
@@ -8769,6 +8860,31 @@ function SavedMicroplansPanel({
     return m;
   }, [sessions]);
 
+  const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const { toast } = useToast();
+
+  const handleDelete = async (id: number) => {
+    setDeleteBusy(true);
+    try {
+      await apiRequest("DELETE", `/api/microplans/${id}`);
+      queryClient.invalidateQueries({ queryKey: ["/api/microplans"] });
+      toast({
+        title: "Microplan deleted",
+        description: "The microplan has been permanently deleted.",
+      });
+      setDeleteId(null);
+    } catch (error) {
+      toast({
+        title: "Delete failed",
+        description: "Could not delete the microplan.",
+        variant: "destructive",
+      });
+    } finally {
+      setDeleteBusy(false);
+    }
+  };
+
   // The DB column `plan_type` uses values like "facility_routine" /
   // "sia_campaign" while this page thinks in "routine" / "campaign". Map both.
   const filtered = (microplans ?? []).filter((m) => {
@@ -8778,81 +8894,142 @@ function SavedMicroplansPanel({
       : !pt.includes("campaign");
   });
 
+  const columns = useMemo(() => [
+    {
+      key: "name",
+      header: "Plan Name",
+      sortable: true,
+      render: (m: any) => (
+        <button
+          onClick={() => onOpen(m.id)}
+          className="font-medium text-primary hover:underline text-left"
+          data-testid={`button-open-microplan-name-${m.id}`}
+        >
+          {m.name}
+        </button>
+      ),
+    },
+    {
+      key: "period",
+      header: "Period",
+      sortable: true,
+      render: (m: any) => `Q${m.quarter} ${m.year}`,
+    },
+    {
+      key: "status",
+      header: "Status",
+      sortable: true,
+      render: (m: any) => {
+        const s = String(m.status ?? "draft").toLowerCase();
+        const label =
+          s === "pending"
+            ? "Pending approval"
+            : s === "approved"
+              ? "Approved"
+              : s === "locked"
+                ? "Locked"
+                : "Draft";
+        const variant: "default" | "secondary" | "outline" =
+          s === "approved" ? "default" : s === "pending" ? "secondary" : "outline";
+        return (
+          <Badge variant={variant} className="gap-1" data-testid={`microplan-status-${m.id}`}>
+            {label}
+          </Badge>
+        );
+      },
+    },
+    {
+      key: "planned",
+      header: "Planned Sessions",
+      sortable: true,
+      render: (m: any) => {
+        const rows = sessionsByPlan.get(m.id) ?? [];
+        const completed = rows.filter((s) => s.completedAt || (s as any).isAchieved).length;
+        const planned = rows.length - completed;
+        return (
+          <Badge variant="secondary" className="gap-1">
+            <Calendar className="h-3 w-3" />
+            {planned} planned
+          </Badge>
+        );
+      },
+    },
+    {
+      key: "completed",
+      header: "Completed Sessions",
+      sortable: true,
+      render: (m: any) => {
+        const rows = sessionsByPlan.get(m.id) ?? [];
+        const completed = rows.filter((s) => s.completedAt || (s as any).isAchieved).length;
+        return (
+          <Badge variant="outline" className="gap-1">
+            <CheckCircle2 className="h-3 w-3 text-emerald-600" />
+            {completed} done
+          </Badge>
+        );
+      },
+    },
+    {
+      key: "actions",
+      header: "Actions",
+      sortable: false,
+      render: (m: any) => (
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => onOpen(m.id)}
+            data-testid={`button-open-microplan-${m.id}`}
+          >
+            Open
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="text-destructive hover:bg-destructive/10"
+            onClick={() => setDeleteId(m.id)}
+            data-testid={`button-delete-microplan-${m.id}`}
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
+      ),
+    },
+  ], [sessionsByPlan, onOpen]);
+
   if (filtered.length === 0) return null;
 
   return (
     <div className="border-b bg-muted/20 px-4 py-3">
-      <div className="mb-2 flex items-center justify-between">
-        <h2 className="text-sm font-semibold">
-          Saved microplans ({filtered.length})
-        </h2>
-        <p className="text-xs text-muted-foreground">
-          Open one to see its planned sessions
-        </p>
+      <div className="mb-4 flex items-center justify-between">
+        <div>
+          <h2 className="text-sm font-semibold">
+            Saved microplans ({filtered.length})
+          </h2>
+          <p className="text-xs text-muted-foreground">
+            Open one to see its planned sessions
+          </p>
+        </div>
       </div>
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-        {filtered.map((m) => {
-          const rows = sessionsByPlan.get(m.id) ?? [];
-          const completed = rows.filter(
-            (s) => s.completedAt || (s as any).isAchieved,
-          ).length;
-          const planned = rows.length - completed;
-          return (
-            <div
-              key={m.id}
-              className="rounded-md border bg-background p-3 text-sm"
-              data-testid={`saved-microplan-${m.id}`}
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="truncate font-medium" title={m.name}>
-                    {m.name}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    Q{m.quarter} {m.year}
-                  </p>
-                </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => onOpen(m.id)}
-                  data-testid={`button-open-microplan-${m.id}`}
-                >
-                  Open
-                </Button>
-              </div>
-              <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
-                {(() => {
-                  const s = String(m.status ?? "draft").toLowerCase();
-                  const label =
-                    s === "pending"
-                      ? "Pending approval"
-                      : s === "approved"
-                        ? "Approved"
-                        : s === "locked"
-                          ? "Locked"
-                          : "Draft";
-                  const variant: "default" | "secondary" | "outline" =
-                    s === "approved" ? "default" : s === "pending" ? "secondary" : "outline";
-                  return (
-                    <Badge variant={variant} className="gap-1" data-testid={`microplan-status-${m.id}`}>
-                      {label}
-                    </Badge>
-                  );
-                })()}
-                <Badge variant="secondary" className="gap-1">
-                  <Calendar className="h-3 w-3" />
-                  {planned} planned
-                </Badge>
-                <Badge variant="outline" className="gap-1">
-                  <CheckCircle2 className="h-3 w-3 text-emerald-600" />
-                  {completed} done
-                </Badge>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+      <DataTable
+        data={filtered}
+        columns={columns}
+        searchable={true}
+        searchKeys={["name"]}
+        pageSize={10}
+        emptyMessage="No saved microplans found"
+        searchPlaceholder="Search saved microplans..."
+      />
+      <DeleteConfirmDialog
+        open={deleteId !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteId(null);
+        }}
+        title="Delete saved microplan?"
+        description="This will permanently delete this microplan and all of its planned sessions. This action cannot be undone."
+        onConfirm={() => deleteId && handleDelete(deleteId)}
+        isPending={deleteBusy}
+      />
     </div>
   );
 }

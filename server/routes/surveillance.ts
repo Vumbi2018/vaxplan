@@ -223,6 +223,16 @@ surveillanceRouter.get("/population/choropleth", async (req: any, res) => {
 });
 
 surveillanceRouter.get("/cases/epi-curve", async (req: any, res) => {
+  // Hoisted helper — function declarations inside blocks are banned in ES modules strict mode (TS1252)
+  const getISOWeek = (date: Date): { year: number; week: number } => {
+    const d = new Date(date);
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7));
+    const week1 = new Date(d.getFullYear(), 0, 4);
+    const week = 1 + Math.round(((d.getTime() - week1.getTime()) / 86400000 - 3 + ((week1.getDay() + 6) % 7)) / 7);
+    return { year: d.getFullYear(), week };
+  };
+
   try {
     const cases = await db
       .select()
@@ -230,15 +240,6 @@ surveillanceRouter.get("/cases/epi-curve", async (req: any, res) => {
       .where(eq(surveillanceCases.tenantId, req.tenantId));
 
     // Build last 16 ISO epi-weeks
-    function getISOWeek(date: Date): { year: number; week: number } {
-      const d = new Date(date);
-      d.setHours(0, 0, 0, 0);
-      d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7));
-      const week1 = new Date(d.getFullYear(), 0, 4);
-      const week = 1 + Math.round(((d.getTime() - week1.getTime()) / 86400000 - 3 + ((week1.getDay() + 6) % 7)) / 7);
-      return { year: d.getFullYear(), week };
-    }
-
     const now = new Date();
     const buckets: Record<string, { week: string; afp: number; measles: number; nnt: number; yellow_fever: number; other: number }> = {};
     for (let i = 15; i >= 0; i--) {
@@ -264,6 +265,7 @@ surveillanceRouter.get("/cases/epi-curve", async (req: any, res) => {
     res.status(500).json({ message: err.message });
   }
 });
+
 
 surveillanceRouter.post("/cases", async (req: any, res) => {
   try {

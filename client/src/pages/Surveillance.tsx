@@ -1343,11 +1343,13 @@ export default function Surveillance() {
 
                       <Pie data={diseaseBreakdown} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={60} innerRadius={32} paddingAngle={2}
                     style={{ cursor: "pointer" }}
-                    onClick={(entry: any) => { setChartDrillDisease(chartDrillDisease === entry.key ? null : entry.key); setActiveTab("linelist"); }}
+                    onClick={(entry: any) => { setChartDrillDisease(chartDrillDisease === entry.name ? null : entry.name); setActiveTab("linelist"); }}
+
                   >
                         {diseaseBreakdown.map((entry, idx) => (
 
-                          <Cell key={idx} fill={entry.color} stroke={chartDrillDisease === entry.key ? "hsl(var(--foreground))" : "transparent"} strokeWidth={2} />
+                           <Cell key={idx} fill={entry.color} stroke={chartDrillDisease === entry.name ? "hsl(var(--foreground))" : "transparent"} strokeWidth={2} />
+
 
                         ))}
 

@@ -150,11 +150,25 @@ export default function MicroplanPrintView() {
   const mappedCommunities = useMemo(() => {
     if (!villages || !facility || !hydration) return [];
     const excluded = new Set(hydration.excludedVillageIds ?? []);
-    const activeVillages = villages.filter(
-      (v) =>
-        (v.assignedFacilityId === facility.id || v.districtId === facility.districtId) &&
-        !excluded.has(v.id)
+
+    // Build a set of village names from this microplan's scheduled sessions.
+    // Sessions are named "{villageName} {date}" so we strip the trailing date.
+    const sessionVillageNames = new Set(
+      (hydration.sessions ?? []).map((s) =>
+        (s.name ?? "").replace(/\s+\d{4}-\d{2}-\d{2}$/, "").trim().toLowerCase()
+      )
     );
+
+    // If the microplan has sessions, only show villages that match a session.
+    // If there are no sessions yet (blank plan), fall back to facility-assigned villages.
+    const activeVillages = villages.filter((v) => {
+      if (excluded.has(v.id)) return false;
+      if (sessionVillageNames.size > 0) {
+        return sessionVillageNames.has(v.name.trim().toLowerCase());
+      }
+      // Fallback: facility-assigned or district-scoped
+      return v.assignedFacilityId === facility.id || v.districtId === facility.districtId;
+    });
 
     return activeVillages.map((v) => {
       const popRecord = hydration.population?.find((p) => p.villageId === v.id);

@@ -133,7 +133,8 @@ export default function WikiEditor() {
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<WikiPage | null>(null);
-  const [previewMode, setPreviewMode] = useState(false);
+  const [viewMode, setViewMode] = useState<"edit" | "preview" | "split">("edit");
+  const [pageFilter, setPageFilter] = useState<"all" | "published" | "unpublished">("all");
 
   // Form fields
   const [editTitle, setEditTitle] = useState("");
@@ -145,6 +146,41 @@ export default function WikiEditor() {
   const bodyRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadingMedia, setUploadingMedia] = useState(false);
+
+  // Paste image handler: uploads clipboard images immediately and inserts markdown reference
+  const handlePaste = async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of Array.from(items)) {
+      if (item.type.startsWith("image/")) {
+        const file = item.getAsFile();
+        if (!file) continue;
+        
+        e.preventDefault();
+        setUploadingMedia(true);
+        const formData = new FormData();
+        formData.append("file", file);
+        try {
+          const res = await fetch("/api/wiki/upload", {
+            method: "POST",
+            body: formData,
+          });
+          if (!res.ok) {
+            const errData = await res.json();
+            throw new Error(errData.message || "Failed to upload file");
+          }
+          const data = await res.json();
+          const mdInsert = `\n![Uploaded Screenshot](${data.url})\n`;
+          insertMd(mdInsert);
+          toast({ title: "Image pasted & uploaded", description: "The screenshot has been uploaded and inserted inline." });
+        } catch (err: any) {
+          toast({ title: "Paste upload failed", description: err.message, variant: "destructive" });
+        } finally {
+          setUploadingMedia(false);
+        }
+      }
+    }
+  };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -200,6 +236,7 @@ export default function WikiEditor() {
 
   const invalidatePages = () => qc.invalidateQueries({ queryKey: ["/api/wiki/pages?all=true"] });
 
+  /* ORIGINAL CODE (Overwritten to fix (intermediate value).json is not a function error):
   const createMutation = useMutation({
     mutationFn: async (data: { slug: string; title: string; body: string; sort_order: number }) => {
       const res: any = await apiRequest("POST", "/api/wiki/pages", data);
@@ -244,6 +281,70 @@ export default function WikiEditor() {
     },
     onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
+  */
+
+  const createMutation = useMutation({
+    mutationFn: async (data: { slug: string; title: string; body: string; sort_order: number }) => {
+      const res = await apiRequest("POST", "/api/wiki/pages", data);
+      return res;
+    },
+    onSuccess: () => {
+      invalidatePages();
+      setEditorOpen(false);
+      toast({ title: "Page created", description: "The new wiki page is now live." });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async ({
+      slug,
+      data,
+    }: {
+      slug: string;
+      data: Partial<{ title: string; body: string; sort_order: number; is_published: boolean }>;
+    }) => {
+      const res = await apiRequest("PUT", `/api/wiki/pages/${slug}`, data);
+      return res;
+    },
+    onSuccess: () => {
+      invalidatePages();
+      setEditorOpen(false);
+      toast({ title: "Page saved", description: "Changes are live on docs.vaxplan.org." });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  // Separate mutation for toggling publish state — does NOT close the editor
+  const toggleMutation = useMutation({
+    mutationFn: async ({ slug, is_published }: { slug: string; is_published: boolean }) => {
+      const res = await apiRequest("PUT", `/api/wiki/pages/${slug}`, { is_published });
+      return res;
+    },
+    onSuccess: (_data, vars) => {
+      invalidatePages();
+      toast({
+        title: vars.is_published ? "Page published" : "Page unpublished",
+        description: vars.is_published
+          ? "The page is now visible on docs.vaxplan.org."
+          : "The page is hidden from the public docs site but preserved in the database.",
+      });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (slug: string) => {
+      const res = await apiRequest("DELETE", `/api/wiki/pages/${slug}`, undefined);
+      return res;
+    },
+    onSuccess: () => {
+      invalidatePages();
+      setDeleteTarget(null);
+      toast({ title: "Page unpublished", description: "The page is no longer public." });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
 
   // ── Editor helpers ────────────────────────────────────────────────────────────
 
@@ -253,7 +354,7 @@ export default function WikiEditor() {
     setEditSlug("");
     setEditBody("");
     setSlugEdited(false);
-    setPreviewMode(false);
+    setViewMode("edit");
     setEditorOpen(true);
   };
 
@@ -263,7 +364,7 @@ export default function WikiEditor() {
       setEditTitle(page.title);
       setEditSlug(page.slug);
       setSlugEdited(true);
-      setPreviewMode(false);
+      setViewMode("edit");
 
       // Fetch body (not included in the list response)
       try {
@@ -313,15 +414,19 @@ export default function WikiEditor() {
   };
 
   const handleMoveDown = (page: WikiPage, idx: number) => {
-    if (idx === pages.length - 1) return;
+    const filteredLen = pageFilter === "all" ? pages.length
+      : pageFilter === "published" ? pages.filter(p => p.is_published).length
+      : pages.filter(p => !p.is_published).length;
+    if (idx === filteredLen - 1) return;
     const next = pages[idx + 1];
     updateMutation.mutate({ slug: page.slug, data: { sort_order: next.sort_order + 1 } });
   };
 
+
   const handleTogglePublished = (page: WikiPage) => {
-    updateMutation.mutate({
+    toggleMutation.mutate({
       slug: page.slug,
-      data: { is_published: !page.is_published },
+      is_published: !page.is_published,
     });
   };
 
@@ -401,13 +506,30 @@ export default function WikiEditor() {
       </div>
 
       {/* Page list */}
-      <div className="rounded-lg border bg-card overflow-hidden">
-        <div className="px-4 py-3 border-b bg-muted/40 flex items-center justify-between">
-          <span className="text-sm font-medium">
-            {pages.length} page{pages.length !== 1 ? "s" : ""}
-          </span>
-          <span className="text-xs text-muted-foreground">Drag or use arrows to reorder</span>
-        </div>
+        <div className="rounded-lg border bg-card overflow-hidden">
+          {/* Filter Tabs */}
+          <div className="flex items-center border-b bg-muted/30">
+            {(["all", "published", "unpublished"] as const).map((f) => {
+              const count = f === "all" ? pages.length : f === "published" ? pages.filter(p => p.is_published).length : pages.filter(p => !p.is_published).length;
+              return (
+                <button
+                  key={f}
+                  onClick={() => setPageFilter(f)}
+                  className={`px-4 py-2.5 text-sm font-medium capitalize transition-colors border-b-2 ${
+                    pageFilter === f
+                      ? "border-primary text-foreground"
+                      : "border-transparent text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {f === "all" ? "All Pages" : f.charAt(0).toUpperCase() + f.slice(1)}
+                  <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded-full ${
+                    pageFilter === f ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground"
+                  }`}>{count}</span>
+                </button>
+              );
+            })}
+            <span className="ml-auto pr-4 text-xs text-muted-foreground">Drag or use arrows to reorder</span>
+          </div>
 
         {pagesLoading ? (
           <div className="p-4 space-y-3">
@@ -420,9 +542,23 @@ export default function WikiEditor() {
             <BookOpen className="h-8 w-8 mx-auto mb-3 opacity-40" />
             <p className="text-sm">No wiki pages yet. Click <strong>New Page</strong> to get started.</p>
           </div>
-        ) : (
+        ) : (() => {
+          const filtered = pages.filter(p =>
+            pageFilter === "all" ? true : pageFilter === "published" ? p.is_published : !p.is_published
+          );
+          if (filtered.length === 0) {
+            return (
+              <div className="p-8 text-center text-muted-foreground">
+                <BookOpen className="h-8 w-8 mx-auto mb-3 opacity-40" />
+                <p className="text-sm">
+                  {pageFilter === "unpublished" ? "No unpublished pages." : "No published pages yet."}
+                </p>
+              </div>
+            );
+          }
+          return (
           <ul className="divide-y">
-            {pages.map((page, idx) => (
+            {filtered.map((page, idx) => (
               <li
                 key={page.id}
                 className="flex items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-colors group"
@@ -439,7 +575,7 @@ export default function WikiEditor() {
                   </button>
                   <button
                     onClick={() => handleMoveDown(page, idx)}
-                    disabled={idx === pages.length - 1 || updateMutation.isPending}
+                    disabled={idx === filtered.length - 1 || updateMutation.isPending}
                     className="text-muted-foreground hover:text-foreground disabled:opacity-30 p-0.5"
                     title="Move down"
                   >
@@ -479,7 +615,7 @@ export default function WikiEditor() {
                     variant="ghost"
                     className="h-7 w-7"
                     onClick={() => handleTogglePublished(page)}
-                    disabled={updateMutation.isPending}
+                    disabled={toggleMutation.isPending || updateMutation.isPending}
                     title={page.is_published ? "Unpublish page" : "Publish page"}
                   >
                     {page.is_published ? (
@@ -502,7 +638,7 @@ export default function WikiEditor() {
                     variant="ghost"
                     className="h-7 w-7 text-destructive hover:text-destructive"
                     onClick={() => setDeleteTarget(page)}
-                    title="Unpublish / remove page"
+                    title="Delete / unpublish page"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </Button>
@@ -510,7 +646,8 @@ export default function WikiEditor() {
               </li>
             ))}
           </ul>
-        )}
+          );
+        })()}
       </div>
 
       {/* ── Editor Dialog ──────────────────────────────────────────────────────── */}
@@ -575,10 +712,14 @@ export default function WikiEditor() {
               { label: "`Code`", md: "`", after: "`", title: "Inline code" },
               { label: "```Block", md: "```\n", after: "\n```", title: "Code block" },
               { label: "> Quote", md: "> ", after: "", title: "Blockquote" },
+              { label: "Table", md: "\n| Header 1 | Header 2 |\n| --- | --- |\n| Cell 1 | Cell 2 |\n", after: "", title: "Insert Table" },
+              { label: "Alert", md: "\n> [!NOTE]\n> Note content here\n", after: "", title: "GitHub Warning/Note Callout" },
+              { label: "Details", md: "\n<details>\n<summary>Click to expand</summary>\n\nHidden content here\n</details>\n", after: "", title: "Collapsible DETAILS block" },
               { label: "---", md: "\n---\n", after: "", title: "Horizontal rule" },
             ].map((t) => (
               <button
                 key={t.label}
+                type="button"
                 onClick={() => insertMd(t.md, t.after)}
                 title={t.title}
                 className="px-2 py-0.5 text-xs border rounded hover:bg-muted transition-colors font-mono"
@@ -603,43 +744,61 @@ export default function WikiEditor() {
               className="hidden"
             />
 
-            <div className="ml-auto flex items-center gap-1">
-              <Button
-                size="sm"
-                variant={previewMode ? "default" : "outline"}
-                className="h-7 text-xs"
-                onClick={() => setPreviewMode(!previewMode)}
-              >
-                {previewMode ? (
-                  <>
-                    <Pencil className="h-3 w-3 mr-1" /> Edit
-                  </>
-                ) : (
-                  <>
-                    <Eye className="h-3 w-3 mr-1" /> Preview
-                  </>
-                )}
-              </Button>
+            <div className="ml-auto flex items-center bg-muted p-0.5 rounded-lg border border-border">
+              {(["edit", "split", "preview"] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setViewMode(mode)}
+                  className={`px-2 py-1 text-xs rounded font-medium capitalize transition-colors ${
+                    viewMode === mode
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {mode}
+                </button>
+              ))}
             </div>
           </div>
 
           {/* Editor / Preview */}
           <div className="flex-1 overflow-hidden relative">
-            {previewMode ? (
+            {viewMode === "preview" && (
               <div
                 className="h-full overflow-y-auto p-6 prose prose-sm dark:prose-invert max-w-none [&_h1]:text-xl [&_h2]:text-lg [&_h3]:text-base [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:rounded [&_pre]:bg-muted [&_pre]:p-4 [&_pre]:rounded-lg [&_blockquote]:border-l-4 [&_blockquote]:border-primary/40 [&_blockquote]:pl-4 [&_blockquote]:text-muted-foreground"
                 dangerouslySetInnerHTML={{ __html: renderMarkdown(editBody) }}
               />
-            ) : (
+            )}
+            {viewMode === "edit" && (
               <textarea
                 ref={bodyRef}
                 id="wiki-body"
                 value={editBody}
+                onPaste={handlePaste}
                 onChange={(e) => setEditBody(e.target.value)}
                 placeholder={`Write your page content in Markdown…\n\n## Introduction\n\nStart with a short summary…`}
                 className="w-full h-full resize-none p-6 font-mono text-sm bg-background text-foreground border-0 outline-none focus:outline-none leading-relaxed"
                 spellCheck={true}
               />
+            )}
+            {viewMode === "split" && (
+              <div className="flex h-full divide-x divide-border">
+                <textarea
+                  ref={bodyRef}
+                  id="wiki-body"
+                  value={editBody}
+                  onPaste={handlePaste}
+                  onChange={(e) => setEditBody(e.target.value)}
+                  placeholder={`Write your page content in Markdown…`}
+                  className="w-1/2 h-full resize-none p-6 font-mono text-sm bg-background text-foreground outline-none focus:outline-none leading-relaxed border-0 focus:ring-0"
+                  spellCheck={true}
+                />
+                <div
+                  className="w-1/2 h-full overflow-y-auto p-6 prose prose-sm dark:prose-invert max-w-none [&_h1]:text-xl [&_h2]:text-lg [&_h3]:text-base [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:rounded [&_pre]:bg-muted [&_pre]:p-4 [&_pre]:rounded-lg [&_blockquote]:border-l-4 [&_blockquote]:border-primary/40 [&_blockquote]:pl-4 [&_blockquote]:text-muted-foreground"
+                  dangerouslySetInnerHTML={{ __html: renderMarkdown(editBody) }}
+                />
+              </div>
             )}
           </div>
 

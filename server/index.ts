@@ -27,10 +27,14 @@ import { applyPerfIndexes } from "./migrations/011-perf-indexes";
 */
 import { applyPerfIndexes } from "./migrations/011-perf-indexes";
 import { applyVillageColumns } from "./migrations/013-village-route-columns";
-import { applyOutreachColumns } from "./migrations/014-outreach-columns";import { applyMicroplanApprovalColumns } from "./migrations/015-microplan-approval-columns";
+import { applyOutreachColumns } from "./migrations/014-outreach-columns";
+import { applyMicroplanApprovalColumns } from "./migrations/015-microplan-approval-columns";
+
 import { applySessionsTable } from "./migrations/016-sessions-table";
 import { applyWikiPages } from "./migrations/017-wiki-pages";
 import { promoteAdminUser } from "./migrations/018-promote-admin";
+import { applyNewUserRoles } from "./migrations/019-new-user-roles";
+import { up as applyColdChainEquipment } from "./migrations/020-cold-chain-equipment";
 
 
 const app = express();
@@ -319,6 +323,18 @@ async function backfillClientIds() {
   promoteAdminUser()
     .then(() => log("admin user promotion check complete", "db"))
     .catch((err) => log(`admin promotion warning: ${err?.message ?? err}`, "db"));
+
+  // Add new implementing-partner and national-manager enum values to user_role.
+  applyNewUserRoles()
+    .then(() => log("new user roles migration complete", "db"))
+    .catch((err) => log(`new user roles warning: ${err?.message ?? err}`, "db"));
+
+  // Cold chain equipment inventory table (migration 020)
+  import("./db").then(({ db }) =>
+    applyColdChainEquipment(db as any)
+      .then(() => log("cold chain equipment table ensured", "db"))
+      .catch((err) => log(`cold chain equipment migration warning: ${err?.message ?? err}`, "db"))
+  ).catch((err) => log(`cold chain migration db import failed: ${err?.message ?? err}`, "db"));
 
   setupRealtime(httpServer, getSession());
   startPopulationRefreshScheduler();

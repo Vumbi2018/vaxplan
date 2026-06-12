@@ -380,6 +380,22 @@ const defaultFaqs = [
     question: "How does the Idle Timeout security feature work?",
     answer: "To protect sensitive Patient Identifying Data (PID), the system enforces an idle timeout. If there is no activity (mouse movement, keyboard input, or touches) for the configured number of minutes, you will be automatically logged out. National admins can adjust this duration in the tenant's security settings.",
   }
+  /* Original closing of defaultFaqs array commented out to add bulk actions, cold chain, and saved microplans FAQs:
+];
+*/
+  ,
+  {
+    question: "How do I perform bulk actions on staff, cold chain equipment, and communities?",
+    answer: "To save time, VaxPlan lets you select multiple items in tables and update them at the same time. Open the Staff, Cold Chain, or Communities tables and tick the checkboxes on the left side of the rows (or tick the header box to select all). A floating bar will appear at the bottom of the screen with quick bulk actions. Depending on the page, you can bulk delete, bulk update conditions/status, change transport modes, or reassign communities to another health facility. All updates are sent in batches of 10 to keep the system fast and responsive.",
+  },
+  {
+    question: "How does the Cold Chain Equipment Inventory work?",
+    answer: "Every facility can track its immunization cold chain inventory (refrigerators, freezers, solar direct drive units, vaccine carriers, and generators). Go to Facilities, click your facility, and select the 'Cold Chain' tab. Here you can add new equipment, edit specs (like capacity in litres, temperature limits, and PQS codes), record service dates, or delete retired units. You can also import equipment lists from a CSV file, or export the inventory as a CSV or special IGA (Inventory and Gap Analysis) JSON file to share with other tools.",
+  },
+  {
+    question: "What features are available in the new Saved Microplans table?",
+    answer: "In the Routine or Campaigns microplan list, your saved plans are displayed in a clean table rather than cards. You can sort plans by name, period, or status by clicking the column headers. The table is paginated, has page size selectors (10, 20, 50 rows), and displays live counters of planned and completed sessions. Tap the 'Open' button or click the plan name to load its step-by-step editing wizard."
+  }
 ];
 
 const quickLinks = [

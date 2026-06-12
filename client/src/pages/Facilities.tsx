@@ -37,6 +37,8 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DialogDescription,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import {
   AlertDialog,
@@ -68,6 +70,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuCheckboxItem,
+} from "@/components/ui/dropdown-menu";
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -80,13 +88,14 @@ import { zodResolver } from "@hookform/resolvers/zod";
 /* Original Code: Lucide icons without Download / Upload
 import { Plus, Building2, Users, Thermometer, Filter, X, Pencil, Trash2 } from "lucide-react";
 */
-// Updated Code: Imported Download and Upload icons for the newly introduced import/export buttons
-import { Plus, Building2, Users, Thermometer, X, Pencil, Trash2, Download, Upload } from "lucide-react";
+// Updated Code: Added Snowflake, Wrench, AlertTriangle, RefreshCw icons for Cold Chain tab
+import { Plus, Building2, Users, Thermometer, X, Pencil, Trash2, Download, Upload, Snowflake, Wrench, AlertTriangle, RefreshCw, CheckCircle2, Loader2, SlidersHorizontal } from "lucide-react";
 import { GeoCascadeFilter } from "@/components/GeoCascadeFilter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/useAuth";
 import { canEditFacility, canDeleteData, canCreateFacility, canCreateCommunity } from "@/lib/permissions";
 import { FacilityCascadePicker } from "@/components/FacilityCascadePicker";
+import { ColdChainTab } from "@/components/ColdChainTab";
 import { insertFacilitySchema, type Facility, type InsertFacility, type Region, type Province, type District, type Village, type FacilityCatchment } from "@shared/schema";
 import { z } from "zod";
 
@@ -334,6 +343,131 @@ export default function Facilities() {
     level4: rawAdminLabels.level5 || "Constituency",
     level5: "Ward",
   } : rawAdminLabels;
+
+  // ─── Communities Registry Selection & Columns State ───────────────────────
+  const [selectedCommIds, setSelectedCommIds] = useState<(string | number)[]>([]);
+  const [commBulkProcessing, setCommBulkProcessing] = useState(false);
+  const [commBulkProgress, setCommBulkProgress] = useState({ current: 0, total: 0, percentage: 0 });
+
+  const [commVisibleColumns, setCommVisibleColumns] = useState<Record<string, boolean>>({
+    name: true,
+    province: true,
+    districtId: true,
+    assignedFacilityId: true,
+    population: true,
+    coordinates: true,
+    distanceToFacility: true,
+    closestFacilities: false,
+    isHardToReach: true,
+    actions: true,
+  });
+
+  const COMM_COLUMN_LABELS: Record<string, string> = {
+    name: "Community Name",
+    province: adminLabels.level1 || "Province",
+    districtId: adminLabels.level2 || "District",
+    assignedFacilityId: "Assigned Facility",
+    population: "Population",
+    coordinates: "Coordinates",
+    distanceToFacility: "Assigned Distance",
+    closestFacilities: "Closest Facilities",
+    isHardToReach: "HTR Status",
+    actions: "Actions",
+  };
+
+  const runCommBulkAction = async (
+    actionName: string,
+    actionFn: (village: Village) => Promise<void>
+  ) => {
+    if (selectedCommIds.length === 0) return;
+    setCommBulkProcessing(true);
+    const total = selectedCommIds.length;
+    setCommBulkProgress({ current: 0, total, percentage: 0 });
+
+    const selectedVillages = (villages || []).filter((v) => selectedCommIds.includes(v.id));
+    const batchSize = 10;
+    let successCount = 0;
+    let failCount = 0;
+
+    for (let i = 0; i < total; i += batchSize) {
+      const batch = selectedVillages.slice(i, i + batchSize);
+      await Promise.all(
+        batch.map(async (v) => {
+          try {
+            await actionFn(v);
+            successCount++;
+          } catch (err) {
+            failCount++;
+            console.error(`Failed bulk action ${actionName} on village ${v.id}:`, err);
+          }
+        })
+      );
+      const current = Math.min(i + batchSize, total);
+      setCommBulkProgress({
+        current,
+        total,
+        percentage: Math.round((current / total) * 100),
+      });
+    }
+
+    setCommBulkProcessing(false);
+    setSelectedCommIds([]);
+    queryClient.invalidateQueries({ queryKey: ["/api/villages"] });
+
+    toast({
+      title: `${actionName} complete`,
+      description: `${successCount} communities successfully processed.${failCount ? ` ${failCount} failed.` : ""}`,
+      variant: failCount > 0 ? "destructive" : "default"
+    });
+  };
+
+  const handleCommBulkDelete = () => {
+    if (confirm(`Are you sure you want to permanently delete the ${selectedCommIds.length} selected communities? This cannot be undone.`)) {
+      void runCommBulkAction(
+        "Bulk Delete Communities",
+        async (v) => {
+          await apiRequest("DELETE", `/api/villages/${v.id}`);
+        }
+      );
+    }
+  };
+
+  const handleCommBulkUpdateHTR = (isHardToReach: boolean) => {
+    void runCommBulkAction(
+      `Bulk Set HTR ${isHardToReach ? 'Active' : 'Inactive'}`,
+      async (v) => {
+        await apiRequest("PATCH", `/api/villages/${v.id}`, { isHardToReach });
+      }
+    );
+  };
+
+  const handleCommBulkUpdateTransport = (transportMode: string) => {
+    void runCommBulkAction(
+      "Bulk Update Transport",
+      async (v) => {
+        await apiRequest("PATCH", `/api/villages/${v.id}`, { transportMode });
+      }
+    );
+  };
+
+  const handleCommBulkReassignFacility = (assignedFacilityId: number) => {
+    const targetFac = (facilities || []).find((f: any) => f.id === assignedFacilityId);
+    if (!targetFac) return;
+
+    void runCommBulkAction(
+      "Bulk Reassign Facility",
+      async (v) => {
+        await apiRequest("PATCH", `/api/villages/${v.id}`, {
+          assignedFacilityId,
+          districtId: targetFac.districtId
+        });
+      }
+    );
+  };
+
+  useEffect(() => {
+    setSelectedCommIds([]);
+  }, [selectedProvinceId, selectedDistrictId, selectedFacilityId]);
 
   const { data: regions, isLoading: loadingRegions } = useQuery<Region[]>({
     queryKey: ["/api/regions"],
@@ -1237,7 +1371,8 @@ export default function Facilities() {
       render: (item: Facility) => (
         <div className="flex items-center gap-1 text-sm">
           <Users className="h-3 w-3 text-muted-foreground" />
-          {item.staffCount || "-"}
+          {(item as any).liveStaffCount != null
+            ? ((item as any).liveStaffCount > 0                 ? (item as any).liveStaffCount + " staff"                 : "0 staff")             : (item.staffCount || "-")}
         </div>
       ),
     },
@@ -1563,8 +1698,9 @@ export default function Facilities() {
     },
   */
   // Updated Code: Render community name alongside dynamic administrative level (province and district) columns
-  const communityRegistryColumns = [
-    {
+  const communityRegistryColumns = useMemo(() => {
+    const cols = [
+      {
       key: "name",
       header: "Community Name",
       sortable: true,
@@ -1731,6 +1867,8 @@ export default function Facilities() {
       }
     }
   ];
+  return cols.filter((c) => commVisibleColumns[c.key]);
+  }, [commVisibleColumns, villages, facilities, provinces, allDistricts, user, tenantInfo]);
 
   const hasFilters = selectedRegionId || selectedProvinceId || selectedDistrictId;
   // Communities can be added by any staff member with edit rights — facility and
@@ -1826,6 +1964,11 @@ export default function Facilities() {
                         </TabsTrigger>
                         <TabsTrigger value="staff" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent h-full px-4" disabled={!editingFacility}>
                           Staff Roster
+                        </TabsTrigger>
+                        {/* Cold Chain Equipment Inventory tab */}
+                        <TabsTrigger value="cold-chain" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent h-full px-4 gap-1.5" disabled={!editingFacility}>
+                          <Snowflake className="h-3.5 w-3.5 text-cyan-500" />
+                          Cold Chain
                         </TabsTrigger>
                       </TabsList>
                       {editingFacility && (
@@ -2558,6 +2701,11 @@ export default function Facilities() {
                         />
                       </div>
                     </TabsContent>
+
+                    {/* ── Cold Chain Equipment Inventory ── */}
+                    <TabsContent value="cold-chain" className="m-0">
+                      <ColdChainTab facilityId={editingFacility?.id ?? null} />
+                    </TabsContent>
                   </Tabs>
 
                   <div className="flex justify-end gap-2 p-6 border-t bg-muted/10">
@@ -2950,6 +3098,30 @@ export default function Facilities() {
                   )}
                 </Tooltip>
               </TooltipProvider>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="gap-1 border-primary/20 hover:bg-primary/5 text-primary">
+                    <SlidersHorizontal className="h-4 w-4" />
+                    Columns
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  {Object.entries(COMM_COLUMN_LABELS).map(([key, label]) => {
+                    if (key === "actions") return null;
+                    return (
+                      <DropdownMenuCheckboxItem
+                        key={key}
+                        checked={commVisibleColumns[key]}
+                        onCheckedChange={(checked) =>
+                          setCommVisibleColumns((prev) => ({ ...prev, [key]: checked }))
+                        }
+                      >
+                        {label}
+                      </DropdownMenuCheckboxItem>
+                    );
+                  })}
+                </DropdownMenuContent>
+              </DropdownMenu>
               {canCreate && (
                 <Button onClick={handleAddCommunity} className="gap-1" data-testid="button-add-community">
                   <Plus className="h-4 w-4" />
@@ -2961,13 +3133,86 @@ export default function Facilities() {
 
           <Card>
             <CardContent className="p-6">
-              <DataTable
-                data={villages || []}
-                columns={communityRegistryColumns}
-                searchable
-                searchPlaceholder="Search communities registry..."
-                searchKeys={["name", "code"]}
-              />
+              {(() => {
+                const bulkActionsNode = (
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {commBulkProcessing ? (
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground font-medium">
+                        <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+                        <span>Processing {commBulkProgress.current}/{commBulkProgress.total} ({commBulkProgress.percentage}%)</span>
+                      </div>
+                    ) : (
+                      <>
+                        <Select onValueChange={(val) => handleCommBulkUpdateTransport(val)}>
+                          <SelectTrigger className="h-8 w-36 text-xs bg-background">
+                            <SelectValue placeholder="Update Transport" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="walking">Walking</SelectItem>
+                            <SelectItem value="road">Road</SelectItem>
+                            <SelectItem value="boat">Boat</SelectItem>
+                            <SelectItem value="air">Air</SelectItem>
+                          </SelectContent>
+                        </Select>
+
+                        <Select onValueChange={(val) => handleCommBulkReassignFacility(Number(val))}>
+                          <SelectTrigger className="h-8 w-40 text-xs bg-background">
+                            <SelectValue placeholder="Reassign Facility" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {(facilities || []).map((f) => (
+                              <SelectItem key={f.id} value={String(f.id)}>
+                                {f.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 text-xs gap-1"
+                          onClick={() => handleCommBulkUpdateHTR(true)}
+                        >
+                          Mark HTR
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 text-xs gap-1"
+                          onClick={() => handleCommBulkUpdateHTR(false)}
+                        >
+                          Mark Accessible
+                        </Button>
+
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          className="h-8 text-xs gap-1"
+                          onClick={handleCommBulkDelete}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          Delete Selected
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                );
+
+                return (
+                  <DataTable
+                    data={villages || []}
+                    columns={communityRegistryColumns}
+                    searchable
+                    searchPlaceholder="Search communities registry..."
+                    searchKeys={["name", "code"]}
+                    enableSelection={true}
+                    selectedIds={selectedCommIds}
+                    onSelectionChange={setSelectedCommIds}
+                    bulkActions={bulkActionsNode}
+                  />
+                );
+              })()}
             </CardContent>
           </Card>
         </TabsContent>
@@ -3368,7 +3613,93 @@ export default function Facilities() {
   );
 }
 
-// Added FacilityStaffRosterManager component at the end of the file for managing facility staff
+// ─────────────────────────────────────────────────────────────────────────────
+// FacilityStaffRosterManager
+// Full-parity staff form matching the Manage Staff module exactly.
+// Both modules write to the same facility_staff table via the same API endpoint,
+// so staff added here immediately appear in the Manage Staff page and vice-versa.
+// ─────────────────────────────────────────────────────────────────────────────
+const ROSTER_ROLE_OPTIONS = [
+  { value: "vaccinator",       label: "Vaccinator" },
+  { value: "recorder",         label: "Recorder" },
+  { value: "supervisor",       label: "Supervisor" },
+  { value: "facility_in_charge", label: "Facility In-Charge" },
+  { value: "nurse",            label: "Nurse" },
+  { value: "midwife",          label: "Midwife" },
+  { value: "chw",              label: "Community Health Worker" },
+  { value: "driver",           label: "Driver" },
+  { value: "cold_chain_officer", label: "Cold Chain Officer" },
+];
+const ROSTER_CAMPAIGN_ROLES = [
+  { value: "vaccinator",  label: "Vaccinator" },
+  { value: "mobilizer",   label: "Social Mobilizer" },
+  { value: "volunteer",   label: "Volunteer" },
+  { value: "supervisor",  label: "Supervisor / Team Lead" },
+  { value: "recorder",    label: "Recorder / Tally" },
+  { value: "logistics",   label: "Logistics Officer" },
+];
+const ROSTER_EDUCATION = [
+  { value: "primary",     label: "Primary Education" },
+  { value: "secondary",   label: "Secondary Education" },
+  { value: "certificate", label: "Certificate / Diploma" },
+  { value: "bachelors",   label: "Bachelor's Degree" },
+  { value: "masters",     label: "Master's Degree" },
+  { value: "phd",         label: "PhD / Doctorate" },
+];
+const ROSTER_TRAINING = [
+  { value: "trained",          label: "Trained" },
+  { value: "not_trained",      label: "Not Trained" },
+  { value: "refresher_needed", label: "Refresher Needed" },
+  { value: "in_training",      label: "Currently in Training" },
+];
+const EMPTY_ROSTER_FORM = {
+  fullName: "",
+  gender: "female",
+  position: "",
+  contactPhone: "",
+  yearsExperience: "",
+  yearsAtFacility: "",
+  role: "vaccinator",
+  campaignRole: "vaccinator",
+  isActive: true,
+  isVolunteer: false,
+  educationLevel: "",
+  trainingStatus: "trained",
+  residenceVillage: "",
+  employeeId: "",
+  nrc: "",
+};
+
+function StaffRoleColor({ role }: { role: string }) {
+  const colors: Record<string, string> = {
+    vaccinator: "bg-blue-500/10 text-blue-600 border-blue-500/20",
+    recorder: "bg-violet-500/10 text-violet-600 border-violet-500/20",
+    supervisor: "bg-amber-500/10 text-amber-600 border-amber-500/20",
+    facility_in_charge: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20",
+    nurse: "bg-pink-500/10 text-pink-600 border-pink-500/20",
+    midwife: "bg-rose-500/10 text-rose-600 border-rose-500/20",
+    chw: "bg-teal-500/10 text-teal-600 border-teal-500/20",
+    driver: "bg-orange-500/10 text-orange-600 border-orange-500/20",
+    cold_chain_officer: "bg-cyan-500/10 text-cyan-600 border-cyan-500/20",
+  };
+  const cls = colors[role] || "bg-muted text-muted-foreground border-border";
+  return (
+    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold capitalize ${cls}`}>
+      {role?.replace(/_/g, " ") || "Staff"}
+    </span>
+  );
+}
+
+function StaffInitials({ name, gender }: { name: string; gender: string }) {
+  const initials = name.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2);
+  const grad = gender === "male" ? "from-blue-400 to-indigo-600" : "from-rose-400 to-pink-600";
+  return (
+    <div className={`h-9 w-9 rounded-full bg-gradient-to-br ${grad} text-white flex items-center justify-center text-xs font-bold shrink-0 shadow-sm`}>
+      {initials}
+    </div>
+  );
+}
+
 function FacilityStaffRosterManager({
   facilityId,
   staff,
@@ -3379,173 +3710,196 @@ function FacilityStaffRosterManager({
   refetch: () => void;
 }) {
   const [editingStaff, setEditingStaff] = useState<any | null>(null);
-  const [fullName, setFullName] = useState("");
-  const [role, setRole] = useState("vaccinator");
-  const [phone, setPhone] = useState("");
-  const [isAdding, setIsAdding] = useState(false);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [formTab, setFormTab] = useState("basic");
   const [submitting, setSubmitting] = useState(false);
+  const [form, setForm] = useState({ ...EMPTY_ROSTER_FORM });
   const { toast } = useToast();
 
+  const setField = <K extends keyof typeof EMPTY_ROSTER_FORM>(key: K, val: any) =>
+    setForm(prev => ({ ...prev, [key]: val }));
+
   const resetForm = () => {
-    setFullName("");
-    setRole("vaccinator");
-    setPhone("");
+    setForm({ ...EMPTY_ROSTER_FORM });
     setEditingStaff(null);
-    setIsAdding(false);
+    setFormTab("basic");
   };
 
-  const handleSave = async (e: React.FormEvent) => {
+  const openNew = () => { resetForm(); setIsDialogOpen(true); };
+
+  const openEdit = (member: any) => {
+    setEditingStaff(member);
+    setForm({
+      fullName: member.fullName || member.name || "",
+      gender: member.gender || "female",
+      position: member.position || "",
+      contactPhone: member.contactPhone || member.phone || "",
+      yearsExperience: member.yearsExperience?.toString() || "",
+      yearsAtFacility: member.yearsAtFacility?.toString() || "",
+      role: member.role || "vaccinator",
+      campaignRole: member.campaignRole || "vaccinator",
+      isActive: member.isActive ?? true,
+      isVolunteer: member.isVolunteer ?? false,
+      educationLevel: member.educationLevel || "",
+      trainingStatus: member.trainingStatus || "trained",
+      residenceVillage: member.residenceVillage || "",
+      employeeId: member.employeeId || "",
+      nrc: member.nrc || "",
+    });
+    setFormTab("basic");
+    setIsDialogOpen(true);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!facilityId) return;
-    if (!fullName.trim()) {
-      toast({ title: "Name is required", variant: "destructive" });
+    if (!form.fullName.trim()) {
+      toast({ title: "Full name is required", variant: "destructive" });
+      return;
+    }
+    if (!form.nrc.trim()) {
+      toast({ title: "NRC Number is required", description: "Every staff member must have a unique NRC.", variant: "destructive" });
+      return;
+    }
+    // Client-side NRC duplicate check
+    const nrcLower = form.nrc.trim().toLowerCase();
+    const dup = staff.find(s => s.nrc && s.nrc.toLowerCase() === nrcLower && s.id !== editingStaff?.id);
+    if (dup) {
+      toast({ title: "Duplicate NRC", description: `NRC ${form.nrc} is already assigned to ${dup.fullName}.`, variant: "destructive" });
       return;
     }
 
     try {
       setSubmitting(true);
       const payload = {
-        fullName: fullName.trim(),
-        role,
-        contactPhone: phone.trim(),
-        isActive: true,
+        fullName: form.fullName.trim(),
+        gender: form.gender,
+        position: form.position.trim() || null,
+        contactPhone: form.contactPhone.trim() || null,
+        yearsExperience: form.yearsExperience ? parseInt(form.yearsExperience) : null,
+        yearsAtFacility: form.yearsAtFacility ? parseInt(form.yearsAtFacility) : null,
+        role: form.role,
+        campaignRole: form.campaignRole,
+        isActive: form.isActive,
+        isVolunteer: form.isVolunteer,
+        educationLevel: form.educationLevel || null,
+        trainingStatus: form.trainingStatus || null,
+        residenceVillage: form.residenceVillage.trim() || null,
+        employeeId: form.employeeId.trim() || null,
+        nrc: form.nrc.trim(),
       };
 
       if (editingStaff) {
         await apiRequest("PATCH", `/api/facilities/${facilityId}/staff/${editingStaff.id}`, payload);
-        toast({ title: "Staff member updated successfully." });
+        toast({ title: "Staff member updated", description: `${form.fullName} has been updated.` });
       } else {
         await apiRequest("POST", `/api/facilities/${facilityId}/staff`, payload);
-        toast({ title: "Staff member added successfully." });
+        toast({ title: "Staff member added", description: `${form.fullName} has been added to the roster.` });
       }
-
       refetch();
+      setIsDialogOpen(false);
       resetForm();
     } catch (error: any) {
-      toast({
-        title: "Operation failed",
-        description: error.message,
-        variant: "destructive",
-      });
+      toast({ title: "Save failed", description: error.message, variant: "destructive" });
     } finally {
       setSubmitting(false);
     }
   };
 
-  const handleEdit = (member: any) => {
-    setEditingStaff(member);
-    setFullName(member.fullName || member.name || "");
-    setRole(member.role || "vaccinator");
-    setPhone(member.contactPhone || member.phone || "");
-    setIsAdding(true);
-  };
-
-  const handleDelete = async (memberId: number) => {
+  const handleDelete = async (memberId: number, name: string) => {
     if (!facilityId) return;
-    if (!confirm("Are you sure you want to delete this staff member?")) return;
-
+    if (!confirm(`Remove ${name} from the roster? This cannot be undone.`)) return;
     try {
       await apiRequest("DELETE", `/api/facilities/${facilityId}/staff/${memberId}`);
-      toast({ title: "Staff member deleted successfully." });
+      toast({ title: "Staff member removed" });
       refetch();
     } catch (error: any) {
-      toast({
-        title: "Delete failed",
-        description: error.message,
-        variant: "destructive",
-      });
+      toast({ title: "Delete failed", description: error.message, variant: "destructive" });
     }
   };
 
   if (!facilityId) return null;
 
+  const activeCount = staff.filter(s => s.isActive).length;
+  const vaccinatorCount = staff.filter(s => s.role === "vaccinator").length;
+
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="font-semibold text-lg text-foreground">Staff Roster</h3>
-        {!isAdding && (
-          <Button size="sm" onClick={() => setIsAdding(true)}>
-            <Plus className="mr-1 h-4 w-4" /> Add Staff Member
-          </Button>
-        )}
+      {/* Header with stats */}
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="flex items-center gap-3">
+          <h3 className="font-semibold text-lg text-foreground">Staff Roster</h3>
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <span className="rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 px-2 py-0.5 font-medium">
+              {activeCount} Active
+            </span>
+            <span className="rounded-full bg-blue-500/10 text-blue-600 border border-blue-500/20 px-2 py-0.5 font-medium">
+              {vaccinatorCount} Vaccinators
+            </span>
+            <span className="rounded-full bg-muted text-muted-foreground border px-2 py-0.5 font-medium">
+              {staff.length} Total
+            </span>
+          </div>
+        </div>
+        <Button size="sm" onClick={openNew}>
+          <Plus className="mr-1 h-4 w-4" /> Add Staff Member
+        </Button>
       </div>
 
-      {isAdding && (
-        <Card className="border border-border p-4 bg-muted/20">
-          <form onSubmit={handleSave} className="space-y-4">
-            <h4 className="font-medium text-sm text-foreground">{editingStaff ? "Edit Staff Details" : "New Staff Member"}</h4>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="space-y-1">
-                <Label htmlFor="roster-name">Full Name *</Label>
-                <Input
-                  id="roster-name"
-                  placeholder="e.g. John Phiri"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  disabled={submitting}
-                />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="roster-role">Role / Position</Label>
-                <Select value={role} onValueChange={setRole} disabled={submitting}>
-                  <SelectTrigger id="roster-role">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="vaccinator">Vaccinator</SelectItem>
-                    <SelectItem value="recorder">Recorder</SelectItem>
-                    <SelectItem value="supervisor">Supervisor</SelectItem>
-                    <SelectItem value="facility_in_charge">Facility In-Charge</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="roster-phone">Phone Number</Label>
-                <Input
-                  id="roster-phone"
-                  placeholder="e.g. +260955112233"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  disabled={submitting}
-                />
-              </div>
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button type="button" variant="outline" size="sm" onClick={resetForm} disabled={submitting}>
-                Cancel
-              </Button>
-              <Button type="submit" size="sm" disabled={submitting}>
-                {submitting ? "Saving..." : "Save Member"}
-              </Button>
-            </div>
-          </form>
-        </Card>
-      )}
-
-      <div className="border rounded-md overflow-hidden bg-card">
+      {/* Staff table */}
+      <div className="border rounded-lg overflow-hidden bg-card">
         <table className="w-full text-sm">
-          <thead className="bg-muted text-xs uppercase text-muted-foreground border-b border-border">
+          <thead className="bg-muted text-xs uppercase text-muted-foreground border-b">
             <tr>
-              <th className="p-3 text-left font-semibold">Name</th>
+              <th className="p-3 text-left font-semibold">Staff Member</th>
               <th className="p-3 text-left font-semibold">Role</th>
-              <th className="p-3 text-left font-semibold">Phone</th>
+              <th className="p-3 text-left font-semibold hidden md:table-cell">Contact</th>
+              <th className="p-3 text-left font-semibold hidden lg:table-cell">Training</th>
+              <th className="p-3 text-left font-semibold hidden lg:table-cell">NRC</th>
+              <th className="p-3 text-center font-semibold">Status</th>
               <th className="p-3 text-right font-semibold">Actions</th>
             </tr>
           </thead>
           <tbody>
             {staff.length > 0 ? (
-              staff.map((member) => (
-                <tr key={member.id} className="border-b last:border-0 hover:bg-muted/5">
-                  <td className="p-3 font-medium text-foreground">{member.fullName || member.name}</td>
-                  <td className="p-3 capitalize text-foreground">{member.role || "Staff"}</td>
-                  <td className="p-3 font-mono text-xs text-foreground">{member.contactPhone || member.phone || "—"}</td>
+              staff.map(member => (
+                <tr key={member.id} className="border-b last:border-0 hover:bg-muted/5 transition-colors">
+                  <td className="p-3">
+                    <div className="flex items-center gap-2.5">
+                      <StaffInitials name={member.fullName || member.name || "?"} gender={member.gender || "female"} />
+                      <div className="min-w-0">
+                        <div className="font-medium text-foreground truncate">{member.fullName || member.name}</div>
+                        <div className="text-[10px] text-muted-foreground">{member.employeeId || member.position || ""}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="p-3"><StaffRoleColor role={member.role} /></td>
+                  <td className="p-3 font-mono text-xs text-muted-foreground hidden md:table-cell">
+                    {member.contactPhone || member.phone || "—"}
+                  </td>
+                  <td className="p-3 hidden lg:table-cell">
+                    <span className={`text-[10px] font-medium rounded px-1.5 py-0.5 ${
+                      member.trainingStatus === "trained" ? "bg-green-500/10 text-green-600" :
+                      member.trainingStatus === "in_training" ? "bg-blue-500/10 text-blue-600" :
+                      member.trainingStatus === "refresher_needed" ? "bg-amber-500/10 text-amber-600" :
+                      "bg-red-500/10 text-red-600"
+                    }`}>
+                      {member.trainingStatus?.replace(/_/g, " ") || "—"}
+                    </span>
+                  </td>
+                  <td className="p-3 font-mono text-xs text-muted-foreground hidden lg:table-cell">
+                    {member.nrc || "—"}
+                  </td>
+                  <td className="p-3 text-center">
+                    <span className={`inline-flex h-2 w-2 rounded-full ${member.isActive ? "bg-emerald-500" : "bg-muted-foreground/30"}`} />
+                  </td>
                   <td className="p-3 text-right">
                     <div className="flex justify-end gap-1">
-                      <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => handleEdit(member)}>
-                        <Pencil className="h-4 w-4 text-muted-foreground" />
+                      <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => openEdit(member)}>
+                        <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
                       </Button>
-                      <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => handleDelete(member.id)}>
-                        <Trash2 className="h-4 w-4" />
+                      <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => handleDelete(member.id, member.fullName || member.name)}>
+                        <Trash2 className="h-3.5 w-3.5" />
                       </Button>
                     </div>
                   </td>
@@ -3553,7 +3907,7 @@ function FacilityStaffRosterManager({
               ))
             ) : (
               <tr>
-                <td colSpan={4} className="p-8 text-center text-muted-foreground italic">
+                <td colSpan={7} className="p-10 text-center text-muted-foreground italic">
                   No staff members registered. Click "Add Staff Member" to populate the roster.
                 </td>
               </tr>
@@ -3561,6 +3915,169 @@ function FacilityStaffRosterManager({
           </tbody>
         </table>
       </div>
+
+      {/* Full-parity staff dialog — identical fields to Manage Staff module */}
+      <Dialog open={isDialogOpen} onOpenChange={v => { if (!v) { setIsDialogOpen(false); resetForm(); } else setIsDialogOpen(true); }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{editingStaff ? "Edit Staff Member" : "Add Staff Member"}</DialogTitle>
+            <DialogDescription>
+              {editingStaff
+                ? "Update this staff member's details. Changes are reflected across all modules."
+                : "Add a new staff member to this facility's roster. They will immediately appear in the Manage Staff module."}
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleSubmit} className="space-y-0">
+            {/* Tab navigation — same layout as Manage Staff dialog */}
+            <div className="flex gap-1 border-b mb-4 pb-0">
+              {[["basic","Basic Info"],["professional","Professional"],["campaign","Campaign"]].map(([tab, label]) => (
+                <button key={tab} type="button"
+                  onClick={() => setFormTab(tab)}
+                  className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${
+                    formTab === tab ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {/* Basic Info Tab */}
+            {formTab === "basic" && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="sm:col-span-2 space-y-1.5">
+                    <Label htmlFor="rs-fullName">Full Name *</Label>
+                    <Input id="rs-fullName" placeholder="e.g. Mary Phiri" value={form.fullName}
+                      onChange={e => setField("fullName", e.target.value)} disabled={submitting} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="rs-gender">Gender</Label>
+                    <Select value={form.gender} onValueChange={v => setField("gender", v)} disabled={submitting}>
+                      <SelectTrigger id="rs-gender"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="female">Female</SelectItem>
+                        <SelectItem value="male">Male</SelectItem>
+                        <SelectItem value="other">Other / Prefer not to say</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="rs-phone">Contact Phone</Label>
+                    <Input id="rs-phone" placeholder="+260977123456" value={form.contactPhone}
+                      onChange={e => setField("contactPhone", e.target.value)} disabled={submitting} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="rs-nrc">NRC Number *</Label>
+                    <Input id="rs-nrc" placeholder="123456/10/1" value={form.nrc}
+                      onChange={e => setField("nrc", e.target.value)} disabled={submitting} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="rs-empId">Employee ID</Label>
+                    <Input id="rs-empId" placeholder="EMP-0042" value={form.employeeId}
+                      onChange={e => setField("employeeId", e.target.value)} disabled={submitting} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="rs-village">Residence Village / Area</Label>
+                    <Input id="rs-village" placeholder="Kalingalinga" value={form.residenceVillage}
+                      onChange={e => setField("residenceVillage", e.target.value)} disabled={submitting} />
+                  </div>
+                </div>
+                <div className="flex items-center gap-6">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <Switch id="rs-active" checked={form.isActive} onCheckedChange={v => setField("isActive", v)} disabled={submitting} />
+                    <span className="text-sm">Active</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <Switch id="rs-volunteer" checked={form.isVolunteer} onCheckedChange={v => setField("isVolunteer", v)} disabled={submitting} />
+                    <span className="text-sm">Volunteer</span>
+                  </label>
+                </div>
+              </div>
+            )}
+
+            {/* Professional Tab */}
+            {formTab === "professional" && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="rs-role">Routine Role</Label>
+                    <Select value={form.role} onValueChange={v => setField("role", v)} disabled={submitting}>
+                      <SelectTrigger id="rs-role"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {ROSTER_ROLE_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="rs-position">Job Title / Position</Label>
+                    <Input id="rs-position" placeholder="Clinical Officer" value={form.position}
+                      onChange={e => setField("position", e.target.value)} disabled={submitting} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="rs-education">Education Level</Label>
+                    <Select value={form.educationLevel} onValueChange={v => setField("educationLevel", v)} disabled={submitting}>
+                      <SelectTrigger id="rs-education"><SelectValue placeholder="Select…" /></SelectTrigger>
+                      <SelectContent>
+                        {ROSTER_EDUCATION.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="rs-training">Training Status</Label>
+                    <Select value={form.trainingStatus} onValueChange={v => setField("trainingStatus", v)} disabled={submitting}>
+                      <SelectTrigger id="rs-training"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {ROSTER_TRAINING.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="rs-yrsExp">Years of Experience</Label>
+                    <Input id="rs-yrsExp" type="number" min="0" max="50" placeholder="5" value={form.yearsExperience}
+                      onChange={e => setField("yearsExperience", e.target.value)} disabled={submitting} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="rs-yrsFac">Years at this Facility</Label>
+                    <Input id="rs-yrsFac" type="number" min="0" max="50" placeholder="2" value={form.yearsAtFacility}
+                      onChange={e => setField("yearsAtFacility", e.target.value)} disabled={submitting} />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Campaign Tab */}
+            {formTab === "campaign" && (
+              <div className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Campaign roles apply during SIA / supplemental immunisation activities.
+                </p>
+                <div className="space-y-1.5">
+                  <Label htmlFor="rs-campRole">Campaign Role</Label>
+                  <Select value={form.campaignRole} onValueChange={v => setField("campaignRole", v)} disabled={submitting}>
+                    <SelectTrigger id="rs-campRole"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {ROSTER_CAMPAIGN_ROLES.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            )}
+
+            <DialogFooter className="mt-6 flex justify-between items-center">
+              <Button type="button" variant="outline" onClick={() => { setIsDialogOpen(false); resetForm(); }} disabled={submitting}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={submitting}>
+                {submitting ? "Saving…" : editingStaff ? "Update Member" : "Save Member"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
+
+

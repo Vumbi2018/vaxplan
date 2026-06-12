@@ -111,6 +111,13 @@ const KNOWN_ROLES = new Set([
   "provincial_coordinator",
   "national_admin",
   "gis_specialist",
+  // Implementing partner roles (facility/district/province/national)
+  "facility_partner",
+  "district_partner",
+  "provincial_partner",
+  "national_partner",
+  // National programme management
+  "national_manager",
 ]);
 
 // Build an ImportRow list from parsed CSV. The first row is treated as the
@@ -494,12 +501,22 @@ function ActivityLogPanel({ users }: { users: any[] }) {
 }
 
 const ALL_ROLES = [
+  // Core health facility roles
   { value: "facility_clerk", label: "Facility Clerk" },
   { value: "facility_in_charge", label: "Facility In-Charge" },
+  // Geographic management roles
   { value: "district_manager", label: "District Manager" },
   { value: "provincial_coordinator", label: "Provincial Coordinator" },
+  // Specialist & admin roles
   { value: "gis_specialist", label: "GIS Specialist" },
-  { value: "national_admin", label: "National Admin" }
+  { value: "national_admin", label: "National Admin" },
+  // Implementing partner roles (read-only by default)
+  { value: "facility_partner", label: "Implementing Partner (Facility)" },
+  { value: "district_partner", label: "Implementing Partner (District)" },
+  { value: "provincial_partner", label: "Implementing Partner (Province)" },
+  { value: "national_partner", label: "Implementing Partner (National)" },
+  // National programme management
+  { value: "national_manager", label: "National Manager" },
 ];
 
 const ALL_PERMISSIONS: { value: Permission; label: string; desc: string }[] = [
@@ -1199,6 +1216,10 @@ export default function UserManagement() {
             <Shield className="h-4 w-4" />
             Custom Roles Manager
           </TabsTrigger>
+          <TabsTrigger value="permissions" className="rounded-xl text-muted-foreground data-[state=active]:bg-indigo-600 data-[state=active]:text-white data-[state=active]:shadow font-semibold flex items-center gap-1.5 px-4 py-2 text-xs" data-testid="tab-permissions">
+            <Lock className="h-4 w-4" />
+            Permissions Registry
+          </TabsTrigger>
           <TabsTrigger value="activity" className="rounded-xl text-muted-foreground data-[state=active]:bg-indigo-600 data-[state=active]:text-white data-[state=active]:shadow font-semibold flex items-center gap-1.5 px-4 py-2 text-xs" data-testid="tab-activity">
             <Activity className="h-4 w-4" />
             Activity Log
@@ -1438,7 +1459,7 @@ export default function UserManagement() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {(dbRoles || []).map((role: any) => {
-                const isSystemRole = ["facility_clerk", "facility_in_charge", "district_manager", "provincial_coordinator", "gis_specialist", "national_admin"].includes(role.code);
+                const isSystemRole = ["facility_clerk", "facility_in_charge", "district_manager", "provincial_coordinator", "gis_specialist", "national_admin", "facility_partner", "district_partner", "provincial_partner", "national_partner", "national_manager"].includes(role.code);
                 const rolePerms = Array.isArray(role.permissions) ? (role.permissions as string[]) : [];
                 
                 return (
@@ -1513,6 +1534,60 @@ export default function UserManagement() {
               })}
             </div>
           )}
+        </TabsContent>
+
+        {/* ─── Permissions Registry ─────────────────────────────────────── */}
+        <TabsContent value="permissions" className="space-y-6 mt-4">
+          <div className="flex justify-between items-center gap-4 flex-wrap">
+            <div>
+              <h3 className="text-lg font-bold text-foreground">Permissions Registry</h3>
+              <p className="text-muted-foreground text-xs mt-0.5">
+                All system-level permissions. Assign these to roles in the Custom Roles Manager or per-user in Configure Access.
+              </p>
+            </div>
+            <Badge variant="secondary" className="text-xs">
+              {ALL_PERMISSIONS.length} system permissions
+            </Badge>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {ALL_PERMISSIONS.map((perm) => {
+              // Compute which system roles have this permission via the dbRoles list
+              const rolesWithPerm = (dbRoles || []).filter((r: any) =>
+                Array.isArray(r.permissions) && r.permissions.includes(perm.value)
+              );
+              return (
+                <div
+                  key={perm.value}
+                  className="bg-card rounded-2xl border border-border p-4 flex flex-col gap-3 hover:border-indigo-500/40 transition-all duration-200 shadow-sm"
+                  data-testid={`perm-card-${perm.value}`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-bold text-foreground leading-tight">{perm.label}</p>
+                      <code className="text-[10px] font-mono text-muted-foreground/70 mt-0.5 block">{perm.value}</code>
+                    </div>
+                    <div className="p-1.5 bg-indigo-500/10 rounded-lg shrink-0">
+                      <Lock className="h-3.5 w-3.5 text-indigo-500 dark:text-indigo-400" />
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground leading-relaxed">{perm.desc}</p>
+                  {rolesWithPerm.length > 0 && (
+                    <div className="pt-2 border-t border-border/60">
+                      <span className="text-[10px] text-muted-foreground/70 uppercase tracking-wider font-semibold block mb-1.5">Granted to</span>
+                      <div className="flex flex-wrap gap-1">
+                        {rolesWithPerm.map((r: any) => (
+                          <Badge key={r.code} variant="outline" className="text-[10px] px-1.5 py-0 bg-indigo-500/5 text-indigo-600 dark:text-indigo-300 border-indigo-500/20 capitalize rounded-md">
+                            {r.name || r.code}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </TabsContent>
 
         <TabsContent value="activity" className="space-y-4 mt-4">

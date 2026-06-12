@@ -76,7 +76,7 @@ export function loadActiveTenant(): CachedTenant | null {
  * data.  For ordinary users their home tenant is always the active one.
  */
 export function getActiveSyncTenantId(user: {
-  tenantId: string;
+  tenantId: string | null; // null is valid for users awaiting tenant provisioning
   isPlatformAdmin?: boolean;
 } | null | undefined): string | null {
   if (!user?.tenantId) return null;
