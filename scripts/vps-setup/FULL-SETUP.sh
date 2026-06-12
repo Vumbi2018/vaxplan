@@ -67,7 +67,7 @@ echo "✅ Code ready ($(git rev-parse --short HEAD))"
 echo "⚙️  Writing .env..."
 cat > /var/www/vaxplan/.env << 'ENVEOF'
 NODE_ENV=production
-PORT=5000
+PORT=5005
 DATABASE_URL=postgresql://neondb_owner:npg_l0nhbM1RmdFw@ep-summer-math-apxu0ime-pooler.c-7.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require
 SESSION_SECRET=50dc33a18a6dfca1a0d66cbef43fb5d3cc8a19732825f874c14119dedacdc8ff92dd38c94e9d917df8b186cff54f8168701149941b16f08cd873954e3c617533
 MESSAGING_SENDER_NUMBER=+260963328807
@@ -145,7 +145,7 @@ echo "✅ PM2 started"
 echo "⏳ Waiting 10s for app to boot..."
 sleep 10
 
-HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:5000/api/public/tenants 2>/dev/null || echo "000")
+HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:5005/api/public/tenants 2>/dev/null || echo "000")
 if [ "$HTTP_CODE" = "200" ]; then
   echo "✅ App is responding — HTTP $HTTP_CODE"
 else
@@ -166,7 +166,7 @@ server {
     client_max_body_size 512M;
 
     location / {
-        proxy_pass         http://127.0.0.1:5000;
+        proxy_pass         http://127.0.0.1:5005;
         proxy_http_version 1.1;
         proxy_set_header   Upgrade    $http_upgrade;
         proxy_set_header   Connection "upgrade";

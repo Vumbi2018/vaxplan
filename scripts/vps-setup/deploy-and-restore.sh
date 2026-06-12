@@ -74,14 +74,14 @@ sleep 5
 # ── 6. Health check ──────────────────────────────────────────────────────────────
 echo ""
 echo "🔍 6. Running health check..."
-HTTP=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:5000/api/public/tenants 2>/dev/null || echo "000")
+HTTP=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:5005/api/public/tenants 2>/dev/null || echo "000")
 if [ "$HTTP" = "200" ]; then
   echo "✅ Health check: HTTP $HTTP — VaxPlan is live and operational!"
 else
-  # Fallback to check port 3001 if production port differs
-  HTTP=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3001/api/public/tenants 2>/dev/null || echo "000")
+  # Fallback to check port 5005 if production port differs
+  HTTP=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:5005/api/public/tenants 2>/dev/null || echo "000")
   if [ "$HTTP" = "200" ]; then
-    echo "✅ Health check: HTTP $HTTP (port 3001) — VaxPlan is live and operational!"
+    echo "✅ Health check: HTTP $HTTP (port 5005) — VaxPlan is live and operational!"
   else
     echo "❌ Health check failed. PM2 status:"
     pm2 status

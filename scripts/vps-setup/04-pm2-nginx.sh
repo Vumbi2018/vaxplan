@@ -44,9 +44,9 @@ systemctl enable pm2-root
 # ── 3. Verify app is responding ───────────────────────────────────────────────
 echo "⏳ Waiting 8s for app to boot..."
 sleep 8
-echo "🔍 Testing app on localhost:5000..."
-if curl -sf http://localhost:5000/api/public/tenants > /dev/null; then
-  echo "✅ App is responding on port 5000!"
+echo "🔍 Testing app on localhost:5005..."
+if curl -sf http://localhost:5005/api/public/tenants > /dev/null; then
+  echo "✅ App is responding on port 5005!"
 else
   echo "⚠️  App not yet responding — checking logs..."
   pm2 logs vaxplan --lines 25 --nostream
@@ -64,7 +64,7 @@ server {
     client_max_body_size 512M;
 
     location / {
-        proxy_pass         http://127.0.0.1:5000;
+        proxy_pass         http://127.0.0.1:5005;
         proxy_http_version 1.1;
 
         # WebSocket support (real-time sync channel)

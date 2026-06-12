@@ -10,7 +10,7 @@ echo "⚡ Applying nginx performance optimizations..."
 cat > /etc/nginx/sites-available/vaxplan << 'NGINX'
 # ── Upstream ──────────────────────────────────────────────────────────────────
 upstream vaxplan_backend {
-    server 127.0.0.1:3001;
+    server 127.0.0.1:5005;
     keepalive 32;
 }
 

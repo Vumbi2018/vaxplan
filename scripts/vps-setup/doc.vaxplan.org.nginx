@@ -25,7 +25,7 @@ server {
 
     # ── API proxy — forward /api/* to the VaxPlan Express app ─
     location /api/ {
-        proxy_pass         http://127.0.0.1:5000;
+        proxy_pass         http://127.0.0.1:5005;
         proxy_http_version 1.1;
         proxy_set_header   Host              vaxplan.org;
         proxy_set_header   X-Real-IP         $remote_addr;
@@ -43,7 +43,7 @@ server {
 
     # ── Uploads proxy — forward /uploads/* to the VaxPlan Express app ─
     location /uploads/ {
-        proxy_pass         http://127.0.0.1:5000;
+        proxy_pass         http://127.0.0.1:5005;
         proxy_http_version 1.1;
         proxy_set_header   Host              vaxplan.org;
         proxy_set_header   X-Real-IP         $remote_addr;
