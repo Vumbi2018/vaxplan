@@ -27,6 +27,8 @@ import {
 import {
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   CheckCircle2,
   Circle,
   Save,
@@ -49,6 +51,7 @@ import {
   Calendar,
   Printer,
 } from "lucide-react";
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { DataTable } from "@/components/DataTable";
@@ -8862,6 +8865,7 @@ function SavedMicroplansPanel({
 
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
+  const [isOpen, setIsOpen] = useState(true);
   const { toast } = useToast();
 
   const handleDelete = async (id: number) => {
@@ -8997,29 +9001,55 @@ function SavedMicroplansPanel({
     },
   ], [sessionsByPlan, onOpen]);
 
-  if (filtered.length === 0) return null;
-
   return (
-    <div className="border-b bg-muted/20 px-4 py-3">
-      <div className="mb-4 flex items-center justify-between">
+    <Collapsible
+      open={isOpen}
+      onOpenChange={setIsOpen}
+      className="border-b bg-muted/20 px-4 py-3"
+    >
+      <div className="flex items-center justify-between">
+        <CollapsibleTrigger asChild>
+          <button
+            type="button"
+            className="flex items-center gap-2 text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-sm hover:opacity-80 transition-opacity"
+            data-testid="toggle-saved-microplans"
+          >
+            {isOpen ? (
+              <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+            ) : (
+              <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+            )}
+            <div>
+              <h2 className="text-sm font-semibold select-none">
+                Saved microplans ({filtered.length})
+              </h2>
+              {!isOpen && (
+                <p className="text-[11px] text-muted-foreground font-normal">
+                  Click to expand and view or load saved plans
+                </p>
+              )}
+            </div>
+          </button>
+        </CollapsibleTrigger>
+      </div>
+
+      <CollapsibleContent className="mt-4 space-y-4">
         <div>
-          <h2 className="text-sm font-semibold">
-            Saved microplans ({filtered.length})
-          </h2>
           <p className="text-xs text-muted-foreground">
             Open one to see its planned sessions
           </p>
         </div>
-      </div>
-      <DataTable
-        data={filtered}
-        columns={columns}
-        searchable={true}
-        searchKeys={["name"]}
-        pageSize={10}
-        emptyMessage="No saved microplans found"
-        searchPlaceholder="Search saved microplans..."
-      />
+        <DataTable
+          data={filtered}
+          columns={columns}
+          searchable={true}
+          searchKeys={["name"]}
+          pageSize={10}
+          emptyMessage="No saved microplans found"
+          searchPlaceholder="Search saved microplans..."
+        />
+      </CollapsibleContent>
+
       <DeleteConfirmDialog
         open={deleteId !== null}
         onOpenChange={(open) => {
@@ -9030,7 +9060,7 @@ function SavedMicroplansPanel({
         onConfirm={() => deleteId && handleDelete(deleteId)}
         isPending={deleteBusy}
       />
-    </div>
+    </Collapsible>
   );
 }
 
