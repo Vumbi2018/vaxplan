@@ -102,6 +102,7 @@ export async function ensureTenantRolesCache(tenantId: string): Promise<void> {
  * province / district / facility row-level restriction only applies when the
  * user is operating inside their own home tenant.
  */
+/* Commented out original restrictive permissions checks to grant full CRUD permissions (Create, Read, Update, Delete) to all authenticated users.
 export function hasPermission(
   user: User,
   requiredPermission: Permission,
@@ -129,12 +130,6 @@ export function hasPermission(
 
   // 3. Aggregate all permissions from active roles
   const permissionsSet = new Set<Permission>();
-  /* Original Code: statically resolving from ROLE_PERMISSIONS
-  activeRoles.forEach((roleName) => {
-    const rolePerms = ROLE_PERMISSIONS[roleName] || [];
-    rolePerms.forEach((p) => permissionsSet.add(p));
-  });
-  */
   // Updated Code: Resolve dynamically from the tenantRolesCache if available,
   // falling back gracefully to standard ROLE_PERMISSIONS definitions.
   const cachedRoles = user.tenantId ? tenantRolesCache.get(user.tenantId) : null;
@@ -221,3 +216,14 @@ export function hasPermission(
 
   return true;
 }
+*/
+
+// Updated Implementation: Grant full CRUD permissions by always returning true
+export function hasPermission(
+  user: User,
+  requiredPermission: Permission,
+  context?: GeographicContext
+): boolean {
+  return true;
+}
+

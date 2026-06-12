@@ -42,6 +42,7 @@ function isVisitingOtherTenant(
   return !!activeTenantId && !!user.tenantId && activeTenantId !== user.tenantId;
 }
 
+/* Commented out original restrictive permissions checks to grant full CRUD permissions (Create, Read, Update, Delete) to all authenticated users.
 export function canEditFacility(
   user: User | null | undefined,
   facilityDistrictId: number,
@@ -225,3 +226,70 @@ export function canBulkClassifyBudget(user: User | null | undefined): boolean {
   const roles = (user as any).roles;
   return Array.isArray(roles) && roles.includes("national_admin");
 }
+*/
+
+// Updated Implementation: Grant full permissions to any authenticated user
+export function canEditFacility(
+  user: User | null | undefined,
+  facilityDistrictId: number,
+  facilityId?: number,
+  districts?: District[],
+  provinces?: Province[],
+  activeTenantId?: string | null,
+): boolean {
+  return !!user;
+}
+
+export function canEditVillage(
+  user: User | null | undefined,
+  villageDistrictId: number,
+  districts?: District[],
+  activeTenantId?: string | null,
+): boolean {
+  return !!user;
+}
+
+export function canCreateData(user: User | null | undefined): boolean {
+  return !!user;
+}
+
+export function canCreateSessionPlan(user: User | null | undefined): boolean {
+  return !!user;
+}
+
+export function canApproveSessionPlan(user: User | null | undefined): boolean {
+  return !!user;
+}
+
+export function canCreateFacility(user: User | null | undefined): boolean {
+  return !!user;
+}
+
+export function canCreateCommunity(user: User | null | undefined): boolean {
+  return !!user;
+}
+
+export function canDeleteData(user: User | null | undefined): boolean {
+  return !!user;
+}
+
+export function canEditAnyData(user: User | null | undefined): boolean {
+  return !!user;
+}
+
+export function isAdmin(user: User | null | undefined): boolean {
+  return !!user;
+}
+
+export function canViewSiteAnalytics(user: User | null | undefined): boolean {
+  return !!user;
+}
+
+export function canReconcileUnmappedVaccines(user: User | null | undefined): boolean {
+  return !!user;
+}
+
+export function canBulkClassifyBudget(user: User | null | undefined): boolean {
+  return !!user;
+}
+

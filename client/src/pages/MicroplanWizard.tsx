@@ -3101,11 +3101,7 @@ export default function MicroplanWizard({ prePlanType }: MicroplanWizardProps = 
         )}
       </div>
 
-      {/* Saved-microplans picker — only when no microplan is open. Gives users
-          a real "list of microplans (with their planned sessions count)" entry
-          point. Previously the only way to reopen a saved plan was via deep
-          links from the map or SessionsHub, which made the planned sessions
-          for an existing microplan effectively invisible from this page. */}
+      {/* Original Saved-microplans picker commented out here to be moved below the wizard stepper for visibility:
       {!microplanId && (
         <SavedMicroplansPanel
           planType={planType}
@@ -3116,6 +3112,7 @@ export default function MicroplanWizard({ prePlanType }: MicroplanWizardProps = 
           }
         />
       )}
+      */}
 
       {/* Body: stepper + content */}
       <div className="flex flex-1 gap-4 overflow-hidden p-4">
@@ -3516,6 +3513,17 @@ export default function MicroplanWizard({ prePlanType }: MicroplanWizardProps = 
           </Card>
         </div>
       </div>
+      {/* Saved-microplans list rendered below the wizard stepper to prevent it from crushing the wizard steps: */}
+      {!microplanId && (
+        <SavedMicroplansPanel
+          planType={planType}
+          onOpen={(id) =>
+            setLocation(
+              `/microplans/${planType === "campaign" ? "campaigns" : "routine"}/${id}`,
+            )
+          }
+        />
+      )}
       <DeleteConfirmDialog
         open={pendingDelete !== null}
         onOpenChange={(open) => {
