@@ -92,10 +92,11 @@ if [ -f "node_modules/.bin/tsx" ]; then
   node_modules/.bin/tsx scripts/migrate.ts
 elif [ -f "node_modules/tsx/dist/cli.mjs" ]; then
   node node_modules/tsx/dist/cli.mjs scripts/migrate.ts
+elif [ -f "scripts/migrate.js" ]; then
+  echo "      [INFO] tsx not available — running pre-compiled JS migration script..."
+  node scripts/migrate.js
 else
-  echo "      [INFO] tsx not available in prod deps — skipping TypeScript migration."
-  echo "      [INFO] Run migrations manually if schema changes are needed:"
-  echo "             node scripts/migrate.js"
+  echo "      [INFO] tsx and migrate.js not available — skipping migrations."
 fi
 
 # Also run the CJS migration scripts (always safe — no drops)

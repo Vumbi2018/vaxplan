@@ -2,8 +2,37 @@ import fs from 'fs';
 import path from 'path';
 import pg from 'pg';
 
+// Load .env file for local development (Node 20.12+ built-in)
+try {
+  process.loadEnvFile?.();
+} catch {
+  // Silently skip if not present
+}
+
+// Simple fallback parser if loadEnvFile failed but file exists
+if (!process.env.DATABASE_URL) {
+  const envPath = path.join(process.cwd(), '.env');
+  if (fs.existsSync(envPath)) {
+    try {
+      const envContent = fs.readFileSync(envPath, 'utf8');
+      for (const line of envContent.split('\n')) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('#')) continue;
+        const index = trimmed.indexOf('=');
+        if (index > 0) {
+          const key = trimmed.substring(0, index).trim();
+          let val = trimmed.substring(index + 1).trim();
+          if (val.startsWith('"') && val.endsWith('"')) val = val.slice(1, -1);
+          if (val.startsWith("'") && val.endsWith("'")) val = val.slice(1, -1);
+          process.env[key] = val;
+        }
+      }
+    } catch (e) {}
+  }
+}
+
 const { Pool } = pg;
-const connectionString = process.env.DATABASE_URL || 'postgresql://postgres@localhost:5432/postgres';
+const connectionString = process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/vaxplan';
 
 const pool = new Pool({ connectionString });
 
