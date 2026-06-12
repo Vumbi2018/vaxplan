@@ -21,6 +21,11 @@ cd "$APP_DIR"
 # Load env variables from .env file
 if [ -f ".env" ]; then
   echo "⚙️  Loading environment configuration..."
+  # Automatically heal and migrate any leftover Neon URL in the .env file
+  if grep -q "neon.tech" .env; then
+    echo "⚠️  Detected deprecated Neon database URL in .env. Migrating to local Hostinger PostgreSQL..."
+    sed -i 's|DATABASE_URL=.*|DATABASE_URL=postgresql://postgres:postgres@localhost:5432/vaxplan|' .env
+  fi
   DATABASE_URL=$(grep DATABASE_URL .env | cut -d '=' -f2-)
 else
   echo "❌ Error: .env file not found at $APP_DIR/.env"
