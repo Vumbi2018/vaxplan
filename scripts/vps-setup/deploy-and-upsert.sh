@@ -19,9 +19,9 @@ echo ""
 cd "$APP_DIR"
 
 # ── 1. Pull latest code ──────────────────────────────────────────────────────────
-echo "📥 1. Pulling latest from GitHub (main)..."
-git fetch origin main
-git reset --hard origin/main
+echo "📥 1. Pulling latest from GitHub (fix-line-endings)..."
+git fetch origin
+git reset --hard origin/fix-line-endings
 echo "✅ Code updated to: $(git log --oneline -1)"
 
 # ── 2. Install dependencies & build ──────────────────────────────────────────────
