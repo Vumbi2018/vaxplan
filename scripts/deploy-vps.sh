@@ -14,7 +14,7 @@
 set -e
 
 APP_DIR="/var/www/vaxplan"
-BRANCH="fix-line-endings"
+BRANCH="main"
 
 echo ""
 echo "=================================================="

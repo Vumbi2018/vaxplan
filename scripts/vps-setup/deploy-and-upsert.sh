@@ -42,9 +42,9 @@ echo "✅ Database backup saved to: $BACKUP_FILE"
 
 # ── 1. Pull latest code ──────────────────────────────────────────────────────────
 echo ""
-echo "📥 1. Pulling latest from GitHub (fix-line-endings)..."
+echo "📥 1. Pulling latest from GitHub (main)..."
 git fetch origin
-git reset --hard origin/fix-line-endings
+git reset --hard origin/main
 echo "✅ Code updated to: $(git log --oneline -1)"
 
 # ── 2. Install production dependencies ───────────────────────────────────────────
