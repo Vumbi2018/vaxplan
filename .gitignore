@@ -1,6 +1,6 @@
 .env
 node_modules/
-dist/
+# dist/ — included in git for zero-build VPS deployments
 electron-dist/
 out/
 *.log
