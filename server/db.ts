@@ -10,10 +10,10 @@ if (!process.env.DATABASE_URL) {
   );
 }
 
-// Neon and Supabase require SSL. Automatically append sslmode if missing.
+// Supabase requires SSL. Automatically append sslmode if missing.
 let connString = process.env.DATABASE_URL;
 if (
-  (connString.includes("neon.tech") || connString.includes("supabase.co") || connString.includes("upstash.io")) &&
+  (connString.includes("supabase.co") || connString.includes("upstash.io")) &&
   !connString.includes("sslmode=")
 ) {
   connString += connString.includes("?") ? "&sslmode=require" : "?sslmode=require";

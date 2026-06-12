@@ -68,7 +68,7 @@ echo "⚙️  Writing .env..."
 cat > /var/www/vaxplan/.env << 'ENVEOF'
 NODE_ENV=production
 PORT=5005
-DATABASE_URL=postgresql://neondb_owner:npg_l0nhbM1RmdFw@ep-summer-math-apxu0ime-pooler.c-7.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/vaxplan
 SESSION_SECRET=50dc33a18a6dfca1a0d66cbef43fb5d3cc8a19732825f874c14119dedacdc8ff92dd38c94e9d917df8b186cff54f8168701149941b16f08cd873954e3c617533
 MESSAGING_SENDER_NUMBER=+260963328807
 SMTP_HOST=smtp.gmail.com

@@ -49,7 +49,7 @@ if [ -f "local_dump.sql.zip" ]; then
   echo "🔓 Unzipping database archive..."
   unzip -o local_dump.sql.zip
   
-  echo "📥 Importing SQL dump into Neon production database..."
+  echo "📥 Importing SQL dump into production database..."
   psql "$DATABASE_URL" -f local_dump.sql
   echo "✅ Database restore completed successfully."
 else

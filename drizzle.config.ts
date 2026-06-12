@@ -6,7 +6,7 @@ if (!process.env.DATABASE_URL) {
 
 let connString = process.env.DATABASE_URL;
 if (
-  (connString.includes("neon.tech") || connString.includes("supabase.co") || connString.includes("upstash.io")) &&
+  (connString.includes("supabase.co") || connString.includes("upstash.io")) &&
   !connString.includes("sslmode=")
 ) {
   connString += connString.includes("?") ? "&sslmode=require" : "?sslmode=require";

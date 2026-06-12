@@ -2362,7 +2362,7 @@ var init_db = __esm({
       );
     }
     connString = process.env.DATABASE_URL;
-    if ((connString.includes("neon.tech") || connString.includes("supabase.co") || connString.includes("upstash.io")) && !connString.includes("sslmode=")) {
+    if ((connString.includes("supabase.co") || connString.includes("upstash.io")) && !connString.includes("sslmode=")) {
       connString += connString.includes("?") ? "&sslmode=require" : "?sslmode=require";
     }
     pool = new Pool({ connectionString: connString });
