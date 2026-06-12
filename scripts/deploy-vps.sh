@@ -23,6 +23,24 @@ echo "=================================================="
 
 cd "$APP_DIR"
 
+# Load env variables from .env file
+if [ -f ".env" ]; then
+  DATABASE_URL=$(grep DATABASE_URL .env | cut -d '=' -f2-)
+else
+  echo "      [ERROR] .env file not found at $APP_DIR/.env"
+  exit 1
+fi
+
+# ─────────────────────────────────────────────────────
+# STEP 0: Backup Database
+# ─────────────────────────────────────────────────────
+echo ""
+echo "[0/4] Backing up database before deployment..."
+mkdir -p backups
+BACKUP_FILE="backups/backup_$(date +%Y%m%d_%H%M%S).sql"
+pg_dump "$DATABASE_URL" -f "$BACKUP_FILE"
+echo "      ✓ Database backup saved to: $BACKUP_FILE"
+
 # ─────────────────────────────────────────────────────
 # STEP 1: Pull latest code + pre-built dist/ from GitHub
 # ─────────────────────────────────────────────────────

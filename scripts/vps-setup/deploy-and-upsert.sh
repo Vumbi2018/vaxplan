@@ -18,7 +18,25 @@ echo ""
 
 cd "$APP_DIR"
 
+# Load env variables from .env file
+if [ -f ".env" ]; then
+  echo "⚙️  Loading environment configuration..."
+  DATABASE_URL=$(grep DATABASE_URL .env | cut -d '=' -f2-)
+else
+  echo "❌ Error: .env file not found at $APP_DIR/.env"
+  exit 1
+fi
+
+# ── 0. Database Backup ──────────────────────────────────────────────────────────
+echo ""
+echo "🗄️  0. Backing up production database..."
+mkdir -p backups
+BACKUP_FILE="backups/backup_$(date +%Y%m%d_%H%M%S).sql"
+pg_dump "$DATABASE_URL" -f "$BACKUP_FILE"
+echo "✅ Database backup saved to: $BACKUP_FILE"
+
 # ── 1. Pull latest code ──────────────────────────────────────────────────────────
+echo ""
 echo "📥 1. Pulling latest from GitHub (fix-line-endings)..."
 git fetch origin
 git reset --hard origin/fix-line-endings

@@ -33,6 +33,14 @@ else
   exit 1
 fi
 
+# ── 1.5. Database Backup ────────────────────────────────────────────────────────
+echo ""
+echo "🗄️  1.5. Backing up existing database before restore..."
+mkdir -p backups
+BACKUP_FILE="backups/backup_$(date +%Y%m%d_%H%M%S).sql"
+pg_dump "$DATABASE_URL" -f "$BACKUP_FILE"
+echo "✅ Database backup saved to: $BACKUP_FILE"
+
 # ── 2. Install dependencies & build ──────────────────────────────────────────────
 echo ""
 echo "📦 2. Installing dependencies..."
