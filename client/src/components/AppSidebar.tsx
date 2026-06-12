@@ -62,7 +62,9 @@ interface AppSidebarProps {
 
 const mainNavItems = [
   { title: "Dashboard", path: "/", icon: LayoutDashboard },
+  /* Commented out duplicate "Microplan Flow" to keep only "Routine Microplan" under Planning / "Microplan" under SIA:
   { title: "Microplan Flow", path: "/flow", icon: Sparkles },
+  */
   { title: "Map View", path: "/map", icon: Map },
   { title: "Settlement Intel", path: "/settlement-intelligence", icon: Globe },
   { title: "Facilities", path: "/facilities", icon: Building2 },
@@ -235,7 +237,9 @@ export function AppSidebar({ user }: AppSidebarProps) {
 
   const visibleMainNavItems = mainNavItems.filter((item) => {
     if (item.path === "/") return true;
+    /* Commented out duplicate flow check:
     if (item.path === "/flow") return modules.routine !== false || modules.campaigns !== false;
+    */
     if (item.path === "/map") return modules.map !== false;
     if (item.path === "/settlement-intelligence") return modules.settlementIntel !== false;
     if (item.path === "/facilities") return modules.facilities !== false;

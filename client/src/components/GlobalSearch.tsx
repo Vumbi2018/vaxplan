@@ -122,6 +122,7 @@ export function GlobalSearch({ user }: GlobalSearchProps) {
       group: "Navigation",
     });
 
+    /* Commented out duplicate search item:
     if (modules.routine !== false || modules.campaigns !== false) {
       items.push({
         title: "Microplan Flow",
@@ -131,6 +132,7 @@ export function GlobalSearch({ user }: GlobalSearchProps) {
         group: "Navigation",
       });
     }
+    */
 
     if (modules.map !== false) {
       items.push({
