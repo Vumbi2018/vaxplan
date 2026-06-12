@@ -4,8 +4,32 @@
  * Safe to re-run.
  */
 
+const fs = require("fs");
+const path = require("path");
 const { Pool } = require("pg");
-const p = new Pool({ connectionString: "postgresql://postgres:postgres@localhost:5432/vaxplan" });
+
+let connectionString = process.env.DATABASE_URL;
+
+if (!connectionString) {
+  try {
+    const envPath = path.resolve(__dirname, "../.env");
+    if (fs.existsSync(envPath)) {
+      const envContent = fs.readFileSync(envPath, "utf8");
+      const match = envContent.match(/^DATABASE_URL=(.*)$/m);
+      if (match) {
+        connectionString = match[1].trim().replace(/(^['"]|['"]$)/g, "");
+      }
+    }
+  } catch (err) {
+    // Ignore error
+  }
+}
+
+if (!connectionString) {
+  connectionString = "postgresql://postgres:postgres@localhost:5432/vaxplan";
+}
+
+const p = new Pool({ connectionString });
 
 const SQL = `
 ALTER TABLE facility_staff
