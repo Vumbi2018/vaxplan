@@ -47,14 +47,11 @@ git fetch origin
 git reset --hard origin/fix-line-endings
 echo "✅ Code updated to: $(git log --oneline -1)"
 
-# ── 2. Install dependencies & build ──────────────────────────────────────────────
+# ── 2. Install production dependencies ───────────────────────────────────────────
 echo ""
-echo "📦 2. Installing dependencies..."
-npm install --production=false
-
-echo "🔨 Building application..."
-npx tsx script/build.ts
-echo "✅ Build completed"
+echo "📦 2. Installing production dependencies..."
+npm install --omit=dev --legacy-peer-deps --no-audit --no-fund
+echo "      ✓ Dependencies installed."
 
 # ── 3. Database Schema Push (Safe) ──────────────────────────────────────────────
 echo ""
