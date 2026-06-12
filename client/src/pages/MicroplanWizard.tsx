@@ -8873,7 +8873,8 @@ function SavedMicroplansPanel({
 
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
-  const [isOpen, setIsOpen] = useState(true);
+  // const [isOpen, setIsOpen] = useState(true); // Commented out to collapse by default to prevent squeezing the wizard card
+  const [isOpen, setIsOpen] = useState(false);
   const { toast } = useToast();
 
   const handleDelete = async (id: number) => {
@@ -9013,7 +9014,8 @@ function SavedMicroplansPanel({
     <Collapsible
       open={isOpen}
       onOpenChange={setIsOpen}
-      className="border-b bg-muted/20 px-4 py-3"
+      /* className="border-b bg-muted/20 px-4 py-3" // Commented out to use border-t at bottom */
+      className="border-t bg-muted/20 px-4 py-3"
     >
       <div className="flex items-center justify-between">
         <CollapsibleTrigger asChild>
@@ -9041,6 +9043,7 @@ function SavedMicroplansPanel({
         </CollapsibleTrigger>
       </div>
 
+      {/* Commented out original CollapsibleContent to restrict vertical height and table page size:
       <CollapsibleContent className="mt-4 space-y-4">
         <div>
           <p className="text-xs text-muted-foreground">
@@ -9053,6 +9056,23 @@ function SavedMicroplansPanel({
           searchable={true}
           searchKeys={["name"]}
           pageSize={10}
+          emptyMessage="No saved microplans found"
+          searchPlaceholder="Search saved microplans..."
+        />
+      </CollapsibleContent>
+      */}
+      <CollapsibleContent className="mt-4 space-y-4 max-h-[300px] overflow-y-auto pr-1">
+        <div>
+          <p className="text-xs text-muted-foreground">
+            Open one to see its planned sessions
+          </p>
+        </div>
+        <DataTable
+          data={filtered}
+          columns={columns}
+          searchable={true}
+          searchKeys={["name"]}
+          pageSize={5}
           emptyMessage="No saved microplans found"
           searchPlaceholder="Search saved microplans..."
         />
