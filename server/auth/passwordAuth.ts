@@ -103,8 +103,9 @@ export function registerPasswordAuthRoutes(app: Express) {
     const key = rateKey(req, emailRaw);
 
     try {
-      if (!emailRaw || !password) {
-        return res.status(400).json({ message: "Email and password are required." });
+      const tenantId = String((req.body && req.body.tenantId) || "").trim();
+      if (!emailRaw || !password || !tenantId) {
+        return res.status(400).json({ message: "Email, password, and country selection are required." });
       }
 
       const lockedFor = checkLocked(key);
@@ -114,7 +115,7 @@ export function registerPasswordAuthRoutes(app: Express) {
           .json({ message: `Too many attempts. Try again in ${Math.ceil(lockedFor / 60)} min.` });
       }
 
-      const dbUser = await storage.getUserByEmail(emailRaw);
+      const dbUser = await storage.getUserByEmailAndTenant(emailRaw, tenantId);
       // Run bcrypt.compare unconditionally (against a dummy hash when the
       // user is missing/inactive/has no password) to equalize timing.
       const hashToCheck = (dbUser && dbUser.isActive && dbUser.passwordHash) || DUMMY_HASH;
@@ -127,8 +128,8 @@ export function registerPasswordAuthRoutes(app: Express) {
 
       clearAttempts(key);
 
-      const tenantId = dbUser.tenantId || "";
-      const sessionUser = await buildSessionUser(dbUser, tenantId);
+      const userTenantId = dbUser.tenantId || "";
+      const sessionUser = await buildSessionUser(dbUser, userTenantId);
 
       // Regenerate session ID to defeat fixation, and clear any prior
       // tenant view state so a stale viewTenantId from a previous user

@@ -359,7 +359,7 @@ var init_schema = __esm({
     users = (0, import_pg_core.pgTable)("users", {
       id: (0, import_pg_core.varchar)("id").primaryKey().default(import_drizzle_orm.sql`gen_random_uuid()`),
       tenantId: (0, import_pg_core.varchar)("tenant_id").references(() => tenants.id),
-      email: (0, import_pg_core.varchar)("email").unique(),
+      email: (0, import_pg_core.varchar)("email"),
       firstName: (0, import_pg_core.varchar)("first_name"),
       lastName: (0, import_pg_core.varchar)("last_name"),
       profileImageUrl: (0, import_pg_core.varchar)("profile_image_url"),
@@ -388,7 +388,10 @@ var init_schema = __esm({
       notificationPrefs: (0, import_pg_core.jsonb)("notification_prefs").default({}).notNull(),
       createdAt: (0, import_pg_core.timestamp)("created_at").defaultNow(),
       updatedAt: (0, import_pg_core.timestamp)("updated_at").defaultNow()
-    }, (table) => [(0, import_pg_core.index)("idx_users_tenant").on(table.tenantId)]);
+    }, (table) => [
+      (0, import_pg_core.index)("idx_users_tenant").on(table.tenantId),
+      (0, import_pg_core.unique)("uq_users_tenant_email").on(table.tenantId, table.email)
+    ]);
     userRoles = (0, import_pg_core.pgTable)(
       "user_roles",
       {
@@ -2399,6 +2402,10 @@ var init_storage = __esm({
         const [u] = await db.select().from(users).where((0, import_drizzle_orm2.eq)(users.email, email.toLowerCase()));
         return u;
       }
+      async getUserByEmailAndTenant(email, tenantId) {
+        const [u] = await db.select().from(users).where((0, import_drizzle_orm2.and)((0, import_drizzle_orm2.eq)(users.email, email.toLowerCase()), (0, import_drizzle_orm2.eq)(users.tenantId, tenantId)));
+        return u;
+      }
       async assignUserTenant(userId, tenantId) {
         await db.update(users).set({ tenantId, updatedAt: /* @__PURE__ */ new Date() }).where((0, import_drizzle_orm2.and)((0, import_drizzle_orm2.eq)(users.id, userId), (0, import_drizzle_orm2.isNull)(users.tenantId)));
       }
@@ -2490,6 +2497,34 @@ var init_storage = __esm({
       }
       async deleteUserRole(tenantId, id) {
         const rows = await db.delete(userRoles).where((0, import_drizzle_orm2.and)((0, import_drizzle_orm2.eq)(userRoles.id, id), (0, import_drizzle_orm2.eq)(userRoles.tenantId, tenantId))).returning({ id: userRoles.id });
+        return rows.length > 0;
+      }
+      // --- Dynamic User Permissions ---
+      async getUserPermissions(tenantId) {
+        return await db.select().from(userPermissions).where((0, import_drizzle_orm2.eq)(userPermissions.tenantId, tenantId)).orderBy((0, import_drizzle_orm2.desc)(userPermissions.createdAt));
+      }
+      async getUserPermission(tenantId, id) {
+        const [row] = await db.select().from(userPermissions).where((0, import_drizzle_orm2.and)((0, import_drizzle_orm2.eq)(userPermissions.id, id), (0, import_drizzle_orm2.eq)(userPermissions.tenantId, tenantId)));
+        return row;
+      }
+      async getUserPermissionByCode(tenantId, code) {
+        const [row] = await db.select().from(userPermissions).where((0, import_drizzle_orm2.and)((0, import_drizzle_orm2.eq)(userPermissions.code, code.toLowerCase()), (0, import_drizzle_orm2.eq)(userPermissions.tenantId, tenantId)));
+        return row;
+      }
+      async createUserPermission(tenantId, data) {
+        const [row] = await db.insert(userPermissions).values({ ...data, code: data.code.toLowerCase(), tenantId }).returning();
+        return row;
+      }
+      async updateUserPermission(tenantId, id, data) {
+        const updateData = { ...data, updatedAt: /* @__PURE__ */ new Date() };
+        if (data.code) {
+          updateData.code = data.code.toLowerCase();
+        }
+        const [row] = await db.update(userPermissions).set(updateData).where((0, import_drizzle_orm2.and)((0, import_drizzle_orm2.eq)(userPermissions.id, id), (0, import_drizzle_orm2.eq)(userPermissions.tenantId, tenantId))).returning();
+        return row;
+      }
+      async deleteUserPermission(tenantId, id) {
+        const rows = await db.delete(userPermissions).where((0, import_drizzle_orm2.and)((0, import_drizzle_orm2.eq)(userPermissions.id, id), (0, import_drizzle_orm2.eq)(userPermissions.tenantId, tenantId))).returning({ id: userPermissions.id });
         return rows.length > 0;
       }
       // --- Tenants & IdP configs ---
@@ -4427,14 +4462,15 @@ function registerPasswordAuthRoutes(app2) {
     const password = String(req.body && req.body.password || "");
     const key = rateKey(req, emailRaw);
     try {
-      if (!emailRaw || !password) {
-        return res.status(400).json({ message: "Email and password are required." });
+      const tenantId = String(req.body && req.body.tenantId || "").trim();
+      if (!emailRaw || !password || !tenantId) {
+        return res.status(400).json({ message: "Email, password, and country selection are required." });
       }
       const lockedFor = checkLocked(key);
       if (lockedFor !== null) {
         return res.status(429).json({ message: `Too many attempts. Try again in ${Math.ceil(lockedFor / 60)} min.` });
       }
-      const dbUser = await storage.getUserByEmail(emailRaw);
+      const dbUser = await storage.getUserByEmailAndTenant(emailRaw, tenantId);
       const hashToCheck = dbUser && dbUser.isActive && dbUser.passwordHash || DUMMY_HASH;
       const ok = await import_bcryptjs.default.compare(password, hashToCheck);
       if (!ok || !dbUser || !dbUser.isActive || !dbUser.passwordHash) {
@@ -4442,8 +4478,8 @@ function registerPasswordAuthRoutes(app2) {
         return res.status(401).json({ message: "Invalid email or password." });
       }
       clearAttempts(key);
-      const tenantId = dbUser.tenantId || "";
-      const sessionUser = await buildSessionUser(dbUser, tenantId);
+      const userTenantId = dbUser.tenantId || "";
+      const sessionUser = await buildSessionUser(dbUser, userTenantId);
       const reqAny = req;
       const finishLogin = () => {
         reqAny.login(sessionUser, (err) => {
@@ -9950,7 +9986,7 @@ async function registerRoutes(httpServer2, app2) {
       if (!email) {
         return res.status(400).json({ message: "Email is required" });
       }
-      const existing = await storage.getUserByEmail(email);
+      const existing = await storage.getUserByEmailAndTenant(email, req.tenantId);
       if (existing) {
         return res.status(400).json({ message: "A user with this email address already exists" });
       }
@@ -10118,6 +10154,87 @@ async function registerRoutes(httpServer2, app2) {
     } catch (err) {
       console.error("DELETE /api/user-roles/:id failed:", err);
       res.status(500).json({ message: "Failed to delete user role" });
+    }
+  });
+  app2.get("/api/user-permissions", isAuthenticated, requireTenant, requirePermission("manage_users"), async (req, res) => {
+    try {
+      let permissions = await storage.getUserPermissions(req.tenantId);
+      if (permissions.length === 0) {
+        const ALL_PERMS = [
+          { value: "manage_users", label: "Manage Users", desc: "Allows creating, editing, and deleting users, roles, and boundaries." },
+          { value: "view_reports", label: "View Reports", desc: "Allows viewing dashboards, KPIs, budget reports, and standard summaries." },
+          { value: "edit_microplans", label: "Edit Microplans", desc: "Allows creating, updating, and hydrating facilities, target populations, and calendars." },
+          { value: "plan_sessions", label: "Plan Sessions", desc: "Allows adding, scheduling, rescheduling, and mapping vaccine session locations." },
+          { value: "execute_sessions", label: "Record Session Results", desc: "Allows marking sessions completed, recording vaccines given, and uploading logbooks." },
+          { value: "manage_stock", label: "Manage Stock Ledger", desc: "Allows creating stock transactions, updating inventory counts, and tracking waste." },
+          { value: "conduct_supervision", label: "Conduct Supervision", desc: "Allows conducting supervision visits, filling checklists, and reporting PCE reviews." }
+        ];
+        for (const perm of ALL_PERMS) {
+          await storage.createUserPermission(req.tenantId, {
+            code: perm.value,
+            name: perm.label,
+            description: perm.desc
+          });
+        }
+        permissions = await storage.getUserPermissions(req.tenantId);
+      }
+      res.json(permissions);
+    } catch (err) {
+      console.error("GET /api/user-permissions failed:", err);
+      res.status(500).json({ message: "Failed to fetch user permissions" });
+    }
+  });
+  app2.post("/api/user-permissions", isAuthenticated, requireTenant, requirePermission("manage_users"), async (req, res) => {
+    try {
+      const { code, name, description } = req.body;
+      if (!code || !name) {
+        return res.status(400).json({ message: "Permission code and name are required." });
+      }
+      const existing = await storage.getUserPermissionByCode(req.tenantId, code);
+      if (existing) {
+        return res.status(400).json({ message: `A user permission with code ${code} already exists.` });
+      }
+      const perm = await storage.createUserPermission(req.tenantId, { code, name, description });
+      await logAudit(req, "create_user_permission", "user_permissions", perm.id, null, perm);
+      res.status(201).json(perm);
+    } catch (err) {
+      console.error("POST /api/user-permissions failed:", err);
+      res.status(500).json({ message: "Failed to create user permission" });
+    }
+  });
+  app2.patch("/api/user-permissions/:id", isAuthenticated, requireTenant, requirePermission("manage_users"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const oldPerm = await storage.getUserPermission(req.tenantId, id);
+      if (!oldPerm) {
+        return res.status(404).json({ message: "User permission not found" });
+      }
+      const { name, description } = req.body;
+      const updated = await storage.updateUserPermission(req.tenantId, id, { name, description });
+      await logAudit(req, "update_user_permission", "user_permissions", id, oldPerm, updated);
+      res.json(updated);
+    } catch (err) {
+      console.error("PATCH /api/user-permissions/:id failed:", err);
+      res.status(500).json({ message: "Failed to update user permission" });
+    }
+  });
+  app2.delete("/api/user-permissions/:id", isAuthenticated, requireTenant, requirePermission("manage_users"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const oldPerm = await storage.getUserPermission(req.tenantId, id);
+      if (!oldPerm) {
+        return res.status(404).json({ message: "User permission not found" });
+      }
+      const SYSTEM_CODES = ["manage_users", "view_reports", "edit_microplans", "plan_sessions", "execute_sessions", "manage_stock", "conduct_supervision"];
+      if (SYSTEM_CODES.includes(oldPerm.code.toLowerCase())) {
+        return res.status(400).json({ message: `The system permission '${oldPerm.code}' is a critical platform dependency and cannot be deleted.` });
+      }
+      await storage.deleteUserPermission(req.tenantId, id);
+      await logAudit(req, "delete_user_permission", "user_permissions", id, oldPerm, null);
+      res.status(204).send();
+    } catch (err) {
+      console.error("DELETE /api/user-permissions/:id failed:", err);
+      res.status(500).json({ message: "Failed to delete user permission" });
     }
   });
   (async () => {
@@ -10814,6 +10931,33 @@ async function registerRoutes(httpServer2, app2) {
         reason
       );
       if (!updated) return res.status(404).json({ message: "Signup request not found" });
+      if (decision === "approved") {
+        const existing = await storage.getUserByEmailAndTenant(updated.email, req.tenantId);
+        if (!existing) {
+          const nameParts = (updated.fullName || "").trim().split(/\s+/);
+          const firstName = nameParts[0] || "User";
+          const lastName = nameParts.slice(1).join(" ") || "";
+          const defaultPassword = "VaxPlan2026!";
+          const passwordHash = await hashPassword(defaultPassword);
+          const dataAccessScope = {
+            provinces: updated.provinceId ? [updated.provinceId] : [],
+            districts: updated.districtId ? [updated.districtId] : [],
+            facilities: updated.facilityId ? [updated.facilityId] : []
+          };
+          await storage.createUser(req.tenantId, {
+            email: updated.email,
+            firstName,
+            lastName,
+            roles: [updated.requestedRole],
+            passwordHash,
+            facilityId: updated.facilityId,
+            districtId: updated.districtId,
+            provinceId: updated.provinceId,
+            dataAccessScope,
+            isActive: true
+          });
+        }
+      }
       await logAudit(req, `signup_${decision}`, "signup_request", null, null, {
         signupId: updated.id,
         email: updated.email,

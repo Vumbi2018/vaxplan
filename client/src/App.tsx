@@ -63,6 +63,7 @@ const SessionHistory = lazy(() => import("@/pages/SessionHistory"));
 const HisIntegrations = lazy(() => import("@/pages/HisIntegrations"));
 const MissedCommunities = lazy(() => import("@/pages/MissedCommunities"));
 const MicroplanWizard = lazy(() => import("@/pages/MicroplanWizard"));
+const MicroplanList = lazy(() => import("@/pages/MicroplanList"));
 const SettlementIntelligence = lazy(() => import("@/pages/SettlementIntelligence"));
 const StandardsAlignment = lazy(() => import("@/pages/StandardsAlignment"));
 const DropoutRates = lazy(() => import("@/pages/DropoutRates"));
@@ -257,13 +258,13 @@ function AuthenticatedRouter() {
           prePlanType prop locks the type chooser in Step 1 and switches
           the header badge / default name accordingly. */}
       <Route path="/microplans/routine">
-        {modules.routine !== false ? <MicroplanWizard prePlanType="routine" /> : <ModuleDisabled moduleName="Routine Microplan" />}
+        {modules.routine !== false ? <MicroplanList planType="routine" /> : <ModuleDisabled moduleName="Routine Microplan" />}
       </Route>
       <Route path="/microplans/routine/:id">
         {modules.routine !== false ? <MicroplanWizard prePlanType="routine" /> : <ModuleDisabled moduleName="Routine Microplan" />}
       </Route>
       <Route path="/microplans/campaigns">
-        {modules.campaigns !== false ? <MicroplanWizard prePlanType="campaign" /> : <ModuleDisabled moduleName="SIA Campaigns" />}
+        {modules.campaigns !== false ? <MicroplanList planType="campaign" /> : <ModuleDisabled moduleName="SIA Campaigns" />}
       </Route>
       <Route path="/microplans/campaigns/:id">
         {modules.campaigns !== false ? <MicroplanWizard prePlanType="campaign" /> : <ModuleDisabled moduleName="SIA Campaigns" />}

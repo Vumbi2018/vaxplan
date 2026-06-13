@@ -3020,30 +3020,42 @@ export default function MicroplanWizard({ prePlanType }: MicroplanWizardProps = 
       {/* Sticky header */}
       <div className="sticky top-0 z-10 border-b bg-background/95 px-4 py-3 backdrop-blur">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <p className="text-xs text-muted-foreground">Microplan</p>
-              <Badge
-                variant={planType === "campaign" ? "default" : "secondary"}
-                className="gap-1"
-                data-testid="badge-plan-type"
-              >
-                {planType === "campaign" ? (
-                  <>
-                    <Sparkles className="h-3 w-3" /> SIA Campaign
-                  </>
-                ) : (
-                  <>
-                    <Calendar className="h-3 w-3" /> Routine
-                  </>
-                )}
-              </Badge>
+          <div className="flex items-center gap-3 min-w-0">
+            <Button
+              variant="outline"
+              size="sm"
+              className="rounded-xl h-9 gap-1"
+              onClick={() => setLocation(planType === "campaign" ? "/microplans/campaigns" : "/microplans/routine")}
+              data-testid="button-back-to-list"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              <span>Back</span>
+            </Button>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <p className="text-xs text-muted-foreground">Microplan</p>
+                <Badge
+                  variant={planType === "campaign" ? "default" : "secondary"}
+                  className="gap-1"
+                  data-testid="badge-plan-type"
+                >
+                  {planType === "campaign" ? (
+                    <>
+                      <Sparkles className="h-3 w-3" /> SIA Campaign
+                    </>
+                  ) : (
+                    <>
+                      <Calendar className="h-3 w-3" /> Routine
+                    </>
+                  )}
+                </Badge>
+              </div>
+              <h1 className="truncate text-lg font-semibold" data-testid="wizard-title">
+                {name ||
+                  `${planType === "campaign" ? "SIA" : "Routine"} microplan Q${quarter} ${year}`}
+              </h1>
+              <p className="text-xs text-muted-foreground">{facilityLabel}</p>
             </div>
-            <h1 className="truncate text-lg font-semibold" data-testid="wizard-title">
-              {name ||
-                `${planType === "campaign" ? "SIA" : "Routine"} microplan Q${quarter} ${year}`}
-            </h1>
-            <p className="text-xs text-muted-foreground">{facilityLabel}</p>
           </div>
           <Badge variant={status === "draft" ? "outline" : "default"}>
             {status}
@@ -3513,17 +3525,7 @@ export default function MicroplanWizard({ prePlanType }: MicroplanWizardProps = 
           </Card>
         </div>
       </div>
-      {/* Saved-microplans list rendered below the wizard stepper to prevent it from crushing the wizard steps: */}
-      {!microplanId && (
-        <SavedMicroplansPanel
-          planType={planType}
-          onOpen={(id) =>
-            setLocation(
-              `/microplans/${planType === "campaign" ? "campaigns" : "routine"}/${id}`,
-            )
-          }
-        />
-      )}
+      {/* Saved-microplans list removed to be rendered on its own dedicated page */}
       <DeleteConfirmDialog
         open={pendingDelete !== null}
         onOpenChange={(open) => {

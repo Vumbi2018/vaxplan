@@ -11,7 +11,7 @@ import {
   type Permission,
 } from "./auth/authorization";
 import { registerSsoRoutes } from "./auth/ssoRoutes";
-import { registerPasswordAuthRoutes, requireAdmin as requirePlatformOrNationalAdmin } from "./auth/passwordAuth";
+import { registerPasswordAuthRoutes, requireAdmin as requirePlatformOrNationalAdmin, hashPassword } from "./auth/passwordAuth";
 import { spawn } from "child_process";
 import { timingSafeEqual } from "crypto";
 import { readFileSync as _readFileSync } from "fs";
@@ -1136,7 +1136,7 @@ export async function registerRoutes(
       if (!email) {
         return res.status(400).json({ message: "Email is required" });
       }
-      const existing = await storage.getUserByEmail(email);
+      const existing = await storage.getUserByEmailAndTenant(email, req.tenantId);
       if (existing) {
         return res.status(400).json({ message: "A user with this email address already exists" });
       }
@@ -1337,6 +1337,100 @@ export async function registerRoutes(
     } catch (err: any) {
       console.error("DELETE /api/user-roles/:id failed:", err);
       res.status(500).json({ message: "Failed to delete user role" });
+    }
+  });
+
+  // --- CUSTOM USER PERMISSIONS CRUD ENDPOINTS ---
+  app.get("/api/user-permissions", isAuthenticated, requireTenant, requirePermission("manage_users"), async (req: any, res) => {
+    try {
+      let permissions = await storage.getUserPermissions(req.tenantId);
+      if (permissions.length === 0) {
+        // Seed dynamic user_permissions table from static list on first access
+        const ALL_PERMS = [
+          { value: "manage_users", label: "Manage Users", desc: "Allows creating, editing, and deleting users, roles, and boundaries." },
+          { value: "view_reports", label: "View Reports", desc: "Allows viewing dashboards, KPIs, budget reports, and standard summaries." },
+          { value: "edit_microplans", label: "Edit Microplans", desc: "Allows creating, updating, and hydrating facilities, target populations, and calendars." },
+          { value: "plan_sessions", label: "Plan Sessions", desc: "Allows adding, scheduling, rescheduling, and mapping vaccine session locations." },
+          { value: "execute_sessions", label: "Record Session Results", desc: "Allows marking sessions completed, recording vaccines given, and uploading logbooks." },
+          { value: "manage_stock", label: "Manage Stock Ledger", desc: "Allows creating stock transactions, updating inventory counts, and tracking waste." },
+          { value: "conduct_supervision", label: "Conduct Supervision", desc: "Allows conducting supervision visits, filling checklists, and reporting PCE reviews." }
+        ];
+
+        for (const perm of ALL_PERMS) {
+          await storage.createUserPermission(req.tenantId, {
+            code: perm.value,
+            name: perm.label,
+            description: perm.desc
+          });
+        }
+        permissions = await storage.getUserPermissions(req.tenantId);
+      }
+      res.json(permissions);
+    } catch (err: any) {
+      console.error("GET /api/user-permissions failed:", err);
+      res.status(500).json({ message: "Failed to fetch user permissions" });
+    }
+  });
+
+  app.post("/api/user-permissions", isAuthenticated, requireTenant, requirePermission("manage_users"), async (req: any, res) => {
+    try {
+      const { code, name, description } = req.body;
+      if (!code || !name) {
+        return res.status(400).json({ message: "Permission code and name are required." });
+      }
+
+      const existing = await storage.getUserPermissionByCode(req.tenantId, code);
+      if (existing) {
+        return res.status(400).json({ message: `A user permission with code ${code} already exists.` });
+      }
+
+      const perm = await storage.createUserPermission(req.tenantId, { code, name, description });
+      await logAudit(req, "create_user_permission", "user_permissions", perm.id, null, perm);
+      res.status(201).json(perm);
+    } catch (err: any) {
+      console.error("POST /api/user-permissions failed:", err);
+      res.status(500).json({ message: "Failed to create user permission" });
+    }
+  });
+
+  app.patch("/api/user-permissions/:id", isAuthenticated, requireTenant, requirePermission("manage_users"), async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const oldPerm = await storage.getUserPermission(req.tenantId, id);
+      if (!oldPerm) {
+        return res.status(404).json({ message: "User permission not found" });
+      }
+
+      const { name, description } = req.body;
+      const updated = await storage.updateUserPermission(req.tenantId, id, { name, description });
+      await logAudit(req, "update_user_permission", "user_permissions", id, oldPerm, updated);
+      res.json(updated);
+    } catch (err: any) {
+      console.error("PATCH /api/user-permissions/:id failed:", err);
+      res.status(500).json({ message: "Failed to update user permission" });
+    }
+  });
+
+  app.delete("/api/user-permissions/:id", isAuthenticated, requireTenant, requirePermission("manage_users"), async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const oldPerm = await storage.getUserPermission(req.tenantId, id);
+      if (!oldPerm) {
+        return res.status(404).json({ message: "User permission not found" });
+      }
+
+      // Block deletion of system critical permissions
+      const SYSTEM_CODES = ["manage_users", "view_reports", "edit_microplans", "plan_sessions", "execute_sessions", "manage_stock", "conduct_supervision"];
+      if (SYSTEM_CODES.includes(oldPerm.code.toLowerCase())) {
+        return res.status(400).json({ message: `The system permission '${oldPerm.code}' is a critical platform dependency and cannot be deleted.` });
+      }
+
+      await storage.deleteUserPermission(req.tenantId, id);
+      await logAudit(req, "delete_user_permission", "user_permissions", id, oldPerm, null);
+      res.status(204).send();
+    } catch (err: any) {
+      console.error("DELETE /api/user-permissions/:id failed:", err);
+      res.status(500).json({ message: "Failed to delete user permission" });
     }
   });
 
@@ -2282,6 +2376,35 @@ export async function registerRoutes(
         reason,
       );
       if (!updated) return res.status(404).json({ message: "Signup request not found" });
+
+      if (decision === "approved") {
+        const existing = await storage.getUserByEmailAndTenant(updated.email, req.tenantId);
+        if (!existing) {
+          const nameParts = (updated.fullName || "").trim().split(/\s+/);
+          const firstName = nameParts[0] || "User";
+          const lastName = nameParts.slice(1).join(" ") || "";
+          const defaultPassword = "VaxPlan2026!";
+          const passwordHash = await hashPassword(defaultPassword);
+          const dataAccessScope = {
+            provinces: updated.provinceId ? [updated.provinceId] : [],
+            districts: updated.districtId ? [updated.districtId] : [],
+            facilities: updated.facilityId ? [updated.facilityId] : [],
+          };
+          await storage.createUser(req.tenantId, {
+            email: updated.email,
+            firstName,
+            lastName,
+            roles: [updated.requestedRole],
+            passwordHash,
+            facilityId: updated.facilityId,
+            districtId: updated.districtId,
+            provinceId: updated.provinceId,
+            dataAccessScope,
+            isActive: true,
+          });
+        }
+      }
+
       await logAudit(req, `signup_${decision}`, "signup_request", null, null, {
         signupId: updated.id, email: updated.email, role: updated.requestedRole,
       });

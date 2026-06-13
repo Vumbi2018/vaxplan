@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { GeoCascadeFilter } from "@/components/GeoCascadeFilter";
 import { buildGeoMaps, getRecordHierarchy } from "@/lib/geoHierarchy";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { DataTable } from "@/components/DataTable";
 import { 
   Users, 
   Shield, 
@@ -583,6 +584,18 @@ export default function UserManagement() {
   // Modal editing states
   const [assignedRoles, setAssignedRoles] = useState<string[]>([]);
   const [permissionOverrides, setPermissionOverrides] = useState<string[]>([]);
+
+  // Permission CRUD editing states
+  const [isAddingPermission, setIsAddingPermission] = useState(false);
+  const [newPermCode, setNewPermCode] = useState("");
+  const [newPermName, setNewPermName] = useState("");
+  const [newPermDesc, setNewPermDesc] = useState("");
+
+  const [isEditingPermission, setIsEditingPermission] = useState(false);
+  const [editPermId, setEditPermId] = useState<number | null>(null);
+  const [editPermCode, setEditPermCode] = useState("");
+  const [editPermName, setEditPermName] = useState("");
+  const [editPermDesc, setEditPermDesc] = useState("");
   const [scopeProvinces, setScopeProvinces] = useState<number[]>([]);
   const [scopeDistricts, setScopeDistricts] = useState<number[]>([]);
   const [scopeFacilities, setScopeFacilities] = useState<number[]>([]);
@@ -709,6 +722,92 @@ export default function UserManagement() {
     },
     onError: (err: any) => {
       toast({ variant: "destructive", title: "Failed to delete role", description: err.message });
+    }
+  });
+
+  const { data: dbPermissions = [], isLoading: loadingPermissions } = useQuery<any[]>({
+    queryKey: ["/api/user-permissions"],
+  });
+
+  const permissionsList = useMemo(() => {
+    if (!dbPermissions || dbPermissions.length === 0) {
+      return ALL_PERMISSIONS.map(p => ({ id: undefined as number | undefined, value: p.value, label: p.label, desc: p.desc }));
+    }
+    return dbPermissions.map((p: any) => ({
+      id: p.id as number,
+      value: p.code as Permission,
+      label: p.name,
+      desc: p.description || "",
+    }));
+  }, [dbPermissions]);
+
+  const createPermissionMutation = useMutation({
+    mutationFn: async (data: { code: string; name: string; description: string }) => {
+      const res = await fetch("/api/user-permissions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) {
+        throw new Error(await res.text() || "Failed to create custom permission");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Permission created successfully", description: "The custom user permission has been registered." });
+      queryClient.invalidateQueries({ queryKey: ["/api/user-permissions"] });
+      setIsAddingPermission(false);
+      setNewPermCode("");
+      setNewPermName("");
+      setNewPermDesc("");
+    },
+    onError: (err: any) => {
+      toast({ variant: "destructive", title: "Failed to create permission", description: err.message });
+    }
+  });
+
+  const updatePermissionMutation = useMutation({
+    mutationFn: async ({ id, name, description }: { id: number; name: string; description: string }) => {
+      const res = await fetch(`/api/user-permissions/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, description }),
+      });
+      if (!res.ok) {
+        throw new Error(await res.text() || "Failed to update custom permission");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Permission updated successfully", description: "The custom user permission details have been saved." });
+      queryClient.invalidateQueries({ queryKey: ["/api/user-permissions"] });
+      setIsEditingPermission(false);
+      setEditPermId(null);
+      setEditPermCode("");
+      setEditPermName("");
+      setEditPermDesc("");
+    },
+    onError: (err: any) => {
+      toast({ variant: "destructive", title: "Failed to update permission", description: err.message });
+    }
+  });
+
+  const deletePermissionMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await fetch(`/api/user-permissions/${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        throw new Error(await res.text() || "Failed to delete custom permission");
+      }
+      return true;
+    },
+    onSuccess: () => {
+      toast({ title: "Permission deleted", description: "The custom user permission was permanently removed." });
+      queryClient.invalidateQueries({ queryKey: ["/api/user-permissions"] });
+      setIsEditingPermission(false);
+      setEditPermId(null);
+    },
+    onError: (err: any) => {
+      toast({ variant: "destructive", title: "Failed to delete permission", description: err.message });
     }
   });
 
@@ -1132,11 +1231,39 @@ export default function UserManagement() {
 
   // Scopes toggling helpers
   const toggleProvinceScope = (id: number) => {
-    setScopeProvinces(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+    setScopeProvinces(prev => {
+      const exists = prev.includes(id);
+      if (exists) {
+        // Deselect districts under this province
+        const disIds = (districts || []).filter(d => Number(d.provinceId) === id).map(d => d.id);
+        setScopeDistricts(prevD => prevD.filter(dId => !disIds.includes(dId)));
+        
+        // Deselect facilities under those districts
+        const facIds = (facilities || []).filter(f => disIds.includes(f.districtId)).map(f => f.id);
+        setScopeFacilities(prevF => prevF.filter(fId => !facIds.includes(fId)));
+        
+        return prev.filter(x => x !== id);
+      } else {
+        return [...prev, id];
+      }
+    });
   };
+
   const toggleDistrictScope = (id: number) => {
-    setScopeDistricts(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+    setScopeDistricts(prev => {
+      const exists = prev.includes(id);
+      if (exists) {
+        // Deselect facilities under this district
+        const facIds = (facilities || []).filter(f => f.districtId === id).map(f => f.id);
+        setScopeFacilities(prevF => prevF.filter(fId => !facIds.includes(fId)));
+        
+        return prev.filter(x => x !== id);
+      } else {
+        return [...prev, id];
+      }
+    });
   };
+
   const toggleFacilityScope = (id: number) => {
     setScopeFacilities(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   };
@@ -1169,6 +1296,153 @@ export default function UserManagement() {
     if (geoFilterFacilityId !== null && Number((u as any).facilityId) !== geoFilterFacilityId) return false;
     return true;
   });
+
+  const columns = useMemo(() => [
+    {
+      key: "firstName",
+      header: "User Details",
+      sortable: true,
+      render: (u: User) => (
+        <div className="flex items-center gap-3">
+          <div className="h-9 w-9 rounded-xl bg-indigo-500/10 flex items-center justify-center font-bold text-sm text-indigo-500 dark:text-indigo-400 uppercase">
+            {u.firstName ? u.firstName.charAt(0) : u.email?.charAt(0)}
+          </div>
+          <div className="min-w-0">
+            <h4 className="font-bold text-foreground text-sm truncate">
+              {u.firstName || u.lastName ? `${u.firstName || ""} ${u.lastName || ""}` : "Unnamed Staff"}
+            </h4>
+            <p className="text-xs text-muted-foreground truncate">{u.email}</p>
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: "role",
+      header: "Assigned Roles",
+      render: (u: User) => {
+        const uRoles: string[] = Array.isArray(u.roles) ? (u.roles as string[]) : [];
+        const activeRoles = uRoles.length > 0 ? uRoles : [u.role];
+        return (
+          <div className="flex flex-wrap gap-1">
+            {activeRoles.map(role => (
+              <Badge key={role} variant="outline" className="bg-indigo-500/5 text-indigo-600 dark:text-indigo-300 border-indigo-500/20 text-[10px] px-2 py-0.5 rounded-md capitalize">
+                {role.replace("_", " ")}
+              </Badge>
+            ))}
+          </div>
+        );
+      },
+    },
+    {
+      key: "location",
+      header: "Primary Location",
+      render: (u: User) => {
+        const userGeo = getRecordHierarchy(u as unknown as Record<string, unknown>, geoMaps);
+        const provinceName = userGeo.provinceId !== null
+          ? geoMaps.provinceMap.get(userGeo.provinceId)?.name ?? null
+          : null;
+        const districtName = userGeo.districtId !== null
+          ? geoMaps.districtMap.get(userGeo.districtId)?.name ?? null
+          : null;
+        const facilityName = (u as any).facilityId
+          ? geoMaps.facilityMap.get(Number((u as any).facilityId))?.name ?? null
+          : null;
+        return (
+          <div className="text-xs text-foreground/80 space-y-0.5">
+            {provinceName && (
+              <div className="flex items-center gap-1">
+                <Compass className="h-3 w-3 text-emerald-500" />
+                <span>{provinceName}</span>
+              </div>
+            )}
+            {districtName && (
+              <div className="flex items-center gap-1">
+                <Map className="h-3 w-3 text-sky-500" />
+                <span>{districtName}</span>
+              </div>
+            )}
+            {facilityName && (
+              <div className="flex items-center gap-1">
+                <Building className="h-3 w-3 text-amber-500" />
+                <span>{facilityName}</span>
+              </div>
+            )}
+            {!provinceName && !districtName && !facilityName && (
+              <span className="text-muted-foreground">—</span>
+            )}
+          </div>
+        );
+      },
+    },
+    {
+      key: "scopes",
+      header: "Data Scope Locks",
+      render: (u: User) => {
+        const scope = (u.dataAccessScope as any) || { provinces: [], districts: [], facilities: [] };
+        const hasRestrictedScope = 
+          (scope.provinces && scope.provinces.length > 0) || 
+          (scope.districts && scope.districts.length > 0) || 
+          (scope.facilities && scope.facilities.length > 0);
+
+        if (!hasRestrictedScope) {
+          return (
+            <div className="flex items-center gap-1 text-xs text-muted-foreground">
+              <Unlock className="h-3 w-3 text-emerald-500/60" />
+              <span>Global Scope</span>
+            </div>
+          );
+        }
+
+        return (
+          <div className="text-[10px] space-y-0.5 text-foreground/80">
+            {scope.provinces && scope.provinces.length > 0 && (
+              <div className="flex items-center gap-1">
+                <Compass className="h-2.5 w-2.5 text-emerald-500" />
+                <span>Prov IDs: {scope.provinces.join(", ")}</span>
+              </div>
+            )}
+            {scope.districts && scope.districts.length > 0 && (
+              <div className="flex items-center gap-1">
+                <Map className="h-2.5 w-2.5 text-sky-500" />
+                <span>Dist IDs: {scope.districts.join(", ")}</span>
+              </div>
+            )}
+            {scope.facilities && scope.facilities.length > 0 && (
+              <div className="flex items-center gap-1">
+                <Building className="h-2.5 w-2.5 text-amber-500" />
+                <span>Fac IDs: {scope.facilities.join(", ")}</span>
+              </div>
+            )}
+          </div>
+        );
+      },
+    },
+    {
+      key: "isActive",
+      header: "Status",
+      sortable: true,
+      render: (u: User) => (
+        <Badge variant={u.isActive ? "default" : "secondary"} className={u.isActive ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/10 text-xs px-2.5 py-0.5 rounded-lg font-medium" : "text-xs px-2.5 py-0.5 rounded-lg font-medium"}>
+          {u.isActive ? "Active" : "Disabled"}
+        </Badge>
+      ),
+    },
+    {
+      key: "actions",
+      header: "Actions",
+      sortable: false,
+      render: (u: User) => (
+        <Button 
+          size="sm"
+          onClick={() => handleOpenEdit(u)}
+          className="bg-secondary hover:bg-secondary/80 border border-border text-foreground rounded-xl py-1 px-3 flex items-center justify-center gap-1.5 transition-all font-sans text-xs font-semibold"
+        >
+          <Edit3 className="h-3.5 w-3.5 text-indigo-500 dark:text-indigo-400" />
+          <span>Configure Access</span>
+        </Button>
+      ),
+    },
+  ], [geoMaps]);
 
   return (
     <div className="container mx-auto p-6 max-w-7xl animate-in fade-in duration-300">
@@ -1297,129 +1571,13 @@ export default function UserManagement() {
                 <p className="text-muted-foreground text-sm mt-1">Try modifying your active query or search criteria.</p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {filteredUsers.map((user) => {
-                  const uRoles: string[] = Array.isArray(user.roles) ? (user.roles as string[]) : [];
-                  const activeRoles = uRoles.length > 0 ? uRoles : [user.role];
-                  const scope = (user.dataAccessScope as any) || { provinces: [], districts: [], facilities: [] };
-                  const userGeo = getRecordHierarchy(user as unknown as Record<string, unknown>, geoMaps);
-                  const provinceName = userGeo.provinceId !== null
-                    ? geoMaps.provinceMap.get(userGeo.provinceId)?.name ?? null
-                    : null;
-                  const districtName = userGeo.districtId !== null
-                    ? geoMaps.districtMap.get(userGeo.districtId)?.name ?? null
-                    : null;
-                  const facilityName = (user as any).facilityId
-                    ? geoMaps.facilityMap.get(Number((user as any).facilityId))?.name ?? null
-                    : null;
-                  
-                  const hasRestrictedScope = 
-                    (scope.provinces && scope.provinces.length > 0) || 
-                    (scope.districts && scope.districts.length > 0) || 
-                    (scope.facilities && scope.facilities.length > 0);
-
-                  return (
-                    <div 
-                      key={user.id} 
-                      className="relative overflow-hidden bg-card rounded-3xl border border-border p-6 flex flex-col justify-between hover:border-border/80 dark:hover:border-white/20 transition-all duration-300 group shadow-lg"
-                    >
-                      <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-                        <Shield className="h-24 w-24 text-indigo-500 dark:text-indigo-400" />
-                      </div>
-
-                      <div>
-                        {/* User profile identifier */}
-                        <div className="flex items-center gap-4 mb-4">
-                          <div className="h-12 w-12 rounded-2xl bg-indigo-500/10 flex items-center justify-center font-bold text-lg text-indigo-500 dark:text-indigo-400 uppercase">
-                            {user.firstName ? user.firstName.charAt(0) : user.email?.charAt(0)}
-                          </div>
-                          <div className="min-w-0">
-                            <h3 className="text-lg font-bold text-foreground truncate">
-                              {user.firstName || user.lastName ? `${user.firstName || ""} ${user.lastName || ""}` : "Unnamed Staff"}
-                            </h3>
-                            <p className="text-sm text-muted-foreground truncate">{user.email}</p>
-                          </div>
-                        </div>
-
-                        {/* Roles Badges */}
-                        <div className="mb-4">
-                          <span className="text-xs text-muted-foreground/80 block mb-1.5 uppercase tracking-wider font-semibold">Assigned Roles</span>
-                          <div className="flex flex-wrap gap-1.5">
-                            {activeRoles.map(role => (
-                              <Badge key={role} variant="outline" className="bg-indigo-500/10 text-indigo-600 dark:text-indigo-300 border-indigo-500/20 text-xs px-2.5 py-0.5 rounded-lg capitalize">
-                                {role.replace("_", " ")}
-                              </Badge>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* Province / District / Facility (resolved location) */}
-                        <div className="mb-4 pt-4 border-t border-border" data-testid={`user-geo-${user.id}`}>
-                          <span className="text-xs text-muted-foreground/80 block mb-1.5 uppercase tracking-wider font-semibold">Location</span>
-                          <div className="grid grid-cols-1 gap-1 text-xs text-foreground/80">
-                            <div className="flex items-center gap-1.5">
-                              <Compass className="h-3 w-3 text-emerald-500 dark:text-emerald-400" />
-                              <span className="text-muted-foreground">Province:</span>
-                              <span className="font-medium">{provinceName ?? "—"}</span>
-                            </div>
-                            <div className="flex items-center gap-1.5">
-                              <Map className="h-3 w-3 text-sky-500 dark:text-sky-400" />
-                              <span className="text-muted-foreground">District:</span>
-                              <span className="font-medium">{districtName ?? "—"}</span>
-                            </div>
-                            <div className="flex items-center gap-1.5">
-                              <Building className="h-3 w-3 text-amber-500 dark:text-amber-400" />
-                              <span className="text-muted-foreground">Facility:</span>
-                              <span className="font-medium">{facilityName ?? "—"}</span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Geographic Access scope description */}
-                        <div className="mb-6 pt-4 border-t border-border">
-                          <span className="text-xs text-muted-foreground/80 block mb-1.5 uppercase tracking-wider font-semibold">Row-Level Scope</span>
-                          {hasRestrictedScope ? (
-                            <div className="space-y-1 text-xs text-foreground/80">
-                              {scope.provinces && scope.provinces.length > 0 && (
-                                <div className="flex items-center gap-1.5">
-                                  <Compass className="h-3 w-3 text-emerald-500 dark:text-emerald-400" />
-                                  <span>Province IDs: {scope.provinces.join(", ")}</span>
-                                </div>
-                              )}
-                              {scope.districts && scope.districts.length > 0 && (
-                                <div className="flex items-center gap-1.5">
-                                  <Map className="h-3 w-3 text-sky-500 dark:text-sky-400" />
-                                  <span>District IDs: {scope.districts.join(", ")}</span>
-                                </div>
-                              )}
-                              {scope.facilities && scope.facilities.length > 0 && (
-                                <div className="flex items-center gap-1.5">
-                                  <Building className="h-3 w-3 text-amber-500 dark:text-amber-400" />
-                                  <span>Facility IDs: {scope.facilities.join(", ")}</span>
-                                </div>
-                              )}
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                              <Unlock className="h-3.5 w-3.5 text-emerald-500/60" />
-                              <span>Global Scope / Default Hierarchies</span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Actions row */}
-                      <Button 
-                        onClick={() => handleOpenEdit(user)}
-                        className="w-full bg-secondary hover:bg-secondary/80 border border-border text-foreground rounded-xl py-2 flex items-center justify-center gap-2 transition-all font-sans text-sm font-semibold"
-                      >
-                        <Edit3 className="h-4 w-4 text-indigo-500 dark:text-indigo-400" />
-                        Configure Access Parameters
-                      </Button>
-                    </div>
-                  );
-                })}
-              </div>
+              <DataTable
+                data={filteredUsers}
+                columns={columns}
+                searchable={false}
+                pageSize={10}
+                emptyMessage="No active users found"
+              />
             )}
           </div>
         </TabsContent>
@@ -1536,7 +1694,6 @@ export default function UserManagement() {
           )}
         </TabsContent>
 
-        {/* ─── Permissions Registry ─────────────────────────────────────── */}
         <TabsContent value="permissions" className="space-y-6 mt-4">
           <div className="flex justify-between items-center gap-4 flex-wrap">
             <div>
@@ -1545,45 +1702,101 @@ export default function UserManagement() {
                 All system-level permissions. Assign these to roles in the Custom Roles Manager or per-user in Configure Access.
               </p>
             </div>
-            <Badge variant="secondary" className="text-xs">
-              {ALL_PERMISSIONS.length} system permissions
-            </Badge>
+            <div className="flex items-center gap-2">
+              <Button
+                onClick={() => {
+                  setNewPermCode("");
+                  setNewPermName("");
+                  setNewPermDesc("");
+                  setIsAddingPermission(true);
+                }}
+                className="bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl py-2 px-4 flex items-center gap-1.5 text-xs font-semibold"
+                data-testid="btn-add-permission"
+              >
+                <Plus className="h-4 w-4" />
+                <span>Add Custom Permission</span>
+              </Button>
+              <Badge variant="secondary" className="text-xs">
+                {permissionsList.length} permissions
+              </Badge>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {ALL_PERMISSIONS.map((perm) => {
+            {permissionsList.map((perm) => {
               // Compute which system roles have this permission via the dbRoles list
               const rolesWithPerm = (dbRoles || []).filter((r: any) =>
                 Array.isArray(r.permissions) && r.permissions.includes(perm.value)
               );
+              const isSystemPerm = ["manage_users", "view_reports", "edit_microplans", "plan_sessions", "execute_sessions", "manage_stock", "conduct_supervision"].includes(perm.value.toLowerCase());
+
               return (
                 <div
                   key={perm.value}
-                  className="bg-card rounded-2xl border border-border p-4 flex flex-col gap-3 hover:border-indigo-500/40 transition-all duration-200 shadow-sm"
+                  className="bg-card rounded-2xl border border-border p-4 flex flex-col justify-between gap-3 hover:border-indigo-500/40 transition-all duration-200 shadow-sm group"
                   data-testid={`perm-card-${perm.value}`}
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <p className="text-sm font-bold text-foreground leading-tight">{perm.label}</p>
-                      <code className="text-[10px] font-mono text-muted-foreground/70 mt-0.5 block">{perm.value}</code>
-                    </div>
-                    <div className="p-1.5 bg-indigo-500/10 rounded-lg shrink-0">
-                      <Lock className="h-3.5 w-3.5 text-indigo-500 dark:text-indigo-400" />
-                    </div>
-                  </div>
-                  <p className="text-xs text-muted-foreground leading-relaxed">{perm.desc}</p>
-                  {rolesWithPerm.length > 0 && (
-                    <div className="pt-2 border-t border-border/60">
-                      <span className="text-[10px] text-muted-foreground/70 uppercase tracking-wider font-semibold block mb-1.5">Granted to</span>
-                      <div className="flex flex-wrap gap-1">
-                        {rolesWithPerm.map((r: any) => (
-                          <Badge key={r.code} variant="outline" className="text-[10px] px-1.5 py-0 bg-indigo-500/5 text-indigo-600 dark:text-indigo-300 border-indigo-500/20 capitalize rounded-md">
-                            {r.name || r.code}
-                          </Badge>
-                        ))}
+                  <div>
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-bold text-foreground leading-tight">{perm.label}</p>
+                          {isSystemPerm && (
+                            <Badge variant="secondary" className="bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/10 text-[9px] py-0 px-1.5 rounded">
+                              System Default
+                            </Badge>
+                          )}
+                        </div>
+                        <code className="text-[10px] font-mono text-muted-foreground/70 mt-0.5 block">{perm.value}</code>
+                      </div>
+                      <div className="p-1.5 bg-indigo-500/10 rounded-lg shrink-0">
+                        <Lock className="h-3.5 w-3.5 text-indigo-500 dark:text-indigo-400" />
                       </div>
                     </div>
-                  )}
+                    <p className="text-xs text-muted-foreground leading-relaxed mt-2">{perm.desc}</p>
+                    {rolesWithPerm.length > 0 && (
+                      <div className="pt-2 border-t border-border/60 mt-2">
+                        <span className="text-[10px] text-muted-foreground/70 uppercase tracking-wider font-semibold block mb-1.5">Granted to</span>
+                        <div className="flex flex-wrap gap-1">
+                          {rolesWithPerm.map((r: any) => (
+                            <Badge key={r.code} variant="outline" className="text-[10px] px-1.5 py-0 bg-indigo-500/5 text-indigo-600 dark:text-indigo-300 border-indigo-500/20 capitalize rounded-md">
+                              {r.name || r.code}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div className="flex items-center gap-2 pt-2 border-t border-border/60 mt-auto opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Button
+                      onClick={() => {
+                        setEditPermId(perm.id || null);
+                        setEditPermCode(perm.value);
+                        setEditPermName(perm.label);
+                        setEditPermDesc(perm.desc);
+                        setIsEditingPermission(true);
+                      }}
+                      className="flex-1 bg-secondary hover:bg-secondary/80 border border-border text-foreground rounded-xl py-1 text-xs font-semibold flex items-center justify-center gap-1"
+                    >
+                      <Edit3 className="h-3 w-3 text-indigo-500" />
+                      <span>Edit</span>
+                    </Button>
+                    {!isSystemPerm && (
+                      <Button
+                        variant="ghost"
+                        onClick={() => {
+                          if (confirm(`Are you sure you want to permanently delete permission ${perm.label}? Roles and users assigned this override will lose access.`)) {
+                            deletePermissionMutation.mutate(perm.id!);
+                          }
+                        }}
+                        disabled={deletePermissionMutation.isPending}
+                        className="px-2.5 h-7 border border-destructive/20 text-destructive hover:bg-destructive/10 rounded-xl"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    )}
+                  </div>
                 </div>
               );
             })}
@@ -1908,7 +2121,7 @@ export default function UserManagement() {
                   <p className="text-muted-foreground text-xs mb-4">Configure user-specific custom overrides. Switches indicate explicit access bounds (toggled on represents user-level override grants).</p>
 
                   <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2">
-                    {ALL_PERMISSIONS.map(perm => {
+                    {permissionsList.map(perm => {
                       const basePerms = getBasePermissions(assignedRoles);
                       const isInherited = basePerms.includes(perm.value);
                       const isOverridden = permissionOverrides.includes(perm.value);
@@ -1994,10 +2207,13 @@ export default function UserManagement() {
                       </div>
                       <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-[140px] overflow-y-auto pr-1">
                         {(() => {
-                          const activeD = (districts || []).filter(d => scopeDistricts.includes(d.id));
-                          const inactiveD = (districts || []).filter(d => !scopeDistricts.includes(d.id));
+                          const filteredDistricts = (districts || []).filter(d => 
+                            scopeProvinces.length === 0 || scopeProvinces.includes(Number(d.provinceId))
+                          );
+                          const activeD = filteredDistricts.filter(d => scopeDistricts.includes(d.id));
+                          const inactiveD = filteredDistricts.filter(d => !scopeDistricts.includes(d.id));
                           const list = districtSearch
-                            ? (districts || []).filter(d => d.name.toLowerCase().includes(districtSearch.toLowerCase()) || scopeDistricts.includes(d.id))
+                            ? filteredDistricts.filter(d => d.name.toLowerCase().includes(districtSearch.toLowerCase()) || scopeDistricts.includes(d.id))
                             : [...activeD, ...inactiveD.slice(0, 15)];
                           
                           if (list.length === 0) {
@@ -2036,10 +2252,24 @@ export default function UserManagement() {
                       </div>
                       <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-[160px] overflow-y-auto pr-1">
                         {(() => {
-                          const activeF = (facilities || []).filter(f => scopeFacilities.includes(f.id));
-                          const inactiveF = (facilities || []).filter(f => !scopeFacilities.includes(f.id));
+                          const parentDistrictIds = new Set(
+                            (districts || [])
+                              .filter(d => scopeProvinces.includes(Number(d.provinceId)))
+                              .map(d => d.id)
+                          );
+                          const filteredFacilities = (facilities || []).filter(f => {
+                            if (scopeDistricts.length > 0) {
+                              return scopeDistricts.includes(Number(f.districtId));
+                            }
+                            if (scopeProvinces.length > 0) {
+                              return parentDistrictIds.has(Number(f.districtId));
+                            }
+                            return true;
+                          });
+                          const activeF = filteredFacilities.filter(f => scopeFacilities.includes(f.id));
+                          const inactiveF = filteredFacilities.filter(f => !scopeFacilities.includes(f.id));
                           const list = facilitySearch
-                            ? (facilities || []).filter(f => f.name.toLowerCase().includes(facilitySearch.toLowerCase()) || scopeFacilities.includes(f.id)).slice(0, 30)
+                            ? filteredFacilities.filter(f => f.name.toLowerCase().includes(facilitySearch.toLowerCase()) || scopeFacilities.includes(f.id)).slice(0, 30)
                             : [...activeF, ...inactiveF.slice(0, 15)];
                           
                           if (list.length === 0) {
@@ -2477,7 +2707,7 @@ export default function UserManagement() {
             <div className="space-y-2">
               <label className="text-xs font-semibold text-muted-foreground block mb-1">Select Associated Permissions</label>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[220px] overflow-y-auto pr-1">
-                {ALL_PERMISSIONS.map(perm => {
+                {permissionsList.map(perm => {
                   const active = newRolePermissions.includes(perm.value);
                   return (
                     <div 
@@ -2566,7 +2796,7 @@ export default function UserManagement() {
               <div className="space-y-2">
                 <label className="text-xs font-semibold text-muted-foreground block mb-1">Select Associated Permissions</label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[220px] overflow-y-auto pr-1">
-                  {ALL_PERMISSIONS.map(perm => {
+                  {permissionsList.map(perm => {
                     const active = editRolePermissions.includes(perm.value);
                     return (
                       <div 
@@ -2625,6 +2855,151 @@ export default function UserManagement() {
                 className="bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl px-5 py-2 text-xs font-semibold shadow-md"
               >
                 {updateRoleMutation.isPending ? "Saving Role..." : "Save Role Configuration"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+      {/* Dynamic Add Permission Modal */}
+      <Dialog open={isAddingPermission} onOpenChange={setIsAddingPermission}>
+        <DialogContent className="max-w-xl bg-card border border-border text-foreground rounded-3xl shadow-2xl p-6 font-sans">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-extrabold text-foreground flex items-center gap-2">
+              <Plus className="h-5 w-5 text-indigo-500" />
+              Define New Custom Permission
+            </DialogTitle>
+            <DialogDescription className="text-muted-foreground">
+              Create a custom permission with a display label, unique key code, and explanation description.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 pt-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-muted-foreground">Permission Name *</label>
+                <Input 
+                  value={newPermName}
+                  onChange={(e) => setNewPermName(e.target.value)}
+                  placeholder="e.g. Export Reports"
+                  className="bg-background border-border text-foreground rounded-xl text-sm"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-muted-foreground">Permission Key Code *</label>
+                <Input 
+                  value={newPermCode}
+                  onChange={(e) => setNewPermCode(e.target.value)}
+                  placeholder="e.g. export_reports"
+                  className="bg-background border-border text-foreground rounded-xl font-mono text-sm"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-muted-foreground">Description</label>
+              <Input 
+                value={newPermDesc}
+                onChange={(e) => setNewPermDesc(e.target.value)}
+                placeholder="e.g. Allows downloading raw PDF or Excel report files"
+                className="bg-background border-border text-foreground rounded-xl text-sm"
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="mt-6 border-t border-border pt-4 flex gap-2 justify-end">
+            <Button 
+              onClick={() => setIsAddingPermission(false)}
+              variant="outline"
+              className="rounded-xl px-4 py-2 text-xs font-semibold"
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={() => {
+                if (!newPermName.trim() || !newPermCode.trim()) {
+                  toast({ title: "Validation failed", description: "Permission Name and Key Code are required.", variant: "destructive" });
+                  return;
+                }
+                createPermissionMutation.mutate({
+                  code: newPermCode.trim().toLowerCase().replace(/\s+/g, "_"),
+                  name: newPermName.trim(),
+                  description: newPermDesc.trim(),
+                });
+              }}
+              disabled={createPermissionMutation.isPending}
+              className="bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl px-5 py-2 text-xs font-semibold shadow-md"
+            >
+              {createPermissionMutation.isPending ? "Creating..." : "Create Permission"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dynamic Edit Permission Modal */}
+      {isEditingPermission && (
+        <Dialog open={isEditingPermission} onOpenChange={setIsEditingPermission}>
+          <DialogContent className="max-w-xl bg-card border border-border text-foreground rounded-3xl shadow-2xl p-6 font-sans">
+            <DialogHeader>
+              <DialogTitle className="text-xl font-extrabold text-foreground flex items-center gap-2">
+                <Lock className="h-5 w-5 text-indigo-500" />
+                Configure Permission: {editPermCode}
+              </DialogTitle>
+              <DialogDescription className="text-muted-foreground">
+                Modify display label and descriptive details for this user permission.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4 pt-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-muted-foreground">Permission Name *</label>
+                <Input 
+                  value={editPermName}
+                  onChange={(e) => setEditPermName(e.target.value)}
+                  placeholder="e.g. Export Reports"
+                  className="bg-background border-border text-foreground rounded-xl text-sm"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-muted-foreground">Description</label>
+                <Input 
+                  value={editPermDesc}
+                  onChange={(e) => setEditPermDesc(e.target.value)}
+                  placeholder="e.g. Allows downloading raw PDF or Excel report files"
+                  className="bg-background border-border text-foreground rounded-xl text-sm"
+                />
+              </div>
+            </div>
+
+            <DialogFooter className="mt-6 border-t border-border pt-4 flex gap-2 justify-end">
+              <Button 
+                onClick={() => {
+                  setIsEditingPermission(false);
+                  setEditPermId(null);
+                }}
+                variant="outline"
+                className="rounded-xl px-4 py-2 text-xs font-semibold"
+              >
+                Cancel
+              </Button>
+              <Button 
+                onClick={() => {
+                  if (!editPermName.trim()) {
+                    toast({ title: "Validation failed", description: "Permission Name is required.", variant: "destructive" });
+                    return;
+                  }
+                  if (editPermId !== null) {
+                    updatePermissionMutation.mutate({
+                      id: editPermId,
+                      name: editPermName.trim(),
+                      description: editPermDesc.trim(),
+                    });
+                  }
+                }}
+                disabled={updatePermissionMutation.isPending}
+                className="bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl px-5 py-2 text-xs font-semibold shadow-md"
+              >
+                {updatePermissionMutation.isPending ? "Saving..." : "Save Configuration"}
               </Button>
             </DialogFooter>
           </DialogContent>

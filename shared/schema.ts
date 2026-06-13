@@ -225,7 +225,7 @@ export const sessions = pgTable(
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   tenantId: varchar("tenant_id").references(() => tenants.id),
-  email: varchar("email").unique(),
+  email: varchar("email"),
   firstName: varchar("first_name"),
   lastName: varchar("last_name"),
   profileImageUrl: varchar("profile_image_url"),
@@ -254,7 +254,10 @@ export const users = pgTable("users", {
   notificationPrefs: jsonb("notification_prefs").default({}).notNull(),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-}, (table) => [index("idx_users_tenant").on(table.tenantId)]);
+}, (table) => [
+  index("idx_users_tenant").on(table.tenantId),
+  unique("uq_users_tenant_email").on(table.tenantId, table.email),
+]);
 
 // Dynamic User Roles and their assigned permissions
 export const userRoles = pgTable(

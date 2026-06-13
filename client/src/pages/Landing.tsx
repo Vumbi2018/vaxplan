@@ -102,11 +102,17 @@ function PasswordLoginDialog({ open, onOpenChange }: { open: boolean; onOpenChan
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [selectedTenantId, setSelectedTenantId] = useState("");
+
+  const { data: tenants } = useQuery<PublicTenant[]>({
+    queryKey: ["/api/public/tenants"],
+  });
 
   function resetState() {
     setError(null);
     setNotice(null);
     setBusy(false);
+    setSelectedTenantId("");
   }
 
   async function submit(e: React.FormEvent) {
@@ -118,7 +124,7 @@ function PasswordLoginDialog({ open, onOpenChange }: { open: boolean; onOpenChan
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ email: email.trim(), password }),
+        body: JSON.stringify({ email: email.trim(), password, tenantId: selectedTenantId }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -220,6 +226,24 @@ function PasswordLoginDialog({ open, onOpenChange }: { open: boolean; onOpenChan
                   </p>
                 </div>
                 <form onSubmit={submit} className="space-y-4">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="pw-tenant">Country / Program</Label>
+                    <select
+                      id="pw-tenant"
+                      required
+                      value={selectedTenantId}
+                      onChange={(e) => setSelectedTenantId(e.target.value)}
+                      className="flex h-10 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 text-foreground"
+                      data-testid="select-tenant"
+                    >
+                      <option value="">Select country...</option>
+                      {tenants?.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.name} ({t.code})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                   <div className="space-y-1.5">
                     <Label htmlFor="pw-email">Email</Label>
                     <Input

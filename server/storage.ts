@@ -106,6 +106,9 @@ import {
   userRoles,
   type CustomUserRole,
   type InsertUserRole,
+  userPermissions,
+  type CustomUserPermission,
+  type InsertUserPermission,
 } from "@shared/schema";
 import type { UserRole } from "@shared/schema";
 import { db } from "./db";
@@ -140,6 +143,7 @@ export interface IStorage {
   // Users (cross-tenant operations — user identity is global, tenant assigned separately)
   getUser(id: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
+  getUserByEmailAndTenant(email: string, tenantId: string): Promise<User | undefined>;
   upsertUser(user: UpsertUser): Promise<User>;
   assignUserTenant(userId: string, tenantId: string): Promise<void>;
   assignUserTenantAndRole(userId: string, tenantId: string, role: UserRole): Promise<void>;
@@ -405,6 +409,14 @@ export interface IStorage {
   createUserRole(tenantId: string, data: Omit<InsertUserRole, "tenantId">): Promise<CustomUserRole>;
   updateUserRole(tenantId: string, id: number, data: Partial<Omit<InsertUserRole, "tenantId">>): Promise<CustomUserRole | undefined>;
   deleteUserRole(tenantId: string, id: number): Promise<boolean>;
+
+  // --- 8. Custom User Permissions ---
+  getUserPermissions(tenantId: string): Promise<CustomUserPermission[]>;
+  getUserPermission(tenantId: string, id: number): Promise<CustomUserPermission | undefined>;
+  getUserPermissionByCode(tenantId: string, code: string): Promise<CustomUserPermission | undefined>;
+  createUserPermission(tenantId: string, data: Omit<InsertUserPermission, "tenantId">): Promise<CustomUserPermission>;
+  updateUserPermission(tenantId: string, id: number, data: Partial<Omit<InsertUserPermission, "tenantId">>): Promise<CustomUserPermission | undefined>;
+  deleteUserPermission(tenantId: string, id: number): Promise<boolean>;
 }
 
 // Helper: AND together a tenant filter with one or more additional conditions.
@@ -438,6 +450,14 @@ export class DatabaseStorage implements IStorage {
 
   async getUserByEmail(email: string): Promise<User | undefined> {
     const [u] = await db.select().from(users).where(eq(users.email, email.toLowerCase()));
+    return u;
+  }
+
+  async getUserByEmailAndTenant(email: string, tenantId: string): Promise<User | undefined> {
+    const [u] = await db
+      .select()
+      .from(users)
+      .where(and(eq(users.email, email.toLowerCase()), eq(users.tenantId, tenantId)));
     return u;
   }
 
@@ -584,6 +604,64 @@ export class DatabaseStorage implements IStorage {
       .delete(userRoles)
       .where(and(eq(userRoles.id, id), eq(userRoles.tenantId, tenantId)))
       .returning({ id: userRoles.id });
+    return rows.length > 0;
+  }
+
+  // --- Dynamic User Permissions ---
+  async getUserPermissions(tenantId: string): Promise<CustomUserPermission[]> {
+    return await db
+      .select()
+      .from(userPermissions)
+      .where(eq(userPermissions.tenantId, tenantId))
+      .orderBy(desc(userPermissions.createdAt));
+  }
+
+  async getUserPermission(tenantId: string, id: number): Promise<CustomUserPermission | undefined> {
+    const [row] = await db
+      .select()
+      .from(userPermissions)
+      .where(and(eq(userPermissions.id, id), eq(userPermissions.tenantId, tenantId)));
+    return row;
+  }
+
+  async getUserPermissionByCode(tenantId: string, code: string): Promise<CustomUserPermission | undefined> {
+    const [row] = await db
+      .select()
+      .from(userPermissions)
+      .where(and(eq(userPermissions.code, code.toLowerCase()), eq(userPermissions.tenantId, tenantId)));
+    return row;
+  }
+
+  async createUserPermission(tenantId: string, data: Omit<InsertUserPermission, "tenantId">): Promise<CustomUserPermission> {
+    const [row] = await db
+      .insert(userPermissions)
+      .values({ ...data, code: data.code.toLowerCase(), tenantId } as InsertUserPermission)
+      .returning();
+    return row;
+  }
+
+  async updateUserPermission(
+    tenantId: string,
+    id: number,
+    data: Partial<Omit<InsertUserPermission, "tenantId">>
+  ): Promise<CustomUserPermission | undefined> {
+    const updateData = { ...data, updatedAt: new Date() } as any;
+    if (data.code) {
+      updateData.code = data.code.toLowerCase();
+    }
+    const [row] = await db
+      .update(userPermissions)
+      .set(updateData)
+      .where(and(eq(userPermissions.id, id), eq(userPermissions.tenantId, tenantId)))
+      .returning();
+    return row;
+  }
+
+  async deleteUserPermission(tenantId: string, id: number): Promise<boolean> {
+    const rows = await db
+      .delete(userPermissions)
+      .where(and(eq(userPermissions.id, id), eq(userPermissions.tenantId, tenantId)))
+      .returning({ id: userPermissions.id });
     return rows.length > 0;
   }
 
